@@ -21,7 +21,9 @@ heights from Taipei's 3D city models (median error about 5 m in the Xinyi box); 
 redistributed here. Estimated buildings are labelled in the data and can be
 highlighted in the viewer (press E). Taipei 101 renders at its real 508 m from OSM's building parts. Streets are
 drawn from the OSM road graph; road widths come from the `width` or `lanes` tags where present and otherwise from a
-default per road class. Traffic signals stand where OSM maps them, but their timing is a generic fixed cycle. Trees are
+default per road class, adjusted to the gap between mapped sidewalks where those exist. OSM maps few sidewalks
+here, so sidewalks along streets 6 m or wider are drawn from the roads' sidewalk tags or, untagged, assumed (labelled
+'inferred' in the data, default widths). Traffic signals stand where OSM maps them, but their timing is a generic fixed cycle. Trees are
 OSM's mapped trees plus trees spaced along mapped tree rows and through mapped woods (the models are generic
 broadleaf trees, not Taipei species). Cars and pedestrians are simulated, not real traffic. Roof shapes and colours
 come from OSM where tagged; facade styles (curtain wall, punched windows, shopfronts) are inferred from building type,

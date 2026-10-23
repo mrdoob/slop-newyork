@@ -16,6 +16,7 @@ import { SIGNAL_STATE } from './signal-control.js';
 
 const ROAD_Y = 0.08;
 const WALK_Y = 0.05;
+const SIDEWALK_Y = 0.15; // raised sidewalks (graph-roads.js SIDEWALK_H)
 const CAR_LEN = 4.6;
 const LOOK_AHEAD = 32; // m: cars within this distance ahead are considered
 const ACCEL = 2.6;
@@ -345,7 +346,8 @@ function buildPedestrians(scene, geo, options, signals, rand) {
   const ways = (geo.paths || []).map(([k, w, elev, flatPts, heights]) => {
     const pts = [];
     for (let i = 0; i < flatPts.length; i += 2) pts.push([flatPts[i], flatPts[i + 1]]);
-    const ys = pts.map((_, i) => (heights ? heights[i] : elev) + (elev > 0 ? 0 : WALK_Y));
+    const ground = kinds[k] === 'sidewalk' ? SIDEWALK_Y : WALK_Y;
+    const ys = pts.map((_, i) => (heights ? heights[i] : elev) + (elev > 0 ? 0 : ground));
     return { ...track(pts), ys, w, kind: kinds[k] };
   });
   // Where ways meet: every vertex, keyed on a 1 m grid

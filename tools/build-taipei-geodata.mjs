@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { toWorld, BOX, LANDMARKS, load, log } from './geo-taipei-base.mjs';
 import { buildingHeight } from './geo-height.mjs';
 import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
-import { buildOsmRoadGraph, PATH_KINDS } from './geo-osm-roadgraph.mjs';
+import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgraph.mjs';
+import { fitRoadWidths, inferSidewalks } from './geo-sidewalks.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL('../js/taipei-geodata.js', import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
@@ -150,6 +151,17 @@ log(`estimated tops: ${new Set(est).size} distinct values, ${Math.min(...est).to
 const street = load('osm_street.json').elements;
 const signalIds = new Set(street.filter((e) => e.type === 'node' && e.tags && (e.tags.highway === 'traffic_signals' || e.tags.crossing === 'traffic_signals')).map((e) => e.id));
 const { roadGraph, paths } = buildOsmRoadGraph(load('osm_roads.json').elements, toWorld, log, { signalIds });
+// Road widths checked against mapped sidewalks, then sidewalks along kerbs that have none mapped
+const groundRings = buildings.filter((x) => x.h.base < 1).map((x) => x.b.outer);
+const fit = fitRoadWidths(roadGraph, paths, PATH_KINDS, (x, z) => groundRings.some((r) => pointInRing(x, z, r)));
+const PATH_SOURCES = ['mapped', 'tagged', 'inferred'];
+for (const p of paths) p.push(0);
+for (const [line, w, source] of inferSidewalks(roadGraph, paths, PATH_KINDS)) paths.push([PATH_KINDS.indexOf('sidewalk'), w, 0, line, 0, PATH_SOURCES.indexOf(source)]);
+log(`road widths fitted to mapped sidewalks: ${fit.widened} widened, ${fit.narrowed} narrowed; sidewalks: ${PATH_SOURCES.map((s, i) => `${paths.filter((p) => PATH_KINDS[p[0]] === 'sidewalk' && p[5] === i).length} ${s}`).join(', ')}`);
+const widthSource = roadGraph.widthSource;
+delete roadGraph.highway;
+delete roadGraph.sidewalk;
+delete roadGraph.sidewalkWidth;
 const qp = (pts) => flat(pts);
 roadGraph.nodes = roadGraph.nodes.map(q);
 roadGraph.links = roadGraph.links.map(([a, b, n, w, lanes, dir, inner]) => [a, b, n, q(w), lanes, dir, qp(inner)]);
@@ -221,12 +233,18 @@ const GEO = {
   landmarks,
   // Street centreline graph of the drivable roads (tools/geo-osm-roadgraph.mjs; same shape as NYC's GEO.roadGraph):
   // nodes [x, z, ...], links [node a, node b, name index, curb-to-curb width, travel lanes, direction (1: a -> b,
-  // -1: b -> a, 0: both), inner shape points [x, z, ...]], names. Untagged widths are per-class defaults.
-  roadGraph,
+  // -1: b -> a, 0: both), inner shape points [x, z, ...]], names, signals, and per link `widthSource` (index into
+  // widthSources): only 'width tag' is a mapped width; the others are estimates (lanes × 3.25 m, class defaults, or the
+  // gap between mapped sidewalks).
+  widthSources: WIDTH_SOURCES,
+  roadGraph: { ...roadGraph, widthSource },
   // Walking ways: [kind index into pathKinds, width m, elevation m (skywalks; estimated from OSM layer), [x, z, ...],
-  // per-vertex heights for ramps (stairs up to a skywalk) | 0]
+  // per-vertex heights for ramps (stairs up to a skywalk) | 0, source index into pathSources]. 'mapped' ways are OSM
+  // geometry; 'tagged' / 'inferred' sidewalks are drawn along kerbs from the road's sidewalk tags or, untagged, assumed
+  // on streets ≥ 6 m wide (tools/geo-sidewalks.mjs), with default widths.
   pathKinds: PATH_KINDS,
-  paths: paths.map(([k, w, y, pts, ys]) => [k, q(w), y, qp(pts), ys ? ys.map(q) : 0]),
+  pathSources: PATH_SOURCES,
+  paths: paths.map(([k, w, y, pts, ys, src]) => [k, q(w), y, qp(pts), ys ? ys.map(q) : 0, src]),
   // Green ground: [kind index into greenKinds, outer ring [x, z, ...]]
   greenKinds: GREEN_KINDS,
   green: green.map((g) => [GREEN_KINDS.indexOf(g.kind), flat(g.outer)]),

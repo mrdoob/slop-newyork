@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildingHeight, estimateHeight, parseMetres, LEVEL_M } from '../tools/geo-height.mjs';
 import { buildOsmRoadGraph } from '../tools/geo-osm-roadgraph.mjs';
 import { roofOf, facadeOf } from '../tools/geo-building-style.mjs';
+import { fitRoadWidths, inferSidewalks } from '../tools/geo-sidewalks.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -46,6 +47,31 @@ test('roof shapes and facade styles come from OSM tags', () => {
   assert.equal(facadeOf({}, 'apartments', 40, 0), 'punched');
   assert.equal(facadeOf({}, 'retail', 15, 0), 'podium');
   assert.equal(facadeOf({}, 'roof', 4, 3.4), 'none');
+});
+
+test('road widths fit mapped sidewalks and missing sidewalks are inferred from tags', () => {
+  const way = (id, nodes, tags, pts) => ({ type: 'way', id, nodes, tags, geometry: pts.map(([x, z]) => ({ lon: x, lat: z })) });
+  const toWorld = (lon, lat) => [lon, lat];
+  // A 200 m untagged street along x (class default 6.5 m) flanked by mapped sidewalks 10 m either side,
+  // a street tagged sidewalk=no, and one with sidewalks mapped separately
+  const { roadGraph, paths } = buildOsmRoadGraph([
+    way(1, [1, 2], { highway: 'tertiary' }, [[0, 0], [200, 0]]),
+    way(2, [3, 4], { highway: 'footway', footway: 'sidewalk' }, [[0, -10], [200, -10]]),
+    way(3, [5, 6], { highway: 'footway', footway: 'sidewalk' }, [[0, 10], [200, 10]]),
+    way(4, [7, 8], { highway: 'tertiary', sidewalk: 'no' }, [[0, 500], [200, 500]]),
+    way(5, [9, 10], { highway: 'tertiary' }, [[0, 1000], [200, 1000]])
+  ], toWorld);
+  const kinds = ['footway', 'crossing', 'pedestrian', 'cycleway', 'steps', 'path', 'sidewalk'];
+  fitRoadWidths(roadGraph, paths, kinds);
+  assert.equal(roadGraph.links[0][3], 2 * (10 - 2.5 / 2), 'kerb to kerb between the mapped sidewalks');
+  assert.equal(roadGraph.widthSource[0], 3);
+  assert.equal(roadGraph.links[1][3], 6.5, 'no sidewalks mapped: width unchanged');
+  const inferred = inferSidewalks(roadGraph, paths, kinds);
+  assert.equal(inferred.filter(([line]) => Math.abs(line[0][1]) < 50).length, 0, 'street with mapped sidewalks gets none');
+  assert.equal(inferred.filter(([line]) => Math.abs(line[0][1] - 500) < 50).length, 0, 'sidewalk=no gets none');
+  const both = inferred.filter(([line]) => Math.abs(line[0][1] - 1000) < 50);
+  assert.equal(both.length, 2, 'untagged street gets one each side');
+  assert.ok(both.every(([, w, src]) => w > 0 && src === 'inferred'));
 });
 
 test('underground ways are left out and skywalk stairs ramp to the ground', () => {
@@ -115,8 +141,10 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     const degree = new Uint16Array(nodeCount);
     for (const [a, b] of RG.links) { degree[a]++; degree[b]++; }
     assert.ok(degree.filter((d) => d >= 2).length > nodeCount * 0.6, 'graph is connected at junctions');
-    for (const [k, w, elev, pts, heights] of GEO.paths) {
+    assert.equal(RG.widthSource.length, RG.links.length);
+    for (const [k, w, elev, pts, heights, src] of GEO.paths) {
       assert.ok(k >= 0 && k < GEO.pathKinds.length && w > 0 && elev >= 0 && pts.length >= 4 && pts.length % 2 === 0);
+      assert.ok(src >= 0 && src < GEO.pathSources.length);
       if (heights) assert.equal(heights.length, pts.length / 2, 'one height per ramp point');
     }
     // Signals sit on graph nodes; trees and green areas carry their source / kind

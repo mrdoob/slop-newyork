@@ -4,7 +4,8 @@ import { attribute, fract, step, mix, color, float } from 'three/tsl';
 // js/graph-roads.js
 // Road surfaces from a street centreline graph (GEO.roadGraph) and walking ways (GEO.paths), as flat ribbons:
 // asphalt per link at its curb-to-curb width, a disc at every junction to close the joints, lane markings derived
-// from each link's lane count and direction, paving for footways, zebra stripes on crossings and raised skywalks.
+// from each link's lane count and direction, paving for footways, raised sidewalks with kerbs, zebra stripes on
+// crossings and raised skywalks.
 // City-agnostic: everything comes in through `geo`; marking colours can be passed in `options`.
 
 const Y = { path: 0.04, road: 0.08, marking: 0.12, crossing: 0.14 }; // stacking above the ground plane (m)
@@ -16,6 +17,9 @@ const SKYWALK_DECK_M = 0.6;
 // Surface colours (sRGB hex, converted to linear like every other THREE.Color)
 const ASPHALT = 0x3b3d40;
 const PAVING = 0xaaa59b;
+const SIDEWALK_PAVING = 0xb9b3a7;
+const KERB = 0x9a968e;
+const SIDEWALK_H = 0.15; // m: sidewalk top above the ground (kerb height)
 const ZEBRA_PAINT = 0xe6e6e0;
 
 // Ribbon along `pts` ([[x, z], ...]) between lateral offsets o0..o1 (left of travel = negative), at height y (a number,
@@ -145,13 +149,29 @@ function buildGraphRoads(scene, geo, options = {}) {
   // Walking ways (extra attribute: 1 = crossing) and skywalk decks
   const kinds = geo.pathKinds || [];
   const crossingKind = kinds.indexOf('crossing');
+  const sidewalkKind = kinds.indexOf('sidewalk');
   const walks = newBuf();
   const decks = newBuf();
+  const sidewalks = newBuf();
+  const kerbPos = []; // kerb faces: vertical quads along both edges of every sidewalk
   for (const [k, w, elev, flatPts, heights] of geo.paths || []) {
     const pts = [];
     for (let i = 0; i < flatPts.length; i += 2) pts.push([flatPts[i], flatPts[i + 1]]);
     if (elev > 0) {
       ribbon(decks, pts, -w / 2, w / 2, heights ? heights.map((h) => Math.max(h, Y.crossing)) : elev);
+      continue;
+    }
+    if (k === sidewalkKind && pts.length >= 2) {
+      const from = sidewalks.pos.length / 3;
+      ribbon(sidewalks, pts, -w / 2, w / 2, SIDEWALK_H);
+      const p = sidewalks.pos;
+      for (let v = from + 2; v < p.length / 3; v += 2) {
+        for (const e of [0, 1]) { // left & right edge
+          const a = (v - 2 + e) * 3, b = (v + e) * 3;
+          const [ax, az, bx, bz] = [p[a], p[a + 2], p[b], p[b + 2]];
+          kerbPos.push(ax, 0, az, bx, 0, bz, bx, SIDEWALK_H, bz, ax, 0, az, bx, SIDEWALK_H, bz, ax, SIDEWALK_H, az);
+        }
+      }
       continue;
     }
     ribbon(walks, pts, -w / 2, w / 2, k === crossingKind ? Y.crossing : Y.path);
@@ -189,6 +209,16 @@ function buildGraphRoads(scene, geo, options = {}) {
     const mesh = new THREE.Mesh(toGeometry(walks, 'crossing'), m);
     mesh.receiveShadow = true;
     group.add(mesh);
+  }
+  if (sidewalks.pos.length) {
+    const top = new THREE.Mesh(toGeometry(sidewalks), new THREE.MeshStandardNodeMaterial({ color: SIDEWALK_PAVING, roughness: 0.9 }));
+    top.receiveShadow = true;
+    const kerbGeo = new THREE.BufferGeometry();
+    kerbGeo.setAttribute('position', new THREE.Float32BufferAttribute(kerbPos, 3));
+    kerbGeo.computeVertexNormals();
+    const kerbs = new THREE.Mesh(kerbGeo, new THREE.MeshStandardNodeMaterial({ color: KERB, roughness: 0.85, side: THREE.DoubleSide }));
+    kerbs.receiveShadow = true;
+    group.add(top, kerbs);
   }
   if (decks.pos.length) {
     // Skywalk decks: a slab of SKYWALK_DECK_M under the walking surface

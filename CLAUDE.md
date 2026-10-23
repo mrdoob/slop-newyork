@@ -149,7 +149,10 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
    don't bake into geodata without written permission. Same for 3d.taipei 3D Tiles (NLSC-schema models, measured
    `BUILD_H`, "non-value-added" use): `tools/validate-heights.mjs` uses them LOCAL-ONLY (cache + report in git-ignored
    `tools/data-local/`) to tune `ESTIMATE_TIERS`; only tuned parameters are committed. Xinyi result: estimate median
-   error 8.3 m → 5.4 m. Re-run for each new district before trusting estimates there. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
+   error 8.3 m → 5.4 m. Re-run for each new district before trusting estimates there.
+   Sidewalks (`tools/geo-sidewalks.mjs`): only ~7% of street length has mapped sidewalks both sides. Default/lanes
+   road widths fit to mapped sidewalks (never into buildings); missing sidewalks drawn from road `sidewalk=*` tags or
+   inferred on untagged streets ≥ 6 m; paths carry source mapped/tagged/inferred. Raised 0.15 m with kerbs. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
    heights, address-matched, post-2001 only).
 5. Judge against pass/fail criteria. Fix height variation before expanding.
 Then, only then: second 1 km box in OLD district (Wanhua/Datong) to stress

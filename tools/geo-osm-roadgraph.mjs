@@ -6,7 +6,9 @@
 //   roadGraph  { nodes [x, z, ...], links [[node a, node b, name index, curb-to-curb width m, travel lanes,
 //              direction (1: a -> b, -1: b -> a, 0: both), inner shape points [x, z, ...]], ...], names }
 //              (the same shape as NYC's GEO.roadGraph): drivable ways at grade, split wherever two ways share a node
-//              and at traffic signals; plus `signals` [node index, ...]: nodes carrying a traffic signal (`signalIds`)
+//              and at traffic signals; plus `signals` [node index, ...]: nodes carrying a traffic signal (`signalIds`),
+//              and per link (parallel to `links`): `widthSource` (WIDTH_SOURCES index), `highway` (OSM class) and
+//              `sidewalk` [left, right] (SIDEWALK_TAGS index, sides relative to the link's a -> b direction)
 //   paths      [[kind index, width m, elevation m, [x, z, ...], per-vertex heights [y, ...] | 0], ...] for walking
 //              ways, with `pathKinds` naming kinds (heights only for ramps: stairs up to a skywalk)
 //
@@ -26,8 +28,21 @@ const DEFAULT_LANES = {
   secondary_link: 1, tertiary_link: 1, unclassified: 2, residential: 2, living_street: 1, busway: 1, service: 1
 };
 const SERVICE_WIDTH = { alley: 3.5, driveway: 3, parking_aisle: 5 };
-const PATH_WIDTH = { footway: 2.5, crossing: 4, pedestrian: 6, cycleway: 2.5, steps: 2.5, path: 2, track: 3, bridleway: 2 };
-export const PATH_KINDS = ['footway', 'crossing', 'pedestrian', 'cycleway', 'steps', 'path'];
+const PATH_WIDTH = { footway: 2.5, sidewalk: 2.5, crossing: 4, pedestrian: 6, cycleway: 2.5, steps: 2.5, path: 2, track: 3, bridleway: 2 };
+export const PATH_KINDS = ['footway', 'crossing', 'pedestrian', 'cycleway', 'steps', 'path', 'sidewalk'];
+export const WIDTH_SOURCES = ['width tag', 'lanes tag', 'class default', 'fitted to sidewalks'];
+export const SIDEWALK_TAGS = ['unknown', 'yes', 'no', 'separate'];
+// OSM sidewalk tags of a way -> [left, right] SIDEWALK_TAGS indices
+function sidewalkSides(t) {
+  const code = (v) => (v == null ? 0 : v === 'separate' ? 3 : v === 'no' || v === 'none' ? 2 : 1);
+  const s = t.sidewalk;
+  let left = s === 'both' || s === 'left' ? 1 : s === 'right' || s === 'no' || s === 'none' ? 2 : s === 'separate' ? 3 : 0;
+  let right = s === 'both' || s === 'right' ? 1 : s === 'left' || s === 'no' || s === 'none' ? 2 : s === 'separate' ? 3 : 0;
+  if (t['sidewalk:both'] != null) left = right = code(t['sidewalk:both']);
+  if (t['sidewalk:left'] != null) left = code(t['sidewalk:left']);
+  if (t['sidewalk:right'] != null) right = code(t['sidewalk:right']);
+  return [left, right];
+}
 
 const isTrue = (v) => v != null && v !== 'no';
 const belowGround = (t) => {
@@ -55,11 +70,15 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}, { signalIds
       if (layer >= 1) { skipped++; continue; } // elevated roadways: none in scope yet
       if (t.area === 'yes' || t.access === 'no') { skipped++; continue; }
       const lanes = Math.max(1, Math.round(parseFloat(t.lanes) || DEFAULT_LANES[hw]));
-      const width = metres(t.width) ?? (hw === 'service' && !t.lanes ? SERVICE_WIDTH[t.service] ?? 4 : lanes * LANE_M);
+      const tagged = metres(t.width);
+      const width = tagged ?? (hw === 'service' && !t.lanes ? SERVICE_WIDTH[t.service] ?? 4 : lanes * LANE_M);
+      const widthSource = tagged != null ? 0 : t.lanes ? 1 : 2;
       const dir = t.oneway === 'yes' || t.oneway === '1' || t.junction === 'roundabout' ? 1 : t.oneway === '-1' ? -1 : 0;
-      drivable.push({ ids: e.nodes, pts, name: t['name:en'] || t.name || '', width, lanes, dir });
+      drivable.push({ ids: e.nodes, pts, name: t['name:en'] || t.name || '', width, lanes, dir, widthSource, hw, sidewalk: sidewalkSides(t),
+        sidewalkWidth: metres(t['sidewalk:both:width']) ?? metres(t['sidewalk:width']) });
     } else {
-      const kind = t.footway === 'crossing' || t.cycleway === 'crossing' ? 'crossing' : PATH_KINDS.includes(hw) ? hw : hw === 'track' || hw === 'bridleway' ? 'path' : null;
+      const kind = t.footway === 'crossing' || t.cycleway === 'crossing' ? 'crossing' : t.footway === 'sidewalk' ? 'sidewalk'
+        : PATH_KINDS.includes(hw) ? hw : hw === 'track' || hw === 'bridleway' ? 'path' : null;
       if (!kind || t.area === 'yes') { skipped++; continue; }
       const elev = layer >= 1 ? layer * SKYWALK_M : 0;
       paths.push({ k: PATH_KINDS.indexOf(kind), w: metres(t.width) ?? PATH_WIDTH[kind], elev, pts, ids: e.nodes || [], steps: kind === 'steps' });
@@ -82,6 +101,7 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}, { signalIds
     return nameIds.get(n);
   };
   const links = [];
+  const widthSource = [], highway = [], sidewalk = [], sidewalkWidth = [];
   for (const w of drivable) {
     let start = 0;
     for (let i = 1; i < w.ids.length; i++) {
@@ -90,6 +110,10 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}, { signalIds
         const a = nodeOf(w.ids[start], w.pts[start]);
         const b = nodeOf(w.ids[i], w.pts[i]);
         links.push([a, b, nameId(w.name), w.width, w.lanes, w.dir, w.pts.slice(start + 1, i)]);
+        widthSource.push(w.widthSource);
+        highway.push(w.hw);
+        sidewalk.push(w.sidewalk);
+        sidewalkWidth.push(w.sidewalkWidth ?? 0);
       }
       start = i;
     }
@@ -116,5 +140,5 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}, { signalIds
   const signals = [...nodeIndex].filter(([id]) => signalIds.has(id)).map(([, i]) => i);
   log(`road graph: ${signals.length} signalised nodes`);
   log(`road graph: ${nodes.length / 2} nodes, ${links.length} links from ${drivable.length} drivable ways; ${paths.length} walking ways; ${skipped} underground/indoor/area/elevated-road ways skipped`);
-  return { roadGraph: { nodes, links, names, signals }, paths: pathsOut };
+  return { roadGraph: { nodes, links, names, signals, widthSource, highway, sidewalk, sidewalkWidth }, paths: pathsOut };
 }
