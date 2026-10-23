@@ -4,6 +4,10 @@ import { GEO } from './taipei-geodata.js';
 import { buildFootprintBuildings } from './footprint-buildings.js';
 import { buildGraphRoads } from './graph-roads.js';
 import { SimpleVehicles } from './simple-vehicles.js';
+import { buildGreenAreas, treeSites } from './green-areas.js';
+import { createTreeField } from './trees.js';
+import { buildSignalControl } from './signal-control.js';
+import { buildFootprintTraffic } from './footprint-traffic.js';
 
 // js/taipei-main.js
 // Taipei milestone viewer (taipei.html): the 1 km box around Taipei 101 from OSM footprints, orbit camera, sun & sky.
@@ -52,6 +56,20 @@ async function init() {
   const buildings = buildFootprintBuildings(scene, GEO);
   // Taiwan marks two-way centre lines in yellow (lane dividers stay white)
   buildGraphRoads(scene, GEO, { centreLineColour: 0xe8b420 });
+  buildGreenAreas(scene, GEO);
+  scene.add(createTreeField(scene, treeSites(GEO)).group);
+
+  // Signals & traffic: Taiwan drives on the right; cars mostly white, silver, grey & black, taxis yellow
+  const signals = buildSignalControl(scene, GEO, { driveOnRight: true });
+  const traffic = buildFootprintTraffic(scene, GEO, {
+    signals,
+    driveOnRight: true,
+    carCount: 140,
+    pedCount: 220,
+    taxiShare: 0.14,
+    taxiColour: 0xf3c316,
+    palette: [0xf4f4f2, 0xf4f4f2, 0xf4f4f2, 0xc8cbcf, 0xc8cbcf, 0x8a8e93, 0x1c1e21, 0x1c1e21, 0x24395a, 0x7d1d22]
+  });
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 20000);
   camera.position.set(900, 520, 1100); // from the south-east, Taipei 101 in view
@@ -84,6 +102,7 @@ async function init() {
   const vehicles = new SimpleVehicles(scene, GEO, {
     spawnNear: { x: t101 ? t101.x : 0, z: t101 ? t101.z : 0 },
     driveOnRight: true,
+    blocked: (x, z) => traffic.carNear(x, z, 2.6),
     planeSpawn: { x: -250, y: 220, z: 900, heading: 0 }
   });
   const modeButtons = [...document.querySelectorAll('[data-mode]')];
@@ -117,10 +136,12 @@ async function init() {
     const dt = timer.getDelta();
     if (vehicles.mode === 'orbit') controls.update();
     else vehicles.update(dt, camera);
+    signals.update(dt);
+    traffic.update(dt, camera, vehicles.mode === 'car' ? vehicles.car : null);
     vehicleStatus.textContent = vehicles.status;
     renderer.render(scene, camera);
   });
-  window.__taipei = { scene, camera, controls, buildings, vehicles, setMode }; // for debugging from the console
+  window.__taipei = { scene, camera, controls, buildings, vehicles, setMode, signals, traffic }; // for debugging from the console
 }
 
 init().catch((err) => {

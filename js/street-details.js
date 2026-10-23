@@ -12,7 +12,7 @@ import {
   BLOCKS,
   LANDMARK_SITES
 } from './city-config.js';
-import { cityUniforms, createSteamMaterial, createTreeGrateMaterial, createGodRayMaterial } from './tsl-materials.js';
+import { cityUniforms, canyonSkyAONode, createSteamMaterial, createTreeGrateMaterial, createGodRayMaterial } from './tsl-materials.js';
 import { createTreeField } from './trees.js';
 import { pavedPlazaRects, centralParkClearings, parkTreeSites, sidewalkBlocks, parkLampSites } from './city-grid.js';
 import { bryantParkLawn } from './landmarks.js';
@@ -1060,7 +1060,7 @@ function buildStreetDetails(scene) {
 
   // Procedural trees (js/trees.js): species skeletons with leaf-spray cards, one instanced mesh per species, variant &
   // level of detail, each tree's level following the camera
-  const treeField = createTreeField(scene, treePositions);
+  const treeField = createTreeField(scene, treePositions, { skyAONode: canyonSkyAONode() });
   group.add(treeField.group);
 
   // =========================================================================

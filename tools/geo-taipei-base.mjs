@@ -14,6 +14,7 @@
 // Inputs (tools/data-taipei/, fetched with tools/overpass.sh from the q_*.overpassql files there):
 //   osm_buildings.json   building + building:part ways & relations in BOX   © OpenStreetMap contributors (ODbL)
 //   osm_roads.json       highway ways in BOX                                © OpenStreetMap contributors (ODbL)
+//   osm_street.json      trees, tree rows, traffic signals, parks/green     © OpenStreetMap contributors (ODbL)
 
 import fs from 'node:fs';
 import path from 'node:path';

@@ -6,12 +6,17 @@
 //   roadGraph  { nodes [x, z, ...], links [[node a, node b, name index, curb-to-curb width m, travel lanes,
 //              direction (1: a -> b, -1: b -> a, 0: both), inner shape points [x, z, ...]], ...], names }
 //              (the same shape as NYC's GEO.roadGraph): drivable ways at grade, split wherever two ways share a node
-//   paths      [[kind index, width m, elevation m, [x, z, ...]], ...] for walking ways, with `pathKinds` naming kinds
+//              and at traffic signals; plus `signals` [node index, ...]: nodes carrying a traffic signal (`signalIds`)
+//   paths      [[kind index, width m, elevation m, [x, z, ...], per-vertex heights [y, ...] | 0], ...] for walking
+//              ways, with `pathKinds` naming kinds (heights only for ramps: stairs up to a skywalk)
 //
 // Widths: OSM `width` when tagged, else `lanes` × LANE_M, else a per-class default (lanes per carriageway way; a dual
 // carriageway is two one-way ways). Untagged widths are class defaults, not measurements.
-// Tunnels and indoor ways (MRT corridors, malls) are left out. Elevated walkways (bridge + layer ≥ 1, e.g. skywalks)
-// get an elevation of SKYWALK_M per layer: OSM `layer` orders levels but does not give a height, so this is an estimate.
+// Underground ways are left out: tunnels, building passages, indoor ways (MRT corridors, malls), `level` below ground
+// and anything with layer < 0 (Taipei maps underground walkways and parking ramps with only layer=-1). Elevated
+// walkways (layer ≥ 1, e.g. skywalks) get an elevation of SKYWALK_M per layer: OSM `layer` orders levels but does not
+// give a height, so this is an estimate. Elevated stairs ramp from the ground up to the end that meets another elevated
+// walkway.
 
 export const LANE_M = 3.25;
 const SKYWALK_M = 6;
@@ -25,12 +30,17 @@ const PATH_WIDTH = { footway: 2.5, crossing: 4, pedestrian: 6, cycleway: 2.5, st
 export const PATH_KINDS = ['footway', 'crossing', 'pedestrian', 'cycleway', 'steps', 'path'];
 
 const isTrue = (v) => v != null && v !== 'no';
+const belowGround = (t) => {
+  const levels = String(t.level ?? '').split(';').map(parseFloat).filter(Number.isFinite);
+  return isTrue(t.tunnel) || isTrue(t.indoor) || t.location === 'underground' || t.highway === 'corridor' ||
+    (parseFloat(t.layer) || 0) < 0 || (levels.length > 0 && levels.every((l) => l < 0));
+};
 const metres = (v) => {
   const m = /^\s*(\d+(?:\.\d+)?)\s*m?\s*$/.exec(v || '');
   return m ? parseFloat(m[1]) : null;
 };
 
-export function buildOsmRoadGraph(elements, toWorld, log = () => {}) {
+export function buildOsmRoadGraph(elements, toWorld, log = () => {}, { signalIds = new Set() } = {}) {
   const drivable = [];
   const paths = [];
   let skipped = 0;
@@ -38,11 +48,11 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}) {
     const t = e.tags || {};
     const hw = t.highway;
     if (e.type !== 'way' || !e.geometry || e.geometry.length < 2 || !hw) continue;
-    if (isTrue(t.tunnel) || isTrue(t.indoor) || t.level != null || t.location === 'underground' || hw === 'corridor') { skipped++; continue; }
+    if (belowGround(t)) { skipped++; continue; }
     const layer = parseFloat(t.layer) || 0;
     const pts = e.geometry.map((g) => toWorld(g.lon, g.lat));
     if (hw in DEFAULT_LANES) {
-      if (isTrue(t.bridge) && layer >= 1) { skipped++; continue; } // elevated roadways: none in scope yet
+      if (layer >= 1) { skipped++; continue; } // elevated roadways: none in scope yet
       if (t.area === 'yes' || t.access === 'no') { skipped++; continue; }
       const lanes = Math.max(1, Math.round(parseFloat(t.lanes) || DEFAULT_LANES[hw]));
       const width = metres(t.width) ?? (hw === 'service' && !t.lanes ? SERVICE_WIDTH[t.service] ?? 4 : lanes * LANE_M);
@@ -51,8 +61,8 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}) {
     } else {
       const kind = t.footway === 'crossing' || t.cycleway === 'crossing' ? 'crossing' : PATH_KINDS.includes(hw) ? hw : hw === 'track' || hw === 'bridleway' ? 'path' : null;
       if (!kind || t.area === 'yes') { skipped++; continue; }
-      const elev = isTrue(t.bridge) && layer >= 1 ? layer * SKYWALK_M : 0;
-      paths.push([PATH_KINDS.indexOf(kind), metres(t.width) ?? PATH_WIDTH[kind], elev, pts]);
+      const elev = layer >= 1 ? layer * SKYWALK_M : 0;
+      paths.push({ k: PATH_KINDS.indexOf(kind), w: metres(t.width) ?? PATH_WIDTH[kind], elev, pts, ids: e.nodes || [], steps: kind === 'steps' });
     }
   }
 
@@ -75,7 +85,7 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}) {
   for (const w of drivable) {
     let start = 0;
     for (let i = 1; i < w.ids.length; i++) {
-      if (i < w.ids.length - 1 && uses.get(w.ids[i]) < 2) continue;
+      if (i < w.ids.length - 1 && uses.get(w.ids[i]) < 2 && !signalIds.has(w.ids[i])) continue;
       if (w.ids[start] !== w.ids[i]) {
         const a = nodeOf(w.ids[start], w.pts[start]);
         const b = nodeOf(w.ids[i], w.pts[i]);
@@ -84,6 +94,27 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}) {
       start = i;
     }
   }
-  log(`road graph: ${nodes.length / 2} nodes, ${links.length} links from ${drivable.length} drivable ways; ${paths.length} walking ways; ${skipped} tunnel/indoor/area/elevated ways skipped`);
-  return { roadGraph: { nodes, links, names }, paths };
+  // Elevated stairs: high where they meet another elevated walkway, on the ground at their other end
+  const deckNodes = new Map();
+  for (const p of paths) {
+    if (p.elev > 0 && !p.steps) for (const id of p.ids) deckNodes.set(id, p.elev);
+  }
+  const pathsOut = paths.map((p) => {
+    let ys = 0;
+    if (p.elev > 0 && p.steps && p.ids.length === p.pts.length) {
+      const top0 = deckNodes.get(p.ids[0]), top1 = deckNodes.get(p.ids[p.ids.length - 1]);
+      if ((top0 != null) !== (top1 != null)) {
+        const cum = [0];
+        for (let i = 1; i < p.pts.length; i++) cum.push(cum[i - 1] + Math.hypot(p.pts[i][0] - p.pts[i - 1][0], p.pts[i][1] - p.pts[i - 1][1]));
+        const L = cum[cum.length - 1] || 1;
+        ys = cum.map((d) => (top0 != null ? top0 * (1 - d / L) : top1 * (d / L)));
+      }
+    }
+    return [p.k, p.w, p.elev, p.pts, ys];
+  });
+
+  const signals = [...nodeIndex].filter(([id]) => signalIds.has(id)).map(([, i]) => i);
+  log(`road graph: ${signals.length} signalised nodes`);
+  log(`road graph: ${nodes.length / 2} nodes, ${links.length} links from ${drivable.length} drivable ways; ${paths.length} walking ways; ${skipped} underground/indoor/area/elevated-road ways skipped`);
+  return { roadGraph: { nodes, links, names, signals }, paths: pathsOut };
 }

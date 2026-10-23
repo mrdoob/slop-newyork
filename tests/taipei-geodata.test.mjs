@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildingHeight, estimateHeight, parseMetres, LEVEL_M } from '../tools/geo-height.mjs';
+import { buildOsmRoadGraph } from '../tools/geo-osm-roadgraph.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -32,6 +33,24 @@ test('estimates vary with footprint and type instead of one flat default', () =>
   assert.ok(new Set(apartments).size >= 4, `distinct: ${apartments}`);
   assert.ok(estimateHeight('house', 1000) < estimateHeight('apartments', 1000));
   assert.ok(estimateHeight('office', 2000) > estimateHeight('retail', 2000));
+});
+
+test('underground ways are left out and skywalk stairs ramp to the ground', () => {
+  const way = (id, nodes, tags) => ({ type: 'way', id, nodes, tags, geometry: nodes.map((n) => ({ lon: n, lat: 0 })) });
+  const toWorld = (lon) => [lon * 10, 0];
+  const { roadGraph, paths } = buildOsmRoadGraph([
+    way(1, [0, 1], { highway: 'footway', layer: '-1' }), // underground walkway tagged only with layer
+    way(2, [2, 3], { highway: 'service', layer: '-1' }), // parking ramp
+    way(3, [4, 5], { highway: 'footway', tunnel: 'building_passage' }),
+    way(4, [6, 7], { highway: 'residential' }),
+    way(5, [8, 9], { highway: 'footway', bridge: 'yes', layer: '1' }), // skywalk deck
+    way(6, [9, 10], { highway: 'steps', bridge: 'yes', layer: '1' }) // stairs down from its end
+  ], toWorld);
+  assert.equal(roadGraph.links.length, 1, 'only the at-grade road');
+  assert.equal(paths.length, 2, 'deck and stairs, no underground walkways');
+  const [deck, stairs] = paths;
+  assert.ok(deck[2] > 0 && deck[4] === 0, 'flat elevated deck');
+  assert.deepEqual(stairs[4], [deck[2], 0], 'stairs start at the deck and end on the ground');
 });
 
 test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources', { timeout: 60000 }, async () => {
@@ -78,9 +97,17 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     const degree = new Uint16Array(nodeCount);
     for (const [a, b] of RG.links) { degree[a]++; degree[b]++; }
     assert.ok(degree.filter((d) => d >= 2).length > nodeCount * 0.6, 'graph is connected at junctions');
-    for (const [k, w, elev, pts] of GEO.paths) {
+    for (const [k, w, elev, pts, heights] of GEO.paths) {
       assert.ok(k >= 0 && k < GEO.pathKinds.length && w > 0 && elev >= 0 && pts.length >= 4 && pts.length % 2 === 0);
+      if (heights) assert.equal(heights.length, pts.length / 2, 'one height per ramp point');
     }
+    // Signals sit on graph nodes; trees and green areas carry their source / kind
+    assert.ok(RG.signals.length > 50 && RG.signals.every((n) => n >= 0 && n < nodeCount), `${RG.signals.length} signals`);
+    assert.ok(GEO.trees.length > 100 && GEO.trees.every(([x, z, src, h]) => Number.isFinite(x + z + h) && src >= 0 && src < GEO.treeSources.length));
+    assert.ok(GEO.trees.some(([, , src]) => GEO.treeSources[src] === 'osm tree'), 'mapped trees');
+    assert.ok(GEO.green.length > 0 && GEO.green.every(([k, ring]) => k >= 0 && k < GEO.greenKinds.length && ring.length >= 6));
+    // Skywalk stairs ramp down to the ground
+    assert.ok(GEO.paths.some(([kind, , elev, , heights]) => GEO.pathKinds[kind] === 'steps' && elev > 0 && heights && Math.min(...heights) === 0));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

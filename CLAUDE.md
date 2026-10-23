@@ -138,6 +138,11 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
    generic `js/graph-roads.js` (asphalt, junction discs, lane lines, zebra crossings, skywalks). Widths: `width` tag →
    `lanes` × 3.25 m → class default (untagged = estimate; e.g. Songzhi Rd lacks `lanes`, renders narrow).
 4. Taipei 101 at real height; ground plane.
+   Extras since (viewer `taipei.html`): car/plane (`js/simple-vehicles.js`), AI cars & pedestrians on the graph
+   (`js/footprint-traffic.js`), signals at OSM `traffic_signals` nodes (`js/signal-control.js`, generic fixed cycle),
+   trees + green areas (`js/green-areas.js` + NYC `trees.js`). NYC models reused via `js/city-uniforms.js`,
+   `js/tree-material.js`, `js/tsl-noise.js` (split out of `tsl-materials.js` so Taipei never loads NYC geodata).
+   Underground ways (`layer<0`, tunnels, indoor) are skipped; skywalk stairs ramp to the ground.
 5. Judge against pass/fail criteria. Fix height variation before expanding.
 Then, only then: second 1 km box in OLD district (Wanhua/Datong) to stress
 fallback where data sparse, then expand in stages checking looks AND framerate.

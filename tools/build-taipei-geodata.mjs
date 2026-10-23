@@ -143,10 +143,60 @@ log(`${buildings.length} extruded: ${SOURCES.map((s) => `${count[s]} ${s}`).join
 log(`estimated tops: ${new Set(est).size} distinct values, ${Math.min(...est).toFixed(1)}–${Math.max(...est).toFixed(1)} m`);
 
 // --- Roads ------------------------------------------------------------------------------------------------------------
-const { roadGraph, paths } = buildOsmRoadGraph(load('osm_roads.json').elements, toWorld, log);
+const street = load('osm_street.json').elements;
+const signalIds = new Set(street.filter((e) => e.type === 'node' && e.tags && (e.tags.highway === 'traffic_signals' || e.tags.crossing === 'traffic_signals')).map((e) => e.id));
+const { roadGraph, paths } = buildOsmRoadGraph(load('osm_roads.json').elements, toWorld, log, { signalIds });
 const qp = (pts) => flat(pts);
 roadGraph.nodes = roadGraph.nodes.map(q);
 roadGraph.links = roadGraph.links.map(([a, b, n, w, lanes, dir, inner]) => [a, b, n, q(w), lanes, dir, qp(inner)]);
+
+// --- Green areas & trees ---------------------------------------------------------------------------------------------
+// Green ground: parks (often paved plazas in Xinyi), gardens, grass, woods
+const GREEN_KINDS = ['park', 'garden', 'grass', 'forest'];
+const greenKind = (t) => (t.landuse === 'forest' || t.natural === 'wood' ? 'forest' : t.leisure === 'park' ? 'park' : t.leisure === 'garden' ? 'garden' : t.landuse === 'grass' ? 'grass' : null);
+const green = [];
+for (const e of street) {
+  const kind = e.type !== 'node' && e.tags ? greenKind(e.tags) : null;
+  if (!kind) continue;
+  for (const [outer] of polygons(e)) if (Math.abs(ringArea(outer)) > 4) green.push({ kind, outer });
+}
+// Trees: OSM tree nodes as mapped; tree rows (natural=tree_row) carry no per-tree positions, so one tree is placed every
+// TREE_ROW_M along the row; wooded areas carry none either, so they are filled on a jittered WOOD_M grid. Trees standing
+// inside a ground-level building footprint are dropped.
+const TREE_SOURCES = ['osm tree', `tree row (every ${7} m)`, `wooded area (every ~${9} m)`];
+const TREE_ROW_M = 7;
+const WOOD_M = 9;
+const groundFootprints = buildings.filter((x) => x.h.base < 1).map((x) => x.b.outer);
+const inBuilding = (x, z) => groundFootprints.some((r) => pointInRing(x, z, r));
+const hash = (x, z, k) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
+const trees = [];
+const plant = (x, z, source, h) => { if (!inBuilding(x, z)) trees.push([q(x), q(z), source, h ? q(h) : 0]); };
+for (const e of street) {
+  const t = e.tags || {};
+  if (e.type === 'node' && t.natural === 'tree') plant(...toWorld(e.lon, e.lat), 0, parseFloat(t.height) || 0);
+  else if (e.type === 'way' && t.natural === 'tree_row' && e.geometry) {
+    const pts = e.geometry.map((g) => toWorld(g.lon, g.lat));
+    let carry = 0;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+      const L = Math.hypot(bx - ax, bz - az);
+      for (let d = carry; d <= L; d += TREE_ROW_M) plant(ax + ((bx - ax) * d) / L, az + ((bz - az) * d) / L, 1, 0);
+      carry = (carry - L) % TREE_ROW_M;
+      if (carry < 0) carry += TREE_ROW_M;
+    }
+  }
+}
+for (const g of green.filter((g) => g.kind === 'forest')) {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const [x, z] of g.outer) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  for (let x = x0; x <= x1; x += WOOD_M) {
+    for (let z = z0; z <= z1; z += WOOD_M) {
+      const jx = x + (hash(x, z, 1) - 0.5) * WOOD_M * 0.8, jz = z + (hash(x, z, 2) - 0.5) * WOOD_M * 0.8;
+      if (pointInRing(jx, jz, g.outer)) plant(jx, jz, 2, 0);
+    }
+  }
+}
+log(`${green.length} green areas; ${trees.length} trees: ${TREE_SOURCES.map((s, i) => `${trees.filter((t) => t[2] === i).length} ${s}`).join(', ')}`);
 
 // --- Assemble --------------------------------------------------------------------------------------------------------
 const GEO = {
@@ -164,16 +214,24 @@ const GEO = {
   // nodes [x, z, ...], links [node a, node b, name index, curb-to-curb width, travel lanes, direction (1: a -> b,
   // -1: b -> a, 0: both), inner shape points [x, z, ...]], names. Untagged widths are per-class defaults.
   roadGraph,
-  // Walking ways: [kind index into pathKinds, width m, elevation m (skywalks; estimated from OSM layer), [x, z, ...]]
+  // Walking ways: [kind index into pathKinds, width m, elevation m (skywalks; estimated from OSM layer), [x, z, ...],
+  // per-vertex heights for ramps (stairs up to a skywalk) | 0]
   pathKinds: PATH_KINDS,
-  paths: paths.map(([k, w, y, pts]) => [k, q(w), y, qp(pts)])
+  paths: paths.map(([k, w, y, pts, ys]) => [k, q(w), y, qp(pts), ys ? ys.map(q) : 0]),
+  // Green ground: [kind index into greenKinds, outer ring [x, z, ...]]
+  greenKinds: GREEN_KINDS,
+  green: green.map((g) => [GREEN_KINDS.indexOf(g.kind), flat(g.outer)]),
+  // Trees: [x, z, source index into treeSources, tagged height m | 0]. Only 'osm tree' positions are mapped trees; the
+  // other sources space trees along mapped rows and through mapped woods.
+  treeSources: TREE_SOURCES,
+  trees
 };
 
 const json = JSON.stringify(GEO);
 const header = `// js/taipei-geodata.js — GENERATED by tools/build-taipei-geodata.mjs, do not edit by hand.
 // Taipei geography in the simulation's world frame: 1 unit = 1 m, x = east, z = south, origin at Taipei 101.
 // Polygons are flat [x0, z0, x1, z1, ...] arrays.
-// Building footprints, tagged heights & roads © OpenStreetMap contributors (ODbL). Heights with source 'estimate'
+// Building footprints, tagged heights, roads, signals, trees & green areas © OpenStreetMap contributors (ODbL). Heights with source 'estimate'
 // (${count.estimate} of ${buildings.length}) are inferred from building type and footprint area, not measured.
 `;
 fs.writeFileSync(OUT, `${header}export const GEO = ${json};\n`);

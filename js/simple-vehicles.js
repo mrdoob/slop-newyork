@@ -1,13 +1,15 @@
 import * as THREE from 'three/webgpu';
+import { BODY_SPECS, buildCarGeometry, buildSteerableWheelGeo, createLoftedCarMaterial } from './actor-models.js';
 
 // js/simple-vehicles.js
 // A drivable car and a flyable plane for footprint cities (GEO.buildings + GEO.roadGraph), with a chase camera.
 // City-agnostic: buildings and roads come in through `geo`; colours and traffic side through `options`.
 //
 // Controls: W/S or Up/Down forward & back, A/D or Left/Right turn, Shift faster; plane: R/F climb & descend.
-// The car stays on the ground and stops at building walls; the plane can't fly through buildings.
+// The car stays on the ground and stops at building walls (and whatever options.blocked(x, z) reports, e.g. other
+// cars); the plane can't fly through buildings.
 
-const CAR = { len: 4.4, wid: 1.8, accel: 9, brake: 18, drag: 0.6, maxSpeed: 22, boostSpeed: 38, reverseSpeed: 7, turn: 0.55 };
+const CAR = { len: 4.5, wid: 1.86, accel: 9, brake: 18, drag: 0.6, maxSpeed: 22, boostSpeed: 38, reverseSpeed: 7, turn: 0.55 };
 const PLANE = { minSpeed: 18, cruise: 45, maxSpeed: 90, accel: 14, turnRate: 0.9, climbRate: 22, ceiling: 1500 };
 const CELL = 32; // building index cell (m)
 const WORLD_LIMIT = 1500; // keep vehicles over the ground plane (m from the origin)
@@ -58,32 +60,29 @@ function buildIndex(geo) {
 function std(colour, roughness = 0.6, metalness = 0) {
   return new THREE.MeshStandardNodeMaterial({ color: colour, roughness, metalness });
 }
+// Lofted sedan (actor-models.js, built facing +z) turned to face -z, with steerable & spinning wheels
 function carModel(colour) {
+  const spec = BODY_SPECS.sedan;
+  const material = createLoftedCarMaterial(spec, colour);
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(CAR.wid, 0.7, CAR.len), std(colour, 0.35, 0.3));
-  body.position.y = 0.65;
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(CAR.wid * 0.9, 0.55, CAR.len * 0.5), std(0x22282e, 0.15, 0.5));
-  cabin.position.set(0, 1.25, 0.2);
-  g.add(body, cabin);
+  const body = new THREE.Group();
+  body.rotation.y = Math.PI;
+  g.add(body);
+  body.add(new THREE.Mesh(buildCarGeometry(spec, false), material));
   const wheels = [];
-  const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.25, 14).rotateZ(Math.PI / 2);
-  const tyre = std(0x161616, 0.9);
-  for (const [x, z] of [[-0.85, -1.35], [0.85, -1.35], [-0.85, 1.35], [0.85, 1.35]]) {
-    const pivot = new THREE.Group();
-    pivot.position.set(x, 0.34, z);
-    const w = new THREE.Mesh(wheelGeo, tyre);
-    pivot.add(w);
-    g.add(pivot);
-    wheels.push({ pivot, w, front: z < 0 });
+  for (const side of [-1, 1]) {
+    const geo = buildSteerableWheelGeo(spec, side);
+    for (const z of [spec.wheelZ, -spec.wheelZ]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * spec.wheelX, spec.wheelRadius, z);
+      const w = new THREE.Mesh(geo, material);
+      pivot.add(w);
+      body.add(pivot);
+      wheels.push({ pivot, w, front: z > 0 });
+    }
   }
-  const lamp = (x, z, c) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.05), new THREE.MeshBasicNodeMaterial({ color: c }));
-    m.position.set(x, 0.75, z);
-    g.add(m);
-  };
-  for (const x of [-0.6, 0.6]) { lamp(x, -CAR.len / 2 - 0.01, 0xfff6d8); lamp(x, CAR.len / 2 + 0.01, 0xc01818); }
-  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { group: g, wheels };
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return { group: g, wheels, state: material.userData.carState || null, wheelRadius: spec.wheelRadius };
 }
 function planeModel(colour) {
   const g = new THREE.Group();
@@ -144,7 +143,8 @@ class SimpleVehicles {
     this.mode = 'orbit';
     const car = carModel(options.carColour ?? 0xd8322a);
     const plane = planeModel(options.planeColour ?? 0xe8e8e4);
-    this.car = { ...car, x: 0, z: 0, heading: 0, speed: 0, steer: 0, spin: 0 };
+    this.car = { ...car, x: 0, z: 0, heading: 0, speed: 0, steer: 0, spin: 0, braking: false };
+    this.blocked = options.blocked || null;
     this.plane = { ...plane, x: 0, y: 150, z: 0, heading: 0, speed: PLANE.cruise, bank: 0, pitch: 0 };
     const spawn = roadSpawn(geo, options.spawnNear ?? { x: 0, z: 0 }, options.driveOnRight ?? true);
     Object.assign(this.car, spawn);
@@ -198,6 +198,7 @@ class SimpleVehicles {
   _driveCar(dt, throttle, steer, boost) {
     const c = this.car;
     const top = boost ? CAR.boostSpeed : CAR.maxSpeed;
+    c.braking = (throttle < 0 && c.speed > 0.2) || (throttle > 0 && c.speed < -0.2);
     if (throttle > 0) c.speed += (c.speed < 0 ? CAR.brake : CAR.accel) * dt;
     else if (throttle < 0) c.speed -= (c.speed > 0 ? CAR.brake : CAR.accel) * dt;
     else c.speed -= Math.sign(c.speed) * Math.min(Math.abs(c.speed), (CAR.drag + Math.abs(c.speed) * 0.05) * dt);
@@ -209,7 +210,7 @@ class SimpleVehicles {
     const nz = c.z - Math.cos(c.heading) * c.speed * dt;
     if (this._carFits(nx, nz, c.heading)) { c.x = nx; c.z = nz; }
     else c.speed *= -0.25; // bump off the wall
-    c.spin += (c.speed * dt) / 0.34;
+    c.spin += (c.speed * dt) / c.wheelRadius;
   }
 
   _carFits(x, z, h) {
@@ -219,6 +220,7 @@ class SimpleVehicles {
       const px = x + ox * c + oz * s, pz = z - ox * s + oz * c;
       if (this.index.solid(px, pz, 0.2, 1.6)) return false;
     }
+    if (this.blocked && this.blocked(x - s * CAR.len * 0.25, z - c * CAR.len * 0.25)) return false;
     return true;
   }
 
@@ -249,9 +251,10 @@ class SimpleVehicles {
     c.group.position.set(c.x, 0.08, c.z);
     c.group.rotation.set(0, c.heading, 0);
     for (const w of c.wheels) {
-      w.w.rotation.x = -c.spin;
+      w.w.rotation.x = c.spin;
       w.pivot.rotation.y = w.front ? c.steer : 0;
     }
+    if (c.state) c.state.value.x = c.braking || Math.abs(c.speed) < 0.2 ? 1 : 0; // brake lights
     const p = this.plane;
     p.group.position.set(p.x, p.y, p.z);
     p.group.rotation.set(p.pitch, p.heading, p.bank, 'YXZ');

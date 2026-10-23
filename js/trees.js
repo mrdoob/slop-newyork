@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { createTreeMaterial } from './tsl-materials.js';
+import { createTreeMaterial } from './tree-material.js';
 
 // js/trees.js
 // Procedural NYC street & park trees, planted by street-details.js (section 7):
@@ -826,11 +826,12 @@ function hashPos(x, y, z) {
  * tree's level of detail up to date from the camera of every view pass (scene.onBeforeRender). Returns
  * { group, material, atlas, update(cameraPosition) }.
  */
-function createTreeField(scene, sites) {
+// `skyAONode`: the city's sky occlusion for the leaves & bark (NYC: tsl-materials.js canyonSkyAONode()), or none
+function createTreeField(scene, sites, { skyAONode = null } = {}) {
   const group = new THREE.Group();
   group.name = 'Trees';
   const atlas = createLeafAtlas();
-  const material = createTreeMaterial(atlas.texture);
+  const material = createTreeMaterial(atlas.texture, skyAONode);
 
   // Geometries: [species][variant][lod]
   const geos = SPECIES.map((_, s) => [0, 1].map((v) => buildTreeGeometries(s, v, atlas.tileMeters)));

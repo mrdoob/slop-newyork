@@ -18,7 +18,8 @@ const ASPHALT = 0x3b3d40;
 const PAVING = 0xaaa59b;
 const ZEBRA_PAINT = 0xe6e6e0;
 
-// Flat ribbon along `pts` ([[x, z], ...]) between lateral offsets o0..o1 (left of travel = negative), at height y.
+// Ribbon along `pts` ([[x, z], ...]) between lateral offsets o0..o1 (left of travel = negative), at height y (a number,
+// or per-point heights for ramps).
 // Appends to `buf` { pos, along, idx } and returns nothing. `along` is the running distance for dashes and stripes.
 function ribbon(buf, pts, o0, o1, y) {
   const n = pts.length;
@@ -41,7 +42,8 @@ function ribbon(buf, pts, o0, o1, y) {
     const scale = Math.min(MITER_LIMIT, 1 / Math.max(1e-3, mx * na[0] + mz * na[1]));
     if (i > 0) dist += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
     const [x, z] = pts[i];
-    buf.pos.push(x + mx * o0 * scale, y, z + mz * o0 * scale, x + mx * o1 * scale, y, z + mz * o1 * scale);
+    const h = typeof y === 'number' ? y : y[i];
+    buf.pos.push(x + mx * o0 * scale, h, z + mz * o0 * scale, x + mx * o1 * scale, h, z + mz * o1 * scale);
     buf.along.push(dist, dist);
     if (i > 0) {
       const v = base + 2 * i;
@@ -145,11 +147,11 @@ function buildGraphRoads(scene, geo, options = {}) {
   const crossingKind = kinds.indexOf('crossing');
   const walks = newBuf();
   const decks = newBuf();
-  for (const [k, w, elev, flatPts] of geo.paths || []) {
+  for (const [k, w, elev, flatPts, heights] of geo.paths || []) {
     const pts = [];
     for (let i = 0; i < flatPts.length; i += 2) pts.push([flatPts[i], flatPts[i + 1]]);
     if (elev > 0) {
-      ribbon(decks, pts, -w / 2, w / 2, elev);
+      ribbon(decks, pts, -w / 2, w / 2, heights ? heights.map((h) => Math.max(h, Y.crossing)) : elev);
       continue;
     }
     ribbon(walks, pts, -w / 2, w / 2, k === crossingKind ? Y.crossing : Y.path);
@@ -194,7 +196,7 @@ function buildGraphRoads(scene, geo, options = {}) {
     const pos = top.attributes.position.array;
     const bottom = top.clone();
     const bp = bottom.attributes.position.array;
-    for (let i = 1; i < bp.length; i += 3) bp[i] = pos[i] - SKYWALK_DECK_M;
+    for (let i = 1; i < bp.length; i += 3) bp[i] = Math.max(Y.path, pos[i] - SKYWALK_DECK_M);
     const m = new THREE.MeshStandardNodeMaterial({ color: 0xa8a49c, roughness: 0.7, side: THREE.DoubleSide });
     for (const g of [top, bottom]) {
       const mesh = new THREE.Mesh(g, m);

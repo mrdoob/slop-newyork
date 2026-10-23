@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { cityUniforms } from './tsl-materials.js';
+import { cityUniforms } from './city-uniforms.js';
 import {
   Fn,
   float,
