@@ -21,7 +21,9 @@ highlighted in the viewer (press E). Taipei 101 renders at its real 508 m from O
 drawn from the OSM road graph; road widths come from the `width` or `lanes` tags where present and otherwise from a
 default per road class. Traffic signals stand where OSM maps them, but their timing is a generic fixed cycle. Trees are
 OSM's mapped trees plus trees spaced along mapped tree rows and through mapped woods (the models are generic
-broadleaf trees, not Taipei species). Cars and pedestrians are simulated, not real traffic.
+broadleaf trees, not Taipei species). Cars and pedestrians are simulated, not real traffic. Roof shapes and colours
+come from OSM where tagged; facade styles (curtain wall, punched windows, shopfronts) are inferred from building type,
+material and height, not surveyed.
 
 ## License and data
 

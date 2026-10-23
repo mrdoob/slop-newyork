@@ -143,6 +143,11 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
    trees + green areas (`js/green-areas.js` + NYC `trees.js`). NYC models reused via `js/city-uniforms.js`,
    `js/tree-material.js`, `js/tsl-noise.js` (split out of `tsl-materials.js` so Taipei never loads NYC geodata).
    Underground ways (`layer<0`, tunnels, indoor) are skipped; skywalk stairs ramp to the ground.
+   Roofs (OSM roof:shape/height/colour) & facade style per building: `tools/geo-building-style.mjs` (facade = style
+   hint inferred from tags, not survey). Cars yield to people on crossings; people obey signals (`walkAllowed`).
+   Official heights: Taipei UDD LOD1_2025 I3S (measured `H`, scriptable) is NOT openly licensed (no redistribution) —
+   don't bake into geodata without written permission. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
+   heights, address-matched, post-2001 only).
 5. Judge against pass/fail criteria. Fix height variation before expanding.
 Then, only then: second 1 km box in OLD district (Wanhua/Datong) to stress
 fallback where data sparse, then expand in stages checking looks AND framerate.

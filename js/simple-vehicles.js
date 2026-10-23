@@ -6,8 +6,8 @@ import { BODY_SPECS, buildCarGeometry, buildSteerableWheelGeo, createLoftedCarMa
 // City-agnostic: buildings and roads come in through `geo`; colours and traffic side through `options`.
 //
 // Controls: W/S or Up/Down forward & back, A/D or Left/Right turn, Shift faster; plane: R/F climb & descend.
-// The car stays on the ground and stops at building walls (and whatever options.blocked(x, z) reports, e.g. other
-// cars); the plane can't fly through buildings.
+// The car stays on the ground and stops at building walls (and wherever options.blocked(x, z, fx, fz, halfLength,
+// halfWidth) reports its body would hit something, e.g. other cars or people); the plane can't fly through buildings.
 
 const CAR = { len: 4.5, wid: 1.86, accel: 9, brake: 18, drag: 0.6, maxSpeed: 22, boostSpeed: 38, reverseSpeed: 7, turn: 0.55 };
 const PLANE = { minSpeed: 18, cruise: 45, maxSpeed: 90, accel: 14, turnRate: 0.9, climbRate: 22, ceiling: 1500 };
@@ -208,7 +208,9 @@ class SimpleVehicles {
     c.heading += (c.speed * Math.tan(c.steer)) / 2.7 / (1 + Math.abs(c.speed) / 25) * dt;
     const nx = c.x - Math.sin(c.heading) * c.speed * dt;
     const nz = c.z - Math.cos(c.heading) * c.speed * dt;
-    if (this._carFits(nx, nz, c.heading)) { c.x = nx; c.z = nz; }
+    // Blocked moves bounce back; if something has already moved into the car (another car turning into it), let it
+    // drive free rather than lock both in place
+    if (this._carFits(nx, nz, c.heading) || !this._carFits(c.x, c.z, c.heading)) { c.x = nx; c.z = nz; }
     else c.speed *= -0.25; // bump off the wall
     c.spin += (c.speed * dt) / c.wheelRadius;
   }
@@ -220,7 +222,7 @@ class SimpleVehicles {
       const px = x + ox * c + oz * s, pz = z - ox * s + oz * c;
       if (this.index.solid(px, pz, 0.2, 1.6)) return false;
     }
-    if (this.blocked && this.blocked(x - s * CAR.len * 0.25, z - c * CAR.len * 0.25)) return false;
+    if (this.blocked && this.blocked(x, z, -s, -c, CAR.len / 2, CAR.wid / 2)) return false;
     return true;
   }
 

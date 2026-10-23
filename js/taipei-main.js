@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { color, mix, smoothstep, step, positionLocal } from 'three/tsl';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GEO } from './taipei-geodata.js';
 import { buildFootprintBuildings } from './footprint-buildings.js';
@@ -43,7 +44,16 @@ async function init() {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  scene.add(new THREE.HemisphereLight(0xdfeaf5, 0x5a5650, 1.4));
+  // Sky reflections (glass, car paint): an environment map of a blue sky over a grey city floor
+  const envScene = new THREE.Scene();
+  const envMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
+  const up = positionLocal.normalize().y;
+  envMat.colorNode = mix(color(0x8f8b84), mix(color(0xdde6ee), color(0x5f8fc4), smoothstep(0.0, 0.7, up)), step(0.0, up));
+  envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), envMat));
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(envScene).texture;
+  scene.environmentIntensity = 0.6;
+
+  scene.add(new THREE.HemisphereLight(0xdfeaf5, 0x5a5650, 0.9));
   const sun = new THREE.DirectionalLight(0xfff1dd, 3.2);
   sun.position.set(-700, 1100, 500); // afternoon sun from the south-west
   sun.castShadow = true;
@@ -102,7 +112,8 @@ async function init() {
   const vehicles = new SimpleVehicles(scene, GEO, {
     spawnNear: { x: t101 ? t101.x : 0, z: t101 ? t101.z : 0 },
     driveOnRight: true,
-    blocked: (x, z) => traffic.carNear(x, z, 2.6),
+    blocked: (x, z, fx, fz, hl, hw) =>
+      traffic.carOverlaps(x, z, fx, fz, hl + 0.1, hw + 0.1) || traffic.pedNear(x + fx * hl * 0.6, z + fz * hl * 0.6, 1.6) || traffic.pedNear(x - fx * hl * 0.6, z - fz * hl * 0.6, 1.6),
     planeSpawn: { x: -250, y: 220, z: 900, heading: 0 }
   });
   const modeButtons = [...document.querySelectorAll('[data-mode]')];

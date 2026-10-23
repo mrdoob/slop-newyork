@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { attribute, positionWorld, normalWorld, cameraPosition, abs, fract, step, smoothstep, mix, vec3, float, uniform } from 'three/tsl';
+import { attribute, positionWorld, normalWorld, cameraPosition, abs, fract, floor, sin, step, smoothstep, mix, max, vec3, float, uniform } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // js/footprint-buildings.js
@@ -7,14 +7,20 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // City-agnostic: everything about the city comes in through `geo`.
 //
 // geo.buildings rows: [id, outer [x, z, ...], holes [[x, z, ...], ...], top m, base m, source index, kind index,
-// colour | 0]; geo.heightSources names the sources ('estimate' = inferred, not measured), geo.kinds the OSM types.
+// wall colour | 0, roof shape index, roof height m, roof colour | 0, facade index]; geo.heightSources names the sources
+// ('estimate' = inferred, not measured), geo.kinds the OSM types, geo.roofShapes & geo.facades the styles.
 //
-// The facade shader draws a storey grid (one band per LEVEL_M) so heights read as floor counts. Buildings whose
-// height is an estimate carry an `estimate` attribute; setShowEstimates(true) tints them so they are never mistaken
-// for measured data.
+// Walls rise to the roof's eaves; pitched roofs (pyramidal, hipped) and domes sit on top, flat roofs are the walls' cap
+// (in the roof colour where OSM gives one). The facade shader draws one style per building (punched windows with
+// balcony slabs, glass curtain wall, podium window bands, plain walls) in storeys of LEVEL_M, and shopfronts on the
+// ground floor. Buildings whose height is an estimate carry an `estimate` attribute; setShowEstimates(true) tints them
+// so they are never mistaken for measured data.
 
 const LEVEL_M = 3.2; // storey height, matches tools/geo-height.mjs
-const BAY_M = 3.0; // window bay width along a facade
+const GROUND_FLOOR_M = 4.2; // shopfront storey
+const GLASS_FADE = [250, 900]; // m: window patterns fade to their average tone over this distance (no moiré far away)
+const CURTAIN_FADE = [90, 260]; // ...sooner for the fine 1.5 m curtain-wall mullions
+const HIP_TOP = 0.3; // hipped roofs: the ridge ring is the footprint shrunk to this share about its centroid
 
 // Base facade colours by OSM building type
 const KIND_COLOURS = {
@@ -23,9 +29,9 @@ const KIND_COLOURS = {
   civic: 0xc9c3b7, government: 0xc2bcae, hotel: 0xa9b2b8, roof: 0x8b9095, construction: 0xa39d92, yes: 0xc4beb4
 };
 const DEFAULT_COLOUR = 0xc4beb4;
+const ROOF_COLOUR = 0x8e9093; // concrete roof deck where OSM gives no roof colour
 const NEUTRAL = new THREE.Color(0xc8c4bc);
-const OSM_COLOUR_SOFTEN = 0.4; // OSM building:colour values are often pure CSS names ('red', 'navy'): keep the hue, mute it
-const GLASS_FADE = [250, 900]; // m: the storey grid fades to its average tone over this distance (no moiré far away)
+const OSM_COLOUR_SOFTEN = 0.4; // OSM colour values are often pure CSS names ('red', 'navy'): keep the hue, mute it
 
 // Small deterministic shade variation per building (by OSM id) so neighbouring facades of one type differ
 function hash01(s) {
@@ -34,38 +40,106 @@ function hash01(s) {
   return ((h >>> 0) % 10000) / 10000;
 }
 
+const ringPts = (f) => {
+  const out = [];
+  for (let i = 0; i < f.length; i += 2) out.push([f[i], f[i + 1]]);
+  return out;
+};
 function shapeOf(outer, holes) {
-  const pts = (f) => {
-    const out = [];
-    for (let i = 0; i < f.length; i += 2) out.push(new THREE.Vector2(f[i], -f[i + 1])); // shape plane (x, -z)
-    return out;
-  };
-  const shape = new THREE.Shape(pts(outer));
-  for (const h of holes) shape.holes.push(new THREE.Path(pts(h)));
+  const v2 = (f) => ringPts(f).map(([x, z]) => new THREE.Vector2(x, -z)); // shape plane (x, -z)
+  const shape = new THREE.Shape(v2(outer));
+  for (const h of holes) shape.holes.push(new THREE.Path(v2(h)));
   return shape;
+}
+function centroid(pts) {
+  let a = 0, cx = 0, cz = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const f = pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
+    a += f;
+    cx += (pts[j][0] + pts[i][0]) * f;
+    cz += (pts[j][1] + pts[i][1]) * f;
+  }
+  return Math.abs(a) < 1e-9 ? [pts[0][0], pts[0][1], 0] : [cx / (3 * a), cz / (3 * a), Math.abs(a / 2)];
+}
+
+// Pitched roof from the eaves (y0) to the top (y1): pyramidal (apex) or hipped (shrunken ridge ring with a flat cap)
+function pitchedRoof(pts, y0, y1, shape) {
+  const [cx, cz] = centroid(pts);
+  const pos = [];
+  const tri = (a, b, c) => {
+    // keep every face looking up (outwards)
+    const ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]); // y of (b - a) × (c - a)
+    if (ny >= 0) pos.push(...a, ...b, ...c);
+    else pos.push(...a, ...c, ...b);
+  };
+  const k = shape === 'pyramidal' ? 0 : HIP_TOP;
+  const inner = pts.map(([x, z]) => [cx + (x - cx) * k, y1, cz + (z - cz) * k]);
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    const a = [pts[i][0], y0, pts[i][1]], b = [pts[j][0], y0, pts[j][1]];
+    if (k === 0) tri(a, b, [cx, y1, cz]);
+    else { tri(a, b, inner[j]); tri(a, inner[j], inner[i]); }
+  }
+  if (k > 0) {
+    const faces = THREE.ShapeUtils.triangulateShape(inner.map(([x, , z]) => new THREE.Vector2(x, z)), []);
+    for (const [a, b, c] of faces) tri(inner[a], inner[b], inner[c]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+function domeRoof(pts, area, y0, y1) {
+  const [cx, cz] = centroid(pts);
+  const r = Math.sqrt(area / Math.PI);
+  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2).toNonIndexed();
+  g.deleteAttribute('uv');
+  g.scale(r, Math.max(0.5, y1 - y0), r);
+  g.translate(cx, y0, cz);
+  return g;
 }
 
 function buildFootprintBuildings(scene, geo) {
   const estimateIndex = geo.heightSources.indexOf('estimate');
+  const roofShapes = geo.roofShapes || ['flat'];
+  const facades = geo.facades || ['punched'];
+  const NONE = Math.max(0, facades.indexOf('none'));
   const parts = [];
-  const colour = new THREE.Color();
+  const wallColour = new THREE.Color();
+  const roofColour = new THREE.Color();
   const stats = { total: 0, bySource: Object.fromEntries(geo.heightSources.map((s) => [s, 0])), maxTop: 0 };
-  for (const [id, outer, holes, top, base, source, kind, osmColour] of geo.buildings) {
-    const depth = top - base;
-    if (!(depth > 0) || outer.length < 6) continue;
-    const g = new THREE.ExtrudeGeometry(shapeOf(outer, holes), { depth, bevelEnabled: false, curveSegments: 1 });
+  const paint = (g, wall, roof, capVertices, est, facade, base) => {
+    const n = g.attributes.position.count;
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) (i < capVertices ? roof : wall).toArray(col, i * 3);
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('estimate', new THREE.BufferAttribute(new Float32Array(n).fill(est), 1));
+    g.setAttribute('facade', new THREE.BufferAttribute(new Float32Array(n).fill(facade), 1));
+    g.setAttribute('base', new THREE.BufferAttribute(new Float32Array(n).fill(base), 1));
+    parts.push(g);
+  };
+  for (const [id, outer, holes, top, base, source, kind, osmColour, roofIdx = 0, roofH = 0, osmRoofColour = 0, facadeIdx = 0] of geo.buildings) {
+    if (!(top - base > 0) || outer.length < 6) continue;
+    const shape = roofShapes[roofIdx] || 'flat';
+    const eaves = shape === 'flat' ? top : Math.max(base + 0.5, top - roofH);
+    const g = new THREE.ExtrudeGeometry(shapeOf(outer, holes), { depth: eaves - base, bevelEnabled: false, curveSegments: 1 });
     g.rotateX(-Math.PI / 2); // extrusion axis -> +y, shape (x, -z) -> world (x, z)
     g.translate(0, base, 0);
     g.deleteAttribute('uv');
-    if (osmColour) colour.setStyle(osmColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN);
-    else colour.setHex(KIND_COLOURS[geo.kinds[kind]] ?? DEFAULT_COLOUR);
-    colour.offsetHSL(0, 0, (hash01(id) - 0.5) * 0.08);
-    const n = g.attributes.position.count;
-    const col = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) colour.toArray(col, i * 3);
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    g.setAttribute('estimate', new THREE.BufferAttribute(new Float32Array(n).fill(source === estimateIndex ? 1 : 0), 1));
-    parts.push(g);
+    if (osmColour) wallColour.setStyle(osmColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN);
+    else wallColour.setHex(KIND_COLOURS[geo.kinds[kind]] ?? DEFAULT_COLOUR);
+    wallColour.offsetHSL(0, 0, (hash01(id) - 0.5) * 0.08);
+    if (osmRoofColour) roofColour.setStyle(osmRoofColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN * 0.5);
+    else roofColour.setHex(ROOF_COLOUR).lerp(wallColour, 0.25);
+    const est = source === estimateIndex ? 1 : 0;
+    // ExtrudeGeometry lists its caps first (group 0), then the walls
+    paint(g, wallColour, roofColour, g.groups.length ? g.groups[0].count : 0, est, facadeIdx, base);
+    if (shape !== 'flat') {
+      const pts = ringPts(outer);
+      const area = centroid(pts)[2];
+      const roof = shape === 'dome' || shape === 'onion' ? domeRoof(pts, area, eaves, top) : pitchedRoof(pts, eaves, top, shape);
+      paint(roof, roofColour, roofColour, 0, est, NONE, base);
+    }
     stats.total++;
     stats.bySource[geo.heightSources[source]]++;
     stats.maxTop = Math.max(stats.maxTop, top);
@@ -74,22 +148,59 @@ function buildFootprintBuildings(scene, geo) {
   for (const g of parts) g.dispose();
   geometry.computeBoundingSphere();
 
-  // Facade: storey bands of glass on walls (roofs stay plain), tinted when the height is estimated
+  // --- Facade shader ------------------------------------------------------------------------------------------------
   const showEstimates = uniform(0);
-  const wall = step(abs(normalWorld.y), float(0.5));
+  const f = attribute('facade', 'float');
+  const bBase = attribute('base', 'float');
+  const is = (name) => {
+    const i = facades.indexOf(name);
+    return i < 0 ? float(0) : float(1).sub(step(0.5, abs(f.sub(i))));
+  };
+  const punched = is('punched'), curtain = is('curtain'), podium = is('podium'), plain = is('plain'), none = is('none');
+  const wall = step(abs(normalWorld.y), float(0.5)).mul(float(1).sub(none));
+  const y = positionWorld.y;
   const along = positionWorld.x.mul(normalWorld.z.negate()).add(positionWorld.z.mul(normalWorld.x));
-  const fy = fract(positionWorld.y.div(LEVEL_M));
-  const fu = fract(along.div(BAY_M));
-  const grid = step(0.32, fy).mul(step(fy, 0.86)).mul(step(0.14, fu)).mul(step(fu, 0.86));
-  const near = float(1).sub(smoothstep(GLASS_FADE[0], GLASS_FADE[1], positionWorld.distance(cameraPosition)));
-  const glass = wall.mul(mix(float(0.54 * 0.72), grid, near)); // far away: the grid's glass share
-  const base = attribute('color', 'vec3');
+  const fy = fract(y.div(LEVEL_M));
+  const band = (v, lo, hi) => step(lo, v).mul(step(v, hi));
+  // Punched windows (3.2 m bays) with a balcony slab / floor band under each storey
+  const pu = fract(along.div(3.2));
+  const punchedWin = band(fy, 0.36, 0.82).mul(band(pu, 0.2, 0.8));
+  const slab = step(fy, 0.07);
+  // Curtain wall: glass between 1.5 m mullions and floor spandrels
+  const cu = fract(along.div(1.5));
+  const frame = max(max(step(cu, 0.045), step(0.955, cu)), step(fy, 0.1));
+  // Podium: long window bands; plain: a few small high windows
+  const podiumWin = band(fy, 0.28, 0.9).mul(band(fract(along.div(6.0)), 0.04, 0.96));
+  const plainWin = band(fy, 0.58, 0.76).mul(band(fract(along.div(8.0)), 0.42, 0.58));
+  const pattern = punched.mul(punchedWin).add(curtain.mul(float(1).sub(frame))).add(podium.mul(podiumWin)).add(plain.mul(plainWin));
+  const patternAvg = punched.mul(0.27).add(curtain.mul(0.82)).add(podium.mul(0.57)).add(plain.mul(0.03));
+  // Ground floor: shopfronts under a sign band (buildings standing on the ground, not plain sheds)
+  const groundFloor = step(bBase, 1.0).mul(step(y, GROUND_FLOOR_M)).mul(float(1).sub(plain)).mul(float(1).sub(none));
+  const gu = fract(along.div(4.5));
+  const shop = band(y, 0.35, 3.45).mul(band(gu, 0.07, 0.93));
+  const sign = band(y, 3.55, 4.1);
+  const dist = positionWorld.distance(cameraPosition);
+  const near = mix(float(1).sub(smoothstep(GLASS_FADE[0], GLASS_FADE[1], dist)), float(1).sub(smoothstep(CURTAIN_FADE[0], CURTAIN_FADE[1], dist)), curtain);
+  const glass = wall.mul(mix(mix(patternAvg, pattern, near), shop, groundFloor));
+
+  const baseCol = attribute('color', 'vec3');
   const estimate = attribute('estimate', 'float');
-  const tinted = mix(base, vec3(1.0, 0.45, 0.15), estimate.mul(showEstimates).mul(0.75));
+  const tinted = mix(baseCol, vec3(1.0, 0.45, 0.15), estimate.mul(showEstimates).mul(0.75));
+  // Wall: floor slabs show as darker bands on punched facades; curtain-wall frames take the building colour
+  const wallCol = mix(tinted, tinted.mul(0.72), punched.mul(slab).mul(wall).mul(near).mul(float(1).sub(groundFloor)));
+  // Glass: dark tinted panes; curtain walls a deeper blue-green (they mirror the sky through the environment map);
+  // lit shop interiors on the ground floor
+  const paneCol = mix(tinted.mul(vec3(0.3, 0.35, 0.4)), vec3(0.24, 0.32, 0.38), curtain);
+  const shopCol = vec3(0.42, 0.36, 0.27);
+  const glassCol = mix(paneCol, shopCol, groundFloor);
+  // Sign band: a colour per shop bay
+  const h = fract(sin(floor(along.div(4.5)).mul(12.9898).add(bBase.mul(3.1))).mul(43758.5453));
+  const signCol = mix(mix(vec3(0.75, 0.12, 0.1), vec3(0.95, 0.85, 0.75), step(0.45, h)), vec3(0.12, 0.3, 0.62), step(0.8, h));
+  const isSign = sign.mul(groundFloor).mul(wall);
   const material = new THREE.MeshStandardNodeMaterial();
-  material.colorNode = mix(tinted, tinted.mul(vec3(0.32, 0.38, 0.45)), glass.mul(0.85));
-  material.roughnessNode = mix(float(0.85), float(0.18), glass);
-  material.metalnessNode = mix(float(0.0), float(0.35), glass);
+  material.colorNode = mix(mix(wallCol, glassCol, glass), signCol, isSign);
+  material.roughnessNode = mix(float(0.86), mix(float(0.22), float(0.06), curtain), glass);
+  material.metalnessNode = mix(float(0.0), mix(float(0.3), float(0.6), curtain.mul(float(1).sub(groundFloor))), glass);
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;

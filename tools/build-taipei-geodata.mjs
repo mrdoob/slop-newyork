@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { toWorld, BOX, LANDMARKS, load, log } from './geo-taipei-base.mjs';
 import { buildingHeight } from './geo-height.mjs';
+import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
 import { buildOsmRoadGraph, PATH_KINDS } from './geo-osm-roadgraph.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL('../js/taipei-geodata.js', import.meta.url));
@@ -117,7 +118,9 @@ function emit(b, outline) {
     if (inherited.source !== 'estimate') h = inherited;
   }
   const colour = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|[a-z]+)$/i.test(b.tags['building:colour'] || '') ? b.tags['building:colour'].toLowerCase() : 0;
-  buildings.push({ b, h, colour });
+  // Parts take the outline's material (a mirror-glass tower's parts are glass too)
+  const styleTags = outline && !b.tags['building:material'] && outline.tags['building:material'] ? { ...b.tags, 'building:material': outline.tags['building:material'] } : b.tags;
+  buildings.push({ b, h, colour, roof: roofOf(b.tags, b.area, h.top, h.base), facade: facadeOf(styleTags, b.kind, h.top, h.base) });
 }
 for (const o of outlines) {
   if (!o.parts.length) emit(o, null);
@@ -140,6 +143,7 @@ for (const [name, ref] of Object.entries(LANDMARKS)) {
 const count = Object.fromEntries(SOURCES.map((s) => [s, buildings.filter((x) => x.h.source === s).length]));
 const est = buildings.filter((x) => x.h.source === 'estimate').map((x) => x.h.top);
 log(`${buildings.length} extruded: ${SOURCES.map((s) => `${count[s]} ${s}`).join(', ')}`);
+log(`roofs: ${ROOF_SHAPES.map((r) => `${buildings.filter((x) => x.roof.shape === r).length} ${r}`).join(', ')}; facades: ${FACADES.map((f) => `${buildings.filter((x) => x.facade === f).length} ${f}`).join(', ')}`);
 log(`estimated tops: ${new Set(est).size} distinct values, ${Math.min(...est).toFixed(1)}–${Math.max(...est).toFixed(1)} m`);
 
 // --- Roads ------------------------------------------------------------------------------------------------------------
@@ -207,8 +211,13 @@ const GEO = {
   // estimateHeight() from building type and footprint area: NOT measured data.
   heightSources: SOURCES,
   kinds,
-  // [OSM id, outer ring [x, z, ...], holes [[x, z, ...], ...], top m, base m, height source index, kind index, colour | 0]
-  buildings: buildings.map(({ b, h, colour }) => [b.id, flat(b.outer), b.holes.map(flat), q(h.top), q(h.base), SOURCES.indexOf(h.source), kindId(b.kind), colour]),
+  // [OSM id, outer ring [x, z, ...], holes [[x, z, ...], ...], top m, base m, height source index, kind index,
+  //  wall colour | 0, roof shape index, roof height m (included in top), roof colour | 0, facade index]
+  // Roof shapes & facades: tools/geo-building-style.mjs (facades are a style hint inferred from tags).
+  roofShapes: ROOF_SHAPES,
+  facades: FACADES,
+  buildings: buildings.map(({ b, h, colour, roof, facade }) => [b.id, flat(b.outer), b.holes.map(flat), q(h.top), q(h.base), SOURCES.indexOf(h.source), kindId(b.kind), colour,
+    ROOF_SHAPES.indexOf(roof.shape), q(roof.height), roof.colour, FACADES.indexOf(facade)]),
   landmarks,
   // Street centreline graph of the drivable roads (tools/geo-osm-roadgraph.mjs; same shape as NYC's GEO.roadGraph):
   // nodes [x, z, ...], links [node a, node b, name index, curb-to-curb width, travel lanes, direction (1: a -> b,

@@ -98,6 +98,21 @@ function buildSignalControl(scene, geo, options = {}) {
     return stateFor(c, phaseOf(c, arrivalBearing(l, n)));
   }
 
+  // May pedestrians at (x, z) cross heading `bearing`? Yes away from signals; at a signalised intersection only while
+  // the traffic running alongside them has green (so the traffic they cross has red).
+  const centres = [...clusters.values()].map((c) => {
+    const pts = c.nodes.map(node);
+    return { c, x: pts.reduce((s, p) => s + p[0], 0) / pts.length, z: pts.reduce((s, p) => s + p[1], 0) / pts.length };
+  });
+  function walkAllowed(x, z, bearing) {
+    let best = null, bd = CLUSTER_M + 15;
+    for (const k of centres) {
+      const d = Math.hypot(k.x - x, k.z - z);
+      if (d < bd) { bd = d; best = k.c; }
+    }
+    return !best || stateFor(best, phaseOf(best, bearing)) === STATE.GREEN;
+  }
+
   // --- Poles & heads: one per approach that traffic can arrive on ---------------------------------------------------
   const heads = []; // { c, phase }
   const poleMats = [];
@@ -204,7 +219,7 @@ function buildSignalControl(scene, geo, options = {}) {
   }
   update(0);
 
-  return { group, stateAt, update, STATE, stats: { intersections: clusters.size, heads: heads.length } };
+  return { group, stateAt, walkAllowed, update, STATE, stats: { intersections: clusters.size, heads: heads.length } };
 }
 
 export { buildSignalControl, STATE as SIGNAL_STATE };

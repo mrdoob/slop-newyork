@@ -9,8 +9,9 @@ import { SIGNAL_STATE } from './signal-control.js';
 // `options`; signals from signal-control.js.
 //
 // Cars keep to a lane of their link, curve through junctions onto a randomly chosen exit the link directions allow,
-// keep their distance to the car ahead (and the player) and stop for red lights. Pedestrians walk the footways,
-// crossings and skywalks, switching ways where they meet. Junctions without signals have no right-of-way rules: cars
+// keep their distance to the car ahead (and the player), stop for red lights and give way to people on crossings.
+// Pedestrians walk the footways, crossings and skywalks, switching ways where they meet; at signalised intersections
+// they wait at the kerb until the traffic they would cross has red. Junctions without signals have no right-of-way rules: cars
 // crossing each other's paths there pass through one another.
 
 const ROAD_Y = 0.08;
@@ -227,7 +228,7 @@ function buildCars(scene, geo, options, signals, rand) {
   const p = {};
   const dummy = new THREE.Object3D();
   let clock = 0;
-  function update(dt, camera, player) {
+  function update(dt, camera, player, walkers = []) {
     clock += dt;
     // Leaders: nearby cars ahead in the same direction (and the player's car, whatever its heading)
     for (const c of cars) {
@@ -240,6 +241,12 @@ function buildCars(scene, geo, options, signals, rand) {
         if (Math.abs(rx * c.dz - rz * c.dx) > 1.7) continue;
         if (o.dx * c.dx + o.dz * c.dz < 0.3) continue;
         gap = Math.min(gap, along - CAR_LEN);
+      }
+      // People on crossings in the lane ahead (turning cars give way too)
+      for (const w of walkers) {
+        const rx = w.x - c.x, rz = w.z - c.z;
+        const along = rx * c.dx + rz * c.dz;
+        if (along > 0 && along < LOOK_AHEAD && Math.abs(rx * c.dz - rz * c.dx) < 2.0) gap = Math.min(gap, along - CAR_LEN / 2 - 1.5);
       }
       if (player) {
         const rx = player.x - c.x, rz = player.z - c.z;
@@ -308,15 +315,32 @@ function buildCars(scene, geo, options, signals, rand) {
     }
   }
 
-  // Is a car body within r of (x, z)? (for the player's collisions)
-  function carNear(x, z, r) {
-    return cars.some((c) => Math.hypot(c.x - x, c.z - z) < r);
+  // Does a car body (centre x, z; unit forward fx, fz; half length & width) overlap any AI car? Oriented rectangles,
+  // separating-axis test (for the player's collisions, front, back and sides alike)
+  const AI_HALF = [CAR_LEN / 2, 0.95];
+  function carOverlaps(x, z, fx, fz, hl, hw) {
+    const axesOf = (ax, az) => [[ax, az], [-az, ax]];
+    for (const c of cars) {
+      const ox = c.x - x, oz = c.z - z;
+      if (ox * ox + oz * oz > 64) continue;
+      const A = { ax: axesOf(fx, fz), h: [hl, hw] };
+      const B = { ax: axesOf(c.dx, c.dz), h: AI_HALF };
+      let separated = false;
+      for (const [nx, nz] of [...A.ax, ...B.ax]) {
+        const dist = Math.abs(ox * nx + oz * nz);
+        const ra = A.h[0] * Math.abs(A.ax[0][0] * nx + A.ax[0][1] * nz) + A.h[1] * Math.abs(A.ax[1][0] * nx + A.ax[1][1] * nz);
+        const rb = B.h[0] * Math.abs(B.ax[0][0] * nx + B.ax[0][1] * nz) + B.h[1] * Math.abs(B.ax[1][0] * nx + B.ax[1][1] * nz);
+        if (dist > ra + rb) { separated = true; break; }
+      }
+      if (!separated) return true;
+    }
+    return false;
   }
-  return { cars, group, update, carNear };
+  return { cars, group, update, carOverlaps };
 }
 
 // --- Pedestrians ---------------------------------------------------------------------------------------------------------
-function buildPedestrians(scene, geo, options, rand) {
+function buildPedestrians(scene, geo, options, signals, rand) {
   const kinds = geo.pathKinds || [];
   const ways = (geo.paths || []).map(([k, w, elev, flatPts, heights]) => {
     const pts = [];
@@ -346,7 +370,7 @@ function buildPedestrians(scene, geo, options, rand) {
     const hairRoll = rand();
     peds.push({
       wi, s: rand() * ways[wi].len, dir: rand() < 0.5 ? 1 : -1, side: (rand() - 0.5) * 0.7,
-      speed: 1.15 + rand() * 0.4, x: 0, y: 0, z: 0, hx: 0, hz: 1,
+      speed: 1.15 + rand() * 0.4, x: 0, y: 0, z: 0, hx: 0, hz: 1, waiting: false,
       rig: new PersonRig({
         seed: i * 1.6180339 + 0.37, female, scale: (female ? 0.91 : 0.97) + rand() * 0.1, girth: 0.9 + rand() * 0.24,
         hair: female ? (hairRoll < 0.6 ? 1 : 0.3) : hairRoll * 0.35, armSwing: 0.75 + rand() * 0.5, stride: 0.94 + rand() * 0.12
@@ -355,13 +379,20 @@ function buildPedestrians(scene, geo, options, rand) {
   }
   const ground = (owner) => owner.y;
   const p = {};
+  const walkers = []; // people out on crossings (cars give way to them)
   function update(dt, camera) {
     crowd.begin();
+    walkers.length = 0;
     const cx = camera.position.x, cz = camera.position.z;
     for (const pd of peds) {
       let way = ways[pd.wi];
+      // Waiting at the kerb for the lights
+      if (pd.waiting) {
+        sample(way, pd.s, p);
+        pd.waiting = signals ? !signals.walkAllowed(p.x, p.z, Math.atan2(p.dx * pd.dir, p.dz * pd.dir)) : false;
+      }
       const before = sample(way, pd.s, p).i;
-      pd.s += pd.speed * dt * pd.dir;
+      if (!pd.waiting) pd.s += pd.speed * dt * pd.dir;
       // Passing a vertex where other ways meet: sometimes switch onto one of them
       const after = pd.s < 0 || pd.s > way.len ? -1 : sample(way, pd.s, p).i;
       if (after !== before) {
@@ -376,6 +407,7 @@ function buildPedestrians(scene, geo, options, rand) {
           pd.dir = vj === 0 ? 1 : vj === nw.pts.length - 1 ? -1 : rand() < 0.5 ? 1 : -1;
           pd.s = nw.cum[vj];
           way = nw;
+          pd.waiting = nw.kind === 'crossing'; // check the lights before stepping out
         } else if (atEnd) {
           pd.dir = -pd.dir; // dead end: turn around
           pd.s = Math.min(way.len, Math.max(0, pd.s));
@@ -387,6 +419,7 @@ function buildPedestrians(scene, geo, options, rand) {
       pd.x = p.x - hz * off;
       pd.z = p.z + hx * off;
       pd.y = way.ys[p.i - 1] + (way.ys[p.i] - way.ys[p.i - 1]) * p.f;
+      if (way.kind === 'crossing' && !pd.waiting) walkers.push(pd);
       const dist = Math.hypot(pd.x - cx, pd.z - cz);
       const draw = dist < DRAW_PED;
       pd.rig.update(dt, pd.x, pd.z, Math.atan2(hx, hz), ground, pd, 0, draw);
@@ -394,22 +427,25 @@ function buildPedestrians(scene, geo, options, rand) {
     }
     crowd.end();
   }
-  return { peds, update, meshes: crowd.meshes };
+  // Is a person within r of (x, z)? (for the player's collisions)
+  const pedNear = (x, z, r) => peds.some((pd) => pd.y < 1 && Math.hypot(pd.x - x, pd.z - z) < r);
+  return { peds, update, walkers, pedNear, meshes: crowd.meshes };
 }
 
 function buildFootprintTraffic(scene, geo, options = {}) {
   const rand = mulberry32(options.seed ?? 20261024);
   const cars = buildCars(scene, geo, options, options.signals || null, rand);
-  const pedestrians = buildPedestrians(scene, geo, options, rand);
+  const pedestrians = buildPedestrians(scene, geo, options, options.signals || null, rand);
   return {
     cars,
     pedestrians,
     update(dt, camera, player = null) {
       dt = Math.min(dt, 0.1);
-      cars.update(dt, camera, player);
+      cars.update(dt, camera, player, pedestrians.walkers);
       pedestrians.update(dt, camera);
     },
-    carNear: cars.carNear,
+    carOverlaps: cars.carOverlaps,
+    pedNear: pedestrians.pedNear,
     stats: { cars: cars.cars.length, pedestrians: pedestrians.peds.length }
   };
 }

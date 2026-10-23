@@ -7,6 +7,7 @@ import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildingHeight, estimateHeight, parseMetres, LEVEL_M } from '../tools/geo-height.mjs';
 import { buildOsmRoadGraph } from '../tools/geo-osm-roadgraph.mjs';
+import { roofOf, facadeOf } from '../tools/geo-building-style.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -33,6 +34,18 @@ test('estimates vary with footprint and type instead of one flat default', () =>
   assert.ok(new Set(apartments).size >= 4, `distinct: ${apartments}`);
   assert.ok(estimateHeight('house', 1000) < estimateHeight('apartments', 1000));
   assert.ok(estimateHeight('office', 2000) > estimateHeight('retail', 2000));
+});
+
+test('roof shapes and facade styles come from OSM tags', () => {
+  assert.deepEqual(roofOf({ 'roof:shape': 'dome', 'roof:height': '8' }, 400, 30, 0), { shape: 'dome', height: 8, colour: 0 });
+  assert.equal(roofOf({ 'roof:shape': 'gambrel' }, 400, 30, 0).shape, 'flat', 'unsupported shapes draw flat');
+  assert.ok(roofOf({ 'roof:shape': 'hipped' }, 400, 12, 0).height <= 12 * 0.4, 'untagged roof height stays proportionate');
+  assert.equal(roofOf({ 'roof:colour': 'green' }, 400, 30, 0).colour, 'green');
+  assert.equal(facadeOf({}, 'office', 120, 0), 'curtain');
+  assert.equal(facadeOf({ 'building:material': 'glass' }, 'apartments', 20, 0), 'curtain');
+  assert.equal(facadeOf({}, 'apartments', 40, 0), 'punched');
+  assert.equal(facadeOf({}, 'retail', 15, 0), 'podium');
+  assert.equal(facadeOf({}, 'roof', 4, 3.4), 'none');
 });
 
 test('underground ways are left out and skywalk stairs ramp to the ground', () => {
@@ -67,7 +80,8 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     assert.ok(Math.hypot(GEO.landmarks['Taipei 101'].x, GEO.landmarks['Taipei 101'].z) < 60, 'Taipei 101 sits at the origin');
     assert.ok(GEO.buildings.length > 800, `${GEO.buildings.length} buildings`);
     const tops = [];
-    for (const [id, outer, holes, top, base, source, kind] of GEO.buildings) {
+    for (const [id, outer, holes, top, base, source, kind, , roof, roofH, , facade] of GEO.buildings) {
+      assert.ok(roof >= 0 && roof < GEO.roofShapes.length && roofH >= 0 && roofH <= top - base && facade >= 0 && facade < GEO.facades.length, id);
       assert.match(id, /^[wr]\d+$/);
       assert.ok(outer.length >= 6 && outer.length % 2 === 0, id);
       assert.ok(Array.isArray(holes), id);
@@ -81,6 +95,10 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     assert.ok(Math.max(...counts.values()) < tops.length * 0.2, 'one height covers 20%+ of buildings');
     assert.ok(tops.filter((t) => t > 300).every((t) => t >= 386), 'only Taipei 101 rises past 300 m');
     assert.ok(GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'), 'estimates are labelled');
+    // Roof shapes from OSM roof:shape; Taipei 101 (building:material=mirror) reads as a glass curtain wall
+    assert.ok(GEO.buildings.some((b) => GEO.roofShapes[b[8]] === 'dome') && GEO.buildings.some((b) => GEO.roofShapes[b[8]] === 'hipped'));
+    const tallest = GEO.buildings.reduce((a, b) => (b[3] > a[3] ? b : a));
+    assert.equal(GEO.facades[tallest[11]], 'curtain');
 
     // Road graph: same shape as NYC's GEO.roadGraph, with Xinyi's main streets
     const RG = GEO.roadGraph;
