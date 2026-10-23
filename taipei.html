@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Slop Taipei — Xinyi 1 km</title>
+  <link rel="icon" href="data:," />
+  <!-- three.js dev branch, same as index.html -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.webgpu.js",
+        "three/webgpu": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.webgpu.js",
+        "three/tsl": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.tsl.js",
+        "three/addons/": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="./js/taipei-main.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #b9cddc; font: 13px/1.4 system-ui, sans-serif; }
+    canvas { display: block; }
+    .hud { position: fixed; left: 12px; bottom: 12px; right: 12px; max-width: 640px; padding: 8px 12px; border-radius: 8px;
+      background: rgba(20, 24, 28, 0.72); color: #eef2f5; }
+    .hud p { margin: 2px 0; }
+    .hud a { color: #9fd0ff; }
+    .hud button { margin-top: 4px; font: inherit; color: inherit; background: #3a4450; border: 1px solid #5a6672;
+      border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+    .hud button[aria-pressed="true"] { background: #c0581f; border-color: #e07a40; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <p id="stats">Loading…</p>
+    <p>Building heights are partially <strong>estimated</strong> where OpenStreetMap has no height or storey count.
+      <button id="btn-estimates" type="button" aria-pressed="false">Highlight estimated [E]</button></p>
+    <p>Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL) ·
+      based on <a href="https://github.com/mrdoob/slop-newyork">mrdoob/slop-newyork</a> (MIT)</p>
+  </div>
+</body>
+</html>

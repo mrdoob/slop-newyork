@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { makeFrame } from './geo-frame.mjs';
 
 const DATA = process.env.GEO_DATA || fileURLToPath(new URL('data/', import.meta.url));
 const load = (f) => JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8'));
@@ -22,32 +23,10 @@ const log = (...a) => console.log('[geodata]', ...a);
 // =====================================================================================================================
 // 1. FRAME
 // =====================================================================================================================
-const LAT0 = 40.75318;
-const LON0 = -73.98185;
-const A = 6378137.0;
-const E2 = 6.69437999014e-3;
-const PHI0 = (LAT0 * Math.PI) / 180;
-const SIN0 = Math.sin(PHI0);
-const NRAD = A / Math.sqrt(1 - E2 * SIN0 * SIN0);
-const MRAD = (A * (1 - E2)) / Math.pow(1 - E2 * SIN0 * SIN0, 1.5);
-const KX = (Math.PI / 180) * NRAD * Math.cos(PHI0);
-const KY = (Math.PI / 180) * MRAD;
-let THETA = (29.017 * Math.PI) / 180; // refined below from the avenues
-let ORIGIN = [0, 0]; // grid (u, v) of 5th Ave & 42nd St, refined below
-
-// Local tangent plane (east, north) metres
-const enu = (lon, lat) => [(lon - LON0) * KX, (lat - LAT0) * KY];
-// Grid frame: u = grid east, v = grid south
-function gridUV(lon, lat) {
-  const [e, n] = enu(lon, lat);
-  const c = Math.cos(THETA);
-  const s = Math.sin(THETA);
-  return [e * c - n * s, -(e * s + n * c)];
-}
-const toWorld = (lon, lat) => {
-  const [u, v] = gridUV(lon, lat);
-  return [u - ORIGIN[0], v - ORIGIN[1]];
-};
+// NYC frame: tangent plane near 5th Ave & 42nd St, turned to the Manhattan grid. THETA and ORIGIN start from these
+// estimates and are measured from the centreline in section 3.
+const frame = makeFrame({ lat0: 40.75318, lon0: -73.98185, theta: (29.017 * Math.PI) / 180 });
+const { enu, gridUV, toWorld } = frame;
 
 // =====================================================================================================================
 // 2. GEOMETRY HELPERS
@@ -310,7 +289,7 @@ function segLines(s) {
   let acc = 0;
   for (const [a, L] of angs) {
     acc += L;
-    if (acc >= tot / 2) { THETA = (a * Math.PI) / 180; break; }
+    if (acc >= tot / 2) { frame.theta = (a * Math.PI) / 180; break; }
   }
   // Origin: the shared endpoint of 5 AVE and E/W 42 ST
   const ends = new Map();
@@ -324,9 +303,9 @@ function segLines(s) {
     }
   }
   for (const { p, names } of ends.values()) {
-    if (names.has('5 AVE') && (names.has('E  42 ST') || names.has('W  42 ST'))) ORIGIN = gridUV(p[0], p[1]);
+    if (names.has('5 AVE') && (names.has('E  42 ST') || names.has('W  42 ST'))) frame.origin = gridUV(p[0], p[1]);
   }
-  log(`bearing ${(THETA * 180 / Math.PI).toFixed(3)}°, origin (5 Ave & 42 St) at grid ${ORIGIN.map((v) => v.toFixed(1))}`);
+  log(`bearing ${(frame.theta * 180 / Math.PI).toFixed(3)}°, origin (5 Ave & 42 St) at grid ${frame.origin.map((v) => v.toFixed(1))}`);
 }
 
 // =====================================================================================================================
@@ -481,5 +460,5 @@ const coastChains = chainCoastline(load('osm_coastline.json'));
 coastChains.sort((a, b) => b.length - a.length);
 log(`OSM coastline: ${coastChains.length} chains; longest ${coastChains.slice(0, 6).map((c) => c.length).join(', ')}`);
 
-const geo = { THETA, ORIGIN, manhattan, islands, boroughs, coastChains, pierPolys, mnRing, shoreProfile };
+const geo = { THETA: frame.theta, ORIGIN: frame.origin, manhattan, islands, boroughs, coastChains, pierPolys, mnRing, shoreProfile };
 export { geo, toWorld, gridUV, rdp, rdpRing, ringArea, bbox, pointInRing, Raster, r1, load, log, segLines, cscl, centroid };
