@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GEO } from './taipei-geodata.js';
 import { buildFootprintBuildings } from './footprint-buildings.js';
 import { buildGraphRoads } from './graph-roads.js';
+import { SimpleVehicles } from './simple-vehicles.js';
 
 // js/taipei-main.js
 // Taipei milestone viewer (taipei.html): the 1 km box around Taipei 101 from OSM footprints, orbit camera, sun & sky.
@@ -79,16 +80,47 @@ async function init() {
   toggle.addEventListener('click', () => setEstimates(!showEstimates));
   window.addEventListener('keydown', (ev) => { if (ev.key === 'e' || ev.key === 'E') setEstimates(!showEstimates); });
 
+  // Car & plane: Taiwan drives on the right; the car starts on the widest road near Taipei 101, the plane south of it
+  const vehicles = new SimpleVehicles(scene, GEO, {
+    spawnNear: { x: t101 ? t101.x : 0, z: t101 ? t101.z : 0 },
+    driveOnRight: true,
+    planeSpawn: { x: -250, y: 220, z: 900, heading: 0 }
+  });
+  const modeButtons = [...document.querySelectorAll('[data-mode]')];
+  const vehicleStatus = document.getElementById('vehicle-status');
+  const setMode = (mode) => {
+    if (mode === 'orbit' && vehicles.mode !== 'orbit') {
+      // keep looking at where the vehicle was
+      const v = vehicles.mode === 'car' ? vehicles.car : vehicles.plane;
+      controls.target.set(v.x, vehicles.mode === 'car' ? 0 : v.y, v.z);
+    }
+    vehicles.setMode(mode, camera);
+    controls.enabled = mode === 'orbit';
+    for (const b of modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+    document.getElementById('drive-help').hidden = mode === 'orbit';
+    renderer.domElement.focus();
+  };
+  for (const b of modeButtons) b.addEventListener('click', () => setMode(b.dataset.mode));
+  window.addEventListener('keydown', (ev) => {
+    const mode = { Digit1: 'orbit', Digit2: 'car', Digit3: 'plane' }[ev.code];
+    if (mode) setMode(mode);
+  });
+
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
-  renderer.setAnimationLoop(() => {
-    controls.update();
+  const timer = new THREE.Timer();
+  renderer.setAnimationLoop((time) => {
+    timer.update(time);
+    const dt = timer.getDelta();
+    if (vehicles.mode === 'orbit') controls.update();
+    else vehicles.update(dt, camera);
+    vehicleStatus.textContent = vehicles.status;
     renderer.render(scene, camera);
   });
-  window.__taipei = { scene, camera, controls, buildings }; // for debugging from the console
+  window.__taipei = { scene, camera, controls, buildings, vehicles, setMode }; // for debugging from the console
 }
 
 init().catch((err) => {

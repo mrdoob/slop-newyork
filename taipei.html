@@ -27,9 +27,24 @@
     .hud button { margin-top: 4px; font: inherit; color: inherit; background: #3a4450; border: 1px solid #5a6672;
       border-radius: 6px; padding: 3px 10px; cursor: pointer; }
     .hud button[aria-pressed="true"] { background: #c0581f; border-color: #e07a40; }
+    .modes { position: fixed; top: 12px; left: 12px; display: flex; gap: 6px; align-items: center; padding: 6px 8px;
+      border-radius: 8px; background: rgba(20, 24, 28, 0.72); color: #eef2f5; }
+    .modes button { font: inherit; color: inherit; background: #3a4450; border: 1px solid #5a6672; border-radius: 6px;
+      padding: 4px 12px; cursor: pointer; }
+    .modes button[aria-pressed="true"] { background: #2f6fb0; border-color: #5a9ad8; }
+    #vehicle-status { margin-left: 6px; font-variant-numeric: tabular-nums; }
+    #drive-help { position: fixed; top: 58px; left: 12px; margin: 0; padding: 6px 10px; border-radius: 8px;
+      background: rgba(20, 24, 28, 0.6); color: #eef2f5; }
   </style>
 </head>
 <body>
+  <div class="modes">
+    <button type="button" data-mode="orbit" aria-pressed="true">1 Orbit</button>
+    <button type="button" data-mode="car" aria-pressed="false">2 Car</button>
+    <button type="button" data-mode="plane" aria-pressed="false">3 Plane</button>
+    <span id="vehicle-status" aria-live="polite"></span>
+  </div>
+  <p id="drive-help" hidden>W/S or ↑/↓ forward &amp; back · A/D or ←/→ turn · Shift faster · Plane: R climb, F descend</p>
   <div class="hud">
     <p id="stats">Loading…</p>
     <p>Building heights are partially <strong>estimated</strong> where OpenStreetMap has no height or storey count.
