@@ -17,23 +17,27 @@ export const LEVEL_M = 3.2; // storey height (floor to floor) used to turn level
 // Estimated storeys by OSM `building` type: [levels at footprint ≤ a0 m², levels at footprint ≥ a1 m², a0, a1].
 // Storeys grow with the logarithm of the footprint area between the two ends (bigger plots carry taller buildings),
 // so untagged buildings vary with their real footprints instead of sharing one default height.
-// Calibrated on the tagged buildings of Taipei's Xinyi district (1 km box around Taipei 101, OSM 2026-10):
-//   apartments  100–300 m²: median 22 m (7 storeys), 300–1000 m²: 42 m (13), 1000–3000 m²: 54 m (17)
-//   commercial  300–1000 m²: 42 m, 1000–3000 m²: 99 m;   residential: 9–18 m;   yes < 100 m²: 3 m, 100–300 m²: 9 m
-// Types without tagged examples (retail, school, office, hospital) follow typical building programmes. Office and
-// hospital rise tallest, houses and retail stay low.
+// Calibrated in the 1 km Xinyi box around Taipei 101 (2026-10): first on OSM's tagged buildings, then checked against
+// measured heights for 329 footprints (tools/validate-heights.mjs, a local-only comparison with the 智慧城市3D臺北
+// building models; those heights are not redistributed). Medians of the measured heights:
+//   apartments  100–300 m²: 25 m, 300–1000 m²: 43 m;   residential 100–300 m²: 22 m;   school 1000–3000 m²: 24 m
+//   commercial  300–1000 m²: 56 m, 1000–3000 m²: 89 m;  office 300–1000 m²: 32 m, 1000–3000 m²: 48 m
+//   retail      300–1000 m²: 7 m, 3000+ m²: 53 m (malls);   yes < 100 m²: 4 m, 100–300 m²: 19 m, 300–1000 m²: 41 m
+// That check moved the median error of estimated buildings from 8.3 m (estimates ~18% low) to 5.4 m (unbiased: median
+// ratio 1.02), on a par with heights from `building:levels`. Types without enough measured examples keep typical
+// building programmes. Other districts (older, denser) need their own check.
 export const ESTIMATE_TIERS = {
   house: [1, 2, 60, 300], detached: [1, 2, 60, 300], semidetached_house: [2, 3, 60, 300], terrace: [2, 4, 60, 300],
   hut: [1, 1, 10, 100], shed: [1, 1, 10, 100], garage: [1, 1, 10, 100], garages: [1, 1, 10, 100], kiosk: [1, 1, 10, 100],
   toilets: [1, 1, 10, 100], outbuilding: [1, 1, 10, 100], service: [1, 1, 10, 100], construction: [1, 1, 10, 100],
-  residential: [3, 6, 80, 1000],
-  apartments: [5, 17, 100, 2000],
-  retail: [1, 6, 100, 5000], supermarket: [1, 3, 300, 5000], department_store: [4, 10, 1000, 10000],
-  commercial: [4, 25, 150, 3000], office: [6, 30, 300, 3000], hotel: [6, 25, 300, 3000],
-  hospital: [6, 15, 500, 5000], school: [3, 5, 300, 5000], university: [3, 8, 300, 5000], college: [3, 6, 300, 5000],
-  public: [2, 8, 100, 3000], civic: [2, 8, 100, 3000], government: [3, 10, 200, 3000],
+  residential: [6, 9, 80, 1000],
+  apartments: [5, 21, 100, 2000],
+  retail: [1, 15, 300, 6000], supermarket: [1, 3, 300, 5000], department_store: [4, 12, 1000, 10000],
+  commercial: [6, 34, 150, 3000], office: [6, 18, 300, 3000], hotel: [6, 25, 300, 3000],
+  hospital: [6, 15, 500, 5000], school: [3, 9, 300, 5000], university: [3, 9, 300, 5000], college: [3, 6, 300, 5000],
+  public: [2, 8, 100, 3000], civic: [2, 8, 100, 3000], government: [3, 12, 200, 3000],
   industrial: [1, 3, 200, 5000], warehouse: [1, 2, 200, 5000],
-  yes: [1, 6, 50, 1500] // unspecified type: anything from a kiosk to a mid-rise
+  yes: [1, 14, 50, 1500] // unspecified type: anything from a kiosk to a tower podium
 };
 const DEFAULT_TIER = ESTIMATE_TIERS.yes;
 const ROOF_M = 4; // canopy top when a roof-only structure has no height tags

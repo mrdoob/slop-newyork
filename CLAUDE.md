@@ -146,7 +146,10 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
    Roofs (OSM roof:shape/height/colour) & facade style per building: `tools/geo-building-style.mjs` (facade = style
    hint inferred from tags, not survey). Cars yield to people on crossings; people obey signals (`walkAllowed`).
    Official heights: Taipei UDD LOD1_2025 I3S (measured `H`, scriptable) is NOT openly licensed (no redistribution) —
-   don't bake into geodata without written permission. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
+   don't bake into geodata without written permission. Same for 3d.taipei 3D Tiles (NLSC-schema models, measured
+   `BUILD_H`, "non-value-added" use): `tools/validate-heights.mjs` uses them LOCAL-ONLY (cache + report in git-ignored
+   `tools/data-local/`) to tune `ESTIMATE_TIERS`; only tuned parameters are committed. Xinyi result: estimate median
+   error 8.3 m → 5.4 m. Re-run for each new district before trusting estimates there. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
    heights, address-matched, post-2001 only).
 5. Judge against pass/fail criteria. Fix height variation before expanding.
 Then, only then: second 1 km box in OLD district (Wanhua/Datong) to stress

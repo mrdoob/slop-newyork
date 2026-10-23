@@ -16,7 +16,9 @@ This fork is being retargeted to Taipei. The first milestone is a 1 km box aroun
 
 **The Taipei skyline is partially estimated.** Where OSM gives a building's `height` or storey count, that is used;
 where it gives neither (about 17% of buildings in the Xinyi box), the height is inferred from building type and
-footprint area by `estimateHeight()` in `tools/geo-height.mjs`. Estimated buildings are labelled in the data and can be
+footprint area by `estimateHeight()` in `tools/geo-height.mjs`. Its parameters were checked locally against measured
+heights from Taipei's 3D city models (median error about 5 m in the Xinyi box); those measured heights are not
+redistributed here. Estimated buildings are labelled in the data and can be
 highlighted in the viewer (press E). Taipei 101 renders at its real 508 m from OSM's building parts. Streets are
 drawn from the OSM road graph; road widths come from the `width` or `lanes` tags where present and otherwise from a
 default per road class. Traffic signals stand where OSM maps them, but their timing is a generic fixed cycle. Trees are

@@ -1,1 +1,4 @@
 .DS_Store
+
+# Local-only data that must not be committed (e.g. heights from non-open 3D services)
+tools/data-local/
