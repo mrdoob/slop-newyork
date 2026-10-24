@@ -169,28 +169,141 @@ function offsetTrim(pts, off, d0, d1) {
   return res;
 }
 
+// Does segment p-q cross segment a-b (proper intersection)?
+function crosses([px, pz], [qx, qz], [ax, az], [bx, bz]) {
+  const d = (x0, z0, x1, z1, x2, z2) => (x1 - x0) * (z2 - z0) - (z1 - z0) * (x2 - x0);
+  const d1 = d(ax, az, bx, bz, px, pz), d2 = d(ax, az, bx, bz, qx, qz), d3 = d(px, pz, qx, qz, ax, az), d4 = d(px, pz, qx, qz, bx, bz);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
 export function inferSidewalks(roadGraph, paths, pathKinds) {
   const grid = walkIndex(paths, pathKinds);
   const RG = roadGraph;
   const nodeCount = RG.nodes.length / 2;
   const reach = new Float32Array(nodeCount), degree = new Uint16Array(nodeCount);
   for (const [a, b, , w] of RG.links) for (const n of [a, b]) { reach[n] = Math.max(reach[n], w / 2); degree[n]++; }
+  // One-way links' midpoints & travel directions, to find the opposite carriageway of a dual carriageway
+  const mids = RG.links.map((l) => {
+    const pts = linkLine(RG, l);
+    const [x0, z0] = pts[0], [x1, z1] = pts[pts.length - 1];
+    const L = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const sign = l[5] === -1 ? -1 : 1;
+    return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, dx: ((x1 - x0) / L) * sign, dz: ((z1 - z0) / L) * sign, L, oneway: l[5] !== 0 };
+  });
+  // Side (0 left, 1 right of a -> b) of link i that faces an opposite one-way carriageway, or -1
+  function medianSide(i) {
+    const m = mids[i];
+    if (!m.oneway) return -1;
+    const ax = mids[i].dx * (RG.links[i][5] === -1 ? -1 : 1), az = mids[i].dz * (RG.links[i][5] === -1 ? -1 : 1); // a -> b
+    for (let j = 0; j < mids.length; j++) {
+      const o = mids[j];
+      if (j === i || !o.oneway || m.dx * o.dx + m.dz * o.dz > -0.9) continue; // opposite travel
+      const rx = o.x - m.x, rz = o.z - m.z;
+      const lat = rx * -az + rz * ax; // right of a -> b positive
+      const along = rx * ax + rz * az;
+      if (Math.abs(lat) > 3 && Math.abs(lat) < 45 && Math.abs(along) < m.L / 2 + 20) return lat > 0 ? 1 : 0;
+    }
+    return -1;
+  }
   const out = [];
+  const ends = new Map(); // node -> [{ p, toward: unit vector along the sidewalk towards the node, sw, link }]
+  const addEnd = (n, p, q, sw, link) => {
+    const L = Math.hypot(p[0] - q[0], p[1] - q[1]) || 1;
+    if (!ends.has(n)) ends.set(n, []);
+    ends.get(n).push({ p, toward: [(p[0] - q[0]) / L, (p[1] - q[1]) / L], sw, link });
+  };
   RG.links.forEach((l, i) => {
     const [a, b, , w] = l;
     const tags = RG.sidewalk[i];
     const street = w >= MIN_STREET_W && RG.highway[i] !== 'service';
     const mapped = sidesOf(linkLine(RG, l), w, grid);
     const sw = RG.sidewalkWidth[i] || DEFAULT_SIDEWALK_W(w);
+    const median = medianSide(i);
     [0, 1].forEach((side) => {
       const tag = tags[side];
       if (tag === 2 || tag === 3 || mapped[side]) return; // no / separate / already mapped
-      if (tag === 0 && !street) return;
+      if (tag === 0 && (!street || side === median)) return; // untagged: streets only, not along a median
       // stop short of crossing streets' kerbs (and their sidewalks) at junctions
-      const trim = (n) => (degree[n] >= 3 ? reach[n] + sw : degree[n] === 2 ? 0 : 0);
+      const trim = (n) => (degree[n] >= 3 ? reach[n] + sw : 0);
       const line = offsetTrim(linkLine(RG, l), (side ? 1 : -1) * (w / 2 + sw / 2), trim(a), trim(b));
-      if (line) out.push([line, sw, tag === 1 ? 'tagged' : 'inferred']);
+      if (!line) return;
+      out.push([line, sw, tag === 1 ? 'tagged' : 'inferred']);
+      if (degree[a] >= 3) addEnd(a, line[0], line[1], sw, i);
+      if (degree[b] >= 3) addEnd(b, line[line.length - 1], line[line.length - 2], sw, i);
     });
+  });
+  // Corners: around each junction, join consecutive sidewalk ends of different streets with a curve, unless the join
+  // would cross a street (an arm without sidewalks)
+  let corners = 0;
+  for (const [n, list] of ends) {
+    const [nx, nz] = nodeAt(RG, n);
+    const arms = RG.links.filter(([a, b]) => a === n || b === n).map((l) => {
+      const pts = linkLine(RG, l);
+      return l[0] === n ? [pts[0], pts[1]] : [pts[pts.length - 1], pts[pts.length - 2]];
+    });
+    list.sort((e1, e2) => Math.atan2(e1.p[1] - nz, e1.p[0] - nx) - Math.atan2(e2.p[1] - nz, e2.p[0] - nx));
+    for (let k = 0; k < list.length && list.length > 1; k++) {
+      const e1 = list[k], e2 = list[(k + 1) % list.length];
+      if (e1.link === e2.link || Math.hypot(e1.p[0] - e2.p[0], e1.p[1] - e2.p[1]) > 40) continue;
+      if (arms.some(([p, q]) => crosses(e1.p, e2.p, p, [p[0] + (q[0] - p[0]) * 4, p[1] + (q[1] - p[1]) * 4]))) continue;
+      // control point: where the two sidewalks' lines meet (else the midpoint pulled towards the junction)
+      const [ax, az] = e1.p, [ux, uz] = e1.toward, [bx, bz] = e2.p, [vx, vz] = e2.toward;
+      const den = ux * vz - uz * vx;
+      let c = [(ax + bx) / 2 * 0.7 + nx * 0.3, (az + bz) / 2 * 0.7 + nz * 0.3];
+      if (Math.abs(den) > 1e-3) {
+        const t = ((bx - ax) * vz - (bz - az) * vx) / den;
+        if (t > 0 && t < 30) c = [ax + ux * t, az + uz * t];
+      }
+      const line = [];
+      for (let s = 0; s <= 6; s++) {
+        const t = s / 6, u = 1 - t;
+        line.push([u * u * ax + 2 * u * t * c[0] + t * t * bx, u * u * az + 2 * u * t * c[1] + t * t * bz]);
+      }
+      out.push([line, Math.min(e1.sw, e2.sw), 'inferred']);
+      corners++;
+    }
+  }
+  out.corners = corners;
+  return out;
+}
+
+// Mapped footways running alongside a road, at its kerb, are sidewalks (OSM often tags them only highway=footway):
+// returns the indices of such paths. A path qualifies when at least 60% of its samples lie parallel to a road,
+// between its kerb and KERB_BAND_M beyond.
+const KERB_BAND_M = 12;
+export function sidewalkFootways(roadGraph, paths, pathKinds) {
+  const footway = pathKinds.indexOf('footway');
+  const segs = [];
+  for (const l of roadGraph.links) {
+    const pts = linkLine(roadGraph, l);
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [x0, z0] = pts[i], [x1, z1] = pts[i + 1];
+      const L = Math.hypot(x1 - x0, z1 - z0);
+      if (L > 0.5) segs.push({ x0, z0, dx: (x1 - x0) / L, dz: (z1 - z0) / L, L, w: l[3] });
+    }
+  }
+  const out = [];
+  paths.forEach(([k, , elev, pts], pi) => {
+    if (k !== footway || elev > 0) return;
+    let n = 0, hit = 0;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [x0, z0] = pts[i], [x1, z1] = pts[i + 1];
+      const L = Math.hypot(x1 - x0, z1 - z0);
+      if (L < 0.5) continue;
+      const dx = (x1 - x0) / L, dz = (z1 - z0) / L;
+      for (let d = 1; d < L; d += SAMPLE_M) {
+        n++;
+        const x = x0 + dx * d, z = z0 + dz * d;
+        if (segs.some((s) => {
+          if (Math.abs(s.dx * dx + s.dz * dz) < PARALLEL) return false;
+          const t = (x - s.x0) * s.dx + (z - s.z0) * s.dz;
+          if (t < 0 || t > s.L) return false;
+          const lat = Math.abs((x - s.x0) * -s.dz + (z - s.z0) * s.dx);
+          return lat > s.w / 2 - 0.5 && lat < s.w / 2 + KERB_BAND_M;
+        })) hit++;
+      }
+    }
+    if (n && hit >= 0.6 * n) out.push(pi);
   });
   return out;
 }

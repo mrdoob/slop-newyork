@@ -33,11 +33,37 @@
       padding: 4px 12px; cursor: pointer; }
     .modes button[aria-pressed="true"] { background: #2f6fb0; border-color: #5a9ad8; }
     #vehicle-status { margin-left: 6px; font-variant-numeric: tabular-nums; }
+    #loading { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 14px; background: radial-gradient(circle at 50% 42%, #23303b, #11161b 70%); color: #eef2f5;
+      transition: opacity 0.5s ease, visibility 0.5s; }
+    #loading.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    #loading .logo { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: #c0581f;
+      font-weight: 800; font-size: 15px; letter-spacing: 0.02em; }
+    #loading h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+    .loading-track { position: relative; width: min(260px, 70vw); height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.15);
+      overflow: hidden; }
+    #loading-fill { position: absolute; inset: 0; background: #e07a40; transform-origin: left; transform: scaleX(0);
+      transition: transform 0.25s ease; }
+    .loading-track.is-indeterminate #loading-fill { width: 35%; transform: translateX(-100%); transition: none;
+      animation: loading-sweep 1.2s ease-in-out infinite; }
+    @keyframes loading-sweep { to { transform: translateX(300%); } }
+    @media (prefers-reduced-motion: reduce) { .loading-track.is-indeterminate #loading-fill { animation: none; transform: none; width: 100%; opacity: 0.4; } }
+    #loading-status { margin: 0; font-size: 13px; color: #b9c3cc; font-variant-numeric: tabular-nums; min-height: 1.4em; text-align: center; padding: 0 16px; }
+    #loading.failed #loading-status { color: #ffb4a0; }
+    #loading.failed .loading-track { display: none; }
     #drive-help { position: fixed; top: 58px; left: 12px; margin: 0; padding: 6px 10px; border-radius: 8px;
       background: rgba(20, 24, 28, 0.6); color: #eef2f5; }
   </style>
 </head>
 <body>
+  <div id="loading">
+    <div class="logo" aria-hidden="true">101</div>
+    <h1>Slop Taipei</h1>
+    <div id="loading-bar" class="loading-track is-indeterminate" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="loading-fill"></div>
+    </div>
+    <p id="loading-status" aria-live="polite">Downloading three.js &amp; map data…</p>
+  </div>
   <div class="modes">
     <button type="button" data-mode="orbit" aria-pressed="true">1 Orbit</button>
     <button type="button" data-mode="car" aria-pressed="false">2 Car</button>

@@ -15,6 +15,7 @@
 //   osm_buildings.json   building + building:part ways & relations in BOX   © OpenStreetMap contributors (ODbL)
 //   osm_roads.json       highway ways in BOX                                © OpenStreetMap contributors (ODbL)
 //   osm_street.json      trees, tree rows, traffic signals, parks/green     © OpenStreetMap contributors (ODbL)
+//   osm_furniture.json   lamps, bus stops, MRT entrances, YouBike, hydrants… © OpenStreetMap contributors (ODbL)
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -35,8 +36,16 @@ const BOX = [25.029, 121.559, 25.039, 121.570];
 // Landmarks whose height is known from outside OSM, matched on `name:en` (OSM's primary `name` is Chinese). The build
 // fails if the rendered top (the outline, or its tallest building:part when parts model it) differs by more than
 // `tol` m, so a mis-tagged or mis-modelled landmark can't slip through at the wrong scale.
+//
+// `tiers` reshapes one building:part of the landmark where OSM's prism loses its defining form. Taipei 101's shaft
+// (way 198637969, 0–386 m in OSM) is, by its design, a tapered base followed by eight flared modules of eight floors
+// ("pagoda" segments, each wider at its top); the footprint and heights stay OSM's, the base/module split and flare
+// are a shape model of the published design, not survey data.
 const LANDMARKS = {
-  'Taipei 101': { height: 508, tol: 1, ref: 'architectural top incl. spire, CTBUH' }
+  'Taipei 101': {
+    height: 508, tol: 1, ref: 'architectural top incl. spire, CTBUH',
+    tiers: { part: 'w198637969', baseTop: 117, baseScale: [1.05, 0.95], count: 8, moduleScale: [0.93, 1.06] }
+  }
 };
 
 export { frame, toWorld, BOX, LANDMARKS, load, log };

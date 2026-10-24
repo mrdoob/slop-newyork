@@ -9,12 +9,75 @@ import { buildGreenAreas, treeSites } from './green-areas.js';
 import { createTreeField } from './trees.js';
 import { buildSignalControl } from './signal-control.js';
 import { buildFootprintTraffic } from './footprint-traffic.js';
+import { buildStreetFurniture } from './street-furniture.js';
 
 // js/taipei-main.js
 // Taipei milestone viewer (taipei.html): the 1 km box around Taipei 101 from OSM footprints, orbit camera, sun & sky.
 // The NYC app (index.html, js/main.js) is untouched and stays the comparison baseline.
 
+// Loading screen (taipei.html #loading): a sweeping bar while the modules download, then real progress through the
+// build steps and shader compilation. Each step yields a frame so the bar repaints between the synchronous builds.
+const loading = {
+  el: document.getElementById('loading'),
+  bar: document.getElementById('loading-bar'),
+  fill: document.getElementById('loading-fill'),
+  status: document.getElementById('loading-status'),
+  set(p, label) {
+    const pct = Math.round(Math.min(1, Math.max(0, p)) * 100);
+    this.bar.classList.remove('is-indeterminate');
+    this.fill.style.transform = `scaleX(${pct / 100})`;
+    this.bar.setAttribute('aria-valuenow', String(pct));
+    if (label) this.status.textContent = `${label}… ${pct}%`;
+  },
+  async step(p, label) {
+    this.set(p, label);
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+  },
+  done() {
+    this.set(1);
+    this.status.textContent = 'Ready';
+    this.el.classList.add('hidden');
+    this.el.addEventListener('transitionend', () => this.el.remove(), { once: true });
+  },
+  fail(message) {
+    this.bar.classList.remove('is-indeterminate');
+    this.el.classList.add('failed');
+    this.status.textContent = message;
+  }
+};
+
+// Compile every visible object's shaders behind the loading screen (onProgress: 0..1), a few side by side: one
+// compileAsync() waits a frame after each slice of work, so several keep the main thread busy. Meshes sharing a
+// material share a pipeline, so one job compiles them in turn.
+async function precompile(renderer, scene, camera, onProgress) {
+  const jobs = [];
+  const byMaterial = new Map();
+  scene.traverseVisible((o) => {
+    if (!o.isMesh) return;
+    if (o.isInstancedMesh || Array.isArray(o.material)) { jobs.push([o]); return; }
+    if (!byMaterial.has(o.material)) { byMaterial.set(o.material, []); jobs.push(byMaterial.get(o.material)); }
+    byMaterial.get(o.material).push(o);
+  });
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < jobs.length) {
+      const job = jobs[next++];
+      for (const object of job) {
+        await new Promise((resolve) => setTimeout(resolve, 0)); // each compile in a task of its own
+        try {
+          await renderer.compileAsync(object, camera, scene);
+        } catch (e) {
+          console.warn('[compile]', e); // the first frame compiles it instead
+        }
+      }
+      onProgress(++done / jobs.length);
+    }
+  };
+  await Promise.all(Array.from({ length: 8 }, worker));
+}
+
 async function init() {
+  await loading.step(0.02, 'Starting WebGPU');
   const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: 'high-performance', reversedDepthBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -23,6 +86,7 @@ async function init() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   document.body.appendChild(renderer.domElement);
   await renderer.init();
+  await loading.step(0.06, 'Lighting the sky');
 
   const scene = new THREE.Scene();
   const sky = new THREE.Color(0xb9cddc);
@@ -63,11 +127,17 @@ async function init() {
   sun.shadow.normalBias = 0.6;
   scene.add(sun, sun.target);
 
+  await loading.step(0.1, `Raising ${GEO.buildings.length} buildings`);
   const buildings = buildFootprintBuildings(scene, GEO);
+  await loading.step(0.22, 'Paving roads & sidewalks');
   // Taiwan marks two-way centre lines in yellow (lane dividers stay white)
   buildGraphRoads(scene, GEO, { centreLineColour: 0xe8b420 });
+  await loading.step(0.3, `Planting ${(GEO.trees || []).length} trees & street furniture`);
   buildGreenAreas(scene, GEO);
   scene.add(createTreeField(scene, treeSites(GEO)).group);
+  // Street furniture in Taipei's colours: YouBike 2.0 yellow, Chunghwa Post's green & red post box pair, Taipei Metro blue
+  buildStreetFurniture(scene, GEO, { bikeShareColour: 0xf0b400, postBoxColours: [0x2e8b3a, 0xc8261e], metroSignColour: 0x0b5aa2 });
+  await loading.step(0.38, 'Signals, cars & pedestrians');
 
   // Signals & traffic: Taiwan drives on the right; cars mostly white, silver, grey & black, taxis yellow
   const signals = buildSignalControl(scene, GEO, { driveOnRight: true });
@@ -136,6 +206,14 @@ async function init() {
     if (mode) setMode(mode);
   });
 
+  // Shaders: compile with the city's first frame of traffic in place, the car & plane shown for the moment
+  signals.update(0);
+  traffic.update(1 / 60, camera, null);
+  vehicles.car.group.visible = vehicles.plane.group.visible = true;
+  await loading.step(0.45, 'Compiling shaders');
+  await precompile(renderer, scene, camera, (f) => loading.set(0.45 + 0.55 * f, 'Compiling shaders'));
+  vehicles.car.group.visible = vehicles.plane.group.visible = false;
+
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -153,9 +231,12 @@ async function init() {
     renderer.render(scene, camera);
   });
   window.__taipei = { scene, camera, controls, buildings, vehicles, setMode, signals, traffic }; // for debugging from the console
+  requestAnimationFrame(() => loading.done());
 }
 
 init().catch((err) => {
   console.error(err);
-  document.getElementById('stats').textContent = `Failed to start: ${err.message} (WebGPU needs a recent Chrome/Edge over http)`;
+  const message = `Failed to start: ${err.message} (WebGPU needs a recent Chrome or Edge, served over http)`;
+  loading.fail(message);
+  document.getElementById('stats').textContent = message;
 });

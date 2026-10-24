@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // City-agnostic: everything about the city comes in through `geo`.
 //
 // geo.buildings rows: [id, outer [x, z, ...], holes [[x, z, ...], ...], top m, base m, source index, kind index,
-// wall colour | 0, roof shape index, roof height m, roof colour | 0, facade index]; geo.heightSources names the sources
+// wall colour | 0, roof shape index, roof height m, roof colour | 0, facade index, top scale]; geo.heightSources names the sources
 // ('estimate' = inferred, not measured), geo.kinds the OSM types, geo.roofShapes & geo.facades the styles.
 //
 // Walls rise to the roof's eaves; pitched roofs (pyramidal, hipped) and domes sit on top, flat roofs are the walls' cap
@@ -108,6 +108,7 @@ function buildFootprintBuildings(scene, geo) {
   const wallColour = new THREE.Color();
   const roofColour = new THREE.Color();
   const stats = { total: 0, bySource: Object.fromEntries(geo.heightSources.map((s) => [s, 0])), maxTop: 0 };
+  const counted = new Set(); // OSM buildings, not the pieces a landmark shape splits one into (id_base, id_m1, ...)
   const paint = (g, wall, roof, capVertices, est, facade, base) => {
     const n = g.attributes.position.count;
     const col = new Float32Array(n * 3);
@@ -118,7 +119,7 @@ function buildFootprintBuildings(scene, geo) {
     g.setAttribute('base', new THREE.BufferAttribute(new Float32Array(n).fill(base), 1));
     parts.push(g);
   };
-  for (const [id, outer, holes, top, base, source, kind, osmColour, roofIdx = 0, roofH = 0, osmRoofColour = 0, facadeIdx = 0] of geo.buildings) {
+  for (const [id, outer, holes, top, base, source, kind, osmColour, roofIdx = 0, roofH = 0, osmRoofColour = 0, facadeIdx = 0, topScale = 1] of geo.buildings) {
     if (!(top - base > 0) || outer.length < 6) continue;
     const shape = roofShapes[roofIdx] || 'flat';
     const eaves = shape === 'flat' ? top : Math.max(base + 0.5, top - roofH);
@@ -126,6 +127,17 @@ function buildFootprintBuildings(scene, geo) {
     g.rotateX(-Math.PI / 2); // extrusion axis -> +y, shape (x, -z) -> world (x, z)
     g.translate(0, base, 0);
     g.deleteAttribute('uv');
+    if (topScale !== 1) {
+      // tapered / flared walls: the footprint scales about its centroid from 1 at the base to topScale at the eaves
+      const [cx, cz] = centroid(ringPts(outer));
+      const p = g.attributes.position;
+      for (let v = 0; v < p.count; v++) {
+        const k = 1 + (topScale - 1) * ((p.getY(v) - base) / (eaves - base));
+        p.setX(v, cx + (p.getX(v) - cx) * k);
+        p.setZ(v, cz + (p.getZ(v) - cz) * k);
+      }
+      g.computeVertexNormals();
+    }
     if (osmColour) wallColour.setStyle(osmColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN);
     else wallColour.setHex(KIND_COLOURS[geo.kinds[kind]] ?? DEFAULT_COLOUR);
     wallColour.offsetHSL(0, 0, (hash01(id) - 0.5) * 0.08);
@@ -140,8 +152,12 @@ function buildFootprintBuildings(scene, geo) {
       const roof = shape === 'dome' || shape === 'onion' ? domeRoof(pts, area, eaves, top) : pitchedRoof(pts, eaves, top, shape);
       paint(roof, roofColour, roofColour, 0, est, NONE, base);
     }
-    stats.total++;
-    stats.bySource[geo.heightSources[source]]++;
+    const osmId = id.split('_')[0];
+    if (!counted.has(osmId)) {
+      counted.add(osmId);
+      stats.total++;
+      stats.bySource[geo.heightSources[source]]++;
+    }
     stats.maxTop = Math.max(stats.maxTop, top);
   }
   const geometry = mergeGeometries(parts, false);

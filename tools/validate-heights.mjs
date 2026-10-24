@@ -4,7 +4,8 @@
 // Fetches the 智慧城市3D臺北 building tiles (https://3d.taipei, 3D Tiles 1.1, per-building EXT_structural_metadata with
 // the measured height BUILD_H) covering the Taipei test box, matches each modelled building to the OSM footprint it
 // stands in, and reports how far the generic estimate (tools/geo-height.mjs) is from the measured height, by building
-// type and footprint size, with suggested ESTIMATE_TIERS.
+// type and footprint size, with suggested ESTIMATE_TIERS. It also lists where the 3D models have buildings that OSM
+// lacks entirely (gaps to survey and map in OSM from allowed sources: the 3D service itself may not be traced).
 //
 // The 3D service has no open licence (its schema follows the NLSC national 3D building model, served for
 // "non-value-added" use), so NOTHING it returns may be committed or written into js/*-geodata.js: downloads and the
@@ -211,5 +212,19 @@ for (const [type, [l0, l1, a0, a1]] of Object.entries(ESTIMATE_TIERS)) {
 console.log('\nSuggested ESTIMATE_TIERS (storeys at a0 / a1 m², fitted to measured heights):');
 console.table(Object.fromEntries(Object.entries(suggested).map(([k, v]) => [k, { n: v.n, current: v.current.join(' / '), fitted: v.fitted.join(' / ') }])));
 
-fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, suggested }, null, 1));
+// Gaps: measured buildings ≥ 4 m tall whose centre lies in no OSM building or building:part, grouped on a 50 m grid
+const footprints = osm.elements.filter((e) => e.type === 'way' && e.tags && (e.tags.building || e.tags['building:part']) && e.geometry)
+  .map((e) => e.geometry.map((g) => toWorld(g.lon, g.lat)));
+const gaps = [...measured.values()].filter((m) => m.h >= 4 && !footprints.some((r) => pointInRing(m.at[0], m.at[1], r)));
+const cells = new Map();
+for (const g of gaps) {
+  const k = `${Math.floor(g.at[0] / 50) * 50},${Math.floor(g.at[1] / 50) * 50}`;
+  if (!cells.has(k)) cells.set(k, []);
+  cells.get(k).push(g);
+}
+const gapCells = [...cells].map(([k, l]) => ({ cell: k, buildings: l.length, tallest: +Math.max(...l.map((g) => g.h)).toFixed(1) })).sort((a, b) => b.buildings - a.buildings);
+console.log(`\nBuildings the 3D models have but OSM lacks: ${gaps.length} (≥ 4 m tall), in ${cells.size} 50 m cells; busiest cells (world x,z of the cell's corner):`);
+console.table(gapCells.slice(0, 15));
+
+fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, suggested, gapCells }, null, 1));
 log(`report written to ${REPORT} (git-ignored)`);

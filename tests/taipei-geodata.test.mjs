@@ -8,7 +8,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildingHeight, estimateHeight, parseMetres, LEVEL_M } from '../tools/geo-height.mjs';
 import { buildOsmRoadGraph } from '../tools/geo-osm-roadgraph.mjs';
 import { roofOf, facadeOf } from '../tools/geo-building-style.mjs';
-import { fitRoadWidths, inferSidewalks } from '../tools/geo-sidewalks.mjs';
+import { fitRoadWidths, inferSidewalks, sidewalkFootways } from '../tools/geo-sidewalks.mjs';
+import { buildFurniture, FURNITURE_KINDS } from '../tools/geo-furniture.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -74,6 +75,37 @@ test('road widths fit mapped sidewalks and missing sidewalks are inferred from t
   assert.ok(both.every(([, w, src]) => w > 0 && src === 'inferred'));
 });
 
+test('sidewalks turn corners at junctions and kerbside footways count as sidewalks', () => {
+  const way = (id, nodes, tags, pts) => ({ type: 'way', id, nodes, tags, geometry: pts.map(([x, z]) => ({ lon: x, lat: z })) });
+  const kinds = ['footway', 'crossing', 'pedestrian', 'cycleway', 'steps', 'path', 'sidewalk'];
+  // A cross junction of two untagged 9.75 m streets at the origin
+  const { roadGraph, paths } = buildOsmRoadGraph([
+    way(1, [1, 0, 2], { highway: 'tertiary', lanes: '3' }, [[-150, 0], [0, 0], [150, 0]]),
+    way(2, [3, 0, 4], { highway: 'tertiary', lanes: '3' }, [[0, -150], [0, 0], [0, 150]]),
+    way(3, [5, 6], { highway: 'footway' }, [[-140, 300 + 7], [140, 300 + 7]]), // kerbside of a third street below
+    way(4, [7, 8], { highway: 'tertiary', lanes: '3' }, [[-150, 300], [150, 300]])
+  ], (lon, lat) => [lon, lat]);
+  assert.deepEqual(sidewalkFootways(roadGraph, paths, kinds), [0], 'the footway along the kerb is a sidewalk');
+  const out = inferSidewalks(roadGraph, paths, kinds);
+  assert.equal(out.corners, 4, 'one corner piece per quadrant');
+});
+
+test('street furniture: mapped items face the road, lamps are inferred along kerbs', () => {
+  const RG = { nodes: [-200, 0, 200, 0], links: [[0, 1, 0, 12, 4, 0, []]], names: [''] };
+  const rows = buildFurniture([
+    { type: 'node', id: 1, lon: 0, lat: 20, tags: { highway: 'bus_stop', shelter: 'yes' } },
+    { type: 'node', id: 2, lon: 30, lat: -10, tags: { emergency: 'fire_hydrant' } },
+    { type: 'node', id: 3, lon: 50, lat: 8, tags: { railway: 'subway_entrance', level: '-1' } } // underground: skipped
+  ], (lon, lat) => [lon, lat], RG);
+  const kind = (r) => FURNITURE_KINDS[r[0]];
+  const shelter = rows.find((r) => kind(r) === 'bus_shelter');
+  assert.ok(shelter && Math.abs(Math.abs(shelter[3]) - Math.PI) < 1e-6, 'shelter at z = 20 faces the road (towards -z)');
+  assert.ok(rows.some((r) => kind(r) === 'fire_hydrant' && r[4] === 0));
+  assert.ok(!rows.some((r) => kind(r) === 'subway_entrance'));
+  const lamps = rows.filter((r) => kind(r) === 'street_lamp');
+  assert.ok(lamps.length >= 8 && lamps.every((r) => r[4] === 1 && Math.abs(Math.abs(r[2]) - 6.6) < 0.01), 'inferred lamps at the kerbs');
+});
+
 test('underground ways are left out and skywalk stairs ramp to the ground', () => {
   const way = (id, nodes, tags) => ({ type: 'way', id, nodes, tags, geometry: nodes.map((n) => ({ lon: n, lat: 0 })) });
   const toWorld = (lon) => [lon * 10, 0];
@@ -108,7 +140,7 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     const tops = [];
     for (const [id, outer, holes, top, base, source, kind, , roof, roofH, , facade] of GEO.buildings) {
       assert.ok(roof >= 0 && roof < GEO.roofShapes.length && roofH >= 0 && roofH <= top - base && facade >= 0 && facade < GEO.facades.length, id);
-      assert.match(id, /^[wr]\d+$/);
+      assert.match(id, /^[wr]\d+(_(base|m\d+))?$/); // OSM id, or a landmark shape piece of one
       assert.ok(outer.length >= 6 && outer.length % 2 === 0, id);
       assert.ok(Array.isArray(holes), id);
       assert.ok(top > base && base >= 0, `${id}: ${base}..${top}`);
@@ -119,12 +151,23 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     const counts = new Map();
     for (const t of tops) counts.set(t, (counts.get(t) || 0) + 1);
     assert.ok(Math.max(...counts.values()) < tops.length * 0.2, 'one height covers 20%+ of buildings');
-    assert.ok(tops.filter((t) => t > 300).every((t) => t >= 386), 'only Taipei 101 rises past 300 m');
+    // (Taipei 101's own shaft modules step up from 117 m to 386 m; everything else past 300 m is its upper parts)
+    assert.ok(GEO.buildings.filter((b) => b[3] > 300 && !/^w198637969_/.test(b[0])).every((b) => b[3] >= 386), 'only Taipei 101 rises past 300 m');
     assert.ok(GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'), 'estimates are labelled');
     // Roof shapes from OSM roof:shape; Taipei 101 (building:material=mirror) reads as a glass curtain wall
     assert.ok(GEO.buildings.some((b) => GEO.roofShapes[b[8]] === 'dome') && GEO.buildings.some((b) => GEO.roofShapes[b[8]] === 'hipped'));
     const tallest = GEO.buildings.reduce((a, b) => (b[3] > a[3] ? b : a));
     assert.equal(GEO.facades[tallest[11]], 'curtain');
+    // Taipei 101's shaft: a tapered base and eight flared modules up to the OSM shaft top (386 m)
+    const modules = GEO.buildings.filter((b) => /^w198637969_m\d$/.test(b[0]));
+    assert.equal(modules.length, 8);
+    assert.ok(modules.every((b) => b[12] > 1), 'modules flare outward');
+    assert.equal(Math.max(...modules.map((b) => b[3])), 386);
+    // Street furniture: mapped and inferred items, valid kinds
+    assert.ok(GEO.furniture.length > 300 && GEO.furniture.every(([k, x, z, yaw, src]) => k >= 0 && k < GEO.furnitureKinds.length && src >= 0 && src < GEO.furnitureSources.length && Number.isFinite(x + z + yaw)));
+    for (const k of ['bus_shelter', 'subway_entrance', 'bicycle_rental', 'fire_hydrant']) {
+      assert.ok(GEO.furniture.some((f) => GEO.furnitureKinds[f[0]] === k && GEO.furnitureSources[f[4]] === 'mapped'), `mapped ${k}`);
+    }
 
     // Road graph: same shape as NYC's GEO.roadGraph, with Xinyi's main streets
     const RG = GEO.roadGraph;

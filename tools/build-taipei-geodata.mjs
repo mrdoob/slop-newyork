@@ -11,7 +11,8 @@ import { toWorld, BOX, LANDMARKS, load, log } from './geo-taipei-base.mjs';
 import { buildingHeight } from './geo-height.mjs';
 import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
 import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgraph.mjs';
-import { fitRoadWidths, inferSidewalks } from './geo-sidewalks.mjs';
+import { fitRoadWidths, inferSidewalks, sidewalkFootways } from './geo-sidewalks.mjs';
+import { buildFurniture, FURNITURE_KINDS, FURNITURE_SOURCES } from './geo-furniture.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL('../js/taipei-geodata.js', import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
@@ -140,6 +141,24 @@ for (const [name, ref] of Object.entries(LANDMARKS)) {
   log(`landmark ${name}: top ${top} m from ${o.parts.length ? `${o.parts.length} parts` : 'its outline'} (expected ${ref.height} m)`);
 }
 
+// --- Landmark shapes: a part split into a tapered base and flared modules (LANDMARKS[...].tiers) -----------------------
+for (const [name, ref] of Object.entries(LANDMARKS)) {
+  const T = ref.tiers;
+  if (!T) continue;
+  const i = buildings.findIndex((x) => x.b.id === T.part);
+  if (i < 0) throw new Error(`landmark "${name}": tier part ${T.part} not found`);
+  const src = buildings[i];
+  const [cx, cz] = centroid(src.b.outer);
+  const scaled = (k) => src.b.outer.map(([x, z]) => [cx + (x - cx) * k, cz + (z - cz) * k]);
+  const piece = (suffix, base, top, [k0, k1]) => ({ ...src, b: { ...src.b, id: `${src.b.id}_${suffix}`, outer: scaled(k0), holes: [] },
+    h: { ...src.h, base, top }, topScale: k1 / k0 });
+  const step = (src.h.top - T.baseTop) / T.count;
+  const rows = [piece('base', src.h.base, T.baseTop, T.baseScale)];
+  for (let k = 0; k < T.count; k++) rows.push(piece(`m${k + 1}`, T.baseTop + k * step, T.baseTop + (k + 1) * step, T.moduleScale));
+  buildings.splice(i, 1, ...rows);
+  log(`landmark ${name}: part ${T.part} shaped as a base and ${T.count} flared modules of ${step.toFixed(1)} m`);
+}
+
 // --- Report ----------------------------------------------------------------------------------------------------------
 const count = Object.fromEntries(SOURCES.map((s) => [s, buildings.filter((x) => x.h.source === s).length]));
 const est = buildings.filter((x) => x.h.source === 'estimate').map((x) => x.h.top);
@@ -156,7 +175,11 @@ const groundRings = buildings.filter((x) => x.h.base < 1).map((x) => x.b.outer);
 const fit = fitRoadWidths(roadGraph, paths, PATH_KINDS, (x, z) => groundRings.some((r) => pointInRing(x, z, r)));
 const PATH_SOURCES = ['mapped', 'tagged', 'inferred'];
 for (const p of paths) p.push(0);
-for (const [line, w, source] of inferSidewalks(roadGraph, paths, PATH_KINDS)) paths.push([PATH_KINDS.indexOf('sidewalk'), w, 0, line, 0, PATH_SOURCES.indexOf(source)]);
+const promoted = sidewalkFootways(roadGraph, paths, PATH_KINDS);
+for (const pi of promoted) paths[pi][0] = PATH_KINDS.indexOf('sidewalk');
+const inferred = inferSidewalks(roadGraph, paths, PATH_KINDS);
+for (const [line, w, source] of inferred) paths.push([PATH_KINDS.indexOf('sidewalk'), w, 0, line, 0, PATH_SOURCES.indexOf(source)]);
+log(`${promoted.length} mapped footways along kerbs drawn as sidewalks; ${inferred.corners} sidewalk corners`);
 log(`road widths fitted to mapped sidewalks: ${fit.widened} widened, ${fit.narrowed} narrowed; sidewalks: ${PATH_SOURCES.map((s, i) => `${paths.filter((p) => PATH_KINDS[p[0]] === 'sidewalk' && p[5] === i).length} ${s}`).join(', ')}`);
 const widthSource = roadGraph.widthSource;
 delete roadGraph.highway;
@@ -214,6 +237,11 @@ for (const g of green.filter((g) => g.kind === 'forest')) {
 }
 log(`${green.length} green areas; ${trees.length} trees: ${TREE_SOURCES.map((s, i) => `${trees.filter((t) => t[2] === i).length} ${s}`).join(', ')}`);
 
+// --- Street furniture -------------------------------------------------------------------------------------------------
+const furniture = buildFurniture(load('osm_furniture.json').elements, toWorld, roadGraph, (x, z) => groundRings.some((r) => pointInRing(x, z, r)));
+log(`street furniture: ${FURNITURE_KINDS.map((k, i) => [k, furniture.filter((f) => f[0] === i)]).filter(([, l]) => l.length)
+  .map(([k, l]) => `${l.length} ${k}${l.some((f) => f[4] === 1) ? ` (${l.filter((f) => f[4] === 1).length} inferred)` : ''}`).join(', ')}`);
+
 // --- Assemble --------------------------------------------------------------------------------------------------------
 const GEO = {
   version: 1,
@@ -224,12 +252,13 @@ const GEO = {
   heightSources: SOURCES,
   kinds,
   // [OSM id, outer ring [x, z, ...], holes [[x, z, ...], ...], top m, base m, height source index, kind index,
-  //  wall colour | 0, roof shape index, roof height m (included in top), roof colour | 0, facade index]
+  //  wall colour | 0, roof shape index, roof height m (included in top), roof colour | 0, facade index,
+  //  top scale (footprint scale at the top relative to the base, 1 = prism; landmark shapes only)]
   // Roof shapes & facades: tools/geo-building-style.mjs (facades are a style hint inferred from tags).
   roofShapes: ROOF_SHAPES,
   facades: FACADES,
-  buildings: buildings.map(({ b, h, colour, roof, facade }) => [b.id, flat(b.outer), b.holes.map(flat), q(h.top), q(h.base), SOURCES.indexOf(h.source), kindId(b.kind), colour,
-    ROOF_SHAPES.indexOf(roof.shape), q(roof.height), roof.colour, FACADES.indexOf(facade)]),
+  buildings: buildings.map(({ b, h, colour, roof, facade, topScale }) => [b.id, flat(b.outer), b.holes.map(flat), q(h.top), q(h.base), SOURCES.indexOf(h.source), kindId(b.kind), colour,
+    ROOF_SHAPES.indexOf(roof.shape), q(roof.height), roof.colour, FACADES.indexOf(facade), Math.round((topScale ?? 1) * 1000) / 1000]),
   landmarks,
   // Street centreline graph of the drivable roads (tools/geo-osm-roadgraph.mjs; same shape as NYC's GEO.roadGraph):
   // nodes [x, z, ...], links [node a, node b, name index, curb-to-curb width, travel lanes, direction (1: a -> b,
@@ -251,14 +280,20 @@ const GEO = {
   // Trees: [x, z, source index into treeSources, tagged height m | 0]. Only 'osm tree' positions are mapped trees; the
   // other sources space trees along mapped rows and through mapped woods.
   treeSources: TREE_SOURCES,
-  trees
+  trees,
+  // Street furniture: [kind index into furnitureKinds, x, z, yaw (front towards the nearest road), source index into
+  // furnitureSources, extra (bicycle_rental: docks)]. 'inferred': lamps spaced along kerbs, scooters filling mapped
+  // parking areas (tools/geo-furniture.mjs).
+  furnitureKinds: FURNITURE_KINDS,
+  furnitureSources: FURNITURE_SOURCES,
+  furniture: furniture.map(([k, x, z, yaw, src, extra]) => [k, q(x), q(z), Math.round(yaw * 1000) / 1000, src, extra])
 };
 
 const json = JSON.stringify(GEO);
 const header = `// js/taipei-geodata.js — GENERATED by tools/build-taipei-geodata.mjs, do not edit by hand.
 // Taipei geography in the simulation's world frame: 1 unit = 1 m, x = east, z = south, origin at Taipei 101.
 // Polygons are flat [x0, z0, x1, z1, ...] arrays.
-// Building footprints, tagged heights, roads, signals, trees & green areas © OpenStreetMap contributors (ODbL). Heights with source 'estimate'
+// Building footprints, tagged heights, roads, signals, trees, green areas & street furniture © OpenStreetMap contributors (ODbL). Heights with source 'estimate'
 // (${count.estimate} of ${buildings.length}) are inferred from building type and footprint area, not measured.
 `;
 fs.writeFileSync(OUT, `${header}export const GEO = ${json};\n`);

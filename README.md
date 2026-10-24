@@ -23,7 +23,10 @@ highlighted in the viewer (press E). Taipei 101 renders at its real 508 m from O
 drawn from the OSM road graph; road widths come from the `width` or `lanes` tags where present and otherwise from a
 default per road class, adjusted to the gap between mapped sidewalks where those exist. OSM maps few sidewalks
 here, so sidewalks along streets 6 m or wider are drawn from the roads' sidewalk tags or, untagged, assumed (labelled
-'inferred' in the data, default widths). Traffic signals stand where OSM maps them, but their timing is a generic fixed cycle. Trees are
+'inferred' in the data, default widths), joined around junction corners. Street furniture (bus stops, MRT entrances,
+YouBike stations, hydrants, flagpoles…) stands where OSM maps it; street lamps, which OSM barely maps here, are spaced
+along kerbs and labelled inferred. Taipei 101's shaft is shaped as its documented base and eight flared modules on
+OSM's footprint and heights. Traffic signals stand where OSM maps them, but their timing is a generic fixed cycle. Trees are
 OSM's mapped trees plus trees spaced along mapped tree rows and through mapped woods (the models are generic
 broadleaf trees, not Taipei species). Cars and pedestrians are simulated, not real traffic. Roof shapes and colours
 come from OSM where tagged; facade styles (curtain wall, punched windows, shopfronts) are inferred from building type,

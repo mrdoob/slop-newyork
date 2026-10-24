@@ -152,7 +152,13 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
    error 8.3 m → 5.4 m. Re-run for each new district before trusting estimates there.
    Sidewalks (`tools/geo-sidewalks.mjs`): only ~7% of street length has mapped sidewalks both sides. Default/lanes
    road widths fit to mapped sidewalks (never into buildings); missing sidewalks drawn from road `sidewalk=*` tags or
-   inferred on untagged streets ≥ 6 m; paths carry source mapped/tagged/inferred. Raised 0.15 m with kerbs. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
+   inferred on untagged streets ≥ 6 m; paths carry source mapped/tagged/inferred. Raised 0.15 m with kerbs.
+   Corners joined at junctions; no inferred sidewalk along dual-carriageway medians; kerbside footways → sidewalk.
+   Street furniture (`tools/geo-furniture.mjs`, `js/street-furniture.js`): OSM nodes (bus stops, MRT, YouBike,
+   hydrants…); lamps inferred along kerbs (OSM maps ~17). Taipei 101 tiers: `LANDMARKS.tiers` (shape model of the
+   design on OSM footprint/heights; renderer `topScale`). Missing buildings: validate-heights.mjs lists ~667
+   3D-model buildings with no OSM footprint (mostly SW of box) — map them in OSM from allowed sources; never trace
+   3d.taipei. Viewer has a loading screen with build-step + shader-compile progress. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
    heights, address-matched, post-2001 only).
 5. Judge against pass/fail criteria. Fix height variation before expanding.
 Then, only then: second 1 km box in OLD district (Wanhua/Datong) to stress
