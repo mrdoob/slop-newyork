@@ -216,8 +216,10 @@ console.log('\nSuggested piecewise tiers [footprint m², storeys] (n per band in
 for (const [type, row] of Object.entries(knots)) console.log(`  ${type.padEnd(12)} ${row.map(([a, l, n]) => `[${a}, ${l}] (${n})`).join('  ')}`);
 
 // Gaps: measured buildings ≥ 4 m tall whose centre lies in no OSM building or building:part, grouped on a 50 m grid
-const footprints = osm.elements.filter((e) => e.type === 'way' && e.tags && (e.tags.building || e.tags['building:part']) && e.geometry)
-  .map((e) => e.geometry.map((g) => toWorld(g.lon, g.lat)));
+// (multipolygon buildings count through their outer member ways)
+const footprints = osm.elements.filter((e) => e.tags && (e.tags.building || e.tags['building:part']))
+  .flatMap((e) => (e.type === 'way' ? [e.geometry] : (e.members || []).filter((m) => m.role === 'outer').map((m) => m.geometry)))
+  .filter(Boolean).map((geom) => geom.map((g) => toWorld(g.lon, g.lat)));
 const gaps = [...measured.values()].filter((m) => m.h >= 4 && !footprints.some((r) => pointInRing(m.at[0], m.at[1], r)));
 const cells = new Map();
 for (const g of gaps) {

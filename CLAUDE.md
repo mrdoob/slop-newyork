@@ -180,6 +180,11 @@ buildings (3,438 missing ≥ 4 m). Heights: 10% tag, 52% levels, 38% estimate; e
 n=132, too few to retune global tiers; tags/levels 0.82×). Open fill source checked: 臺北市建築執照套繪圖
 (data.gov.tw 151936, OGDL v1, footprints + bud_floor) has only post-2006 permits — 92 in the Wanhua box, not a fix.
 Real fix = mapping in OSM from allowed sources.
+Mapping task list: `tools/gap-tasks.mjs` (after validate-heights for the area) -> git-ignored
+`tools/data-local/gap-tasks[-<area>].md/.geojson`, 50 m cells busiest first with iD links. Says WHERE only; local-only
+(3d.taipei-derived). Imagery OK for tracing: editor-layer-index lists NLSC EMAP5/EMAP6_OPENDATA (OGDL 1.0, maps not
+photos) + iD's global Bing/Esri layers. NLSC PHOTO2 orthophoto (our M overlay) is NOT in the index (NLSC user licence,
+judged ODbL-incompatible by talk-tw 2016) — view only, don't trace.
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments
