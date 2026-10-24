@@ -17,8 +17,9 @@ import { fitRoadWidths, inferSidewalks, sidewalkFootways, medianSides } from './
 import { buildFurniture, expandDocks, FURNITURE_KINDS, FURNITURE_SOURCES } from './geo-furniture.mjs';
 import { infillBuildings, INFILL } from './geo-infill.mjs';
 import { kerbClear } from './geo-kerb.mjs';
-import { buildTerrain } from './geo-terrain.mjs';
+import { buildTerrain, terrainHeight } from './geo-terrain.mjs';
 import { buildTransit, STATION_DECK_M, deckNear, placePiers } from './geo-transit.mjs';
+import { deckHeights } from './geo-elevated.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL(`../js/${AREA.out}`, import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
@@ -117,6 +118,34 @@ if (AREA.boundary) {
   log(`boundary: relation ${ids.join(' + ')}, ${boundary.length} ring(s), ${Math.round(boundary.reduce((t, r) => t + Math.abs(ringArea(r)), 0) / 1e4) / 100} km²`);
 }
 const inBoundary = (x, z) => !boundary.length || boundary.some((r) => pointInRing(x, z, r));
+// Lines [elevated, width, [x, z, ...], [heights]] cut to the stretches inside the district (else the box) or within
+// `margin` m of it
+// (long OSM ways, e.g. an expressway viaduct, run far beyond it)
+const [boxW, boxN] = toWorld(BOX[1], BOX[2]), [boxE, boxS] = toWorld(BOX[3], BOX[0]);
+const nearBoundary = (x, z, margin) => {
+  if (!boundary.length) return x > boxW - margin && x < boxE + margin && z > boxN - margin && z < boxS + margin;
+  if (inBoundary(x, z)) return true;
+  for (const r of boundary) for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [ax, az] = r[j], [bx, bz] = r[i], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1e-9;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+    if (Math.hypot(ax + dx * t - x, az + dz * t - z) < margin) return true;
+  }
+  return false;
+};
+const clipLines = (lines, margin = 100) => {
+  const out = [];
+  for (const [up, w, f, hs] of lines) {
+    let run = null;
+    for (let i = 0; i < f.length; i += 2) {
+      if (nearBoundary(f[i], f[i + 1], margin)) {
+        if (!run) { run = [up, w, [], []]; out.push(run); }
+        run[2].push(f[i], f[i + 1]);
+        run[3].push(hs[i / 2]);
+      } else run = null;
+    }
+  }
+  return out.filter((l) => l[2].length >= 4);
+};
 
 // --- Terrain (AREA.terrain; tools/geo-terrain.mjs): ground heights from open SRTM-based elevation tiles, cached in the
 // area's data directory (terrain/). Exported every TERRAIN_STEP m (decimetres) as GEO.terrain.
@@ -179,7 +208,7 @@ let rail = null;
 const RAIL_DECK_DEPTH = 1.5; // guideway deck depth (m), for the piers' tops and the renderer
 if (has('osm_transit.json')) {
   const t = buildTransit(load('osm_transit.json').elements, toWorld);
-  rail = { lines: t.lines, stations: t.stations, note: 'track from OSM; guideway deck heights and piers are estimates (OSM maps layer only)' };
+  rail = { lines: clipLines(t.lines), stations: t.stations, note: 'track from OSM; guideway deck heights and piers are estimates (OSM maps layer only)' };
   log(`metro: ${t.stats.elevated} elevated ways (${t.stats.elevatedM} m), ${t.stats.grade} at grade, ${t.stats.tunnel} in tunnels (left out); ${t.stations.length} stations`);
 }
 
@@ -302,7 +331,60 @@ log(`estimated tops: ${new Set(est).size} distinct values, ${Math.min(...est).to
 // --- Roads ------------------------------------------------------------------------------------------------------------
 const street = load('osm_street.json').elements;
 const signalIds = new Set(street.filter((e) => e.type === 'node' && e.tags && (e.tags.highway === 'traffic_signals' || e.tags.crossing === 'traffic_signals')).map((e) => e.id));
-const { roadGraph, paths } = buildOsmRoadGraph(load('osm_roads.json').elements, toWorld, log, { signalIds });
+const { roadGraph, paths, elevated: elevatedWays, tunnels, gradeIds, nodeOfId } = buildOsmRoadGraph(load('osm_roads.json').elements, toWorld, log, { signalIds });
+
+// --- Underpass ramps: the at-grade links leading into a road tunnel under the flat city (Keelung Road's underpass) go
+// down into a trench instead of ending flat at the portal. From each portal (a graph node on a tunnel), the links
+// carrying the tunnel's name are followed outwards; the road is UNDERPASS_DEPTH_M down at the portal, rising at
+// UNDERPASS_SLOPE (or over the whole chain when it is shorter) to the street. Depths are estimates (OSM maps layer only).
+// Tunnels under hills (the terrain rises over HILL_TUNNEL_M along them: Xiangshan, Wenshan…) enter the hillside at grade.
+const UNDERPASS_DEPTH_M = 6, UNDERPASS_SLOPE = 0.06, HILL_TUNNEL_M = 3;
+const rampDepth = roadGraph.links.map(() => 0);
+{
+  const L = roadGraph.links, N = roadGraph.nodes;
+  const node = (i) => [N[2 * i], N[2 * i + 1]];
+  const linkPts = (l) => [node(l[0]), ...l[6], node(l[1])];
+  const linkLen = (pts) => pts.slice(1).reduce((t, p, i) => t + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
+  const at = new Map();
+  L.forEach((l, i) => { for (const n of [l[0], l[1]]) { if (!at.has(n)) at.set(n, []); at.get(n).push(i); } });
+  let ramps = 0, underpasses = 0;
+  for (const t of tunnels) {
+    if (terrain && Math.max(...t.pts.map(([x, z]) => terrainHeight(terrain, x, z))) > HILL_TUNNEL_M) continue; // under a hill
+    const portals = t.ids.filter((id) => nodeOfId.has(id)).map((id) => nodeOfId.get(id));
+    if (!portals.length) continue;
+    underpasses++;
+    for (const p of portals) {
+      // the ramp chain: links named as the tunnel, outwards from the portal (Dijkstra on length)
+      const dist = new Map([[p, 0]]), chain = new Set(), queue = [p];
+      while (queue.length) {
+        const n = queue.shift();
+        if (n !== p && (at.get(n) || []).length >= 3) continue; // the ramp ends where it merges into the street
+        for (const li of at.get(n) || []) {
+          const l = L[li];
+          if (roadGraph.names[l[2]] !== t.name || rampDepth[li] !== 0 && !chain.has(li)) continue;
+          const m = l[0] === n ? l[1] : l[0], d = dist.get(n) + linkLen(linkPts(l));
+          chain.add(li);
+          if (d < (dist.get(m) ?? Infinity)) { dist.set(m, d); queue.push(m); }
+        }
+      }
+      if (!chain.size) continue;
+      const reach = Math.min(Math.max(...dist.values()), UNDERPASS_DEPTH_M / UNDERPASS_SLOPE);
+      const depthAt = (d) => Math.round(UNDERPASS_DEPTH_M * Math.max(0, 1 - d / reach) * 10) / 10;
+      for (const li of chain) {
+        const l = L[li], pts = linkPts(l), da = dist.get(l[0]) ?? 0, db = dist.get(l[1]) ?? 0;
+        let s = 0;
+        const ds = pts.map((q, i) => { if (i) s += Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]); return db >= da ? da + s : da - s; });
+        const depths = ds.map(depthAt);
+        if (Math.max(...depths) > 0.2) {
+          rampDepth[li] = depths;
+          roadGraph.sidewalk[li] = [2, 2]; // a trench has no sidewalks
+          ramps++;
+        }
+      }
+    }
+  }
+  if (underpasses) log(`underpass ramps: ${ramps} links into ${underpasses} road tunnels under the city (trench depth estimated)`);
+}
 // Road widths checked against mapped sidewalks, then sidewalks along kerbs that have none mapped
 const groundRings = buildings.filter((x) => x.h.base < 1).map((x) => x.b.outer);
 const inGround = ringIndex(groundRings);
@@ -323,6 +405,8 @@ delete roadGraph.sidewalkWidth;
 const qp = (pts) => flat(pts);
 roadGraph.nodes = roadGraph.nodes.map(q);
 roadGraph.links = roadGraph.links.map(([a, b, n, w, lanes, dir, inner]) => [a, b, n, q(w), lanes, dir, qp(inner)]);
+// per link: 0, or the road's depth below the street at each of its points (a, inner…, b): underpass ramps (estimates)
+if (rampDepth.some((d) => d)) roadGraph.rampDepth = rampDepth;
 
 // --- Green areas & trees ---------------------------------------------------------------------------------------------
 // Green ground: parks (often paved plazas in Xinyi), gardens, grass, woods
@@ -432,6 +516,22 @@ const builtFurniture = buildFurniture(load('osm_furniture.json').elements, toWor
 // along a mapped tree row; inferred ones (lamps, scooters, trees filling a wood) that land on a road are dropped. Items with no clear kerb spot are dropped.
 const KERB_MARGIN = { bus_shelter: 1.0, subway_entrance: 3.3, bicycle_rental: 0.8, vending_machine: 0.6, telephone: 0.6, tree: 1.2 };
 const clear = kerbClear(roadGraph, solid);
+// --- Elevated roads (viaducts, expressways and their ramps; OSM layer >= 1): drawn, not driven. Deck heights are
+// ESTIMATES (OSM maps layer, not height): ROAD_DECK_M by layer, ramping down at ROAD_RAMP_SLOPE to the street where an
+// elevated way meets one at grade. Widths: width tag, else lanes × 3.25 m, plus ROAD_SHOULDER_M of shoulders.
+const ROAD_DECK_M = (layer) => 9 + 6 * (Math.min(layer, 3) - 1); // layer 1: 9 m, 2: 15 m (over another viaduct), 3: 21 m
+const ROAD_RAMP_SLOPE = 0.06, ROAD_SHOULDER_M = 1.2, ROAD_DECK_DEPTH = 1.8;
+let elevatedRoads = null;
+if (elevatedWays.length) {
+  const net = elevatedWays.map((w) => ({ ids: w.ids, pts: w.pts, elevated: true, deck: ROAD_DECK_M(w.layer) }));
+  const heights = deckHeights(net, [...gradeIds], ROAD_RAMP_SLOPE);
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const lines = clipLines(elevatedWays.map((w) => [1, r1(w.width + ROAD_SHOULDER_M), w.pts.flatMap(([x, z]) => [r1(x), r1(z)]), w.ids.map((id) => r1(heights.get(id) ?? 0))]));
+  const { piers, candidates } = placePiers(lines, ROAD_DECK_DEPTH, kerbClear(roadGraph), inBuilding);
+  const km = Math.round(lines.reduce((t, [, , f]) => { for (let i = 2; i < f.length; i += 2) t += Math.hypot(f[i] - f[i - 2], f[i + 1] - f[i - 1]); return t; }, 0) / 100) / 10;
+  elevatedRoads = { lines, piers, deckDepth: ROAD_DECK_DEPTH, note: 'elevated roads from OSM; deck heights estimated from layer (no heights mapped)' };
+  log(`elevated roads: ${elevatedWays.length} ways (${km} km in the area), ${piers.length} piers (of ${candidates}); deck heights estimated`);
+}
 if (rail) {
   const { piers, candidates } = placePiers(rail.lines, RAIL_DECK_DEPTH, kerbClear(roadGraph), inBuilding);
   rail.deckDepth = RAIL_DECK_DEPTH;
@@ -521,7 +621,10 @@ const GEO = {
   // Metro above ground (absent without osm_transit.json): lines [elevated 0|1, deck width m, [x, z, ...], [deck top
   // height m per point]]; deck heights are ESTIMATES (OSM has layer only), ramping to 0 at portals. stations:
   // [name, name:en, x, z] (underground ones too)
-  ...(rail ? { rail } : {})
+  ...(rail ? { rail } : {}),
+  // Elevated roads (viaducts; not part of roadGraph, no traffic): lines [1, deck width m, [x, z, ...], [deck top height m
+  // per point]], piers [x, z, yaw, deck underside m], deckDepth. Heights are ESTIMATES from OSM layer.
+  ...(elevatedRoads ? { elevatedRoads } : {})
 };
 
 const json = JSON.stringify(GEO);

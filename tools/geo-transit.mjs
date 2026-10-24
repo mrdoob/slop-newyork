@@ -9,6 +9,9 @@
 // buildTransit(elements, toWorld) -> { lines: [[elevated 0|1, width m, [x, z, ...], [deck height m per point]]],
 //   stations: [[name, name:en, x, z]] (railway=station nodes: metro and rail, underground ones included), stats }
 
+import { deckHeights } from './geo-elevated.mjs';
+export { deckNear, placePiers } from './geo-elevated.mjs';
+
 const DECK_M = (layer) => (layer >= 3 ? 13 : 10); // deck top above the street (estimate: Taipei's elevated MRT runs ~3 storeys up)
 const RAMP_SLOPE = 0.05; // rise per metre approaching a portal (estimate; metro grades are a few per cent)
 const TRACK_W = 4.4; // deck width per mapped track (m; a double-track line mapped as two ways reads ~9 m)
@@ -19,35 +22,12 @@ export function buildTransit(elements, toWorld) {
   const tunnel = (t) => (t.tunnel && t.tunnel !== 'no') || parseFloat(t.layer) < 0 || t.location === 'underground';
   const elevated = (t) => (t.bridge && t.bridge !== 'no') || parseFloat(t.layer) >= 1;
   const pos = new Map(); // node id -> [x, z]
-  const adj = new Map(); // node id -> [[node id, m]] along non-tunnel track
-  const deck = new Map(); // node id -> deck height of the elevated ways through it
-  const portal = new Set(); // nodes on tunnels or track at grade: deck height 0 there
-  for (const w of ways) {
-    const t = w.tags;
-    w.geometry.forEach((g, i) => pos.set(w.nodes[i], toWorld(g.lon, g.lat)));
-    if (tunnel(t) || !elevated(t)) { for (const n of w.nodes) portal.add(n); }
-    if (tunnel(t)) continue;
-    for (let i = 0; i < w.nodes.length; i++) {
-      const n = w.nodes[i];
-      if (elevated(t)) deck.set(n, Math.max(deck.get(n) || 0, DECK_M(parseFloat(t.layer) || 1)));
-      if (i) {
-        const m = w.nodes[i - 1], [ax, az] = pos.get(m), [bx, bz] = pos.get(n), d = Math.hypot(bx - ax, bz - az);
-        for (const [p, q] of [[m, n], [n, m]]) { if (!adj.has(p)) adj.set(p, []); adj.get(p).push([q, d]); }
-      }
-    }
-  }
-  // Distance along the track from the nearest portal (Dijkstra; few thousand nodes at most)
-  const dist = new Map([...portal].filter((n) => adj.has(n)).map((n) => [n, 0]));
-  const queue = [...dist.keys()];
-  while (queue.length) {
-    let bi = 0;
-    for (let i = 1; i < queue.length; i++) if (dist.get(queue[i]) < dist.get(queue[bi])) bi = i;
-    const n = queue.splice(bi, 1)[0], dn = dist.get(n);
-    for (const [m, d] of adj.get(n) || []) {
-      if (dn + d < (dist.get(m) ?? Infinity)) { dist.set(m, dn + d); queue.push(m); }
-    }
-  }
-  const heightOf = (n) => (portal.has(n) ? 0 : Math.min(deck.get(n) || 0, (dist.get(n) ?? Infinity) * RAMP_SLOPE));
+  for (const w of ways) w.geometry.forEach((g, i) => pos.set(w.nodes[i], toWorld(g.lon, g.lat)));
+  // the track network above ground; tunnel nodes are portals (deck height 0 there), as are nodes of track at grade
+  const portals = ways.filter((w) => tunnel(w.tags)).flatMap((w) => w.nodes);
+  const net = ways.filter((w) => !tunnel(w.tags)).map((w) => ({ ids: w.nodes, pts: w.nodes.map((n) => pos.get(n)), elevated: elevated(w.tags), deck: DECK_M(parseFloat(w.tags.layer) || 1) }));
+  const heights = deckHeights(net, portals, RAMP_SLOPE);
+  const heightOf = (n) => heights.get(n) ?? 0;
 
   const lines = [];
   const stats = { elevated: 0, grade: 0, tunnel: 0, elevatedM: 0 };
@@ -72,57 +52,3 @@ export function buildTransit(elements, toWorld) {
 
 // Deck height (estimate) by layer, for an elevated station building with no guideway mapped beside it
 export const STATION_DECK_M = DECK_M;
-
-// Deck top height (m) of the elevated guideway nearest (x, z) within `within` m, or null
-export function deckNear(lines, x, z, within = 40) {
-  let best = null, bd = within;
-  for (const [up, , f, hs] of lines) {
-    if (!up) continue;
-    for (let i = 0; i < f.length; i += 2) {
-      const d = Math.hypot(f[i] - x, f[i + 1] - z);
-      if (d < bd && hs[i / 2] > 0) { bd = d; best = hs[i / 2]; }
-    }
-  }
-  return best;
-}
-
-// Piers under the elevated guideways: every PIER_EVERY_M along each line where the deck's underside is over 2.5 m up.
-// A double track mapped as two ways shares one row (piers of the two within PAIR_M merge at their midpoint). Like the
-// real viaduct, which spans junctions, no pier stands in a drawn carriageway (`onRoad(x, z, margin)`: kerbClear, null or
-// { moved } inside a road) or a building (`inBuilding(x, z)`).
-// -> [[x, z, yaw, deck underside height m]]
-const PIER_EVERY_M = 32, PAIR_M = 8, PIER_HALF_M = 1.0;
-export function placePiers(lines, deckDepth, onRoad, inBuilding = () => false) {
-  const raw = [];
-  for (const [up, , f, hs] of lines) {
-    if (!up) continue;
-    let carry = PIER_EVERY_M / 2;
-    for (let i = 0; i + 2 < f.length; i += 2) {
-      const ax = f[i], az = f[i + 1], bx = f[i + 2], bz = f[i + 3], L = Math.hypot(bx - ax, bz - az);
-      while (carry < L) {
-        const t = carry / L, under = hs[i / 2] + (hs[i / 2 + 1] - hs[i / 2]) * t - deckDepth;
-        if (under > 2.5) raw.push([ax + (bx - ax) * t, az + (bz - az) * t, Math.atan2(bx - ax, bz - az), under]);
-        carry += PIER_EVERY_M;
-      }
-      carry -= L;
-    }
-  }
-  const used = new Uint8Array(raw.length), piers = [];
-  const r1 = (v) => Math.round(v * 10) / 10;
-  for (let i = 0; i < raw.length; i++) {
-    if (used[i]) continue;
-    used[i] = 1;
-    let j = -1, bd = PAIR_M;
-    for (let k = i + 1; k < raw.length; k++) {
-      if (used[k]) continue;
-      const d = Math.hypot(raw[k][0] - raw[i][0], raw[k][1] - raw[i][1]);
-      if (d < bd) { bd = d; j = k; }
-    }
-    let [x, z, yaw, under] = raw[i];
-    if (j >= 0) { used[j] = 1; x = (x + raw[j][0]) / 2; z = (z + raw[j][1]) / 2; under = Math.min(under, raw[j][3]); }
-    const c = onRoad(x, z, PIER_HALF_M);
-    if (!c || c.moved || inBuilding(x, z)) continue;
-    piers.push([r1(x), r1(z), Math.round(yaw * 1000) / 1000, r1(under)]);
-  }
-  return { piers, candidates: raw.length };
-}

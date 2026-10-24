@@ -10,6 +10,14 @@ import * as THREE from 'three/webgpu';
 //                                     every vertex by the ground height under it (returns a new, non-indexed geometry)
 //   resample(pts, maxStep)            add points along a polyline so ribbons built on it can follow the ground
 //   buildTerrainMesh(geo, material)   the ground itself, as a grid mesh (null without terrain)
+//
+// Underpass ramps (GEO.roadGraph.rampDepth: per link 0, or the road's depth below the street at each of its points):
+//   rampProfile(geo, li)              (s) -> depth m at arc length s along link li, or null for a link at street level
+//   rampDepthAt(geo)                  (x, z) -> depth m of the ramp road under (x, z) (0 off the ramps)
+//   rampOutlines(geo, pad)            the ramps' footprints (where they are below the street), widened by `pad` m, as
+//                                     polygons [[x, z], ...]
+//   groundOpening(geo, pad)           an invisible lid over the ramps that keeps the ground from covering the trench
+//                                     (see the function for the draw order it needs), or null without ramps
 
 function heightAt(geo) {
   const t = geo.terrain;
@@ -88,4 +96,93 @@ function buildTerrainMesh(geo, material) {
   return mesh;
 }
 
-export { heightAt, drape, resample, buildTerrainMesh };
+const linkPoints = (RG, [a, b, , , , , inner]) => {
+  const pts = [[RG.nodes[2 * a], RG.nodes[2 * a + 1]]];
+  for (let i = 0; i < inner.length; i += 2) pts.push([inner[i], inner[i + 1]]);
+  pts.push([RG.nodes[2 * b], RG.nodes[2 * b + 1]]);
+  return pts;
+};
+
+function rampProfile(geo, li) {
+  const RG = geo.roadGraph, depths = RG.rampDepth?.[li];
+  if (!depths) return null;
+  const pts = linkPoints(RG, RG.links[li]), cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  return (s) => {
+    if (s <= 0) return depths[0];
+    for (let i = 1; i < cum.length; i++) {
+      if (s <= cum[i]) return depths[i - 1] + ((depths[i] - depths[i - 1]) * (s - cum[i - 1])) / (cum[i] - cum[i - 1] || 1);
+    }
+    return depths[depths.length - 1];
+  };
+}
+
+function rampDepthAt(geo) {
+  const RG = geo.roadGraph;
+  if (!RG.rampDepth) return () => 0;
+  const segs = [];
+  RG.rampDepth.forEach((depths, li) => {
+    if (!depths) return;
+    const pts = linkPoints(RG, RG.links[li]), hw = RG.links[li][3] / 2;
+    for (let i = 0; i + 1 < pts.length; i++) segs.push([pts[i], pts[i + 1], depths[i], depths[i + 1], hw]);
+  });
+  return (x, z) => {
+    let best = 0, bd = Infinity;
+    for (const [[x0, z0], [x1, z1], d0, d1, hw] of segs) {
+      if (Math.abs(x - x0) > 200 && Math.abs(x - x1) > 200) continue;
+      const dx = x1 - x0, dz = z1 - z0, L2 = dx * dx + dz * dz || 1e-9;
+      const t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / L2));
+      const d = Math.hypot(x0 + dx * t - x, z0 + dz * t - z);
+      if (d <= hw && d < bd) { bd = d; best = d0 + (d1 - d0) * t; }
+    }
+    return best;
+  };
+}
+
+function rampOutlines(geo, pad = 0) {
+  const RG = geo.roadGraph, out = [];
+  (RG.rampDepth || []).forEach((depths, li) => {
+    if (!depths) return;
+    const pts = linkPoints(RG, RG.links[li]), hw = RG.links[li][3] / 2 + pad;
+    const left = [], right = [];
+    for (let i = 0; i < pts.length; i++) {
+      const [ax, az] = pts[Math.max(0, i - 1)], [bx, bz] = pts[Math.min(pts.length - 1, i + 1)];
+      const L = Math.hypot(bx - ax, bz - az) || 1, nx = -(bz - az) / L, nz = (bx - ax) / L;
+      left.push([pts[i][0] - nx * hw, pts[i][1] - nz * hw]);
+      right.push([pts[i][0] + nx * hw, pts[i][1] + nz * hw]);
+    }
+    out.push([...left, ...right.reverse()]);
+  });
+  return out;
+}
+
+// The ground's openings over the ramps, as an invisible lid: drawn (renderOrder) after the roads and the cars, which go
+// down into the trench, and before the ground, it writes depth but no colour at street level, so the ground fails the
+// depth test over the ramps and the trench drawn before it shows. Everything else is depth-tested against it as against
+// the ground. Openings are square at their ends (none past a portal or the ramp's top) and reach the retaining walls
+// (`pad` m beyond the road's edge). null without ramps.
+function groundOpening(geo, pad) {
+  const RG = geo.roadGraph;
+  if (!RG.rampDepth) return null;
+  const ground = heightAt(geo), pos = [];
+  RG.rampDepth.forEach((depths, li) => {
+    if (!depths) return;
+    const pts = linkPoints(RG, RG.links[li]), hw = RG.links[li][3] / 2 + pad;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      if (depths[i] < 0.05 && depths[i + 1] < 0.05) continue;
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1], L = Math.hypot(bx - ax, bz - az) || 1, nx = (-(bz - az) / L) * hw, nz = ((bx - ax) / L) * hw;
+      const q = [[ax - nx, az - nz], [bx - nx, bz - nz], [bx + nx, bz + nz], [ax + nx, az + nz]].map(([x, z]) => [x, ground(x, z) + 0.01, z]);
+      for (const k of [0, 1, 2, 0, 2, 3]) pos.push(...q[k]);
+    }
+  });
+  if (!pos.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const m = new THREE.MeshBasicNodeMaterial({ colorWrite: false, depthWrite: true, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.name = 'ground-openings';
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+export { heightAt, drape, resample, buildTerrainMesh, rampProfile, rampDepthAt, rampOutlines, groundOpening };

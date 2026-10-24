@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { BODY_SPECS, buildCarGeometry, buildCarProxyGeometry, createLoftedCarMaterial } from './actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { SIGNAL_STATE } from './signal-control.js';
-import { heightAt } from './terrain.js';
+import { heightAt, rampDepthAt } from './terrain.js';
 
 // js/footprint-traffic.js
 // Cars driving a street centreline graph (GEO.roadGraph) and pedestrians walking its footways (GEO.paths), for cities
@@ -101,7 +101,8 @@ function trimLine(pts, d0, d1) {
 
 // --- Cars --------------------------------------------------------------------------------------------------------------
 function buildCars(scene, geo, options, signals, rand) {
-  const terrain = heightAt(geo); // cars & people follow the ground (GEO.terrain)
+  const land = heightAt(geo), ramp = rampDepthAt(geo);
+  const terrain = (x, z) => land(x, z) - ramp(x, z); // cars follow the ground (GEO.terrain), down underpass ramps
   const RG = geo.roadGraph;
   const driveOnRight = options.driveOnRight ?? true;
   const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];

@@ -217,6 +217,16 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     assert.ok(hAt(0, 0) < 2, `Taipei 101 ground ${hAt(0, 0)} m`);
     assert.ok(hAt(1184, 716) > 80 && hAt(1184, 716) < 220, `Elephant Mountain ${hAt(1184, 716)} m`);
     assert.ok(GEO.infill.length > 1000 && GEO.infillShown === false, 'Xinyi stand-ins start hidden');
+    // Elevated roads (Civic Boulevard viaduct, Keelung Road's ramps up to it): drawn, not in the road graph; deck heights
+    // estimated from layer, coming down to 0 where they meet the street
+    const ER = GEO.elevatedRoads;
+    assert.ok(ER && ER.lines.length > 10 && ER.piers.length > 50, 'elevated roads and piers');
+    for (const [up, w, pts, hs] of ER.lines) assert.ok(up === 1 && w > 3 && pts.length >= 4 && hs.length === pts.length / 2 && hs.every((h) => h >= 0 && h <= 21));
+    assert.ok(ER.lines.some(([, , , hs]) => Math.min(...hs) === 0 && Math.max(...hs) >= 9), 'a ramp down to the street');
+    // Keelung Road's underpass: its ramps go down into a trench (estimated 6 m at the portal) instead of ending flat
+    const ramps = GEO.roadGraph.rampDepth.map((d, i) => [d, GEO.roadGraph.names[GEO.roadGraph.links[i][2]]]).filter(([d]) => d);
+    assert.ok(ramps.some(([d, name]) => /Keelung Road Underpass/.test(name) && Math.max(...d) === 6), 'Keelung underpass ramps');
+    assert.ok(ramps.every(([d]) => d.every((v) => v >= 0 && v <= 6)));
     // An underground station hall mapped as a part (level=-1, no storeys above ground) is not drawn
     assert.ok(!GEO.buildings.some((b) => b[0] === 'w810653309'), 'underground part left out');
     // Nothing stands in a drawn carriageway

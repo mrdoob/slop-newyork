@@ -1,12 +1,13 @@
 import * as THREE from 'three/webgpu';
-import { heightAt, resample } from './terrain.js';
+import { heightAt, resample, rampProfile } from './terrain.js';
 import { attribute, fract, step, mix, color, float } from 'three/tsl';
 
 // js/graph-roads.js
 // Road surfaces from a street centreline graph (GEO.roadGraph) and walking ways (GEO.paths), as flat ribbons:
 // asphalt per link at its curb-to-curb width, a disc at every junction to close the joints, lane markings derived
 // from each link's lane count and direction, paving for footways, raised sidewalks with kerbs, zebra stripes on
-// crossings and raised skywalks.
+// crossings and raised skywalks. Underpass ramps (GEO.roadGraph.rampDepth) go down into a trench between retaining walls
+// to a dark tunnel mouth; the viewer leaves the ground open over them (js/terrain.js rampOutlines).
 // City-agnostic: everything comes in through `geo`; marking colours can be passed in `options`.
 
 const Y = { path: 0.04, road: 0.08, marking: 0.12, crossing: 0.14 }; // stacking above the ground plane (m)
@@ -115,12 +116,23 @@ function buildGraphRoads(scene, geo, options = {}) {
   ground = heightAt(geo);
   const follow = geo.terrain ? (pts) => resample(pts, TERRAIN_STEP_M) : (pts) => pts;
   const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
-  const links = RG.links.map(([a, b, , w, lanes, dir, inner]) => {
+  const links = RG.links.map(([a, b, , w, lanes, dir, inner], li) => {
     const pts = [node(a)];
     for (let i = 0; i < inner.length; i += 2) pts.push([inner[i], inner[i + 1]]);
     pts.push(node(b));
-    return { a, b, w, lanes, dir, pts: follow(pts) };
+    return { a, b, w, lanes, dir, pts: follow(pts), ramp: rampProfile(geo, li) };
   });
+  // Underpass ramps (GEO.roadGraph.rampDepth) go down below the street: heights along a polyline that starts `s0` m
+  // into its link, at `y` above the ramp's road surface
+  const cumulative = (pts) => { const c = [0]; for (let i = 1; i < pts.length; i++) c.push(c[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return c; };
+  const rampYs = (l, pts, y, s0 = 0) => (l.ramp ? cumulative(pts).map((s) => y - l.ramp(s0 + s)) : y);
+  const sunk = new Set(); // nodes below the street (on a ramp): no junction disc at street level there
+  for (const l of links) {
+    if (!l.ramp) continue;
+    const len = cumulative(l.pts).at(-1);
+    if (l.ramp(0) > 0.2) sunk.add(l.a);
+    if (l.ramp(len) > 0.2) sunk.add(l.b);
+  }
   // Junction size: the widest link meeting at each node; degree for trimming markings
   const reach = new Float32Array(RG.nodes.length / 2);
   const degree = new Uint16Array(RG.nodes.length / 2);
@@ -130,29 +142,60 @@ function buildGraphRoads(scene, geo, options = {}) {
 
   // Asphalt
   const asphalt = newBuf();
-  for (const l of links) ribbon(asphalt, l.pts, -l.w / 2, l.w / 2, Y.road);
-  for (let n = 0; n < reach.length; n++) if (degree[n] >= 2) disc(asphalt, ...node(n), reach[n], Y.road);
+  for (const l of links) ribbon(asphalt, l.pts, -l.w / 2, l.w / 2, rampYs(l, l.pts, Y.road));
+  for (let n = 0; n < reach.length; n++) if (degree[n] >= 2 && !sunk.has(n)) disc(asphalt, ...node(n), reach[n], Y.road);
+
+  // Ramp trenches: retaining walls along both edges, from the road up to a parapet above the street, and a dark tunnel
+  // mouth across the deep end, up to street level
+  const walls = [], mouths = [];
+  const PARAPET_M = 1.0, WALL_OFF = 0.15;
+  for (const l of links) {
+    if (!l.ramp) continue;
+    const cum = cumulative(l.pts), n = l.pts.length;
+    for (const side of [-1, 1]) {
+      const edge = l.pts.map(([x, z], i) => {
+        const [ax, az] = l.pts[Math.max(0, i - 1)], [bx, bz] = l.pts[Math.min(n - 1, i + 1)];
+        const L = Math.hypot(bx - ax, bz - az) || 1, off = side * (l.w / 2 + WALL_OFF);
+        const ex = x - ((bz - az) / L) * off, ez = z + ((bx - ax) / L) * off;
+        return [ex, ez, ground(ex, ez) - l.ramp(cum[i]) + Y.road, ground(ex, ez) + PARAPET_M];
+      });
+      for (let i = 0; i + 1 < n; i++) {
+        const [x0, z0, b0, t0] = edge[i], [x1, z1, b1, t1] = edge[i + 1];
+        walls.push(x0, b0, z0, x1, b1, z1, x1, t1, z1, x0, b0, z0, x1, t1, z1, x0, t0, z0);
+      }
+    }
+    for (const [end, s] of [[0, 0], [n - 1, cum[n - 1]]]) {
+      const d = l.ramp(s);
+      if (d < 3 || degree[end === 0 ? l.a : l.b] > 1) continue; // a portal: the deep, dead end of the ramp
+      const [x, z] = l.pts[end], [px, pz] = l.pts[end === 0 ? 1 : n - 2];
+      const L = Math.hypot(x - px, z - pz) || 1, nx = -(z - pz) / L, nz = (x - px) / L, hw = l.w / 2 + WALL_OFF, g = ground(x, z);
+      const lx = x - nx * hw, lz = z - nz * hw, rx = x + nx * hw, rz = z + nz * hw, yb = g - d + Y.road, yt = g;
+      mouths.push(lx, yb, lz, rx, yb, rz, rx, yt, rz, lx, yb, lz, rx, yt, rz, lx, yt, lz);
+    }
+  }
 
   // Lane markings (extra attribute: 1 = dashed, 0 = solid; colour by line kind)
   const marks = newBuf();
   const markColour = [];
-  const line = (pts, off, dashed, colour) => {
-    ribbon(marks, pts, off - MARK_W / 2, off + MARK_W / 2, Y.marking);
+  const line = (pts, off, dashed, colour, ys = Y.marking) => {
+    ribbon(marks, pts, off - MARK_W / 2, off + MARK_W / 2, ys);
     tag(marks, dashed ? 1 : 0);
     const c = new THREE.Color(colour);
     while (markColour.length < marks.pos.length) markColour.push(c.r, c.g, c.b);
   };
   for (const l of links) {
     if (l.w < 5) continue; // alleys & driveways carry no lane lines
-    const pts = trim(l.pts, degree[l.a] > 1 ? reach[l.a] + 1 : 0, degree[l.b] > 1 ? reach[l.b] + 1 : 0);
+    const d0 = degree[l.a] > 1 ? reach[l.a] + 1 : 0;
+    const pts = trim(l.pts, d0, degree[l.b] > 1 ? reach[l.b] + 1 : 0);
     if (!pts) continue;
+    const ys = rampYs(l, pts, Y.marking, d0);
     const lw = l.w / l.lanes;
     if (l.dir === 0) {
-      if (l.lanes >= 2) line(pts, 0, false, centreColour);
+      if (l.lanes >= 2) line(pts, 0, false, centreColour, ys);
       const perSide = Math.floor(l.lanes / 2);
-      for (let k = 1; k < perSide; k++) { line(pts, -k * lw, true, laneColour); line(pts, k * lw, true, laneColour); }
+      for (let k = 1; k < perSide; k++) { line(pts, -k * lw, true, laneColour, ys); line(pts, k * lw, true, laneColour, ys); }
     } else {
-      for (let k = 1; k < l.lanes; k++) line(pts, -l.w / 2 + k * lw, true, laneColour);
+      for (let k = 1; k < l.lanes; k++) line(pts, -l.w / 2 + k * lw, true, laneColour, ys);
     }
   }
 
@@ -231,6 +274,20 @@ function buildGraphRoads(scene, geo, options = {}) {
     const kerbs = new THREE.Mesh(kerbGeo, new THREE.MeshStandardNodeMaterial({ color: KERB, roughness: 0.85, side: THREE.DoubleSide }));
     kerbs.receiveShadow = true;
     group.add(top, kerbs);
+  }
+  if (walls.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(walls, 3));
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, new THREE.MeshStandardNodeMaterial({ color: 0xb4b0a8, roughness: 0.9, side: THREE.DoubleSide }));
+    mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  if (mouths.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(mouths, 3));
+    g.computeVertexNormals();
+    group.add(new THREE.Mesh(g, new THREE.MeshBasicNodeMaterial({ color: 0x0b0c0e, side: THREE.DoubleSide })));
   }
   if (decks.pos.length) {
     // Skywalk decks: a slab of SKYWALK_DECK_M under the walking surface

@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { BODY_SPECS, buildCarGeometry, buildSteerableWheelGeo, createLoftedCarMaterial } from './actor-models.js';
 import { createWalker, createCyclist } from './player-actors.js';
 import { ufoModel, rocketModel, launchPad, smokeTrail } from './sky-craft.js';
-import { heightAt } from './terrain.js';
+import { heightAt, rampDepthAt } from './terrain.js';
 
 // js/simple-vehicles.js
 // The player for footprint cities (GEO.buildings + GEO.infill + GEO.roadGraph + GEO.paths): on foot, on a bicycle, in a
@@ -77,8 +77,10 @@ function buildIndex(geo) {
 }
 
 // --- Ground: raised sidewalks (GEO.paths of kind 'sidewalk'), for the walker's feet and the cyclist's wheels -----------
+// `terrain` here is the street surface: the ground (GEO.terrain), down in the trench on an underpass ramp
 function buildGround(geo) {
-  const terrain = heightAt(geo);
+  const land = heightAt(geo), ramp = rampDepthAt(geo);
+  const terrain = (x, z) => land(x, z) - ramp(x, z);
   const cells = new Map();
   const sw = (geo.pathKinds || []).indexOf('sidewalk');
   for (const [k, w, elev, pts] of geo.paths || []) {

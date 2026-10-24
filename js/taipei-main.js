@@ -7,14 +7,14 @@ import { SimpleVehicles } from './simple-vehicles.js';
 import { buildGreenAreas, treeSites } from './green-areas.js';
 import { createTreeField } from './trees.js';
 import { buildSignalControl } from './signal-control.js';
-import { buildRailViaduct } from './rail-viaduct.js';
+import { buildViaduct } from './viaduct.js';
 import { buildFootprintTraffic } from './footprint-traffic.js';
 import { buildStreetFurniture } from './street-furniture.js';
 import { buildBasemapOverlay } from './basemap-overlay.js';
 import { FootprintMap } from './footprint-map.js';
 import { TimeOfDay } from './time-of-day.js';
 import { initPanels } from './hud-panels.js';
-import { buildTerrainMesh } from './terrain.js';
+import { buildTerrainMesh, groundOpening } from './terrain.js';
 import { TouchControls } from './touch-controls.js';
 
 // js/taipei-main.js
@@ -135,6 +135,16 @@ async function init() {
   hillMaterial.colorNode = mix(color(0x8c8a83), color(0x5a6b45), smoothstep(6.0, 30.0, positionLocal.y));
   const terrainMesh = buildTerrainMesh(GEO, hillMaterial);
   if (terrainMesh) scene.add(terrainMesh);
+  // Underpass ramps (GEO.roadGraph.rampDepth) go below the street: an invisible lid over them (0.15 m: out to the
+  // retaining walls, js/graph-roads.js) is drawn after the roads and cars and before the ground, so the ground leaves
+  // the trench showing (render orders: roads & cars -4, lid -3, ground -2; set below once those exist)
+  const opening = groundOpening(GEO, 0.15);
+  if (opening) {
+    ground.renderOrder = -2;
+    if (terrainMesh) terrainMesh.renderOrder = -2;
+    opening.renderOrder = -3;
+    scene.add(opening);
+  }
 
   // Sky reflections (glass, car paint): an environment map of a blue sky over a grey city floor
   const envScene = new THREE.Scene();
@@ -163,8 +173,11 @@ async function init() {
   const buildings = buildFootprintBuildings(scene, GEO);
   await loading.step(0.22, 'Paving roads & sidewalks');
   // Taiwan marks two-way centre lines in yellow (lane dividers stay white)
-  buildGraphRoads(scene, GEO, { centreLineColour: 0xe8b420 });
-  buildRailViaduct(scene, GEO); // the elevated MRT (Wenhu line) where the area has it (GEO.rail; deck heights estimated)
+  const roads = buildGraphRoads(scene, GEO, { centreLineColour: 0xe8b420 });
+  // Above the street (deck heights estimated: OSM maps layer, not height): the elevated MRT (Wenhu line) and elevated
+  // roads (Civic Boulevard, Jianguo and Keelung Road expressways and their ramps)
+  buildViaduct(scene, GEO, GEO.rail, { name: 'rail-viaduct' });
+  buildViaduct(scene, GEO, GEO.elevatedRoads, { name: 'road-viaduct', surface: 0x3a3d42 });
   await loading.step(0.3, `Planting ${(GEO.trees || []).length} trees & street furniture`);
   buildGreenAreas(scene, GEO);
   scene.add(createTreeField(scene, treeSites(GEO)).group);
@@ -189,6 +202,8 @@ async function init() {
     taxiColour: 0xf3c316,
     palette: [0xf4f4f2, 0xf4f4f2, 0xf4f4f2, 0xc8cbcf, 0xc8cbcf, 0x8a8e93, 0x1c1e21, 0x1c1e21, 0x24395a, 0x7d1d22]
   });
+  // what goes down into an underpass trench draws before its lid (see groundOpening above)
+  if (opening) for (const o of [roads.group, traffic.cars.group]) o.traverse((m) => { if (m.isMesh) m.renderOrder = -4; });
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 20000);
   // From the south-east, the whole box in view (Xinyi: 1500, 820, 1800 with Taipei 101 at the centre)

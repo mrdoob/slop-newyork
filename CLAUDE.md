@@ -255,7 +255,7 @@ MRT (owner: "did you miss MRT station?"): `tools/geo-transit.mjs` (optional `osm
 GEO.rail { lines [elevated, width, pts, deck heights], stations [name, en, x, z] }. OSM has no guideway heights: deck
 10 m (layer ≥ 3: 13 m) ESTIMATE, ramps 5% to 0 at portals (graph distance from tunnel / at-grade nodes). Elevated
 `building=train_station` (layer ≥ 1, no min height) raised: base deck − 4, top ≥ deck + 8 (estimate); Daan &
-Technology Building are already raised by OSM parts. Renderer `js/rail-viaduct.js` (deck + parapets + piers every 32 m);
+Technology Building are already raised by OSM parts. Renderer `js/viaduct.js` (deck + parapets + piers every 32 m);
 map draws track + named stations. Underground lines: entrances only.
 MRT check (owner: "check mrt position and buildings"): guideway only meets station buildings/parts (expected); station
 nodes 1–11 m from the track. OSM station parts (Daan, Technology Building: platform level from 9.6 m) confirm the 10 m
@@ -279,3 +279,18 @@ If building heights estimated because OSM lacks them, say so in code comments
 and README. City must be truthful about which parts real data vs
 inferred — plausible-looking guessed skyline presented as real = failure
 to avoid.
+Keelung Road (owner: "keelung road is weird. Some buildings is missing"): (1) elevated roads (layer >= 1 drivable ways)
+were dropped: Civic Blvd viaduct, Jianguo & Keelung Road expressways, ramps (Xinyi ~5 km, Xinyi + Da'an ~27 km). Now
+`geo-osm-roadgraph` returns them apart (`elevated`), the build makes GEO.elevatedRoads { lines, piers, deckDepth } with
+`tools/geo-elevated.mjs` (deckHeights: layer 1 → 9 m, 2 → 15, 3 → 21 m ESTIMATES, 6% ramps to 0 at street nodes;
+placePiers shared with the MRT, which now uses it too), clipped to the district + 100 m (long ways run far outside);
+drawn by `js/viaduct.js` (asphalt top); NOT driven (traffic stays on the street). (2) the Keelung underpass: tunnels
+were dropped and their at-grade ramps drawn flat into dead ends. Now ramp links (same name as a drivable tunnel, from
+its portal to the first junction) get `roadGraph.rampDepth` (6 m at the portal, 6% or the chain's length; tunnels whose
+route rises > 3 m on the terrain are hill tunnels: no trench), no sidewalks; graph-roads sinks them with retaining
+walls and a dark mouth; cars/player follow (`rampDepthAt`). The ground covers a trench, so an invisible depth-only lid
+(`groundOpening`) draws after roads + cars (renderOrder -4) and before ground/terrain (-2): ground fails depth over it.
+(A per-pixel shader test and a depth-clearing mesh with depthNode were tried; the latter didn't take effect.) Frame
+time unchanged (median snaps to vsync 16.7/33.3: use the mean over 300 frames to compare). (3) "missing buildings":
+53% of measured buildings within 150 m of Keelung Rd have no OSM footprint (old blocks along Sec. 2) — OSM gap, not a
+bug; stand-ins exist (I) but Xinyi starts with them hidden.

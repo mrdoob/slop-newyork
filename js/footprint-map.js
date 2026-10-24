@@ -6,7 +6,8 @@
 // Drawing: the whole area once into a bitmap (≤ BASE_PX across) for the zoomed-out full map; the minimap and a zoomed-in
 // full map draw the shapes in view straight from a grid index, so they stay sharp however big the area is. Stand-ins
 // (GEO.infill) show only while they show in 3D (setInfill; options.showInfill, default true). Metro track above ground
-// and stations (GEO.rail) draw over the roads; station names label the full map.
+// and stations (GEO.rail) draw over the roads; station names label the full map. Elevated roads (GEO.elevatedRoads)
+// draw over the buildings they pass above.
 //
 // new FootprintMap(geo, { mini, full, fullCanvas, hoverInfo, getPlayer, onTeleport, onToggle, colours, showInfill })
 //   mini        <canvas> for the minimap (clicking it opens the full map)
@@ -51,7 +52,7 @@ class FootprintMap {
     const { geo } = this;
     const RG = geo.roadGraph;
     const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
-    this.layers = { green: [], roads: [], rail: [], buildings: [], infill: [] };
+    this.layers = { green: [], roads: [], rail: [], buildings: [], infill: [], elevated: [] };
     this.cells = new Map();
     const add = (layer, flat, extra) => {
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -61,7 +62,7 @@ class FootprintMap {
       for (let i = Math.floor(x0 / CELL_M); i <= Math.floor(x1 / CELL_M); i++) {
         for (let j = Math.floor(z0 / CELL_M); j <= Math.floor(z1 / CELL_M); j++) {
           const k = `${i},${j}`;
-          if (!this.cells.has(k)) this.cells.set(k, { green: [], roads: [], rail: [], buildings: [], infill: [] });
+          if (!this.cells.has(k)) this.cells.set(k, { green: [], roads: [], rail: [], buildings: [], infill: [], elevated: [] });
           this.cells.get(k)[layer].push(item);
         }
       }
@@ -69,6 +70,7 @@ class FootprintMap {
     for (const [, ring] of geo.green || []) add('green', ring);
     for (const [a, b, , w, , , inner] of RG.links) add('roads', [...node(a), ...inner, ...node(b)], w);
     for (const [, w, flat] of geo.rail?.lines || []) add('rail', flat, w);
+    for (const [, w, flat] of geo.elevatedRoads?.lines || []) add('elevated', flat, w);
     for (const b of geo.buildings) if (b[4] < 1) add('buildings', b[1]);
     for (const b of geo.infill || []) add('infill', b[1]);
   }
@@ -77,7 +79,7 @@ class FootprintMap {
   // has one colour, so their order doesn't matter)
   _inView(rect) {
     if (!rect) return this.layers;
-    const [x0, z0, x1, z1] = rect, out = { green: new Set(), roads: new Set(), rail: new Set(), buildings: new Set(), infill: new Set() };
+    const [x0, z0, x1, z1] = rect, out = { green: new Set(), roads: new Set(), rail: new Set(), buildings: new Set(), infill: new Set(), elevated: new Set() };
     for (let i = Math.floor(x0 / CELL_M); i <= Math.floor(x1 / CELL_M); i++) {
       for (let j = Math.floor(z0 / CELL_M); j <= Math.floor(z1 / CELL_M); j++) {
         const c = this.cells.get(`${i},${j}`);
@@ -100,10 +102,10 @@ class FootprintMap {
     };
     for (const { flat } of L.green) poly(flat, c.green);
     // Roads: an edge stroke under a lighter fill, at their drawn widths
-    const strokeRoads = (colour, extra) => {
+    const strokeRoads = (colour, extra, list = L.roads) => {
       g.strokeStyle = colour;
       g.lineCap = g.lineJoin = 'round';
-      for (const { flat, extra: w } of L.roads) {
+      for (const { flat, extra: w } of list) {
         g.lineWidth = Math.max(1, (w + extra) * ppm);
         g.beginPath();
         for (let i = 0; i < flat.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, X(flat[i]), Z(flat[i + 1]));
@@ -121,6 +123,8 @@ class FootprintMap {
     }
     for (const { flat } of L.buildings) poly(flat, c.building);
     if (this.showInfill) for (const { flat } of L.infill) poly(flat, c.infill);
+    strokeRoads(c.roadEdge, 2, L.elevated);
+    strokeRoads(c.road, 0, L.elevated);
     // The area's edge: the district outline(s) when there is one (GEO.frame.boundary), else the box; beyond it, no data
     g.strokeStyle = c.boxEdge;
     g.lineWidth = 2;

@@ -11,6 +11,12 @@
 //              `sidewalk` [left, right] (SIDEWALK_TAGS index, sides relative to the link's a -> b direction)
 //   paths      [[kind index, width m, elevation m, [x, z, ...], per-vertex heights [y, ...] | 0], ...] for walking
 //              ways, with `pathKinds` naming kinds (heights only for ramps: stairs up to a skywalk)
+//   elevated   drivable ways above the street (layer >= 1: viaducts, expressways, their ramps), not in the graph:
+//              [{ ids, pts, layer, width, lanes, dir, name, hw }]
+//   tunnels    drivable tunnels (tunnel=yes / layer < 0; not building passages, indoor or service ways), not in the
+//              graph: [{ ids, pts, name, hw }]
+//   gradeIds   node ids of the drivable ways at grade (where elevated ways come down to the street)
+//   nodeOfId   OSM node id -> graph node index (graph nodes only)
 //
 // Widths: OSM `width` when tagged, else `lanes` × LANE_M, else a per-class default (lanes per carriageway way; a dual
 // carriageway is two one-way ways). Untagged widths are class defaults, not measurements.
@@ -58,16 +64,32 @@ const metres = (v) => {
 export function buildOsmRoadGraph(elements, toWorld, log = () => {}, { signalIds = new Set() } = {}) {
   const drivable = [];
   const paths = [];
+  const elevated = [];
+  const tunnels = [];
   let skipped = 0;
   for (const e of elements) {
     const t = e.tags || {};
     const hw = t.highway;
     if (e.type !== 'way' || !e.geometry || e.geometry.length < 2 || !hw) continue;
-    if (belowGround(t)) { skipped++; continue; }
     const layer = parseFloat(t.layer) || 0;
     const pts = e.geometry.map((g) => toWorld(g.lon, g.lat));
+    if (belowGround(t)) {
+      const realTunnel = (isTrue(t.tunnel) && t.tunnel !== 'building_passage') || (layer < 0 && !isTrue(t.indoor));
+      if (realTunnel && hw in DEFAULT_LANES && !/^(service|living_street|busway)$/.test(hw) && e.nodes?.length === pts.length) {
+        tunnels.push({ ids: e.nodes, pts, name: t['name:en'] || t.name || '', hw });
+      }
+      skipped++;
+      continue;
+    }
     if (hw in DEFAULT_LANES) {
-      if (layer >= 1) { skipped++; continue; } // elevated roadways: none in scope yet
+      if (layer >= 1) {
+        // elevated roadways: kept apart (drawn as viaducts; traffic stays on the street)
+        const lanes = Math.max(1, Math.round(parseFloat(t.lanes) || DEFAULT_LANES[hw]));
+        const dir = t.oneway === 'yes' || t.oneway === '1' ? 1 : t.oneway === '-1' ? -1 : 0;
+        if (e.nodes?.length === pts.length) elevated.push({ ids: e.nodes, pts, layer, width: metres(t.width) ?? lanes * LANE_M, lanes, dir, name: t['name:en'] || t.name || '', hw });
+        skipped++;
+        continue;
+      }
       // access=no closes a way to traffic unless a vehicle tag reopens it (alleys tagged access=no + motor_vehicle=yes)
       const reopened = ['vehicle', 'motor_vehicle', 'motorcar'].some((k) => /^(yes|designated|destination|permissive)$/.test(t[k] || ''));
       if (t.area === 'yes' || (t.access === 'no' && !reopened)) { skipped++; continue; }
@@ -142,5 +164,6 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}, { signalIds
   const signals = [...nodeIndex].filter(([id]) => signalIds.has(id)).map(([, i]) => i);
   log(`road graph: ${signals.length} signalised nodes`);
   log(`road graph: ${nodes.length / 2} nodes, ${links.length} links from ${drivable.length} drivable ways; ${paths.length} walking ways; ${skipped} underground/indoor/area/elevated-road ways skipped`);
-  return { roadGraph: { nodes, links, names, signals, widthSource, highway, sidewalk, sidewalkWidth }, paths: pathsOut };
+  const gradeIds = new Set(drivable.flatMap((w) => w.ids));
+  return { roadGraph: { nodes, links, names, signals, widthSource, highway, sidewalk, sidewalkWidth }, paths: pathsOut, elevated, tunnels, gradeIds, nodeOfId: nodeIndex };
 }

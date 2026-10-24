@@ -65,6 +65,10 @@ line through Da'an stands on piers; OSM maps no heights for it, so its deck heig
 is an **estimate**, as are the heights of elevated station buildings OSM doesn't raise itself. Underground lines show as
 their street entrances; every station is named on the map.
 
+**Elevated roads and underpasses**: expressway viaducts and ramps (Civic Boulevard, Jianguo, Keelung Road) are drawn on
+piers, and underpass ramps (Keelung Road's) go down into a trench to the tunnel mouth. OSM maps a layer, not a height,
+so deck heights and trench depths are **estimates**; cars stay on the street (none on the viaducts yet).
+
 **Terrain** (Xinyi, Xinyi + Da'an): ground heights from the open AWS Terrain Tiles (Mapzen, from NASA's SRTM, ~30 m),
 kept only on real hills (connected areas more than 40 m above the basin floor, with a 200 m fade around their feet); the
 basin is flat at 0, since in the city that surface model measures roofs and tree canopy, not the street;

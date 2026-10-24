@@ -1,25 +1,28 @@
 import * as THREE from 'three/webgpu';
 import { heightAt } from './terrain.js';
 
-// js/rail-viaduct.js
-// Metro track above ground (GEO.rail, tools/geo-transit.mjs): elevated guideways as a concrete box deck with parapets on
-// piers, track at grade as a low bed. City-agnostic: everything comes from `geo`, colours through `options`.
+// js/viaduct.js
+// Structures above the street as concrete box decks with parapets on piers: metro guideways (GEO.rail,
+// tools/geo-transit.mjs; track at grade as a low bed) and elevated roads (GEO.elevatedRoads; an asphalt deck surface).
+// City-agnostic: everything comes from `geo`, colours through `options`.
 //
-// GEO.rail.lines: [elevated 0|1, deck width m, [x, z, ...], [deck top height m above the street per point]]
-// GEO.rail.piers: [x, z, yaw, deck underside height m] (placed by the build: one row per twin track, none in a
-// carriageway); GEO.rail.deckDepth. Heights are estimates in the data: OSM maps a layer, not a height.
+// buildViaduct(scene, geo, set, options): set = { lines: [elevated 0|1, deck width m, [x, z, ...], [deck top height m
+// above the street per point]], piers: [x, z, yaw, deck underside height m] (placed by the build: twin lines share a row,
+// none in a carriageway), deckDepth }. Heights are estimates in the data: OSM maps a layer, not a height.
+// options: { name, colour (concrete), surface (deck top colour; none: concrete) }
 
 const PARAPET_H = 1.1;
 const PARAPET_T = 0.25;
 const PIER_W = 1.6;
 const BED_H = 0.25; // track bed at grade
 
-function buildRailViaduct(scene, geo, options = {}) {
-  const lines = geo.rail?.lines || [];
+function buildViaduct(scene, geo, set, options = {}) {
+  const lines = set?.lines || [];
   if (!lines.length) return null;
   const ground = heightAt(geo);
-  const DECK_T = geo.rail.deckDepth ?? 1.5;
+  const DECK_T = set.deckDepth ?? 1.5;
   const pos = [], idx = [];
+  const surface = []; // deck top surfaces (options.surface): two triangles per segment
   // A box-section strip along a polyline: for each point, offsets ±hw at heights [y0, y1] (per point) -> 4 faces
   const strip = (pts, hw, y0, y1, offset = 0) => {
     const n = pts.length, base = pos.length / 3;
@@ -59,8 +62,20 @@ function buildRailViaduct(scene, geo, options = {}) {
     const bottom = top.map((y, i) => Math.max(g[i], y - DECK_T));
     strip(pts, w / 2, bottom, top);
     for (const s of [-1, 1]) strip(pts, PARAPET_T / 2, top, top.map((y) => y + PARAPET_H), s * (w / 2 - PARAPET_T / 2));
+    if (options.surface != null) {
+      const hw = w / 2 - PARAPET_T, edge = [];
+      for (let i = 0; i < pts.length; i++) {
+        const [ax, az] = pts[Math.max(0, i - 1)], [bx, bz] = pts[Math.min(pts.length - 1, i + 1)];
+        const L = Math.hypot(bx - ax, bz - az) || 1, nx = -(bz - az) / L, nz = (bx - ax) / L;
+        edge.push([pts[i][0] - nx * hw, top[i] + 0.03, pts[i][1] - nz * hw, pts[i][0] + nx * hw, top[i] + 0.03, pts[i][1] + nz * hw]);
+      }
+      for (let i = 0; i + 1 < edge.length; i++) {
+        const [l0x, l0y, l0z, r0x, r0y, r0z] = edge[i], [l1x, l1y, l1z, r1x, r1y, r1z] = edge[i + 1];
+        surface.push(l0x, l0y, l0z, l1x, l1y, l1z, r1x, r1y, r1z, l0x, l0y, l0z, r1x, r1y, r1z, r0x, r0y, r0z);
+      }
+    }
   }
-  const piers = (geo.rail.piers || []).map(([x, z, yaw, under]) => { const gy = ground(x, z); return [x, z, gy, gy + under, yaw]; });
+  const piers = (set.piers || []).map(([x, z, yaw, under]) => { const gy = ground(x, z); return [x, z, gy, gy + under, yaw]; });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geometry.setIndex(idx);
@@ -69,10 +84,18 @@ function buildRailViaduct(scene, geo, options = {}) {
   geometry.dispose();
   const concrete = new THREE.MeshStandardNodeMaterial({ color: options.colour ?? 0xbab7af, roughness: 0.9 });
   const group = new THREE.Group();
-  group.name = 'rail-viaduct';
+  group.name = options.name ?? 'viaduct';
   const deck = new THREE.Mesh(flatShaded, concrete);
   deck.castShadow = deck.receiveShadow = true;
   group.add(deck);
+  if (surface.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(surface, 3));
+    g.computeVertexNormals();
+    const top = new THREE.Mesh(g, new THREE.MeshStandardNodeMaterial({ color: options.surface, roughness: 0.92, side: THREE.DoubleSide }));
+    top.receiveShadow = true;
+    group.add(top);
+  }
   if (piers.length) {
     const m = new THREE.InstancedMesh(new THREE.BoxGeometry(PIER_W, 1, PIER_W * 1.4).translate(0, 0.5, 0), concrete, piers.length);
     const d = new THREE.Object3D();
@@ -90,4 +113,4 @@ function buildRailViaduct(scene, geo, options = {}) {
   return { group, stats: { lines: lines.length, piers: piers.length } };
 }
 
-export { buildRailViaduct };
+export { buildViaduct };
