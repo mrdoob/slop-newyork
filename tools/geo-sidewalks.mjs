@@ -22,9 +22,12 @@ const MIN_SHARE = 0.4; // share of a link's samples that must see a mapped sidew
 const DEFAULT_SIDEWALK_W = (w) => (w >= 9 ? 3 : 2); // m: wide streets get wider sidewalks
 
 const nodeAt = (RG, i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
+// A link's centre line. Its interior points are [[x, z], ...] while the build works on the graph (these functions run
+// before tools/build-taipei-geodata.mjs flattens them) and [x, z, ...] in the output; both are read.
 function linkLine(RG, [a, b, , , , , inner]) {
   const pts = [nodeAt(RG, a)];
-  for (let i = 0; i < inner.length; i += 2) pts.push([inner[i], inner[i + 1]]);
+  if (Array.isArray(inner[0])) for (const p of inner) pts.push(p);
+  else for (let i = 0; i < inner.length; i += 2) pts.push([inner[i], inner[i + 1]]);
   pts.push(nodeAt(RG, b));
   return pts;
 }
@@ -108,9 +111,14 @@ function kerbBlocked(pts, w, solid) {
   return n ? bad / n : 0;
 }
 
+// A dual carriageway's estimated widths keep at least MEDIAN_MIN_M between its two directions: the drawn road is centred
+// on the mapped centre line, so widening one carriageway towards its outer sidewalk widens it into the median as much,
+// and could cover the median (where an elevated railway's piers stand) and the opposite carriageway
+const MEDIAN_MIN_M = 2;
 export function fitRoadWidths(roadGraph, paths, pathKinds, solid = () => false) {
   const grid = walkIndex(paths, pathKinds);
   const FITTED = 3;
+  const median = medianInfo(roadGraph);
   let widened = 0, narrowed = 0;
   roadGraph.links.forEach((l, i) => {
     const src = roadGraph.widthSource[i];
@@ -123,6 +131,7 @@ export function fitRoadWidths(roadGraph, paths, pathKinds, solid = () => false) 
     } else {
       for (const s of [left, right]) if (s) next = Math.min(next, 2 * (s.d - s.w / 2)); // don't run under a sidewalk
     }
+    if (median[i].gap) next = Math.min(next, median[i].gap - MEDIAN_MIN_M); // clear of the median
     next = Math.round(Math.max(l[5] === 0 ? 5.5 : 3, Math.min(40, next)) * 10) / 10; // two-way roads keep two lanes
     const line = linkLine(roadGraph, l);
     while (next > w && kerbBlocked(line, next, solid) > 0.05) next = Math.max(w, next - 1); // clear of buildings
@@ -205,6 +214,56 @@ export function medianSides(RG) {
     return -1;
   }
   return RG.links.map((_, i) => medianSide(i));
+}
+// Per link: { side (as medianSides), gap: m between its centre line and the opposite carriageway's (0: none) }. The
+// opposite carriageway is a one-way link travelling the other way whose centre line passes 3–45 m to one side of this
+// link's midpoint (nearest point on its polyline, roughly square to this link), found through a 50 m grid of segments.
+// Matching on the polyline (not midpoints, as medianSides) also pairs a short link with a long opposite one.
+export function medianInfo(RG) {
+  const CELL = 50;
+  const lines = RG.links.map((l) => linkLine(RG, l));
+  const cells = new Map();
+  RG.links.forEach((l, j) => {
+    if (l[5] === 0) return;
+    const pts = lines[j];
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const [x0, z0] = pts[k], [x1, z1] = pts[k + 1];
+      for (let i = Math.floor(Math.min(x0, x1) / CELL); i <= Math.floor(Math.max(x0, x1) / CELL); i++) {
+        for (let m = Math.floor(Math.min(z0, z1) / CELL); m <= Math.floor(Math.max(z0, z1) / CELL); m++) {
+          const key = `${i},${m}`;
+          if (!cells.has(key)) cells.set(key, []);
+          cells.get(key).push([j, pts[k], pts[k + 1]]);
+        }
+      }
+    }
+  });
+  return RG.links.map((l, i) => {
+    if (l[5] === 0) return { side: -1, gap: 0 };
+    const pts = lines[i];
+    const [x0, z0] = pts[0], [x1, z1] = pts[pts.length - 1];
+    const L = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const ax = (x1 - x0) / L, az = (z1 - z0) / L; // a -> b
+    const tx = ax * (l[5] === -1 ? -1 : 1), tz = az * (l[5] === -1 ? -1 : 1); // travel
+    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    let best = null;
+    const ci = Math.floor(mx / CELL), cj = Math.floor(mz / CELL);
+    for (let di = -1; di <= 1; di++) {
+      for (let dj = -1; dj <= 1; dj++) {
+        for (const [j, p, q] of cells.get(`${ci + di},${cj + dj}`) || []) {
+          if (j === i) continue;
+          const o = RG.links[j], sx = q[0] - p[0], sz = q[1] - p[1], SL = Math.hypot(sx, sz) || 1e-9;
+          const sign = o[5] === -1 ? -1 : 1;
+          if (((sx / SL) * tx + (sz / SL) * tz) * sign > -0.9) continue; // opposite travel
+          const t = Math.max(0, Math.min(1, ((mx - p[0]) * sx + (mz - p[1]) * sz) / (SL * SL)));
+          const rx = p[0] + sx * t - mx, rz = p[1] + sz * t - mz;
+          const lat = rx * -az + rz * ax, along = rx * ax + rz * az; // right of a -> b positive
+          if (Math.abs(lat) <= 3 || Math.abs(lat) >= 45 || Math.abs(along) > 8) continue;
+          if (!best || Math.abs(lat) < best.gap) best = { side: lat > 0 ? 1 : 0, gap: Math.abs(lat) };
+        }
+      }
+    }
+    return best || { side: -1, gap: 0 };
+  });
 }
 
 export function inferSidewalks(roadGraph, paths, pathKinds) {

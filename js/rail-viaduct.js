@@ -6,12 +6,11 @@ import { heightAt } from './terrain.js';
 // piers, track at grade as a low bed. City-agnostic: everything comes from `geo`, colours through `options`.
 //
 // GEO.rail.lines: [elevated 0|1, deck width m, [x, z, ...], [deck top height m above the street per point]]
-// (heights are estimates in the data: OSM maps a layer, not a height).
+// GEO.rail.piers: [x, z, yaw, deck underside height m] (placed by the build: one row per twin track, none in a
+// carriageway); GEO.rail.deckDepth. Heights are estimates in the data: OSM maps a layer, not a height.
 
-const DECK_T = 1.5; // deck depth (m)
 const PARAPET_H = 1.1;
 const PARAPET_T = 0.25;
-const PIER_EVERY_M = 32;
 const PIER_W = 1.6;
 const BED_H = 0.25; // track bed at grade
 
@@ -19,6 +18,7 @@ function buildRailViaduct(scene, geo, options = {}) {
   const lines = geo.rail?.lines || [];
   if (!lines.length) return null;
   const ground = heightAt(geo);
+  const DECK_T = geo.rail.deckDepth ?? 1.5;
   const pos = [], idx = [];
   // A box-section strip along a polyline: for each point, offsets ±hw at heights [y0, y1] (per point) -> 4 faces
   const strip = (pts, hw, y0, y1, offset = 0) => {
@@ -47,7 +47,6 @@ function buildRailViaduct(scene, geo, options = {}) {
     quad(base, base + 1, base + 3, base + 2);
     quad(e, e + 2, e + 3, e + 1);
   };
-  const piers = [];
   for (const [elevated, w, flat, hs] of lines) {
     const pts = [];
     for (let i = 0; i < flat.length; i += 2) pts.push([flat[i], flat[i + 1]]);
@@ -60,19 +59,8 @@ function buildRailViaduct(scene, geo, options = {}) {
     const bottom = top.map((y, i) => Math.max(g[i], y - DECK_T));
     strip(pts, w / 2, bottom, top);
     for (const s of [-1, 1]) strip(pts, PARAPET_T / 2, top, top.map((y) => y + PARAPET_H), s * (w / 2 - PARAPET_T / 2));
-    // Piers every PIER_EVERY_M along the line where the deck is high enough to need one
-    let carry = PIER_EVERY_M / 2;
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const [ax, az] = pts[i], [bx, bz] = pts[i + 1], L = Math.hypot(bx - ax, bz - az);
-      while (carry < L) {
-        const t = carry / L, x = ax + (bx - ax) * t, z = az + (bz - az) * t;
-        const yb = bottom[i] + (bottom[i + 1] - bottom[i]) * t, gy = ground(x, z);
-        if (yb - gy > 2.5) piers.push([x, z, gy, yb, Math.atan2(bx - ax, bz - az)]);
-        carry += PIER_EVERY_M;
-      }
-      carry -= L;
-    }
   }
+  const piers = (geo.rail.piers || []).map(([x, z, yaw, under]) => { const gy = ground(x, z); return [x, z, gy, gy + under, yaw]; });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geometry.setIndex(idx);

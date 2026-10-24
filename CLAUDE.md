@@ -257,6 +257,18 @@ GEO.rail { lines [elevated, width, pts, deck heights], stations [name, en, x, z]
 `building=train_station` (layer ≥ 1, no min height) raised: base deck − 4, top ≥ deck + 8 (estimate); Daan &
 Technology Building are already raised by OSM parts. Renderer `js/rail-viaduct.js` (deck + parapets + piers every 32 m);
 map draws track + named stations. Underground lines: entrances only.
+MRT check (owner: "check mrt position and buildings"): guideway only meets station buildings/parts (expected); station
+nodes 1–11 m from the track. OSM station parts (Daan, Technology Building: platform level from 9.6 m) confirm the 10 m
+deck. Station rule now uses the nearest guideway's deck (`deckNear`), not layer; estimated roof = deck + 8 (Linguang had
+a 35 m generic estimate). Piers placed in the build (`placePiers`, GEO.rail.piers): twin tracks share one row, none in a
+carriageway or building; longest half-span 44 m.
+Found doing it: (1) `fitRoadWidths` widened dual-carriageway halves symmetrically across their median (Fuxing S Rd
+18–23 m per direction, median gone) → capped at gap − 2 m (`medianInfo`: opposite one-way matched on its polyline;
+`medianSides` kept as before so sidewalk inference is unchanged by it). (2) `linkLine` (geo-sidewalks) read link
+interior points as flat [x, z, ...] but they are [[x, z], ...] until the build flattens them → every link with a bend
+(41–45%) was NaN geometry in width fitting, kerbside footways and sidewalk inference. Fixed (reads both). Xinyi:
+inferred sidewalks 35 → 110 km, in buildings 7.1% → 4.8%, in carriageways 3.4% → 1.7%; mapped kerbside footways used
+14 → 80. Frame time unchanged.
 Renderer: `js/terrain.js` (heightAt / drape / resample / buildTerrainMesh): roads & sidewalks resampled 8 m + lifted,
 green areas draped, buildings at lowest ground under outline (`ground` attribute for facades), trees / furniture /
 signals / cars / people / player / UFO / rocket pad on it; collision index absolute (solidAbove for ground modes);

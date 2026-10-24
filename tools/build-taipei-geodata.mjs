@@ -18,7 +18,7 @@ import { buildFurniture, expandDocks, FURNITURE_KINDS, FURNITURE_SOURCES } from 
 import { infillBuildings, INFILL } from './geo-infill.mjs';
 import { kerbClear } from './geo-kerb.mjs';
 import { buildTerrain } from './geo-terrain.mjs';
-import { buildTransit, STATION_DECK_M } from './geo-transit.mjs';
+import { buildTransit, STATION_DECK_M, deckNear, placePiers } from './geo-transit.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL(`../js/${AREA.out}`, import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
@@ -174,6 +174,15 @@ for (const o of outlines) {
 }
 log(`${outlines.length} outlines (${replaced} modelled by parts), ${parts.length} parts; skipped ${underground} underground, ${broken} without geometry`);
 
+// --- Metro above ground (optional osm_transit.json; tools/geo-transit.mjs): elevated guideways & track at grade ---------
+let rail = null;
+const RAIL_DECK_DEPTH = 1.5; // guideway deck depth (m), for the piers' tops and the renderer
+if (has('osm_transit.json')) {
+  const t = buildTransit(load('osm_transit.json').elements, toWorld);
+  rail = { lines: t.lines, stations: t.stations, note: 'track from OSM; guideway deck heights and piers are estimates (OSM maps layer only)' };
+  log(`metro: ${t.stats.elevated} elevated ways (${t.stats.elevatedM} m), ${t.stats.grade} at grade, ${t.stats.tunnel} in tunnels (left out); ${t.stations.length} stations`);
+}
+
 // --- Heights ---------------------------------------------------------------------------------------------------------
 // 'permit': floors from Taipei's building-permit drawings (footprint and floor count both from the permit, not OSM)
 const SOURCES = ['height', 'levels', 'estimate', 'permit'];
@@ -189,11 +198,12 @@ function emit(b, outline) {
     if (inherited.source !== 'estimate') h = inherited;
   }
   // An elevated station (building=train_station on layer >= 1, no min height mapped) spans the street under its
-  // guideway: raised to clear it, its roof above the deck. Both heights are estimates (OSM maps neither).
+  // guideway: its concourse from 4 m under the deck (the guideway's height beside it, else by layer), its roof 8 m above
+  // the deck. Both are estimates (OSM maps neither); a mapped storey count can't put the roof lower than that.
   const layer = parseFloat(b.tags.layer) || 0;
   if (b.tags.building === 'train_station' && layer >= 1 && !b.tags.min_height && !b.tags['building:min_level']) {
-    const deck = STATION_DECK_M(layer);
-    h = { top: Math.max(h.top, deck + 8), base: deck - 4, source: 'estimate' };
+    const deck = (rail && deckNear(rail.lines, ...(b.c || centroid(b.outer)))) || STATION_DECK_M(layer);
+    h = { top: h.source === 'estimate' ? deck + 8 : Math.max(h.top, deck + 8), base: deck - 4, source: 'estimate' };
     elevatedStations++;
   }
   const colour = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|[a-z]+)$/i.test(b.tags['building:colour'] || '') ? b.tags['building:colour'].toLowerCase() : 0;
@@ -422,6 +432,12 @@ const builtFurniture = buildFurniture(load('osm_furniture.json').elements, toWor
 // along a mapped tree row; inferred ones (lamps, scooters, trees filling a wood) that land on a road are dropped. Items with no clear kerb spot are dropped.
 const KERB_MARGIN = { bus_shelter: 1.0, subway_entrance: 3.3, bicycle_rental: 0.8, vending_machine: 0.6, telephone: 0.6, tree: 1.2 };
 const clear = kerbClear(roadGraph, solid);
+if (rail) {
+  const { piers, candidates } = placePiers(rail.lines, RAIL_DECK_DEPTH, kerbClear(roadGraph), inBuilding);
+  rail.deckDepth = RAIL_DECK_DEPTH;
+  rail.piers = piers;
+  if (candidates) log(`metro piers: ${piers.length} (of ${candidates} along the tracks; twin tracks share a row, none in a carriageway or building)`);
+}
 const kerbed = { moved: 0, dropped: 0, why: {} };
 const drop = (what) => { kerbed.dropped++; kerbed.why[what] = (kerbed.why[what] || 0) + 1; };
 const furniture = [];
@@ -447,13 +463,6 @@ log(`street furniture: ${FURNITURE_KINDS.map((k, i) => [k, furniture.filter((f) 
   .map(([k, l]) => `${l.length} ${k}${l.some((f) => f[4] === 1) ? ` (${l.filter((f) => f[4] === 1).length} inferred)` : ''}`).join(', ')}`);
 
 // --- Assemble --------------------------------------------------------------------------------------------------------
-// --- Metro above ground (optional osm_transit.json; tools/geo-transit.mjs): elevated guideways & track at grade ---------
-let rail = null;
-if (has('osm_transit.json')) {
-  const t = buildTransit(load('osm_transit.json').elements, toWorld);
-  rail = { lines: t.lines, stations: t.stations, note: 'track from OSM; guideway deck heights are estimates (OSM maps layer only)' };
-  log(`metro: ${t.stats.elevated} elevated ways (${t.stats.elevatedM} m), ${t.stats.grade} at grade, ${t.stats.tunnel} in tunnels (left out); ${t.stations.length} stations`);
-}
 
 const GEO = {
   version: 1,
