@@ -112,8 +112,8 @@ class GamepadControls {
     const held = (i) => pressed[i] && !this.suppressedButtons[i];
     // Capture edges before callbacks: changing mode or opening the map may synchronously call reset().
     const toggleMap = edge(9), closeMap = edge(1);
-    const cycleMode = Number(Boolean(edge(5))) - Number(Boolean(edge(4)));
-    const cycleCamera = edge(3), recenter = edge(11);
+    const board = edge(3); // Y: get in or out, as in GTA
+    const cycleCamera = Number(Boolean(edge(5))) - Number(Boolean(edge(4))), recenter = edge(11);
     this.previousButtons = pressed;
 
     const target = document.activeElement;
@@ -136,9 +136,9 @@ class GamepadControls {
       if (closeMap) this.callbacks.onCloseMap?.();
       return;
     }
-    if (cycleMode) this.callbacks.onCycleMode?.(cycleMode);
+    if (board) this.callbacks.onBoard?.();
     if (revision !== this.revision) return;
-    if (cycleCamera) this.callbacks.onCycleCamera?.(1);
+    if (cycleCamera) this.callbacks.onCycleCamera?.(cycleCamera);
     if (revision !== this.revision) return;
     if (recenter) this.camera.resetOrbit();
 

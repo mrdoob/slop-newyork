@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 
 // js/scene-culling.js
-// Spatial culling for the island-wide static geometry. Most of Manhattan's street furniture and building massing is
-// built as a handful of instanced meshes spanning the whole island (bounding spheres ~7 km across), which three.js can
-// never cull: every frame the GPU transformed every lamp post, signal and facade box of the island three times (the
+// Spatial culling for the city-wide static geometry. Most of the street furniture and building massing is built as a
+// handful of instanced meshes spanning the whole city (bounding spheres several km across), which three.js can never
+// cull: every frame the GPU transformed every lamp post, signal and facade box of the city three times (the
 // view and both sun shadow cascades). This module, run once after the city is built (main.js):
 // 1. Splits the instanced meshes of small props into spatial chunks, each culled by the view frustum and hidden beyond
 //    the distance where its props shrink below a pixel or two (updateSceneCulling, every frame).
@@ -90,7 +90,10 @@ function chunkInstancedMesh(mesh, cell) {
   if (!geo0.boundingBox) geo0.computeBoundingBox();
   const attrs = Object.entries(geo0.attributes);
   const chunks = [];
+  // where each source instance went: chunk number, slot (mayhem.js hides knocked-over props through it)
+  const where = new Int32Array(n * 2).fill(-1);
   for (const ids of cells.values()) {
+    ids.forEach((id, j) => { where[id * 2] = chunks.length; where[id * 2 + 1] = j; });
     const geo = new THREE.BufferGeometry();
     geo.setIndex(geo0.index);
     for (const [name, a] of attrs) {
@@ -120,6 +123,7 @@ function chunkInstancedMesh(mesh, cell) {
     chunk.computeBoundingSphere();
     chunks.push(chunk);
   }
+  mesh.userData.chunked = { chunks, where };
   return chunks;
 }
 
@@ -213,7 +217,8 @@ function setupSceneCulling(scene, roots, shadow = null) {
     const sources = [];
     for (const root of roots) {
       root.traverse((o) => {
-        if (!o.castShadow || !isStaticMesh(o) || !proxyableMaterial(o.material)) return;
+        // (meshes whose instances may still change, like knock-over props, keep casting their own shadows)
+        if (!o.castShadow || !isStaticMesh(o) || !proxyableMaterial(o.material) || o.userData.keepOwnShadow) return;
         if (o.isInstancedMesh && o.count !== o.instanceMatrix.count) return;
         const tris = triangleCount(o.geometry) * (o.isInstancedMesh ? o.count : 1);
         if (tris < 20000) return;

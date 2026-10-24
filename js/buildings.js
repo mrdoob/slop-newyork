@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { createFireEscapes } from './fire-escapes.js';
 import {
   Fn,
   float,
@@ -19,40 +18,42 @@ import {
   mix,
   length,
   mx_noise_float,
-  mx_worley_noise_float
+  mx_worley_noise_float,
+  attribute,
+  texture
 } from 'three/tsl';
 import {
+  blockAt,
   ALL_AVENUES,
   CENTRAL_PARK_BOUNDS,
   ISLAND_BOUNDS,
   BLOCKS,
-  LANDMARK_SITES,
   streetZ,
-  avenueX,
-  getBroadwayX,
-  EAST_RIVER_BRIDGES
+  avenueX
 } from './city-config.js';
 import {
   createPreWarBuildingMaterial,
   createCurtainWallMaterial,
+  createMexicanHouseMaterial,
   createFacadeBoxes,
-  createBillboardMaterial,
+  atlasSlotUV,
   WALL_KINDS
 } from './tsl-materials.js';
-import { GEO } from './nyc-geodata.js';
-import { fdrViaduct, pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
+import { GEO } from './city-geodata.js';
+import { STOREFRONTS } from './storefronts/index.js';
+import { LANDMARK_RESERVES as TEPIC_RESERVES } from './tepic-landmarks.js';
+import { hillGround } from './terrain.js';
+import { pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
 
 // js/buildings.js
-// Generates dense, architecturally varied Manhattan city blocks across the entire island
-// indexed by a spatial 2D quadtree that dynamically streams high-detail
-// architectural elements (carved stone cornices/ledges, rooftop cedar water towers, mechanical
-// penthouses, wrought-iron fire escapes, retail awnings, illuminated storefront signs, and
-// sidewalk scaffolding sheds) around the player anywhere in Manhattan.
+// Generates the city's buildings: Tepic's real building footprints (Overture Maps) as Mexican houses & shops, and the
+// lots of every other block filled for its district (centro, colonia, industrial), indexed by a spatial 2D quadtree
+// that streams the high-detail architectural elements (cornices, rooftop gear, awnings, storefront signs) around the
+// player.
 //
-// Blocks are divided into lots the way Manhattan's are: apartment houses on the avenue corners, rows of
-// brownstones / tenements along the side streets around a "donut" of rear yards, lofts and office buildings sharing
-// party walls, towers rising from full-lot podiums. Footprints are rectilinear plans (light courts, U / E / H / ring
-// courtyards, dumbbell tenements, notched, stepped & cruciform towers) built as unions of non-overlapping boxes.
+// Footprints are rectilinear plans built as unions of non-overlapping boxes. The block layout library still carries
+// the New York game's profiles (apartment houses, brownstones, lofts, towers, fire escapes...); Tepic's districts only
+// use its low-rise layout.
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -255,7 +256,7 @@ function carve(r, holes, axis = 'x') {
 
 function buildCityBlocks(scene) {
   const group = new THREE.Group();
-  group.name = 'ManhattanCityBlocks';
+  group.name = 'CityBlocks';
   const colliders = [];
 
   // Frame of the lots being populated. Irregular blocks come with frontage frames (city-config.js BLOCKS: lots laid
@@ -373,85 +374,23 @@ function buildCityBlocks(scene) {
       warmth: 0.48,
       reflectivity: 0.95,
       seed: 94.3
-    }]
+    }],
+    // 6: Mexican houses & shops (Tepic): painted walls in each house's own colour, barred windows, gates, shutters,
+    //    the chain stores' fronts (js/storefronts)
+    [createMexicanHouseMaterial, { floorHeight: 3.0, chains: STOREFRONTS.map((sf) => sf.facade) }]
   ];
   const materials = facades.map(([create, opts]) => create({ ...opts, boxLocal: true }));
+  const MEX = 6; // the Mexican house facade
   // Storey height of each facade: buildings are massed in whole storeys so every window row lines up across tiers
   const storeys = facades.map(([, opts]) => opts.floorHeight);
 
   const buckets = materials.map(() => []);
-  const broadwayBillboards = [];
-
-  // Times Square's bowtie: the Broadway plaza strip (city-config.js GEO.plazas) and 7th Avenue's roadway between 47th
-  // and 42nd St. Lots fronting it rise as sheer walls (flushTower) and every podium wall facing it carries billboards
-  const TS = (() => {
-    const def = (GEO.plazas || []).find((d) => d.name === 'Times Square');
-    const ave7 = ALL_AVENUES.find((a) => a.id === '7');
-    if (!def || !ave7) return null;
-    const [ax, az] = def.a;
-    const [bx, bz] = def.b;
-    return {
-      zN: streetZ(47) - 6,
-      zS: streetZ(42) + 6,
-      x7: ave7.x,
-      half7: ave7.width * 0.5 + 1,
-      halfB: def.w * 0.5 + 1,
-      xAt: (z) => ax + ((z - az) / (bz - az)) * (bx - ax)
-    };
-  })();
-  const inBowtie = (x, z) => !!TS && z > TS.zN && z < TS.zS && (Math.abs(x - TS.xAt(z)) < TS.halfB || Math.abs(x - TS.x7) < TS.half7);
-  // Does the lot edge at x (dir -1: its west edge, +1: its east edge; in the current frame) look across the sidewalk
-  // onto the bowtie?
-  const frontsBowtie = (x, dir, z0, z1) => [0.25, 0.5, 0.75].some((f) => [6, 12, 20].some((t) => inBowtie(...toWorld(x + dir * t, z0 + (z1 - z0) * f))));
 
   // ============================================================================
   // BUILDING MASSING TOOLKIT
   // A building is a list of non-overlapping parts { x0, x1, z0, z1, y0, y1 } on one lot: footprints carved into
   // plans, extruded storey by storey, tiers stacked on whole storeys
   // ============================================================================
-  // East River bridge approaches on Manhattan: no building may stand under a deck (from its street-level landing out to
-  // the first tower) or on a masonry anchorage. Oriented boxes { cx, cz, ux, uz, hl, hw } (u = along the bridge).
-  const bridgeCorridors = [];
-  for (const s of EAST_RIVER_BRIDGES || []) {
-    const dx = s.b.x - s.a.x;
-    const dz = s.b.z - s.a.z;
-    const L = Math.hypot(dx, dz);
-    const box = (t0, t1, hw) => bridgeCorridors.push({
-      cx: s.a.x + dx * (t0 + t1) * 0.5, cz: s.a.z + dz * (t0 + t1) * 0.5, ux: dx / L, uz: dz / L, hl: (t1 - t0) * L * 0.5, hw
-    });
-    box(-4 / L, s.towers[0] + 8 / L, s.width * 0.5 + 3);
-    box(s.towers[0] - 11 / L, s.towers[0] + 11 / L, s.width * 0.5 + 8); // first pier / caisson (wider than the deck)
-    if (s.anchorage) {
-      const ta = s.towers[0] - s.sideSpan / L;
-      const hl = (s.anchorage[0] * 0.5 + 3) / L;
-      box(ta - hl, ta + hl, (s.width + s.anchorage[1]) * 0.5 + 3);
-    }
-  }
-  // ... nor under the South Street Viaduct and its Battery Park Underpass portal (laid out by city-grid.js)
-  for (const o of (fdrViaduct && fdrViaduct.boxes) || []) bridgeCorridors.push(o);
-  // Separating-axis test of the rect [x0, x1] x [z0, z1] (of the current frame) against every corridor box
-  function hitsBridgeCorridor(x0, x1, z0, z1) {
-    const hx = (x1 - x0) * 0.5;
-    const hz = (z1 - z0) * 0.5;
-    const [cx, cz] = toWorld(x0 + hx, z0 + hz);
-    // the rect's axes in the world (R_y(θ) of local x and z)
-    const ax = xf ? xf.cs : 1, az = xf ? -xf.sn : 0;
-    const bx = xf ? xf.sn : 0, bz = xf ? xf.cs : 1;
-    for (const o of bridgeCorridors) {
-      const dx = cx - o.cx;
-      const dz = cz - o.cz;
-      const vx = -o.uz, vz = o.ux;
-      let apart = false;
-      for (const [nx, nz] of [[ax, az], [bx, bz], [o.ux, o.uz], [vx, vz]]) {
-        const r = hx * Math.abs(ax * nx + az * nz) + hz * Math.abs(bx * nx + bz * nz) +
-          o.hl * Math.abs(o.ux * nx + o.uz * nz) + o.hw * Math.abs(vx * nx + vz * nz);
-        if (Math.abs(dx * nx + dz * nz) >= r) { apart = true; break; }
-      }
-      if (!apart) return true;
-    }
-    return false;
-  }
-
   function building(blk, mat, lot) {
     return {
       mat,
@@ -608,18 +547,14 @@ function buildCityBlocks(scene) {
 
   /**
    * Emits building `b`: facade boxes, map footprints, colliders matching each part, stone cornices
-   * under every masonry roof line, rooftop bulkhead & water tower, fire escapes and avenue storefront awnings.
-   * o: { cornice, corniceH, roof: 'mech' | 'prewar' | 'walkup' | 'none', wtP, hvacH, fireEscapes, rearFireEscapes,
+   * under every masonry roof line, rooftop bulkhead & water tower and avenue storefront awnings.
+   * o: { cornice, corniceH, roof: 'mech' | 'prewar' | 'walkup' | 'none', wtP, hvacH,
    *      awnings, shops: 'all' | 'avenue' | 'none' | probability of 'all' (street fronts with storefronts on the
    *      ground floor, the others get a residential entrance), freestanding, walls (see wallKinds) }
    */
   function commit(blk, b, o = {}) {
     const parts = b.parts;
     if (!parts.length) return;
-    if (parts.some((p) => hitsBridgeCorridor(p.x0, p.x1, p.z0, p.z1))) {
-      blk.voidLots.push(b.lot);
-      return;
-    }
     const mat = b.mat;
     const storey = storeys[mat];
     const tone = rand();
@@ -698,32 +633,6 @@ function buildCityBlocks(scene) {
     }
 
     // 3. Wrought-iron fire escapes on walk-up street fronts (and over the rear yards)
-    if (o.fireEscapes) {
-      for (const p of parts) {
-        if (p.y0 > EPS) continue;
-        const nf = Math.round(p.y1 / storey);
-        const w = p.x1 - p.x0;
-        if (nf < 3 || w < 4.6) continue;
-        // A landing per floor from the 2nd up, aligned with this facade's floor spacing.
-        const landings = Math.min(nf - 1, 7);
-        const h = (landings - 1) * storey + 1;
-        for (const side of ['n', 's']) {
-          const front = side === 'n' ? p.z0 - blk.minZ < EPS : blk.maxZ - p.z1 < EPS;
-          if (!front) {
-            const gap = side === 'n' ? p.z0 - b.lot.z0 : b.lot.z1 - p.z1;
-            if (!o.rearFireEscapes || gap < 1.2 || corniceReach(b, p, side, 1) <= 0) continue;
-          }
-          const z = side === 'n' ? p.z0 - 0.55 : p.z1 + 0.55;
-          const count = w >= 15 ? 2 : 1;
-          for (let k = 0; k < count; k++) {
-            blk.fireEscapes.push({
-              x: p.x0 + (w * (k + 0.5)) / count, y: storey + 0.1, z, h, storey, landings,
-              facing: side === 'n' ? Math.PI : 0
-            });
-          }
-        }
-      }
-    }
 
     // 4. Storefront awnings along the avenue frontage (the dice are rolled either way, so the block stays the same)
     if (o.awnings !== false) {
@@ -793,7 +702,7 @@ function buildCityBlocks(scene) {
       holes.push(sideRect(lot, side, (L - cw) * 0.5, (L + cw) * 0.5, dep - cd, dep + 1));
     }
     mass(b, carve(sideRect(lot, side, 0, L, 0, dep), holes, 'z'), 0, k.floors);
-    commit(blk, b, { fireEscapes: true, rearFireEscapes: chance(0.6), roof: 'walkup', wtP: k.floors >= 6 ? 0.3 : 0.08, shops: 0.3 });
+    commit(blk, b, { roof: 'walkup', wtP: k.floors >= 6 ? 0.3 : 0.08, shops: 0.3 });
   }
 
   // Pre-war elevator apartment house mid-block: light court onto the yard (or the street) or shafts on the party
@@ -859,7 +768,7 @@ function buildCityBlocks(scene) {
     const dep = Math.min(sideDepth(lot, side), k.depth);
     const holes = L > 12 && chance(0.4) ? [sideRect(lot, side, L * 0.3, L * 0.7, dep * range(0.6, 0.75), dep + 1)] : [];
     mass(b, carve(sideRect(lot, side, 0, L, 0, dep), holes, 'z'), 0, k.floors);
-    commit(blk, b, { roof: 'walkup', wtP: 0.6, fireEscapes: chance(0.35), shops: 0.75 });
+    commit(blk, b, { roof: 'walkup', wtP: 0.6, shops: 0.75 });
   }
 
   // One- and two-storey "taxpayers", garages & old stables
@@ -1070,7 +979,7 @@ function buildCityBlocks(scene) {
         }
         const f = irange(cfg.walkup[0], cfg.walkup[1]);
         mass(b, carve(sub, holes, 'x'), 0, f);
-        commit(blk, b, { fireEscapes: true, roof: 'walkup', wtP: f >= 6 ? 0.45 : 0.12, shops: shopsOnAvenue(blk, side) ? 'all' : 'none' });
+        commit(blk, b, { roof: 'walkup', wtP: f >= 6 ? 0.45 : 0.12, shops: shopsOnAvenue(blk, side) ? 'all' : 'none' });
       }
     } else if (type === 'low') {
       const b = building(blk, pickW(cfg.walkupMats), lot);
@@ -1177,7 +1086,7 @@ function buildCityBlocks(scene) {
       mass(b, carve(foot, holes, axis), fl, c);
       fl = c;
     });
-    commit(blk, b, { roof: 'walkup', wtP: cfg.wtP, fireEscapes: chance(cfg.feP) });
+    commit(blk, b, { roof: 'walkup', wtP: cfg.wtP });
   }
 
   // Loft block (SoHo, Tribeca, NoHo, Garment District, Chelsea, Flatiron): full lot coverage, corner lofts through to
@@ -1419,19 +1328,21 @@ function buildCityBlocks(scene) {
   function lowriseBlock(blk, cfg, x0, x1) {
     const { minZ, maxZ } = blk;
     const halfD = (maxZ - minZ) * 0.5;
+    const [w0, w1] = cfg.lotW || [10, 26];
     let x = x0;
     while (x1 - x > 0.5) {
-      let w = range(10, 26);
+      let w = range(w0, w1);
       if (x1 - x - w < 8) w = x1 - x;
       const lots = chance(0.6)
         ? [rect(x, x + w, minZ, maxZ)]
         : [rect(x, x + w, minZ, minZ + halfD), rect(x, x + w, maxZ - halfD, maxZ)];
       for (const lot of lots) {
-        const mat = pickW([[1, 4], [0, 3], [3, 1]]);
+        const mat = cfg.tepic ? MEX : pickW([[1, 4], [0, 3], [3, 1]]);
         const f = irange(cfg.floors[0], cfg.floors[1]);
         const b = building(blk, mat, lot);
         mass(b, [lot], 0, f);
-        commit(blk, b, { cornice: mat <= 2 && chance(0.6), corniceH: 0.6, roof: f >= 5 ? 'walkup' : 'none', wtP: 0.3 });
+        if (cfg.tepic) commit(blk, b, { cornice: chance(0.25), corniceH: 0.4, roof: 'none', wtP: 0, shops: cfg.floors[1] >= 3 ? 'all' : 0.3 });
+        else commit(blk, b, { cornice: mat <= 2 && chance(0.6), corniceH: 0.6, roof: f >= 5 ? 'walkup' : 'none', wtP: 0.3 });
       }
       x += w;
     }
@@ -1475,22 +1386,6 @@ function buildCityBlocks(scene) {
     const f = cz > 180 ? irange(12, 24) : cz > 0 ? irange(26, 42) : irange(18, 34);
     mass(b, [slab], pf, Math.max(pf + 6, Math.min(f, Math.floor(((x1 - x0) * 8) / storeys[mat]))));
     commit(blk, b, mat <= 2 ? { roof: 'prewar', wtP: 0.35, corniceH: 0.6 } : { cornice: false, roof: 'mech' });
-  }
-
-  // Sheer avenue wall carrying a Broadway billboard (flush ≥ 46m), often a tower rising behind it
-  function flushTower(blk, lot, side) {
-    const mat = pickW([[3, 3], [4, 3], [0, 2], [1, 1]]);
-    const b = building(blk, mat, lot);
-    const pf = Math.ceil(46 / storeys[mat]) + irange(0, 3);
-    mass(b, [lot], 0, pf);
-    if (chance(0.6)) {
-      const L = rectD(lot);
-      const shaft = sideRect(lot, side, range(1.5, 3.5), L - range(1.5, 3.5), range(0, 1.5), rectW(lot) - range(0, 2));
-      if (rectW(shaft) >= 10 && rectD(shaft) >= 10) {
-        mass(b, carve(shaft, shapeHoles(shaft, pickW([['rect', 2], ['notched', 1]])), 'x'), pf, pf + irange(8, 24));
-      }
-    }
-    commit(blk, b, mat >= 3 ? { cornice: false, roof: 'mech' } : { roof: 'prewar', wtP: 0.3 });
   }
 
   const LAYOUTS = {
@@ -1572,7 +1467,6 @@ function buildCityBlocks(scene) {
   // Avenue faced by the block edge at x (`dir` -1: the avenue to its west, +1: to its east): the nearest avenue line
   // running past that z, ~10-25 m beyond the property line (its roadway & sidewalk)
   function avenueName(x, dir, cz) {
-    if (Math.abs(x + dir * 15 - getBroadwayX(cz)) < 5) return 'broadway';
     let best = null;
     for (const ave of ALL_AVENUES) {
       if (ave.isHighway || cz < ave.minZ - 20 || cz > ave.maxZ + 20) continue;
@@ -1682,16 +1576,16 @@ function buildCityBlocks(scene) {
     through: 0.04
   });
 
-  const LOFT_BASE = { kind: 'loft', lotW: [8, 20], throughP: 0.35, floors: [6, 10], mats: [[1, 5], [0, 4], [2, 1]], setbackAt: 99, wtP: 0.65, feP: 0.3 };
-  const LOFT_SOHO = { ...LOFT_BASE, floors: [5, 7], lotW: [7.5, 16], feP: 0.55, mats: [[0, 4], [1, 5], [2, 1]] };
-  const LOFT_NOHO = { ...LOFT_BASE, floors: [6, 12], lotW: [9, 20], throughP: 0.45, setbackAt: 11, feP: 0.3 };
+  const LOFT_BASE = { kind: 'loft', lotW: [8, 20], throughP: 0.35, floors: [6, 10], mats: [[1, 5], [0, 4], [2, 1]], setbackAt: 99, wtP: 0.65 };
+  const LOFT_SOHO = { ...LOFT_BASE, floors: [5, 7], lotW: [7.5, 16], mats: [[0, 4], [1, 5], [2, 1]] };
+  const LOFT_NOHO = { ...LOFT_BASE, floors: [6, 12], lotW: [9, 20], throughP: 0.45, setbackAt: 11 };
   const LOFT_TRIBECA = { ...LOFT_BASE, floors: [6, 11], lotW: [9, 22], throughP: 0.45 };
-  const LOFT_CHELSEA = { ...LOFT_BASE, floors: [5, 12], lotW: [10, 24], throughP: 0.5, setbackAt: 12, feP: 0.2 };
-  const LOFT_CHELSEA_WEST = { ...LOFT_BASE, floors: [2, 8], lotW: [14, 30], throughP: 0.7, wtP: 0.4, feP: 0.05 };
-  const LOFT_FLATIRON = { ...LOFT_BASE, floors: [8, 14], lotW: [10, 22], throughP: 0.5, setbackAt: 12, feP: 0.1 };
-  const LOFT_NOMAD = { ...LOFT_BASE, floors: [10, 20], lotW: [10, 24], throughP: 0.55, setbackAt: 13, wtP: 0.6, feP: 0.05 };
-  const LOFT_GARMENT = { ...LOFT_BASE, floors: [12, 24], lotW: [12, 26], throughP: 0.6, setbackAt: 14, wtP: 0.55, feP: 0.05, mats: [[0, 5], [1, 5]] };
-  const LOFT_GARMENT_SOUTH = { ...LOFT_GARMENT, floors: [9, 18], setbackAt: 12, feP: 0.1 };
+  const LOFT_CHELSEA = { ...LOFT_BASE, floors: [5, 12], lotW: [10, 24], throughP: 0.5, setbackAt: 12 };
+  const LOFT_CHELSEA_WEST = { ...LOFT_BASE, floors: [2, 8], lotW: [14, 30], throughP: 0.7, wtP: 0.4 };
+  const LOFT_FLATIRON = { ...LOFT_BASE, floors: [8, 14], lotW: [10, 22], throughP: 0.5, setbackAt: 12 };
+  const LOFT_NOMAD = { ...LOFT_BASE, floors: [10, 20], lotW: [10, 24], throughP: 0.55, setbackAt: 13, wtP: 0.6 };
+  const LOFT_GARMENT = { ...LOFT_BASE, floors: [12, 24], lotW: [12, 26], throughP: 0.6, setbackAt: 14, wtP: 0.55, mats: [[0, 5], [1, 5]] };
+  const LOFT_GARMENT_SOUTH = { ...LOFT_GARMENT, floors: [9, 18], setbackAt: 12 };
 
   const OFFICE_MIDTOWN = {
     kind: 'office',
@@ -1736,6 +1630,11 @@ function buildCityBlocks(scene) {
   const PROJECTS_STUY_TOWN = { ...PROJECTS, floors: [12, 14], mats: [[1, 1]] };
   const LOWRISE = { kind: 'lowrise', floors: [2, 7] };
   const RIVERFRONT = { kind: 'river' };
+  // Tepic: one- and two-storey houses with flat roofs on the colonias, two to four storeys of shops, hotels and offices
+  // around the plaza; no water towers, no fire escapes
+  const TEPIC_COLONIA = { kind: 'lowrise', floors: [1, 2], tepic: true, lotW: [7, 14] };
+  const TEPIC_CENTRO = { kind: 'lowrise', floors: [2, 4], tepic: true, lotW: [8, 18] };
+  const TEPIC_INDUSTRIAL = { kind: 'lowrise', floors: [1, 2], tepic: true, lotW: [18, 40] };
 
   const CPB = CENTRAL_PARK_BOUNDS;
   function uptownProfile(blk) {
@@ -1765,6 +1664,9 @@ function buildCityBlocks(scene) {
   // Profile of a block by its real neighbourhood (city-config.js districtAt)
   function blockProfile(blk, district) {
     switch (district) {
+      case 'centro': return TEPIC_CENTRO;
+      case 'colonia': return chance(0.08) ? TEPIC_CENTRO : TEPIC_COLONIA;
+      case 'industrial': return TEPIC_INDUSTRIAL;
       case 'riverfront': return RIVERFRONT;
       case 'hudson_yards': return OFFICE_HUDSON_YARDS;
       case 'billionaires_row': return chance(0.6) ? OFFICE_BILLIONAIRES : OFFICE_MIDTOWN;
@@ -1824,7 +1726,6 @@ function buildCityBlocks(scene) {
       cornices: [],
       waterTowers: [],
       hvacUnits: [],
-      fireEscapes: [],
       awnings: [],
       scaffoldSheds: [],
       footprints: [], // { x0, x1, z0, z1, h, tone } per building part, lowest first (maps; + pts: its world corners when turned)
@@ -1837,26 +1738,8 @@ function buildCityBlocks(scene) {
     const bucketMarks = buckets.map((items) => items.length);
     rand = mulberry32((Math.imul(Math.round(minX * 4), 73856093) ^ Math.imul(Math.round(minZ * 4), 19349663) ^ 10019) >>> 0);
 
-    // Times Square's billboards hang on the walls of the lots fronting the bowtie (section B7), so a sheer wall rises
-    // flush there
-    const flush = { w: false, e: false };
-    if (TS && !isOuter && (xf || (maxZ > TS.zN && minZ < TS.zS))) {
-      const za = xf ? minZ : Math.max(minZ, TS.zN);
-      const zb = xf ? maxZ : Math.min(maxZ, TS.zS);
-      flush.w = frontsBowtie(minX, -1, za, zb);
-      flush.e = frontsBowtie(maxX, 1, za, zb);
-    }
-
-    let x0 = minX;
-    let x1 = maxX;
-    for (const side of ['w', 'e']) {
-      if (!flush[side]) continue;
-      let w = Math.min(range(18, 26), (x1 - x0) * 0.6);
-      if (x1 - x0 - w < 8) w = x1 - x0;
-      flushTower(blockDetail, side === 'w' ? rect(x0, x0 + w, minZ, maxZ) : rect(x1 - w, x1, minZ, maxZ), side);
-      if (side === 'w') x0 += w;
-      else x1 -= w;
-    }
+    const x0 = minX;
+    const x1 = maxX;
     if (x1 - x0 > 0.5) {
       const profile = lowRiseEsplanade ? LOWRISE : blockProfile(blockDetail, district);
       LAYOUTS[profile.kind](blockDetail, profile, x0, x1);
@@ -1890,7 +1773,7 @@ function buildCityBlocks(scene) {
         b.ry = th;
       }
     });
-    for (const list of [blk.cornices, blk.waterTowers, blk.hvacUnits, blk.fireEscapes, blk.awnings, blk.scaffoldSheds]) {
+    for (const list of [blk.cornices, blk.waterTowers, blk.hvacUnits, blk.awnings, blk.scaffoldSheds]) {
       for (const o of list) {
         [o.x, o.z] = toWorld(o.x, o.z);
         o.ry = th;
@@ -1921,55 +1804,7 @@ function buildCityBlocks(scene) {
   }
 
   // ============================================================================
-  // LANDMARK LOTS: the footprints landmarks.js builds on (real OpenStreetMap outlines + a margin; Seagram's plaza out
-  // to Park Ave) stay clear of the generic buildings, which fill the rest of their blocks
-  // ============================================================================
-  const LANDMARK_RESERVE = [
-    ['Empire State Building'], ['Chrysler Building'], ['One Vanderbilt'], ['Grand Central Terminal'], ['MetLife Building'],
-    ['Stephen A. Schwarzman Building'], ['One Times Square'], ['30 Rockefeller Plaza'], ['Citigroup Center'],
-    ['Seagram Building', { x0: avenueX('park') + 20 }], ['Flatiron Building'], ['One World Trade Center'], ['New York Stock Exchange']
-  ].map(([name, o]) => {
-    const t = LANDMARK_SITES[name];
-    if (!t) return null;
-    return { x0: t.x - t.w / 2 - 3, x1: t.x + t.w / 2 + 3, z0: t.z - t.d / 2 - 3, z1: t.z + t.d / 2 + 3, ...(o || {}) };
-  }).filter(Boolean);
-  const hitR = (a, x0, x1, z0, z1) => a.x0 < x1 && a.x1 > x0 && a.z0 < z1 && a.z1 > z0;
-  // [x0, x1, z0, z1] minus the reserved rects, as up to four slabs per hole (strips across the full depth first). In a
-  // frontage frame the reserves are their bounds in the frame
-  function minusReserves(r) {
-    let reserves = LANDMARK_RESERVE;
-    if (xf) {
-      reserves = LANDMARK_RESERVE.map((h) => {
-        const pts = [[h.x0, h.z0], [h.x1, h.z0], [h.x1, h.z1], [h.x0, h.z1]].map(([x, z]) => [
-          xf.px + (x - xf.px) * xf.cs - (z - xf.pz) * xf.sn,
-          xf.pz + (x - xf.px) * xf.sn + (z - xf.pz) * xf.cs
-        ]);
-        return { x0: Math.min(...pts.map((p) => p[0])), x1: Math.max(...pts.map((p) => p[0])), z0: Math.min(...pts.map((p) => p[1])), z1: Math.max(...pts.map((p) => p[1])) };
-      });
-    }
-    let parts = [r];
-    for (const h of reserves) {
-      const next = [];
-      for (const [x0, x1, z0, z1] of parts) {
-        if (!hitR(h, x0, x1, z0, z1)) { next.push([x0, x1, z0, z1]); continue; }
-        if (h.x0 > x0) next.push([x0, h.x0, z0, z1]);
-        if (h.x1 < x1) next.push([h.x1, x1, z0, z1]);
-        const mx0 = Math.max(x0, h.x0), mx1 = Math.min(x1, h.x1);
-        if (h.z0 > z0) next.push([mx0, mx1, z0, h.z0]);
-        if (h.z1 < z1) next.push([mx0, mx1, h.z1, z1]);
-      }
-      parts = next;
-    }
-    return parts;
-  }
-  function overlapsParkOrLandmark(minX, maxX, minZ, maxZ) {
-    const cp = CENTRAL_PARK_BOUNDS;
-    if (maxX > cp.minX && minX < cp.maxX && maxZ > cp.minZ && minZ < cp.maxZ) return true;
-    return LANDMARK_RESERVE.some((h) => hitR(h, minX, maxX, minZ, maxZ));
-  }
-
-  // ============================================================================
-  // A. EVERY REAL BLOCK OF MANHATTAN (city-config.js BLOCKS): each curb island's lots inside its property line,
+  // A. EVERY REAL BLOCK OF THE CITY (city-config.js BLOCKS): each curb island's lots inside its property line,
   //    filled for its neighbourhood. A grid block is one lot rect spanning avenue to avenue (61 m deep between the
   //    streets); Broadway's trapezoids and Lower Manhattan's irregular blocks come with frontage frames: lot rects laid
   //    out along each street they front, filled in the frame and turned into place.
@@ -1988,23 +1823,155 @@ function buildCityBlocks(scene) {
     for (let k = 0; k < n; k++) out.push([x0, x1, z0 + k * (s + gap), z0 + k * (s + gap) + s]);
     return out;
   }
+  // Blocks the real buildings stand on (city-geodata.js `houses`, Overture Maps): built house by house (A2) instead
+  const HOUSES = GEO.houses || [];
+  const pylons = []; // chain stores' pole signs (5C)
+  const HS = GEO.houseStride || 7; // integers per house
+  const SIGNS = GEO.signs || []; // shop sign faces (chains under parody names, local businesses, trades)
+  const houseBlocks = new Set();
+  const houseBlock = new Array(HOUSES.length / HS); // the block each house stands on (A2 groups them by it)
+  for (let i = 0; i < HOUSES.length; i += HS) {
+    const b = blockAt(HOUSES[i] / 10, HOUSES[i + 1] / 10);
+    houseBlock[i / HS] = b;
+    if (b) houseBlocks.add(b);
+  }
   for (const b of BLOCKS) {
-    if (b.park > 0.6 || b.median) continue;
+    if (b.park > 0.6 || b.median || houseBlocks.has(b)) continue;
     minLot = b.frames ? 12 : 15;
     for (const [th, px, pz, rects] of b.frames || [[0, 0, 0, b.rects]]) {
       xf = th ? { th, cs: Math.cos(th), sn: Math.sin(th), px, pz } : null;
       for (const r of rects) {
-        for (const part of minusReserves(r)) {
-          for (const [x0, x1, z0, z1] of splitDeep(part)) {
-            if (x1 - x0 < minLot || z1 - z0 < minLot) continue;
-            populateBlock(x0, x1, z0, z1, 0, 0, false, false, b.district);
-          }
+        for (const [x0, x1, z0, z1] of splitDeep(r)) {
+          if (x1 - x0 < minLot || z1 - z0 < minLot) continue;
+          populateBlock(x0, x1, z0, z1, 0, 0, false, false, b.district);
         }
       }
       xf = null;
     }
   }
   minLot = 15;
+
+  // A2. THE REAL BUILDINGS (Overture Maps footprints as oriented boxes, see tools/build-tepic-geodata.mjs), as Mexican
+  //     houses: a long street front is split into houses 6-10 m wide, each its own colour & height; the front towards
+  //     the street with a door & gate, a shop's shutter & sign, or a chain store's front (js/storefronts); flat roofs
+  //     with a black water tank (tinaco) on most. Grouped per block for the maps & the streaming of roof details
+  {
+    const byBlock = new Map();
+    const blockOf = (b, cx, cz) => {
+      const key = b ? b.id : -1;
+      let blk = byBlock.get(key);
+      if (!blk) {
+        blk = {
+          id: `house_${key}`, cx: b ? b.cx : cx, cz: b ? b.cz : cz, minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity,
+          district: b ? b.district : 'colonia', cornices: [], waterTowers: [], hvacUnits: [], awnings: [],
+          scaffoldSheds: [], footprints: [], yards: [], tinacos: [], maxH: 0, avenueFronts: { w: [], e: [] }
+        };
+        byBlock.set(key, blk);
+      }
+      return blk;
+    };
+    for (let i = 0; i < HOUSES.length; i += HS) {
+      const cx0 = HOUSES[i] / 10, cz0 = HOUSES[i + 1] / 10;
+      if (TEPIC_RESERVES.some((r) => r.contains(cx0, cz0))) continue; // a landmark stands there (tepic-landmarks.js)
+      const w0 = HOUSES[i + 2] / 10, d0 = HOUSES[i + 3] / 10;
+      const th = HOUSES[i + 4] / 1000;
+      const floors0 = HOUSES[i + 5];
+      const front = HOUSES[i + 6] & 3;
+      const shop0 = HOUSES[i + 6] >= 4;
+      const signNo = HS > 7 ? HOUSES[i + 7] : 0; // 1-based into SIGNS
+      const sign = signNo ? SIGNS[signNo - 1] : null;
+      const chain = sign && sign.chain ? STOREFRONTS[sign.store] : null;
+      const blk = blockOf(houseBlock[i / HS], cx0, cz0);
+      rand = mulberry32((Math.imul(Math.round(cx0 * 4), 73856093) ^ Math.imul(Math.round(cz0 * 4), 19349663) ^ 4421) >>> 0);
+      const cs = Math.cos(th), sn = Math.sin(th);
+      const ou = front === 0 ? -1 : front === 1 ? 1 : 0;
+      const ov = front === 2 ? -1 : front === 3 ? 1 : 0;
+      // the street front runs along local z (fronts w / e) or local x (fronts n / s)
+      const alongZ = ou !== 0;
+      const along0 = alongZ ? d0 : w0;
+      // split long fronts into houses (never a chain store)
+      const parts = [];
+      if (!chain && along0 > 13) {
+        let n = Math.max(2, Math.round(along0 / range(6.5, 9.5)));
+        const cuts = [0];
+        for (let k = 1; k < n; k++) cuts.push((k / n + (rand() - 0.5) * 0.25 / n) * along0);
+        cuts.push(along0);
+        for (let k = 0; k < n; k++) parts.push([cuts[k], cuts[k + 1]]);
+      } else parts.push([0, along0]);
+      const signPart = Math.floor(parts.length / 2);
+      parts.forEach(([t0, t1], k) => {
+        const len = t1 - t0;
+        const mid = (t0 + t1) * 0.5 - along0 * 0.5; // along the front, from the footprint's centre
+        const u = alongZ ? 0 : mid, v = alongZ ? mid : 0;
+        const cx = cx0 + u * cs + v * sn, cz = cz0 - u * sn + v * cs;
+        const w = alongZ ? w0 : len, d = alongZ ? len : d0;
+        const floors = chain ? floors0 : Math.max(1, Math.min(4, floors0 + (parts.length > 1 ? pickW([[0, 5], [1, 2], [-1, 1.5]]) : 0)));
+        const hasSign = k === signPart && !!sign;
+        const shop = (shop0 && k === signPart) || (shop0 && chance(0.3));
+        const h = floors * storeys[MEX] + (chain ? 0.6 : range(0, 0.35));
+        const tone = rand();
+        const faces = [WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear];
+        faces[front] = chain ? WALL_KINDS.chainStore + sign.store : shop ? WALL_KINDS.shop : WALL_KINDS.entry;
+        const hx = w * 0.5, hz = d * 0.5;
+        const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;
+        const ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
+        const pts = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]].map(([a, b]) => ({ x: cx + a * cs + b * sn, z: cz - a * sn + b * cs }));
+        // on a hillside (terrain.js) the house stands on the slope: its floor at its lowest corner (a little into the
+        // ground), its roof a full height over its highest, the downhill side's foundation showing
+        let g0 = Infinity, g1 = 0;
+        for (const p of pts) {
+          const g = hillGround(p.x, p.z);
+          g0 = Math.min(g0, g);
+          g1 = Math.max(g1, g);
+        }
+        const base = g1 > 0 ? Math.max(0, g0 - 0.15) : 0;
+        const top = g1 + h;
+        buckets[MEX].push({ x: cx, y: (base + top) * 0.5, z: cz, w, h: top - base, d, faces, tone, ry: th });
+        colliders.push({ minX: cx - ex, maxX: cx + ex, minZ: cz - ez, maxZ: cz + ez, minY: base, maxY: top, obb: { cx, cz, hx, hz, cs, sn } });
+        blk.footprints.push({ x0: cx - ex, x1: cx + ex, z0: cz - ez, z1: cz + ez, h: top, tone, pts });
+        blk.minX = Math.min(blk.minX, cx - ex);
+        blk.maxX = Math.max(blk.maxX, cx + ex);
+        blk.minZ = Math.min(blk.minZ, cz - ez);
+        blk.maxZ = Math.max(blk.maxZ, cz + ez);
+        if (top > blk.maxH) blk.maxH = top;
+        // a black water tank on most roofs, back from the street
+        if (!chain && chance(0.72) && w > 3.2 && d > 3.2) {
+          const tu = (alongZ ? -ou : 0) * range(0.1, 0.35) * w + (alongZ ? 0 : range(-0.3, 0.3) * w);
+          const tv = (alongZ ? range(-0.3, 0.3) * d : -ov * range(0.1, 0.35) * d);
+          blk.tinacos.push({ x: cx + tu * cs + tv * sn, y: top, z: cz - tu * sn + tv * cs, s: range(0.85, 1.15) });
+        }
+        // The street front: a chain's fascia, or a shop's awning with its sign above it
+        if (!shop && !chain) return;
+        const toFront = (out) => {
+          const r = (ou ? hx : hz) + out;
+          return [cx + (ou * r) * cs + (ov * r) * sn, cz - (ou * r) * sn + (ov * r) * cs];
+        };
+        // awnings are laid out along local z facing ±x: a front on a local n / s side turns a quarter more
+        const ry = th + (ov ? (ov > 0 ? -Math.PI / 2 : Math.PI / 2) : 0);
+        const gf = g1 > 0 ? hillGround(...toFront(0.9)) : 0; // the ground at the street front
+        if (chain) {
+          // the logo box over the middle of the front (a supermarket's runs further along it)
+          const [sx, sz] = toFront(0.25);
+          const boxH = chain.big ? 1.8 : 1.3;
+          blk.awnings.push({ x: sx, y: 0, z: sz, w: 0, d: Math.min(len - 1.0, chain.big ? 26 : 5.2), sideDir: ou || 1, colorIdx: 0, ry,
+            noAwning: true, sign: signNo - 1, signY: top - boxH * 0.5 + 0.35, signH: boxH, signW: 0.5 });
+          if (chain.pylon) pylons.push({ front: toFront(1.4), y: g1 > 0 ? hillGround(...toFront(1.4)) : 0, ry, along: len, slot: signNo - 1, ou, ov, cs, sn, pylon: chain.pylon });
+        } else if (hasSign || chance(0.55)) {
+          const [ax, az] = toFront(0.9);
+          const [sx, sz] = toFront(0.16); // the sign flat on the wall above the awning
+          const signY = Math.max(gf, base) + (floors < 2 ? h - 0.45 : storeys[MEX] + 0.6);
+          const sg = hasSign ? signNo - 1 : undefined;
+          blk.awnings.push({ x: ax, y: Math.max(gf, base) + Math.min(2.7, storeys[MEX] * 0.9) - 0.15, z: az, w: 1.5, d: Math.min(7, len - 1.2), sideDir: ou || 1,
+            colorIdx: irange(0, 4), ry, sign: sg, signY, signPX: sx, signPZ: sz, signW: 0.12, signH: 0.62, noSign: sg === undefined && floors < 2 });
+        }
+      });
+    }
+    for (const blk of byBlock.values()) {
+      blk.footprints.sort((a, b) => a.h - b.h);
+      quadtree.insert(blk);
+      allBlocks.push(blk);
+    }
+  }
 
   // B6. Narrow leftover slabs no building fits on (8-26 m wide: clipped short by the shore highways or cut by Broadway)
   //     become sitting areas: a row or two of honey locusts & planes in tree pits (planted by street-details.js)
@@ -2021,7 +1988,6 @@ function buildCityBlocks(scene) {
       const narrow = Math.min(s.w, s.d);
       if (narrow < 8 || narrow > 26 || Math.max(s.w, s.d) < 20) continue;
       if (allBlocks.some((b) => hit(b, x0 + 2, x1 - 2, z0 + 2, z1 - 2)) || plazas.some((r) => hit(r, x0, x1, z0, z1))) continue;
-      if (overlapsParkOrLandmark(x0, x1, z0, z1)) continue;
       const alongX = s.w > s.d;
       const len = alongX ? s.w : s.d;
       const n = Math.max(1, Math.floor((len - 6) / 8));
@@ -2039,65 +2005,6 @@ function buildCityBlocks(scene) {
     }
   }
 
-  // B7. Times Square: tiers of billboards up every street wall that looks onto the bowtie (podiums and the tower
-  //     shafts set back above them alike), from above the storefront marquees to ~62 m, split into screens up to
-  //     ~26 m wide (the odd screen left out)
-  if (TS) {
-    const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // createFacadeBoxes `faces` order: w, e, n, s
-    const hash = (a, b) => Math.abs(Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1;
-    for (const items of buckets) {
-      for (const bx of items) {
-        if (bx.z + bx.d * 0.5 < TS.zN - 40 || bx.z - bx.d * 0.5 > TS.zS + 40 || Math.abs(bx.x - TS.x7) > 280) continue;
-        const base = Math.max(7.5, bx.y - bx.h * 0.5 + 1.2);
-        const top = Math.min(bx.y + bx.h * 0.5 - 2, 62);
-        if (top - base < 8) continue;
-        DIRS.forEach(([lx, lz], f) => {
-          if (bx.faces && bx.faces[f] > WALL_KINDS.entry) return; // street fronts only (not rear / lot-line walls)
-          // the wall's centre, outward normal (n) and direction along it (a) in the world (boxes may be turned by ry)
-          const c = Math.cos(bx.ry || 0);
-          const s = Math.sin(bx.ry || 0);
-          const ox = lx * bx.w * 0.5;
-          const oz = lz * bx.d * 0.5;
-          const cx = bx.x + ox * c + oz * s;
-          const cz = bx.z - ox * s + oz * c;
-          const nx = lx * c + lz * s;
-          const nz = -lx * s + lz * c;
-          const ax = -lz * c + lx * s;
-          const az = lz * s + lx * c;
-          const L = lx ? bx.d : bx.w;
-          if (L < 8) return;
-          const seen = [0.2, 0.5, 0.8].some((t) => [6, 12, 20, 30].some((d) => {
-            const u = (t - 0.5) * L;
-            return inBowtie(cx + nx * d + ax * u, cz + nz * d + az * u);
-          }));
-          if (!seen) return;
-          const n = Math.max(1, Math.ceil((L - 2) / 26));
-          const pw = (L - 2 - (n - 1) * 1.2) / n;
-          for (let i = 0; i < n; i++) {
-            const u = -L * 0.5 + 1 + i * (pw + 1.2) + pw * 0.5;
-            let y = base;
-            for (let tier = 0; y < top - 6; tier++) {
-              const h = Math.min(top - y, 8 + 8 * hash(u + tier, cx));
-              if (h < 6) break;
-              if (hash(cz + tier, u) > 0.12) {
-                broadwayBillboards.push({
-                  x: cx + nx * 0.35 + ax * u,
-                  y: y + h * 0.5,
-                  z: cz + nz * 0.35 + az * u,
-                  w: pw,
-                  h,
-                  rotY: Math.atan2(nx, nz),
-                  variant: Math.floor(hash(cx + i, cz + tier) * 6)
-                });
-              }
-              y += h + 1.2;
-            }
-          }
-        });
-      }
-    }
-  }
-
   // ============================================================================
   // C. STATIC ISLAND-WIDE ARCHITECTURAL MASSING (6 TSL Facade Materials)
   // ============================================================================
@@ -2111,26 +2018,6 @@ function buildCityBlocks(scene) {
     inst.receiveShadow = true;
     group.add(inst);
   });
-
-  // Billboards: one merged mesh per poster theme
-  {
-    const byVariant = new Map();
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    for (const bb of broadwayBillboards) {
-      const g = new THREE.PlaneGeometry(bb.w, bb.h);
-      g.applyMatrix4(m.compose(new THREE.Vector3(bb.x, bb.y, bb.z), q.setFromAxisAngle(up, bb.rotY), new THREE.Vector3(1, 1, 1)));
-      if (!byVariant.has(bb.variant)) byVariant.set(bb.variant, []);
-      byVariant.get(bb.variant).push(g);
-    }
-    for (const [variant, geos] of byVariant) {
-      const mesh = new THREE.Mesh(mergeGeometries(geos), createBillboardMaterial(variant));
-      mesh.name = `TimesSquareBillboards_${variant}`;
-      group.add(mesh);
-      for (const g of geos) g.dispose();
-    }
-  }
 
   // Rear yards, light courts & project lawns: one thin slab per patch just above the sidewalk (buildings standing on
   // it hide the rest). Lawn, paving and tree canopies come from world-space noise; detail finer than a pixel fades
@@ -2274,8 +2161,19 @@ function buildCityBlocks(scene) {
   hvacInst.frustumCulled = false;
   group.add(hvacInst);
 
-  // 4. Instanced fire escapes: real steps nearby, lightweight silhouettes in the distance.
-  const fireEscapeSystem = createFireEscapes(group);
+  // 3B. Black polyethylene water tanks (tinacos) on the Mexican houses' flat roofs: ribbed drum, domed lid, a cap
+  const MAX_TINACOS = 2400;
+  const tinacoGeo = mergeGeometries([
+    new THREE.CylinderGeometry(0.56, 0.6, 1.25, 14).translate(0, 0.625, 0),
+    new THREE.SphereGeometry(0.56, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.35, 1).translate(0, 1.25, 0),
+    new THREE.CylinderGeometry(0.2, 0.2, 0.08, 10).translate(0, 1.47, 0),
+    new THREE.BoxGeometry(0.9, 0.12, 0.9).translate(0, 0.06, 0)
+  ].map((g) => g.toNonIndexed()));
+  const tinacoInst = new THREE.InstancedMesh(tinacoGeo, new THREE.MeshStandardNodeMaterial({ color: 0x17181a, roughness: 0.55 }), MAX_TINACOS);
+  tinacoInst.castShadow = tinacoInst.receiveShadow = true;
+  tinacoInst.frustumCulled = false;
+  tinacoInst.count = 0;
+  group.add(tinacoInst);
 
   // 5. Ground-floor retail canvas awnings & illuminated storefront fascia signs
   const awningMat = new THREE.MeshStandardNodeMaterial({ color: 0xffffff, roughness: 0.65 });
@@ -2296,11 +2194,11 @@ function buildCityBlocks(scene) {
   group.add(awningInst);
 
   const signThemes = [
-    { bg: '#161210', border: '#c89d54', text: 'FIFTH AVE BISTRO · EST. 1928', color: '#ffe4a8' },
-    { bg: '#0c2244', border: '#38b6ff', text: 'DUANE READE · PHARMACY', color: '#ffffff' },
-    { bg: '#142b20', border: '#d4af37', text: 'MANHATTAN BOOKS & ESPRESSO', color: '#fff2cc' },
-    { bg: '#280a10', border: '#ff5252', text: 'BROADWAY DELI & GRILL · 24HR', color: '#ffd180' },
-    { bg: '#101318', border: '#e0e6ed', text: 'EMPIRE WATCHES · NEW YORK', color: '#f5f9ff' }
+    { bg: '#161210', border: '#c89d54', text: 'LONCHERÍA LA TEPIQUEÑA', color: '#ffe4a8' },
+    { bg: '#0c2244', border: '#38b6ff', text: 'FARMACIA DEL CENTRO', color: '#ffffff' },
+    { bg: '#142b20', border: '#d4af37', text: 'LIBRERÍA Y CAFÉ NAYAR', color: '#fff2cc' },
+    { bg: '#280a10', border: '#ff5252', text: 'TACOS Y TORTAS · 24 HRS', color: '#ffd180' },
+    { bg: '#101318', border: '#e0e6ed', text: 'RELOJERÍA AMADO NERVO', color: '#f5f9ff' }
   ];
   const MAX_SIGNS_PER_THEME = Math.ceil(MAX_AWNINGS / signThemes.length) + 32;
   const signInsts = signThemes.map((st) => {
@@ -2327,6 +2225,90 @@ function buildCityBlocks(scene) {
     group.add(sInst);
     return sInst;
   });
+
+  // 5B. Shop sign atlas (city-geodata.js `signs`: chains under parody names, local businesses, trades): every sign face
+  //     drawn once into one canvas, each sign box picking its slot per instance
+  const ATLAS_COLS = 8;
+  const ATLAS_ROWS = 102;
+  const SLOT_W = 256;
+  const SLOT_H = 40;
+  let atlasInst = null;
+  let atlasSlots = null;
+  if (SIGNS.length) {
+    const c = document.createElement('canvas');
+    c.width = ATLAS_COLS * SLOT_W;
+    c.height = ATLAS_ROWS * SLOT_H;
+    const ctx = c.getContext('2d');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    SIGNS.forEach((sg, k) => {
+      if (k >= ATLAS_COLS * ATLAS_ROWS) return;
+      const x0 = (k % ATLAS_COLS) * SLOT_W;
+      const y0 = Math.floor(k / ATLAS_COLS) * SLOT_H;
+      ctx.fillStyle = sg.bg;
+      ctx.fillRect(x0, y0, SLOT_W, SLOT_H);
+      if (sg.stripe) {
+        // a logo between two stripes (OKSO)
+        ctx.fillStyle = sg.stripe;
+        ctx.fillRect(x0, y0, SLOT_W, 6);
+        ctx.fillRect(x0, y0 + SLOT_H - 6, SLOT_W, 6);
+      } else {
+        ctx.strokeStyle = sg.border;
+        ctx.lineWidth = sg.chain ? 4 : 2;
+        ctx.strokeRect(x0 + 3, y0 + 3, SLOT_W - 6, SLOT_H - 6);
+      }
+      ctx.fillStyle = sg.fg;
+      let px = sg.chain ? 26 : 22;
+      const weight = sg.chain ? '900' : '800';
+      do {
+        ctx.font = `${weight} ${px}px Inter, Arial, sans-serif`;
+        px--;
+      } while (px > 9 && ctx.measureText(sg.text).width > SLOT_W - 18);
+      ctx.fillText(sg.text, x0 + SLOT_W / 2, y0 + SLOT_H / 2 + 1);
+    });
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const geo = unitBox.clone();
+    atlasSlots = new THREE.InstancedBufferAttribute(new Float32Array(MAX_AWNINGS), 1);
+    geo.setAttribute('signSlot', atlasSlots);
+    const mat = new THREE.MeshBasicNodeMaterial();
+    mat.colorNode = texture(tex, atlasSlotUV(attribute('signSlot', 'float'), ATLAS_COLS, ATLAS_ROWS));
+    atlasInst = new THREE.InstancedMesh(geo, mat, MAX_AWNINGS);
+    atlasInst.frustumCulled = false;
+    atlasInst.count = 0;
+    group.add(atlasInst);
+
+    // 5C. Chain stores' pole signs: a tall pole at the corner of the front with the logo box on top (both faces)
+    if (pylons.length) {
+      const poleInst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.2, 1, 10).translate(0, 0.5, 0), new THREE.MeshStandardNodeMaterial({ roughness: 0.5, metalness: 0.3 }), pylons.length);
+      const signGeo = unitBox.clone();
+      const pylonSlots = new THREE.InstancedBufferAttribute(new Float32Array(pylons.length), 1);
+      signGeo.setAttribute('signSlot', pylonSlots);
+      const signInst = new THREE.InstancedMesh(signGeo, mat, pylons.length);
+      pylons.forEach((p, k) => {
+        // at one end of the front, out on the sidewalk
+        const endU = (p.along * 0.5 - 0.8) * (p.ov ? 1 : 0), endV = (p.along * 0.5 - 0.8) * (p.ou ? 1 : 0);
+        const x = p.front[0] + endU * p.cs + endV * p.sn, z = p.front[1] - endU * p.sn + endV * p.cs;
+        const H = p.pylon.height;
+        dummy.rotation.set(0, 0, 0);
+        dummy.position.set(x, p.y, z);
+        dummy.scale.set(1, H, 1);
+        dummy.updateMatrix();
+        poleInst.setMatrixAt(k, dummy.matrix);
+        poleInst.setColorAt(k, new THREE.Color(p.pylon.pole));
+        dummy.rotation.set(0, p.ry + Math.PI / 2, 0); // its faces towards the street both ways
+        dummy.position.set(x, p.y + H + 0.55, z);
+        dummy.scale.set(0.35, 1.1, 2.6);
+        dummy.updateMatrix();
+        signInst.setMatrixAt(k, dummy.matrix);
+        pylonSlots.setX(k, p.slot);
+        colliders.push({ minX: x - 0.25, maxX: x + 0.25, minZ: z - 0.25, maxZ: z + 0.25, minY: p.y, maxY: p.y + H });
+      });
+      poleInst.castShadow = signInst.castShadow = true;
+      group.add(poleInst, signInst);
+    }
+  }
 
   // 6. Sidewalk construction scaffolding sheds
   const shedMat = new THREE.MeshStandardNodeMaterial({ color: 0x214f37, roughness: 0.6, metalness: 0.25 });
@@ -2400,10 +2382,11 @@ function buildCityBlocks(scene) {
     let corniceCount = 0;
     let wtCount = 0;
     let hvacCount = 0;
-    fireEscapeSystem.begin();
+    let tinacoCount = 0;
     let awningCount = 0;
     let shedCount = 0;
     const signCounts = signInsts.map(() => 0);
+    let atlasCount = 0;
 
     for (let bIdx = 0; bIdx < nearbyBlocks.length; bIdx++) {
       const blk = nearbyBlocks[bIdx];
@@ -2415,6 +2398,7 @@ function buildCityBlocks(scene) {
       //    roofs share a plane) so roofs & terraces keep their own roofing instead of a stone lid
       for (let i = 0; i < blk.cornices.length && corniceCount < MAX_CORNICES; i++) {
         const c = blk.cornices[i];
+        dummy.rotation.set(0, c.ry ?? blk.ry ?? 0, 0); // (the real buildings turn one by one)
         dummy.position.set(c.x, c.y - c.h * 0.6, c.z);
         dummy.scale.set(c.w, c.h, c.d);
         dummy.updateMatrix();
@@ -2441,6 +2425,15 @@ function buildCityBlocks(scene) {
       }
 
       // 3. Rooftop HVAC & mechanical bulkheads
+      for (let i = 0; blk.tinacos && i < blk.tinacos.length && tinacoCount < MAX_TINACOS; i++) {
+        const t = blk.tinacos[i];
+        dummy.rotation.set(0, 0, 0);
+        dummy.position.set(t.x, t.y, t.z);
+        dummy.scale.set(t.s, t.s, t.s);
+        dummy.updateMatrix();
+        tinacoInst.setMatrixAt(tinacoCount++, dummy.matrix);
+      }
+      dummy.rotation.set(0, blk.ry || 0, 0);
       for (let i = 0; i < blk.hvacUnits.length && hvacCount < MAX_HVAC; i++) {
         const u = blk.hvacUnits[i];
         dummy.position.set(u.x, u.y + u.h * 0.5, u.z);
@@ -2449,27 +2442,32 @@ function buildCityBlocks(scene) {
         hvacInst.setMatrixAt(hvacCount++, dummy.matrix);
       }
 
-      // 4. Wrought-iron fire escapes
-      for (const fe of blk.fireEscapes) fireEscapeSystem.add(fe, focusX, focusZ);
-
       // 5. Retail awnings & illuminated storefront fascia signs
       for (let i = 0; i < blk.awnings.length && awningCount < MAX_AWNINGS; i++) {
         const a = blk.awnings[i];
+        dummy.rotation.set(0, a.ry ?? blk.ry ?? 0, 0);
         dummy.position.set(a.x, a.y, a.z);
-        dummy.scale.set(a.w, 0.75, a.d);
+        dummy.scale.set(a.noAwning ? 0 : a.w, a.noAwning ? 0 : 0.75, a.noAwning ? 0 : a.d);
         dummy.updateMatrix();
         awningInst.setMatrixAt(awningCount, dummy.matrix);
         awningInst.setColorAt(awningCount, awningPalette[a.colorIdx % awningPalette.length]);
 
-        const themeIdx = awningCount % signInsts.length;
-        if (signCounts[themeIdx] < MAX_SIGNS_PER_THEME) {
-          dummy.position.set(a.x, 4.68, a.z);
+        const themeIdx = a.sign !== undefined ? a.sign % storeThemeColors.length : awningCount % signInsts.length;
+        if (a.sign !== undefined && atlasInst) {
+          // the shop's own sign (atlas slot), flat on its facade above the awning (or the chain's fascia band)
+          dummy.position.set(a.signPX ?? a.x, a.signY ?? 4.68, a.signPZ ?? a.z);
+          dummy.scale.set(a.signW ?? 0.28, a.signH ?? 0.86, a.d * 0.92);
+          dummy.updateMatrix();
+          atlasInst.setMatrixAt(atlasCount, dummy.matrix);
+          atlasSlots.setX(atlasCount++, a.sign);
+        } else if (!a.noSign && a.sign === undefined && signCounts[themeIdx] < MAX_SIGNS_PER_THEME) {
+          dummy.position.set(a.x, a.signY ?? 4.68, a.z);
           dummy.scale.set(0.28, 0.86, a.d * 0.92);
           dummy.updateMatrix();
           signInsts[themeIdx].setMatrixAt(signCounts[themeIdx]++, dummy.matrix);
         }
         if (collectNearLights) {
-          activeAwnings.push({ a, themeIdx, ry: blk.ry || 0 });
+          activeAwnings.push({ a, themeIdx, ry: a.ry ?? blk.ry ?? 0 });
         }
         awningCount++;
       }
@@ -2497,8 +2495,8 @@ function buildCityBlocks(scene) {
 
     hvacInst.count = hvacCount;
     flagRange(hvacInst.instanceMatrix, hvacCount);
-
-    fireEscapeSystem.end();
+    tinacoInst.count = tinacoCount;
+    flagRange(tinacoInst.instanceMatrix, tinacoCount);
 
     awningInst.count = awningCount;
     flagRange(awningInst.instanceMatrix, awningCount);
@@ -2508,6 +2506,11 @@ function buildCityBlocks(scene) {
       sInst.count = signCounts[idx];
       flagRange(sInst.instanceMatrix, signCounts[idx]);
     });
+    if (atlasInst) {
+      atlasInst.count = atlasCount;
+      flagRange(atlasInst.instanceMatrix, atlasCount);
+      flagRange(atlasSlots, atlasCount);
+    }
 
     shedInst.count = shedCount;
     flagRange(shedInst.instanceMatrix, shedCount);

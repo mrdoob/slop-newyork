@@ -20,6 +20,8 @@ import {
   createLoftedBusMaterial
 } from './actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { BONES, boxHit, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
 
 // js/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
@@ -34,11 +36,23 @@ import { PersonCrowd, PersonRig } from './pedestrians.js';
 const NUM_CARS = 200;
 const NUM_BUSES = 12;
 const NUM_PEDS = 340;
+const NUM_BIKES = 28; // cyclists riding with the traffic (the player can knock them off)
+const KNOCK_SPEED = 2.2; // m/s: the player's car or bicycle knocks people over above it
+const DOWN_TIME = 9; // s a knocked-over person lies still before getting up (out of sight, see spawnPed)
 
 // Intelligent Driver Model: max acceleration, comfortable braking, time headway, standstill gap; and the sideways
 // acceleration drivers accept in bends, which sets how fast they take each turn or lane shift
 const CAR_DRIVER = { a: 2.0, b: 3.0, T: 1.2, s0: 2.0, aLat: 3.5 };
 const BUS_DRIVER = { a: 1.1, b: 2.5, T: 1.5, s0: 2.5, aLat: 2.0 };
+const BIKE_DRIVER = { a: 1.0, b: 2.6, T: 1.0, s0: 1.5, aLat: 2.5 };
+// Bicycle frame (see controllers.js createCyclistEntity): the rider's seat, bars & pedals
+const BIKE_FRAME = {
+  seat: new THREE.Vector3(0, 0.98, -0.28),
+  bars: new THREE.Vector3(0, 0.98, 0.4),
+  gripHalf: 0.22,
+  bracket: new THREE.Vector3(0, 0.34, -0.145),
+  crankLength: 0.17
+};
 const LOOKAHEAD = 70; // metres a driver looks ahead for vehicles, stop lines and signals
 
 // Retire distant actors even when looking their way: keeping them indefinitely starves upcoming streets.
@@ -76,7 +90,7 @@ const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
 function createTrafficSystem(scene, sidewalks, obstacles) {
   const group = new THREE.Group();
-  group.name = 'ManhattanTrafficAndPedestrians';
+  group.name = 'TrafficAndPedestrians';
   let collisionListener = null;
   const collisionEvent = { a: null, b: null, kind: 'vehicle', x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, speed: 0 };
 
@@ -134,7 +148,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   };
 
   // =========================================================================
-  // 1. 3D LOFTED NYC YELLOW TAXIS, SEDANS, SUVS & NYPD CRUISERS (200 VEHICLES)
+  // 1. 3D LOFTED YELLOW TAXIS, SEDANS, SUVS & POLICE CRUISERS (200 VEHICLES)
   // =========================================================================
   function createVehicle(bus, half, halfWidth, axle, driver, v0) {
     return {
@@ -145,7 +159,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       dl: 0, dlv: 0, blink: 0, blinkPhase: Math.random() * 0.8,
       x: 0, z: 0, prevX: 0, prevZ: 0, tx: 0, tz: 1, nose: 0, yaw: 0, yawRate: 0, steer: 0,
       pitch: 0, roll: 0, pitchVel: 0, rollVel: 0, vx: 0, vz: 0, yawOffset: 0, yawVel: 0,
-      pAhead: Infinity, pRight: 0, pSpeed: 0, wheelSpin: Math.random() * Math.PI * 2
+      pAhead: Infinity, pRight: 0, pSpeed: 0, pHalfW: 0.86, pHalfL: 2.18, wheelSpin: Math.random() * Math.PI * 2
     };
   }
 
@@ -310,7 +324,43 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
   const buses = [];
   for (let i = 0; i < NUM_BUSES; i++) buses.push(createVehicle(true, 6.0, 1.3, 3.6, BUS_DRIVER, 8 + (i % 3)));
-  const vehicles = [...cars, ...buses];
+
+  // Cyclists: vehicles of their own kind keeping to the right-hand lane, a frame & wheels instanced, the rider a
+  // PersonRig posed on the pedals (pedestrians.js ride)
+  const bikePalette = [0x0078e8, 0xd8242b, 0x1b1d22, 0xf2f2f0, 0x2f9a4b, 0xf2b705].map((c) => new THREE.Color(c));
+  const bikes = [];
+  for (let i = 0; i < NUM_BIKES; i++) {
+    const bike = createVehicle(false, 0.95, 0.32, 0.58, BIKE_DRIVER, 4.2 + (i % 5) * 0.45);
+    Object.assign(bike, {
+      bike: true, bodyType: 'bike', color: bikePalette[i % bikePalette.length], pedal: Math.random() * 6.28, wreck: null,
+      rider: new PersonRig({ seed: 300 + i * 1.37, scale: 0.92 + (i % 7) * 0.025, female: i % 3 === 0, girth: 0.92 + (i % 4) * 0.05, hair: (i % 5) * 0.2 })
+    });
+    bikes.push(bike);
+  }
+  const vehicles = [...cars, ...bikes, ...buses];
+  const bikeFrameGeo = mergeGeometries([
+    new THREE.CylinderGeometry(0.022, 0.022, 0.72, 6).rotateX(Math.PI * 0.46).translate(0, 0.78, 0.04),
+    new THREE.CylinderGeometry(0.026, 0.026, 0.78, 6).rotateX(Math.PI * 0.28).translate(0, 0.58, 0.16),
+    new THREE.CylinderGeometry(0.022, 0.022, 0.64, 6).rotateX(-0.22).translate(0, 0.66, -0.22),
+    new THREE.CylinderGeometry(0.02, 0.016, 0.68, 6).rotateX(-0.24).translate(0, 0.68, 0.48),
+    new THREE.CylinderGeometry(0.018, 0.018, 0.48, 6).rotateZ(Math.PI * 0.5).translate(0, 0.98, 0.40),
+    new THREE.BoxGeometry(0.1, 0.05, 0.25).translate(0, 0.96, -0.28)
+  ]);
+  const bikeWheelGeo = mergeGeometries([
+    new THREE.TorusGeometry(0.35, 0.038, 6, 20).rotateY(Math.PI * 0.5).translate(0, 0.38, 0.58),
+    new THREE.TorusGeometry(0.35, 0.038, 6, 20).rotateY(Math.PI * 0.5).translate(0, 0.38, -0.58)
+  ]);
+  const bikeFrameInst = new THREE.InstancedMesh(bikeFrameGeo, new THREE.MeshStandardNodeMaterial({ roughness: 0.35, metalness: 0.4 }), NUM_BIKES);
+  const bikeWheelInst = new THREE.InstancedMesh(bikeWheelGeo, new THREE.MeshStandardNodeMaterial({ color: 0x181a1e, roughness: 0.6 }), NUM_BIKES);
+  for (const m of [bikeFrameInst, bikeWheelInst]) {
+    m.castShadow = true;
+    m.frustumCulled = false;
+    m.count = 0;
+  }
+  for (let i = 0; i < NUM_BIKES; i++) bikeFrameInst.setColorAt(i, bikePalette[0]);
+  const riderCrowd = new PersonCrowd(NUM_BIKES);
+  const bikeRoot = new THREE.Object3D();
+  group.add(bikeFrameInst, bikeWheelInst);
   group.add(busBodyInst, busHeaderInst, busWheelLeftInst, busWheelRightInst);
 
   // =========================================================================
@@ -319,6 +369,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // One instanced draw per level of detail; every pedestrian has a PersonRig that plants its footsteps on the
   // sidewalk (no sliding), with their own build, height, sex, hair, clothes and gait
   const pedCrowd = new PersonCrowd(NUM_PEDS);
+  for (const m of riderCrowd.meshes) group.add(m);
   const hash = (i, salt) => {
     const v = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453;
     return v - Math.floor(v);
@@ -422,6 +473,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   let focusX = 0;
   let focusZ = 140;
   const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0, halfW: 0.86, halfL: 2.18, push: 0.5 };
+  // The player's own vehicles left standing (main.js): { x, z, halfW, halfL }, which drivers stop behind
+  let parked = [];
+  function setParked(list) {
+    parked = Array.isArray(list) ? list : [];
+  }
 
   // Lane lists hold pooled { v, s } entries sorted by position s along the lane, rebuilt every frame
   const pool = [];
@@ -578,25 +634,45 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     }
   }
 
-  // Where the player is relative to v: metres ahead, metres to the right, and how fast it moves v's way
+  // Where the player is relative to v: metres ahead, metres to the right, how fast it moves v's way and how big it
+  // is. A vehicle the player left standing in the road (main.js: setParked) counts instead when it is nearer ahead
+  // in v's own lane
   function relateToPlayer(v) {
     v.pAhead = Infinity;
-    if (!player.active) return;
-    const dx = player.x - v.x;
-    const dz = player.z - v.z;
-    if (Math.abs(dx) > LOOKAHEAD + 10 || Math.abs(dz) > LOOKAHEAD + 10) return;
     const fx = Math.sin(v.yaw);
     const fz = Math.cos(v.yaw);
-    v.pAhead = dx * fx + dz * fz;
-    v.pRight = dz * fx - dx * fz;
-    v.pSpeed = Math.max(0, player.vx * fx + player.vz * fz);
+    if (player.active) {
+      const dx = player.x - v.x;
+      const dz = player.z - v.z;
+      if (Math.abs(dx) <= LOOKAHEAD + 10 && Math.abs(dz) <= LOOKAHEAD + 10) {
+        v.pAhead = dx * fx + dz * fz;
+        v.pRight = dz * fx - dx * fz;
+        v.pSpeed = Math.max(0, player.vx * fx + player.vz * fz);
+        v.pHalfW = player.halfW;
+        v.pHalfL = player.halfL;
+      }
+    }
+    for (const o of parked) {
+      const dx = o.x - v.x;
+      const dz = o.z - v.z;
+      if (Math.abs(dx) > LOOKAHEAD + 10 || Math.abs(dz) > LOOKAHEAD + 10) continue;
+      const ahead = dx * fx + dz * fz;
+      const right = dz * fx - dx * fz;
+      if (ahead < 0 || Math.abs(right) > v.halfWidth + o.halfW + 0.4) continue;
+      if (v.pAhead >= 0 && v.pAhead < ahead && Math.abs(v.pRight) <= v.halfWidth + v.pHalfW + 0.4) continue;
+      v.pAhead = ahead;
+      v.pRight = right;
+      v.pSpeed = 0;
+      v.pHalfW = o.halfW;
+      v.pHalfL = o.halfL;
+    }
   }
 
   // Gap to the player if it is ahead in the lane whose centre is `off` metres to the right of v
   function playerGap(v, off) {
     if (v.pAhead < 0 || v.pAhead > LOOKAHEAD) return Infinity;
-    if (Math.abs(v.pRight - off) > v.halfWidth + player.halfW + 0.4) return Infinity;
-    return v.pAhead - v.half - player.halfL;
+    if (Math.abs(v.pRight - off) > v.halfWidth + v.pHalfW + 0.4) return Infinity;
+    return v.pAhead - v.half - v.pHalfL;
   }
 
   // =========================================================================
@@ -946,9 +1022,17 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const gap = v.s - v.half - back.s - f.half;
       if (gap < 1.5 || freeAcc(f) + brake(f, gap, v.speed) < bSafe) return false;
     }
+    // ...and neither the player nor any vehicle the player left standing is alongside or close by in lane t
     const off = v.edge.lanes[t] - v.edge.lanes[v.lane] - v.dl;
-    const reach = v.half + player.halfL + 6;
-    return !(Math.abs(v.pRight - off) < v.halfWidth + player.halfW + 0.4 && v.pAhead > -reach && v.pAhead < reach);
+    const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
+    const near = (x, z, halfW, halfL) => {
+      const dx = x - v.x, dz = z - v.z;
+      const ahead = dx * fx + dz * fz;
+      const reach = v.half + halfL + 6;
+      return Math.abs(dz * fx - dx * fz - off) < v.halfWidth + halfW + 0.4 && ahead > -reach && ahead < reach;
+    };
+    if (player.active && near(player.x, player.z, player.halfW, player.halfL)) return false;
+    return !parked.some((o) => near(o.x, o.z, o.halfW, o.halfL));
   }
 
   // Acceleration v would have in lane t behind the vehicle (or player) ahead there
@@ -1367,7 +1451,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     for (let attempt = 0; attempt < 12; attempt++) {
       const e = nearEdges[Math.floor(Math.random() * nearEdges.length)];
       if (!e || (v.bus && e.axis !== 'ave') || e.len < 2 * v.half + 10) continue;
-      const lane = Math.floor(Math.random() * e.lanes.length);
+      const lane = v.bike ? e.lanes.length - 1 : Math.floor(Math.random() * e.lanes.length);
       const along = (focusX - e.sx) * e.dx + (focusZ - e.sz) * e.dz;
       const minS = Math.max(v.half + 5, along - rMax);
       const maxS = Math.min(e.len - v.half - 5, along + rMax);
@@ -1422,7 +1506,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function gatherCurbs() {
     for (const n of curbNodes) n.curb.length = 0;
     curbNodes.length = 0;
-    for (const p of peds) if (p.placed) atCurb(p);
+    for (const p of peds) if (p.placed && !p.fallen) atCurb(p);
   }
 
   // Try crosswalks first for crossing pedestrians, then fall back to sidewalks if no suitable crossing fits.
@@ -1616,7 +1700,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     nextMeeting = clock + 1;
     meetingCells.clear();
     for (const p of peds) {
-      if (!p.placed || p.node || !p.route?.edge || p.conversation || clock < p.socialTime || p.t < 6 || p.t > p.len - 6) continue;
+      if (!p.placed || p.fallen || p.node || !p.route?.edge || p.conversation || clock < p.socialTime || p.t < 6 || p.t > p.len - 6) continue;
       const ix = Math.floor(p.x / 2), iz = Math.floor(p.z / 2);
       let partner = null;
       for (let dx = -1; dx <= 1 && !partner; dx++) {
@@ -1673,11 +1757,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     for (let w = 0; w < 2; w++) {
       const wz = w === 0 ? halfBase : -halfBase;
       dummy.rotation.set(v.wheelSpin + w * 0.55, rotY + (w === 0 ? v.steer : 0), roll, 'YXZ');
-      dummy.position.set(v.x - halfTrack * cosY + wz * sinY, radius, v.z + halfTrack * sinY + wz * cosY);
+      dummy.position.set(v.x - halfTrack * cosY + wz * sinY, radius + (v.hy || 0), v.z + halfTrack * sinY + wz * cosY);
       dummy.updateMatrix();
       leftInst.setMatrixAt(i * 2 + w, dummy.matrix);
 
-      dummy.position.set(v.x + halfTrack * cosY + wz * sinY, radius, v.z - halfTrack * sinY + wz * cosY);
+      dummy.position.set(v.x + halfTrack * cosY + wz * sinY, radius + (v.hy || 0), v.z - halfTrack * sinY + wz * cosY);
       dummy.updateMatrix();
       rightInst.setMatrixAt(i * 2 + w, dummy.matrix);
     }
@@ -1706,7 +1790,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const bodyInst = near ? bodies[c.bodyType].near : bodies[c.bodyType].far;
     const slot = bodyInst.count++;
 
-    dummy.position.set(c.x, 0.0, c.z);
+    dummy.position.set(c.x, c.hy || 0, c.z);
     dummy.rotation.set(c.pitch, rotY, c.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -1740,7 +1824,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     // Soft Under-Car Contact Shadow (AO) stays flat on the asphalt
     const visIdx = visibleCars++;
     dummy.rotation.set(0, rotY, 0, 'YXZ');
-    dummy.position.set(c.x, 0.018, c.z);
+    dummy.position.set(c.x, 0.018 + (c.hy || 0), c.z);
     dummy.scale.set(2.22, 1.0, 5.05);
     dummy.updateMatrix();
     carShadowInst.setMatrixAt(visIdx, dummy.matrix);
@@ -1777,14 +1861,14 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     if (hasView && !visible(b.x, b.z, 22)) return;
 
     const i = visibleBuses++;
-    dummy.position.set(b.x, 0.018, b.z);
+    dummy.position.set(b.x, 0.018 + (b.hy || 0), b.z);
     dummy.rotation.set(0, rotY, 0, 'YXZ');
     dummy.scale.set(2.92, 1.0, 12.1);
     dummy.updateMatrix();
     busShadowInst.setMatrixAt(i, dummy.matrix);
 
     // Lofted Bus Body is defined in ground-relative Y (0.36m skirt to 3.0m roof crown)
-    dummy.position.set(b.x, 0.0, b.z);
+    dummy.position.set(b.x, b.hy || 0, b.z);
     dummy.rotation.set(b.pitch, rotY, b.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -1841,15 +1925,15 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         const spec = v.bus ? BUS_SPEC : BODY_SPECS[v.bodyType];
         const fullReach = HEADLIGHTS.distance;
         let maxReach = fullReach;
-        if (player.active && v.pAhead > 0 && v.pAhead < 30) {
+        if (v.pAhead > 0 && v.pAhead < 30) {
           const latWeight = smoothDistFade(Math.abs(v.pRight), 2.2, 5.5);
-          const clampedReach = Math.max(4.5, v.pAhead - player.halfL - 1.5);
+          const clampedReach = Math.max(4.5, v.pAhead - v.pHalfL - 1.5);
           maxReach = fullReach + (clampedReach - fullReach) * latWeight;
         }
 
         const baseInt = (v.bus ? HEADLIGHTS.busIntensity : HEADLIGHTS.intensity) * beamScale * fade;
         // Match the body instance, including suspension and impact rotation.
-        dummy.position.set(v.x, 0, v.z);
+        dummy.position.set(v.x, v.hy || 0, v.z);
         dummy.rotation.set(v.pitch, v.yaw + v.yawOffset, v.roll, 'YXZ');
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
@@ -1880,7 +1964,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const side = redPhase ? -0.36 : 0.36;
       const pt = policeLightPool[policeLightsUsed++];
       pt.color.setHex(redPhase ? 0xff1828 : 0x1868ff);
-      pt.position.set(v.x + side * v._cosY - 0.25 * v._sinY, 1.85, v.z - side * v._sinY - 0.25 * v._cosY);
+      pt.position.set(v.x + side * v._cosY - 0.25 * v._sinY, 1.85 + (v.hy || 0), v.z - side * v._sinY - 0.25 * v._cosY);
       pt.distance = 12.0;
       pt.intensity = 42.0 * tailScale * fade * pulse;
     }
@@ -1896,9 +1980,15 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const SIDEWALK_Y = 0.22;
   const CROSSWALK_Y = 0.012;
   function pedGround(p, x, z) {
-    if (!p.node) return SIDEWALK_Y;
+    const hill = hillAt(x, z);
+    if (p.bail) {
+      // off its tracks (an ejected driver): in the road, or up on the curb island it walks onto
+      const b = blockAt(x, z);
+      return (b && !(b.park > 0.6 && !b.median) ? SIDEWALK_Y : 0) + hill;
+    }
+    if (!p.node) return SIDEWALK_Y + hill;
     const t = (x - p.ax) * p.ux + (z - p.az) * p.uz;
-    return t > 2 && t < p.len - 2 ? CROSSWALK_Y : SIDEWALK_Y;
+    return (t > 2 && t < p.len - 2 ? CROSSWALK_Y : SIDEWALK_Y) + hill;
   }
 
   // Every rig's gait advances every frame; only those the camera may see (or whose shadow it may see) solve their
@@ -1947,12 +2037,335 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   }
 
   // =========================================================================
+  // 8B. KNOCK-DOWNS: the player's car or bicycle throws pedestrians & cyclists to the ground (mayhem.js)
+  // =========================================================================
+  // Where walls stand (main.js hands over the player's building colliders): knocked bodies bounce off them
+  let solidAt = null;
+  function setSolidQuery(fn) {
+    solidAt = typeof fn === 'function' ? fn : null;
+  }
+  // Height of the hills over the flat city (terrain.js): roads & sidewalks climbing them carry their traffic up
+  let hillQuery = null;
+  const hillAt = (x, z) => (hillQuery ? hillQuery(x, z) : 0);
+  function setHillQuery(fn) {
+    hillQuery = typeof fn === 'function' ? fn : null;
+  }
+
+  // Does the player's vehicle hit a body of radius r at (x, z) fast enough to knock it over?
+  function playerHits(x, z, r) {
+    if (!player.knocks) return null;
+    return boxHit(player.x, player.z, player.heading, player.halfW, player.halfL, x, z, r);
+  }
+
+  function knockPed(p, hit) {
+    // a fresh solved pose to fall from (hidden pedestrians only advance their gait)
+    const partner = p.conversation && (p.conversation.a === p ? p.conversation.b : p.conversation.a);
+    const facing = p.bail ? p.bail.heading : partner ? Math.atan2(partner.x - p.x, partner.z - p.z) : Math.atan2(p.ux * p.dir, p.uz * p.dir);
+    p.rig.update(1 / 60, p.x, p.z, facing, pedGround, p, 0, true);
+    const ground = pedGround(p, p.x, p.z);
+    p.fallBase = p.fallBase || new Float32Array(BONES * 8);
+    p.fallBase.set(p.rig.pose.subarray(0, BONES * 8));
+    p.fallen = startTumble(p.x, ground, p.z, player.vx, player.vz, hit.nx, hit.nz);
+    p.fallen.lift = ground - hillAt(p.x, p.z); // the sidewalk or crosswalk over the hill it lands on
+    if (p.conversation) endConversation(p.conversation);
+    p.node = null; // off any crosswalk queue (gatherCurbs)
+    p.waiting = false;
+    p.v = 0;
+    p.bail = null;
+    reportCollision(player.entity, p, p.x, 1.0, p.z, -hit.nx, -hit.nz, player.speed);
+    if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mode === 'car' ? 0.9 : 0.55;
+  }
+
+  // A knocked-over pedestrian flies, lands and lies still, then gets up out of sight (respawned like any other)
+  function tumblePed(p, dt) {
+    const f = p.fallen;
+    // it lands on the hill where it comes down, not where it was hit
+    if (stepTumble(f, dt, f.lift + hillAt(f.px, f.pz), solidAt) > DOWN_TIME) {
+      p.fallen = null;
+      p.placed = false;
+      p.rig.placed = false;
+      return;
+    }
+    p.x = f.px;
+    p.z = f.pz;
+    tumblePose(p.rig.pose, p.fallBase, f);
+    if (hasView && !visible(p.x, p.z, 4)) return;
+    pedCrowd.add(p.rig, Math.hypot(p.x - focusX, p.z - focusZ));
+  }
+
+  function knockBike(v, hit) {
+    const r = v.rider;
+    poseRider(v); // (a bike out of sight hasn't posed its rider lately)
+    v.fallBase = v.fallBase || new Float32Array(BONES * 8);
+    v.fallBase.set(r.pose.subarray(0, BONES * 8));
+    const g = hillAt(v.x, v.z);
+    const f = startTumble(v.x, g, v.z, player.vx, player.vz, hit.nx, hit.nz);
+    // the rider's pivot as it sat (the hips over the saddle)
+    f.y0 = f.py = g + 1.05;
+    // the bicycle skids on, falling on its side
+    v.wreck = {
+      rider: f,
+      px: v.x, pz: v.z, yaw: v.yaw,
+      vx: player.vx * 0.7 + hit.nx * 1.5, vz: player.vz * 0.7 + hit.nz * 1.5,
+      roll: 0, rollVel: (Math.random() < 0.5 ? -1 : 1) * (2 + player.speed * 0.15), rest: 0
+    };
+    v.edge = null; // off the road graph (lanes & junctions rebuild their occupancy every frame)
+    v.speed = 0;
+    reportCollision(player.entity, v, v.x, 0.9, v.z, -hit.nx, -hit.nz, player.speed);
+    if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mode === 'car' ? 0.88 : 0.5;
+  }
+
+  function renderBike(v, dt, slot) {
+    const rotY = v.yaw + v.yawOffset;
+    dummy.position.set(v.x, v.hy || 0, v.z);
+    dummy.rotation.set(0, rotY, -clamp(v.yawRate * v.speed * 0.05, -0.3, 0.3), 'YXZ');
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    bikeFrameInst.setMatrixAt(slot, dummy.matrix);
+    bikeWheelInst.setMatrixAt(slot, dummy.matrix);
+    bikeFrameInst.setColorAt(slot, v.color);
+    v.pedal = (v.pedal + (v.speed * dt) / 0.6) % (Math.PI * 2);
+    poseRider(v);
+    riderCrowd.add(v.rider, Math.hypot(v.x - focusX, v.z - focusZ));
+  }
+
+  // The rider on the saddle of bike v as it stands now, hands on the bars and feet on the pedals
+  function poseRider(v) {
+    const rotY = v.yaw + v.yawOffset;
+    bikeRoot.position.set(v.x, v.hy || 0, v.z);
+    bikeRoot.rotation.set(0, rotY, -clamp(v.yawRate * v.speed * 0.05, -0.3, 0.3), 'YXZ');
+    bikeRoot.updateMatrixWorld(true);
+    v.rider.yaw = rotY;
+    v.rider.ride(bikeRoot, v.pedal, BIKE_FRAME);
+    v.rider.placed = false; // riding poses aren't walking ones: a walk would start afresh
+  }
+
+  // The fallen cyclist and the bicycle on its side; both cleared once they've lain still a while
+  function renderWreck(v, dt, slot) {
+    const w = v.wreck;
+    const restR = stepTumble(w.rider, dt, hillAt(w.rider.px, w.rider.pz), solidAt);
+    const k = Math.exp(-2.5 * dt);
+    w.vx *= k;
+    w.vz *= k;
+    slide(w, w.vx * dt, w.vz * dt, solidAt);
+    w.roll = clamp(w.roll + w.rollVel * dt, -1.45, 1.45);
+    if (Math.abs(w.roll) >= 1.45) w.rollVel = 0;
+    if (Math.hypot(w.vx, w.vz) < 0.2) w.rest += dt;
+    if (restR > DOWN_TIME && w.rest > DOWN_TIME) {
+      v.wreck = null;
+      return false;
+    }
+    const draw = !hasView || visible(w.px, w.pz, 4);
+    if (!draw) return false;
+    dummy.position.set(w.px, 0.04 + hillAt(w.px, w.pz), w.pz);
+    dummy.rotation.set(0, w.yaw, w.roll, 'YXZ');
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    bikeFrameInst.setMatrixAt(slot, dummy.matrix);
+    bikeWheelInst.setMatrixAt(slot, dummy.matrix);
+    bikeFrameInst.setColorAt(slot, v.color);
+    tumblePose(v.rider.pose, v.fallBase, w.rider);
+    riderCrowd.add(v.rider, Math.hypot(w.px - focusX, w.pz - focusZ));
+    return true;
+  }
+
+  // =========================================================================
   // 9. UPDATE
   // =========================================================================
   let lastFocusX = Infinity;
   let lastFocusZ = Infinity;
   let vehicleCursor = 0;
   let pedCursor = 0;
+
+  // =========================================================================
+  // 8C. CARJACKING: the player on foot takes a car or a bicycle (F, main.js), and its driver is left in the street
+  // =========================================================================
+  const BAIL_STUN = 0.9; // s the driver stands there, facing whoever took the car
+  const FLEE_SPEED = 4.6; // m/s running away
+  const BAIL_TURN = 7; // rad/s
+
+  // The car or bicycle the player on foot could take: the nearest whose body is within `reach` metres of (x, z),
+  // going slowly enough to be stopped (no buses)
+  function vehicleNear(x, z, reach) {
+    let best = null;
+    let bestDistance = reach;
+    for (const v of vehicles) {
+      if (v.bus || v.wreck || !v.edge || v.speed > 7) continue;
+      const dx = x - v.x;
+      const dz = z - v.z;
+      if (Math.abs(dx) > 10 || Math.abs(dz) > 10) continue;
+      const yaw = v.yaw + v.yawOffset;
+      const fx = Math.sin(yaw), fz = Math.cos(yaw);
+      const along = Math.max(0, Math.abs(dx * fx + dz * fz) - v.half);
+      const across = Math.max(0, Math.abs(dz * fx - dx * fz) - v.halfWidth);
+      const distance = Math.hypot(along, across);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = v;
+      }
+    }
+    return best;
+  }
+
+  // Take v out of the traffic (it comes back elsewhere, out of sight, like any vehicle left behind) and put its
+  // driver out on the street: what the player's own car or bicycle needs to take its place
+  function hijack(v) {
+    const yaw = v.yaw + v.yawOffset;
+    const taken = v.bike
+      ? { kind: 'cyclist', x: v.x, z: v.z, heading: yaw, speed: v.speed, color: v.color.getHex() }
+      : {
+          kind: 'car', x: v.x, z: v.z, heading: yaw, speed: v.speed, bodyType: v.bodyType, police: v.isPolice,
+          paint: new THREE.Color().setRGB(v.paint[0], v.paint[1], v.paint[2]).getHex()
+        };
+    // out of the driver's door (on the left: heading 0 faces +z, left is +x), or off the bicycle
+    const side = v.halfWidth + (v.bike ? 0.4 : 0.55);
+    const ahead = v.bike ? 0 : 0.35;
+    bail(v.x + Math.cos(yaw) * side + Math.sin(yaw) * ahead, v.z - Math.sin(yaw) * side + Math.cos(yaw) * ahead, yaw, v.bike ? v : null);
+    v.edge = null;
+    v.conn = null;
+    v.trail = null;
+    v.commit = null;
+    v.speed = 0;
+    return taken;
+  }
+
+  // A pedestrian out of sight (or not yet placed) becomes the driver, standing at (x, z); a cyclist keeps its own
+  // looks (its rig swaps places with the pedestrian's, who rides the bicycle when it comes back)
+  function bail(x, z, heading, bike) {
+    let p = null;
+    let far = -1;
+    for (const q of peds) {
+      if (q.fallen || q.bail) continue;
+      if (q.placed && hasView && visible(q.x, q.z, 3)) continue;
+      const d = q.placed ? Math.hypot(q.x - focusX, q.z - focusZ) : Infinity;
+      if (d > far) {
+        far = d;
+        p = q;
+      }
+    }
+    if (!p) return;
+    if (p.conversation) endConversation(p.conversation);
+    if (bike) {
+      const rig = p.rig;
+      p.rig = bike.rider;
+      bike.rider = rig;
+      rig.placed = false;
+    }
+    Object.assign(p, { placed: true, x, z, node: null, route: null, nextRoute: null, nextLeg: 0, waiting: false, v: 0, pause: 0 });
+    p.rig.placed = false;
+    // stranded a moment, then either runs off or walks back to the sidewalk and carries on along it
+    p.bail = { time: 0, heading, flee: Math.random() < 0.6, runFor: 5 + Math.random() * 4, goal: null, nextSearch: 0, best: Infinity, since: 0 };
+  }
+
+  // Can someone walk straight from (x0, z0) to (x1, z1) without going through a wall?
+  function clearPath(x0, z0, x1, z1) {
+    if (!solidAt) return true;
+    const steps = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.5);
+    for (let i = 1; i <= steps; i++) {
+      if (solidAt(x0 + (x1 - x0) * i / steps, z0 + (z1 - z0) * i / steps)) return false;
+    }
+    return true;
+  }
+
+  // The nearest point on a sidewalk track to (x, z) that can be walked to straight, among the roads around the focus
+  function nearestSidewalk(x, z) {
+    let best = null;
+    let bestDistance = 45;
+    for (const e of nearEdges) {
+      const s = clamp((x - e.sx) * e.dx + (z - e.sz) * e.dz, 0, e.len);
+      if (Math.hypot(e.sx + e.dx * s - x, e.sz + e.dz * s - z) > bestDistance + 15) continue;
+      for (const route of pedRoutes.along(e)) {
+        const t = clamp((x - route.ax) * route.ux + (z - route.az) * route.uz, 0, route.len);
+        const px = route.ax + route.ux * t;
+        const pz = route.az + route.uz * t;
+        const distance = Math.hypot(px - x, pz - z);
+        if (distance < bestDistance && clearPath(x, z, px, pz)) {
+          bestDistance = distance;
+          best = { route, t, x: px, z: pz };
+        }
+      }
+    }
+    return best;
+  }
+
+  function bailWalk(p, dt) {
+    const b = p.bail;
+    b.time += dt;
+    let target = b.heading;
+    let speed = 0;
+    if (b.time < BAIL_STUN) {
+      target = Math.atan2(player.x - p.x, player.z - p.z); // what just happened?
+    } else if (b.flee && b.time < BAIL_STUN + b.runFor) {
+      target = Math.atan2(p.x - player.x, p.z - player.z);
+      speed = FLEE_SPEED;
+    } else {
+      if (!b.goal && b.time >= b.nextSearch) {
+        b.goal = nearestSidewalk(p.x, p.z);
+        b.nextSearch = b.time + 1.5;
+        b.best = Infinity;
+        b.since = b.time;
+      }
+      if (!b.goal) {
+        // no sidewalk within reach: wander on, and once out of sight turn up somewhere else like anyone left behind
+        speed = p.speed;
+        if (hasView && !visible(p.x, p.z, 4)) {
+          p.bail = null;
+          p.placed = false;
+          return;
+        }
+      } else {
+        const dx = b.goal.x - p.x;
+        const dz = b.goal.z - p.z;
+        const distance = Math.hypot(dx, dz);
+        // no closer for a while (something in the way): look for another way back
+        if (distance < b.best - 0.3) {
+          b.best = distance;
+          b.since = b.time;
+        } else if (b.time - b.since > 2.5) {
+          b.goal = null;
+          return;
+        }
+        if (distance < 0.25) {
+          // on the sidewalk: walk on along it the way it was going, like everyone else
+          const { route, t } = b.goal;
+          Object.assign(p, route, { route });
+          p.t = t;
+          p.dir = Math.sin(b.heading) * route.ux + Math.cos(b.heading) * route.uz >= 0 ? 1 : -1;
+          p.v = p.speed * 0.8;
+          p.goalTime = 0;
+          p.restTime = clock + 25 + Math.random() * 45;
+          p.socialTime = clock + 20 + Math.random() * 30;
+          p.bail = null;
+          return;
+        }
+        target = Math.atan2(dx, dz);
+        speed = Math.min(p.speed, distance / Math.max(dt, 1e-3));
+      }
+    }
+    let turn = Math.atan2(Math.sin(target - b.heading), Math.cos(target - b.heading));
+    turn = clamp(turn, -BAIL_TURN * dt, BAIL_TURN * dt);
+    b.heading += turn;
+    if (speed <= 0) return;
+    // around walls: the first heading either side of the wanted one that is clear
+    const step = speed * dt;
+    for (const veer of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6]) {
+      const h = b.heading + veer;
+      const nx = p.x + Math.sin(h) * step;
+      const nz = p.z + Math.cos(h) * step;
+      if (solidAt && solidAt(nx + Math.sin(h) * 0.4, nz + Math.cos(h) * 0.4)) continue;
+      p.x = nx;
+      p.z = nz;
+      if (veer) b.heading += veer * Math.min(1, dt * 4);
+      return;
+    }
+  }
+
+  function renderBailed(p, dt) {
+    const draw = !hasView || visible(p.x, p.z, 7);
+    p.rig.update(dt, p.x, p.z, p.bail ? p.bail.heading : Math.atan2(p.ux * p.dir, p.uz * p.dir), pedGround, p, 0, draw);
+    if (!draw) return;
+    pedCrowd.add(p.rig, Math.hypot(p.x - focusX, p.z - focusZ));
+  }
 
   function update(dt, elapsed, focusPos = null, playerEntity = null, activeMode = 'car', camera = null) {
     clock = elapsed;
@@ -1982,6 +2395,10 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     player.halfW = activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : 0.86;
     player.halfL = activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : 2.18;
     player.push = activeMode === 'cyclist' ? 0.82 : activeMode === 'person' ? 0.88 : 0.50;
+    player.mode = activeMode;
+    player.heading = playerEntity ? playerEntity.heading || 0 : 0;
+    player.speed = Math.hypot(player.vx, player.vz);
+    player.knocks = player.active && (activeMode === 'car' || activeMode === 'cyclist') && player.speed > KNOCK_SPEED;
 
     // 1. Cars & buses
     // Limit attempted placements, not just successes, and rotate through the pool so an awkward location
@@ -1990,6 +2407,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     for (let scanned = 0; scanned < vehicles.length && budget > 0; scanned++) {
       const v = vehicles[vehicleCursor];
       vehicleCursor = (vehicleCursor + 1) % vehicles.length;
+      if (v.wreck) continue; // a knocked-over cyclist stays where it fell for now
       const d = v.edge ? Math.hypot(v.x - focusX, v.z - focusZ) : Infinity;
       if (d <= (jump ? NEAR_RADIUS : VEHICLE_RADIUS)) continue;
       budget--;
@@ -2002,8 +2420,14 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     visibleCars = 0;
     policeDrawn = 0;
     visibleBuses = 0;
+    riderCrowd.begin();
+    let bikesDrawn = 0;
     for (let i = 0; i < vehicles.length; i++) {
       const v = vehicles[i];
+      if (v.wreck) {
+        if (renderWreck(v, dt, bikesDrawn)) bikesDrawn++;
+        continue;
+      }
       if (!v.edge) continue;
 
       v.prevX = v.x;
@@ -2013,11 +2437,30 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       locate(v);
       knock(v, dt);
       pose(v, dt);
-      if (player.active) collideWithPlayer(v, v.yaw + v.yawOffset, v.bus ? 1.30 : v.isSUV ? 0.92 : 0.86, v.bus ? 5.72 : v.isSUV ? 2.22 : 2.18);
+      v.hy = hillAt(v.x, v.z);
+      if (v.bike) {
+        const hit = playerHits(v.x, v.z, 0.45);
+        if (hit) {
+          knockBike(v, hit);
+          if (renderWreck(v, 0, bikesDrawn)) bikesDrawn++;
+          continue;
+        }
+      }
+      if (player.active) collideWithPlayer(v, v.yaw + v.yawOffset, v.bus ? 1.30 : v.bike ? 0.32 : v.isSUV ? 0.92 : 0.86, v.bus ? 5.72 : v.bike ? 0.95 : v.isSUV ? 2.22 : 2.18);
       if (v.vx * v.vx + v.vz * v.vz > 0.36) knockOn(v);
 
-      if (v.bus) renderBus(v);
+      if (v.bike) {
+        if (!hasView || visible(v.x, v.z, 3)) renderBike(v, dt, bikesDrawn++);
+      } else if (v.bus) renderBus(v);
       else renderCar(v);
+    }
+    riderCrowd.end();
+    bikeFrameInst.count = bikesDrawn;
+    bikeWheelInst.count = bikesDrawn;
+    if (bikesDrawn) {
+      flagRange(bikeFrameInst.instanceMatrix, bikesDrawn);
+      flagRange(bikeWheelInst.instanceMatrix, bikesDrawn);
+      if (bikeFrameInst.instanceColor) flagRange(bikeFrameInst.instanceColor, bikesDrawn);
     }
     const hideEmpty = ++updates > 2;
     for (const m of bodyMeshes) {
@@ -2074,6 +2517,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const d = p.placed ? Math.hypot(p.x - focusX, p.z - focusZ) : Infinity;
       if (d <= (jump ? NEAR_RADIUS : PED_RADIUS)) continue;
       pedBudget--;
+      p.fallen = null; // (a knocked-over pedestrian left far behind gets up elsewhere)
+      p.bail = null; // (and so does a driver left behind)
       spawnPed(p, jump ? 0 : 60, jump ? NEAR_RADIUS : 280, !jump);
     }
     meet(dt);
@@ -2082,8 +2527,20 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     for (let i = 0; i < NUM_PEDS; i++) {
       const p = peds[i];
       if (!p.placed) continue;
-      walk(p, dt);
-      renderPed(p, dt);
+      if (p.fallen) {
+        tumblePed(p, dt);
+        continue;
+      }
+      if (p.bail) bailWalk(p, dt);
+      else walk(p, dt);
+      const hit = playerHits(p.x, p.z, 0.3);
+      if (hit) {
+        knockPed(p, hit);
+        tumblePed(p, 0);
+        continue;
+      }
+      if (p.bail) renderBailed(p, dt);
+      else renderPed(p, dt);
     }
     pedCrowd.end();
 
@@ -2100,8 +2557,14 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     group,
     update,
     setCollisionListener,
+    setSolidQuery,
+    setHillQuery,
+    setParked,
+    vehicleNear,
+    hijack,
     cars,
     buses,
+    bikes,
     peds,
     network
   };

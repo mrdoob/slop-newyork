@@ -108,7 +108,7 @@ class CityAudioSystem {
     this.lastHorn = -Infinity;
     this.collisionPairs = new WeakMap();
     this.collisionSequence = 0;
-    this.collisionSystems = [simulation.controllerManager, simulation.trafficSystem];
+    this.collisionSystems = [simulation.controllerManager, simulation.trafficSystem, simulation.propBreaker].filter(Boolean);
     this.onCollision = (impact) => this.crash(impact);
     for (const system of this.collisionSystems) system.setCollisionListener?.(this.onCollision);
     this.motorParams = { speed: 0, load: 0, verticalSpeed: 0, doppler: 1, seed: 0 };

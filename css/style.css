@@ -1,6 +1,6 @@
 /* css/style.css */
-/* NYC HUD design system: quiet graphite glass in the corners of the screen, taxi yellow for whatever is active,
-   NYC DOT green for street names, so that the city itself stays the star */
+/* HUD design system: quiet graphite glass in the corners of the screen, taxi yellow for whatever is active,
+   street-sign green for street names, so that the city itself stays the star */
 
 :root {
   /* Surfaces */
@@ -362,23 +362,6 @@ body.hud-minimized .toolbar > :not(#btn-toggle-hud) {
   line-height: 1.2;
 }
 
-.repo-link {
-  flex: none;
-  padding: 3px 0;
-  color: var(--text-2);
-  font-size: 11px;
-  line-height: 1;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.repo-link:hover,
-.repo-link:focus-visible {
-  color: var(--text);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .brand-subtitle {
   font-size: 11.5px;
   line-height: 1.4;
@@ -510,7 +493,6 @@ body.hud-minimized .icon-show {
 .tool-btn:active,
 .time-btn:active,
 .icon-btn:active,
-.mode-btn:active,
 .camera-current:active,
 .pop-item:active {
   transform: scale(0.97);
@@ -623,7 +605,7 @@ body.hud-minimized .icon-show {
 }
 
 /* ------------------------------------------------------------------------------------------------------------------
-   Bottom left: NYC street-name signs over the GPS radar
+   Bottom left: street-name signs over the radar
    ------------------------------------------------------------------------------------------------------------------ */
 .location {
   display: flex;
@@ -663,7 +645,7 @@ body.hud-minimized .icon-show {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
 }
 
-/* Green blade, white inset border, Highway Gothic lettering: the sign on every Manhattan corner */
+/* Green blade, white inset border, Highway Gothic lettering: a street-corner name sign */
 .street-sign {
   max-width: 210px;
   overflow: hidden;
@@ -752,7 +734,7 @@ body.hud-minimized .icon-show {
 }
 
 /* ------------------------------------------------------------------------------------------------------------------
-   Bottom centre: travel mode switcher & keyboard guide
+   Bottom centre: the F prompt & keyboard guide
    ------------------------------------------------------------------------------------------------------------------ */
 .controls-hint {
   display: flex;
@@ -786,73 +768,26 @@ body.hud-minimized .icon-show {
   margin-left: 4px;
 }
 
-.mode-switch {
-  position: relative;
-  display: flex;
-  gap: 2px;
-  padding: 5px;
-}
-
-/* The taxi-yellow pill glides to the selected mode (positioned by main.js) */
-.mode-indicator {
-  position: absolute;
-  z-index: 0;
-  top: 5px;
-  bottom: 5px;
-  left: 0;
-  width: var(--ind-w, 0px);
-  transform: translateX(var(--ind-x, 0px));
-  border-radius: 12px;
-  background: var(--taxi);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.12), 0 4px 12px -4px rgba(0, 0, 0, 0.5);
-  transition: transform 0.45s var(--ease-out), width 0.45s var(--ease-out);
-}
-
-.mode-switch.no-anim .mode-indicator {
-  transition: none;
-}
-
-.mode-btn {
-  position: relative;
-  z-index: 1;
-  height: 42px;
-  padding: 0 12px 0 11px;
-  border-radius: 12px;
+/* What F would do here: get in, take the car or bicycle at hand, or get out */
+.action-prompt {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+  padding: 8px 14px 8px 8px;
   font-size: 13.5px;
   font-weight: 600;
-  white-space: nowrap;
-  color: var(--text-2);
-  transition: color 0.25s ease, background-color 0.2s ease;
-}
-
-.mode-btn:hover {
   color: var(--text);
-  background: var(--hover);
+  pointer-events: none;
+  animation: rise-in 0.3s var(--ease-out) both;
 }
 
-.mode-btn.active,
-.mode-btn.active:hover {
+.action-prompt[hidden] {
+  display: none;
+}
+
+.action-prompt kbd {
   color: var(--taxi-ink);
-  background: transparent;
-}
-
-.mode-btn .icon {
-  width: 20px;
-  height: 20px;
-  stroke-width: 1.7;
-}
-
-.mode-btn kbd {
-  margin-left: 2px;
-  transition: color 0.25s ease, background-color 0.25s ease;
-}
-
-.mode-btn.active kbd {
-  color: rgba(23, 20, 10, 0.62);
-  background: rgba(23, 20, 10, 0.1);
+  background: var(--taxi);
   box-shadow: none;
 }
 
@@ -1239,14 +1174,12 @@ body.is-boosting #hud-speed-meter {
   box-shadow: 0 0 0 2px #0b0f14, 0 0 0 3px rgba(255, 255, 255, 0.35);
 }
 
-.gps-swatch,
 .bridge-swatch {
   width: 16px;
   height: 4px;
   border-radius: 2px;
 }
 
-.gps-swatch { background: var(--taxi); }
 .bridge-swatch { background: var(--highway); }
 
 .legend-counts {
@@ -1268,25 +1201,18 @@ body.is-boosting #hud-speed-meter {
 
 @media (max-width: 1240px) {
   .controls-hint { display: none; }
-  .mode-btn kbd { display: none; }
 }
 
 @media (max-width: 1080px) {
-  .mode-label,
   .tool-label,
   .tool-btn kbd { display: none; }
-  .mode-btn { padding: 0 12px; }
   .tool-btn:not(.icon-only):not(.fullmap-close) { gap: 4px; padding: 0 9px; }
 }
 
 @media (max-width: 820px) {
   :root { --edge: 12px; }
-  .hud-top-left { top: calc(max(var(--edge), env(safe-area-inset-top)) + 62px); }
-  .brand > .mta-bullet,
-  .brand-heading h1,
-  .brand-subtitle { display: none; }
-  .brand { height: 44px; padding: 0 12px; }
-  .repo-link { display: flex; align-items: center; gap: 4px; min-height: 44px; font-size: 12px; }
+  /* the brand panel had nothing left to show on narrow screens (its title & telemetry are hidden here) */
+  .hud-top-left { display: none; }
   .radar { width: 220px; height: 148px; }
   .cluster { width: 220px; }
   #hud-speed { font-size: 34px; }
@@ -1402,6 +1328,8 @@ body.is-boosting #hud-speed-meter {
 }
 .touch-action > [aria-hidden] { font-size: 23px; line-height: 1; }
 .touch-boost { grid-column: 2; border-color: rgba(255, 194, 26, 0.65); color: var(--taxi); }
+.touch-board { grid-column: 1; grid-row: 2; color: var(--taxi-ink); background: var(--taxi); border-color: var(--taxi); }
+.touch-action[hidden] { display: none; }
 .touch-action.is-pressed { color: var(--taxi-ink); background: var(--taxi); border-color: var(--taxi); }
 
 body.touch-enabled .controls-hint,
@@ -1418,8 +1346,7 @@ body.touch-enabled .time-btn.active { height: 44px; min-width: 44px; padding: 0 
 body.touch-enabled .tool-btn { min-width: 44px; min-height: 44px; }
 body.touch-enabled .tool-label { display: none; }
 body.touch-enabled .hud-bottom-center { bottom: max(var(--edge), env(safe-area-inset-bottom)); }
-body.touch-enabled .mode-label { display: block; font-size: 10px; }
-body.touch-enabled .mode-btn { width: 62px; height: 48px; padding: 0; flex-direction: column; justify-content: center; gap: 3px; }
+body.touch-enabled .action-prompt { display: none; }
 body.touch-enabled .hud-bottom-right { top: calc(max(var(--edge), env(safe-area-inset-top)) + 62px); right: max(var(--edge), env(safe-area-inset-right)); bottom: auto; }
 body.touch-enabled .cluster { width: 230px; }
 body.touch-enabled .camera-switch { border: 0; }
