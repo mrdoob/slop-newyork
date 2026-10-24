@@ -1,0 +1,20 @@
+[out:json][timeout:120];
+(
+  way["amenity"~"^(parking|school|university|college|kindergarten|marketplace|place_of_worship|bus_station|fuel|hospital)$"](25.0249,121.5546,25.0430,121.5744);
+  relation["amenity"~"^(parking|school|university|college|kindergarten|marketplace|place_of_worship|bus_station|fuel|hospital)$"](25.0249,121.5546,25.0430,121.5744);
+  way["leisure"](25.0249,121.5546,25.0430,121.5744);
+  relation["leisure"](25.0249,121.5546,25.0430,121.5744);
+  way["landuse"~"^(railway|construction|recreation_ground|cemetery|brownfield|greenfield|religious|grass|forest)$"](25.0249,121.5546,25.0430,121.5744);
+  relation["landuse"~"^(railway|construction|recreation_ground|cemetery|brownfield|greenfield|religious)$"](25.0249,121.5546,25.0430,121.5744);
+  way["highway"]["area"="yes"](25.0249,121.5546,25.0430,121.5744);
+  way["area:highway"](25.0249,121.5546,25.0430,121.5744);
+  way["place"="square"](25.0249,121.5546,25.0430,121.5744);
+  way["natural"~"^(water|wood|scrub|grassland)$"](25.0249,121.5546,25.0430,121.5744);
+  relation["natural"="water"](25.0249,121.5546,25.0430,121.5744);
+  way["waterway"="riverbank"](25.0249,121.5546,25.0430,121.5744);
+  way["man_made"~"^(dyke|embankment)$"](25.0249,121.5546,25.0430,121.5744);
+  way["barrier"~"^(wall|retaining_wall)$"]["wall"="flood_wall"](25.0249,121.5546,25.0430,121.5744);
+  way["barrier"="flood_wall"](25.0249,121.5546,25.0430,121.5744);
+  way["railway"~"^(rail|platform)$"]["tunnel"!="yes"]["layer"!~"^-"](25.0249,121.5546,25.0430,121.5744);
+);
+out geom;

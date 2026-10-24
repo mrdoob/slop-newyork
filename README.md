@@ -14,7 +14,12 @@ This fork is being retargeted to Taipei. It currently covers a 2 km box around T
 1 km box around Lungshan Temple in Wanhua (`taipei.html?area=wanhua`): open `taipei.html` over http in a WebGPU
 browser. Building footprints come from OpenStreetMap (`tools/build-taipei-geodata.mjs`, `GEO_AREA=wanhua` for the
 second box). **The Wanhua box has large holes:** OSM maps roughly a third of its buildings (about 390 outlines where
-Taipei's 3D city model has over 5,000), so empty blocks there are missing data, not open space.
+Taipei's 3D city model has over 5,000), so empty blocks there are missing data, not open space. To keep it from
+reading as wasteland, the Wanhua box adds about 3,300 **stand-in buildings** (`tools/geo-infill.mjs`): rows of narrow lots
+along street frontages where OSM maps no building and no open ground, with heights from the mapped neighbours. Their
+footprints and heights are both **inferred, not mapped**; they are kept apart in the data (`GEO.infill`), tinted violet
+with E, and hidden with I. Checked locally against the 3D model, about 14% of them stand where no building does. The
+Xinyi box gets none: its unmapped frontage is mostly real open space.
 
 **The Taipei skyline is partially estimated.** Where OSM gives a building's `height` or storey count, that is used;
 where it gives neither (52% of buildings in the 2 km Xinyi box, 38% in Wanhua), the height is inferred from building type and

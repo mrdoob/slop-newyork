@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { toWorld, BOX, AREA_NAME, load, log } from './geo-taipei-base.mjs';
+import { toWorld, BOX, AREA, AREA_NAME, load, log } from './geo-taipei-base.mjs';
 import { buildingHeight, estimateHeight, ESTIMATE_TIERS, LEVEL_M } from './geo-height.mjs';
 
 const ROOT = 'https://3d.taipei/data/3dTiles/115_A/';
@@ -231,5 +231,47 @@ const gapCells = [...cells].map(([k, l]) => ({ cell: k, buildings: l.length, tal
 console.log(`\nBuildings the 3D models have but OSM lacks: ${gaps.length} (≥ 4 m tall), in ${cells.size} 50 m cells; busiest cells (world x,z of the cell's corner):`);
 console.table(gapCells.slice(0, 15));
 
-fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, knots, gapCells }, null, 1));
+// Stand-ins (GEO.infill, tools/geo-infill.mjs) vs the gaps: do inferred lots stand where unmapped buildings stand, and
+// how tall? Measured buildings are centre points only, so a lot "hits" when a measured centre lies in it or within
+// HIT_M of it (lots are 4.5–9 m wide; a building's centre can sit in the neighbouring lot).
+const HIT_M = 3, FAR_M = 12;
+let infillReport = null;
+const geoFile = fileURLToPath(new URL(`../js/${AREA.out}`, import.meta.url));
+const { GEO } = fs.existsSync(geoFile) ? await import(geoFile) : { GEO: {} };
+if (GEO.infill?.length) {
+  const lots = GEO.infill.map((b) => { const r = []; for (let i = 0; i < b[1].length; i += 2) r.push([b[1][i], b[1][i + 1]]); return { r, top: b[3] }; });
+  const near = (x, z, r) => pointInRing(x, z, r) || r.some((p, i) => {
+    const q = r[(i + 1) % r.length], dx = q[0] - p[0], dz = q[1] - p[1], L2 = dx * dx + dz * dz || 1e-9;
+    const t = Math.max(0, Math.min(1, ((x - p[0]) * dx + (z - p[1]) * dz) / L2));
+    return Math.hypot(p[0] + dx * t - x, p[1] + dz * t - z) < HIT_M;
+  });
+  const all = [...measured.values()].filter((m) => m.h >= 4);
+  const cellOf = (x, z) => `${Math.floor(x / 25)},${Math.floor(z / 25)}`;
+  const grid = new Map();
+  for (const m of all) { const k = cellOf(...m.at); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(m); }
+  const around = (x, z) => { const out = []; const i = Math.floor(x / 25), j = Math.floor(z / 25); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) out.push(...(grid.get(`${i + a},${j + b}`) || [])); return out; };
+  const hits = lots.map((l) => around(...l.r[0]).filter((m) => near(m.at[0], m.at[1], l.r)));
+  const covered = gaps.filter((g) => lots.some((l) => pointInRing(g.at[0], g.at[1], l.r)));
+  const errs = [], ratios = [];
+  lots.forEach((l, i) => {
+    const inside = hits[i].filter((m) => pointInRing(m.at[0], m.at[1], l.r));
+    if (inside.length) { const h = Math.max(...inside.map((m) => m.h)); errs.push(Math.abs(l.top - h)); ratios.push(l.top / h); }
+  });
+  infillReport = {
+    lots: lots.length,
+    lotsOnAMeasuredBuilding: +(hits.filter((h) => h.length).length / lots.length).toFixed(3),
+    gapsCovered: +(covered.length / gaps.length).toFixed(3),
+    // lots with no measured building centre within FAR_M: most likely on open ground (parking, yards) OSM doesn't map
+    lotsFarFromAny: +(lots.filter((l) => { const [cx, cz] = l.r.reduce((t, p) => [t[0] + p[0] / l.r.length, t[1] + p[1] / l.r.length], [0, 0]);
+      return !around(cx, cz).some((m) => Math.hypot(m.at[0] - cx, m.at[1] - cz) < FAR_M); }).length / lots.length).toFixed(3),
+    heightAbsErrM: stat(errs), heightRatio: stat(ratios)
+  };
+  console.log(`\nStand-ins vs measured: ${lots.length} lots; ${(100 * infillReport.lotsOnAMeasuredBuilding).toFixed(0)}% have a measured building's ` +
+    `centre in or within ${HIT_M} m of them; they cover ${covered.length} of ${gaps.length} unmapped buildings' centres ` +
+    `(${(100 * infillReport.gapsCovered).toFixed(0)}%); ${(100 * infillReport.lotsFarFromAny).toFixed(0)}% have none within ${FAR_M} m (likely open ground); height vs measured: median error ${infillReport.heightAbsErrM.median} m, ratio ${infillReport.heightRatio.median} (n ${errs.length})`);
+}
+
+fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, knots, gapCells, infill: infillReport,
+  // measured centres ≥ 4 m [x, z, 1 if no OSM footprint], for local debug plots
+  centres: [...measured.values()].filter((m) => m.h >= 4).map((m) => [Math.round(m.at[0]), Math.round(m.at[1]), gaps.includes(m) ? 1 : 0]) }, null, 1));
 log(`report written to ${REPORT} (git-ignored)`);

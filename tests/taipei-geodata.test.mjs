@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildingHeight, estimateHeight, parseMetres, LEVEL_M } from '../tools/geo-height.mjs';
 import { buildOsmRoadGraph } from '../tools/geo-osm-roadgraph.mjs';
 import { roofOf, facadeOf } from '../tools/geo-building-style.mjs';
+import { infillBuildings } from '../tools/geo-infill.mjs';
 import { fitRoadWidths, inferSidewalks, sidewalkFootways } from '../tools/geo-sidewalks.mjs';
 import { buildFurniture, FURNITURE_KINDS } from '../tools/geo-furniture.mjs';
 
@@ -202,6 +203,35 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
   }
 });
 
+test('stand-in lots face streets and keep off buildings, open ground, walkways and medians', () => {
+  // An east-west street (10 m) along z = 0; a mapped building north of it at x 0..20; a parking lot south at x 40..60;
+  // a footway crossing at x = 30
+  const street = { pts: [[-60, 0], [60, 0]], w: 10 };
+  const building = [[0, -6], [20, -6], [20, -25], [0, -25]];
+  const parking = [[40, 6], [60, 6], [60, 40], [40, 40]];
+  const footway = { pts: [[30, -60], [30, 60]], w: 2 };
+  const ring = (r) => (x, z) => { let inside = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, zi] = r[i], [xj, zj] = r[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside; } return inside; };
+  const lots = infillBuildings({
+    links: [street], corridors: [street, footway], obstacles: [building], open: [parking], bounds: [-60, -60, 60, 60],
+    context: [{ x: -40, z: -20, top: 16, area: 200 }, { x: -30, z: 20, top: 16, area: 200 }, { x: 10, z: 30, top: 19.2, area: 200 }]
+  });
+  assert.ok(lots.length > 10, `${lots.length} lots`);
+  for (const { outer, top, storeys } of lots) {
+    assert.equal(outer.length, 4);
+    assert.ok(top === storeys * 3.2 && storeys >= 4 && storeys <= 7, `${storeys} storeys near 5-storey neighbours`);
+    for (const [x, z] of outer) {
+      assert.ok(Math.abs(z) >= 5.3, 'clear of the carriageway');
+      assert.ok(Math.abs(x - 30) >= 1.2, 'clear of the footway');
+    }
+    const [cx, cz] = outer.reduce((t, p) => [t[0] + p[0] / 4, t[1] + p[1] / 4], [0, 0]);
+    assert.ok(!ring(building)(cx, cz) && !ring(parking)(cx, cz), 'not on the building or the parking lot');
+  }
+  assert.ok(lots.some((l) => l.outer.every(([, z]) => z < 0)) && lots.some((l) => l.outer.every(([, z]) => z > 0)), 'both sides');
+  // A dual carriageway's median side gets no lots
+  const north = infillBuildings({ links: [{ ...street, median: 1 }], corridors: [street], obstacles: [], open: [], bounds: [-60, -60, 60, 60], context: [] });
+  assert.ok(north.length && north.every((l) => l.outer.every(([, z]) => z < 0)), 'right of an eastbound line is south (z > 0): skipped');
+});
+
 test('Wanhua geodata builds in its own frame around Lungshan Temple', { timeout: 60000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taipei wanhua '));
   try {
@@ -223,6 +253,19 @@ test('Wanhua geodata builds in its own frame around Lungshan Temple', { timeout:
     assert.ok(GEO.buildings.length > 200 && GEO.buildings.every((b) => b[1].every((v) => Math.abs(v) < 800)));
     assert.ok(GEO.roadGraph.links.length > 200 && GEO.roadGraph.nodes.every((v) => Math.abs(v) < 1500));
     assert.ok(GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'), 'estimates are labelled');
+    // Stand-ins: kept apart from OSM buildings, labelled, estimated heights, never on a mapped footprint
+    assert.ok(GEO.infill.length > 1000, `${GEO.infill.length} stand-ins`);
+    assert.match(GEO.infillNote, /inferred/);
+    const rings = GEO.buildings.filter((b) => b[4] < 1).map((b) => { const r = []; for (let i = 0; i < b[1].length; i += 2) r.push([b[1][i], b[1][i + 1]]); return r; });
+    const inRing = (x, z, r) => { let inside = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, zi] = r[i], [xj, zj] = r[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside; } return inside; };
+    for (const [id, outer, holes, top, base, source, kind] of GEO.infill) {
+      assert.match(id, /^i\d+$/);
+      assert.equal(GEO.kinds[kind], 'infill');
+      assert.equal(GEO.heightSources[source], 'estimate');
+      assert.ok(outer.length === 8 && holes.length === 0 && base === 0 && top > 0);
+      const cx = (outer[0] + outer[2] + outer[4] + outer[6]) / 4, cz = (outer[1] + outer[3] + outer[5] + outer[7]) / 4;
+      assert.ok(!rings.some((r) => inRing(cx, cz, r)), `${id} stands on a mapped building`);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

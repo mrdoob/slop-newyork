@@ -1,0 +1,167 @@
+// tools/geo-infill.mjs
+// Stand-in buildings for city blocks OpenStreetMap leaves empty, for footprint cities (tools/build-taipei-geodata.mjs).
+//
+// OSM maps only part of the buildings in older districts (Wanhua: ~390 outlines where Taipei's 3D city model has over
+// 5,000), so whole blocks render as empty lots. Where a street frontage has no mapped building, no open ground (parks,
+// parking, schoolyards, temple courts, plazas, water, rail) and no road or walkway, this fills it with rows of narrow
+// lots facing the street, the way Taipei's street-front shophouses and walk-ups stand, and further rows behind them
+// while the block has room. NOTHING here is mapped: footprints and heights are both inferred, and the output is kept
+// apart from the OSM buildings (GEO.infill) so it can be labelled, highlighted and hidden.
+//
+// infillBuildings({ links, corridors, obstacles, open, bounds, context, seed }) -> [{ outer: [[x, z] x4], top, storeys }]
+//   links      [{ pts: [[x, z], ...], w, median }]  drivable street centre lines & curb-to-curb widths: lots face these;
+//                                           median: the side (0 left, 1 right) facing a dual carriageway's median: no lots
+//   corridors  [{ pts, w }]                 everything lots must stay clear of: streets, walkways, sidewalks, rail
+//   obstacles  [[[x, z], ...], ...]         mapped building rings
+//   open       [[[x, z], ...], ...]         open-ground rings (no buildings inferred inside)
+//   bounds     [x0, z0, x1, z1]             the area's box in world metres
+//   context    [{ x, z, top, area }]        mapped buildings with a height tag or storey count: heights come from the
+//                                           street's own mapped neighbours
+// Lot widths, depths and gaps are defaults (INFILL), not survey data.
+
+export const INFILL = {
+  lotWidth: [4.5, 9], // m along the street: shophouse bays to small walk-ups
+  depths: [16, 12, 8, 5], // m: tried deepest first, the first that fits is used
+  frontGaps: [0.4, 2.0, 3.6], // m beyond the street's curb (sidewalk / arcade); the nearest that fits is used
+  backGap: 1.5, // m between a row and the row behind it (a rear lane / light well)
+  rows: 4, // rows per frontage at most
+  clearance: 0.3, // m kept from corridors, buildings and other lots
+  sample: 1.25, // m between test points inside a lot
+  contextRadius: 80, // m: mapped neighbours used for a lot's height
+  contextMaxArea: 1500, // m²: larger mapped buildings (towers, malls) don't set a street's height
+  level: 3.2 // m per storey, as tools/geo-height.mjs LEVEL_M
+};
+
+const CELL = 25; // m: spatial index bucket
+
+function bucketIndex() {
+  const map = new Map();
+  const key = (i, j) => `${i},${j}`;
+  return {
+    add(item, [x0, z0, x1, z1]) {
+      for (let i = Math.floor(x0 / CELL); i <= Math.floor(x1 / CELL); i++) {
+        for (let j = Math.floor(z0 / CELL); j <= Math.floor(z1 / CELL); j++) {
+          const k = key(i, j);
+          if (!map.has(k)) map.set(k, []);
+          map.get(k).push(item);
+        }
+      }
+    },
+    near(x, z) {
+      return map.get(key(Math.floor(x / CELL), Math.floor(z / CELL))) || [];
+    }
+  };
+}
+const bboxOf = (pts, pad = 0) => {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const [x, z] of pts) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+  return [x0 - pad, z0 - pad, x1 + pad, z1 + pad];
+};
+function pointInRing(x, z, r) {
+  let inside = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, zi] = r[i], [xj, zj] = r[j];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function segDist(x, z, [x0, z0], [x1, z1]) {
+  const dx = x1 - x0, dz = z1 - z0, L2 = dx * dx + dz * dz || 1e-9;
+  const t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / L2));
+  return Math.hypot(x0 + dx * t - x, z0 + dz * t - z);
+}
+const median = (a) => { const s = a.slice().sort((p, q) => p - q); return s.length ? s[Math.floor(s.length / 2)] : null; };
+
+export function infillBuildings({ links, corridors, obstacles, open, bounds, context, seed = 1 }, opts = {}) {
+  const o = { ...INFILL, ...opts };
+  let s = seed;
+  const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const [bx0, bz0, bx1, bz1] = bounds;
+
+  // Spatial indexes: corridor segments, solid rings (buildings & open ground), placed lots
+  const segs = bucketIndex();
+  for (const { pts, w } of corridors) {
+    for (let i = 0; i + 1 < pts.length; i++) segs.add({ a: pts[i], b: pts[i + 1], r: w / 2 + o.clearance }, bboxOf([pts[i], pts[i + 1]], w / 2 + o.clearance));
+  }
+  const rings = bucketIndex();
+  for (const r of [...obstacles, ...open]) rings.add({ r, bb: bboxOf(r, o.clearance) }, bboxOf(r, o.clearance));
+  const lots = bucketIndex();
+  const placed = [];
+
+  const free = (x, z) => {
+    if (x < bx0 || x > bx1 || z < bz0 || z > bz1) return false;
+    for (const g of segs.near(x, z)) if (segDist(x, z, g.a, g.b) < g.r) return false;
+    for (const { r, bb } of rings.near(x, z)) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pointInRing(x, z, r)) return false;
+    for (const q of lots.near(x, z)) if (pointInRing(x, z, q.grown)) return false;
+    return true;
+  };
+  // A lot: front edge from p along unit d for width lw, extending depth D along unit n (away from the street)
+  const corners = (p, d, n, lw, D) => [p, [p[0] + d[0] * lw, p[1] + d[1] * lw], [p[0] + d[0] * lw + n[0] * D, p[1] + d[1] * lw + n[1] * D], [p[0] + n[0] * D, p[1] + n[1] * D]];
+  const fits = (p, d, n, lw, D) => {
+    const c = o.clearance;
+    const nu = Math.max(2, Math.ceil(lw / o.sample)), nv = Math.max(2, Math.ceil(D / o.sample));
+    for (let i = 0; i <= nu; i++) {
+      for (let j = 0; j <= nv; j++) {
+        const u = c + ((lw - 2 * c) * i) / nu, v = c + ((D - 2 * c) * j) / nv;
+        if (!free(p[0] + d[0] * u + n[0] * v, p[1] + d[1] * u + n[1] * v)) return false;
+      }
+    }
+    return true;
+  };
+  const place = (ring) => {
+    // grown by the clearance so neighbours keep their gap
+    const [cx, cz] = [ring.reduce((t, q) => t + q[0], 0) / 4, ring.reduce((t, q) => t + q[1], 0) / 4];
+    const grown = ring.map(([x, z]) => { const dx = x - cx, dz = z - cz, L = Math.hypot(dx, dz) || 1; return [x + (dx / L) * o.clearance, z + (dz / L) * o.clearance]; });
+    const item = { ring, grown, cx, cz };
+    lots.add(item, bboxOf(grown));
+    placed.push(item);
+  };
+
+  for (const { pts, w, median = -1 } of links) {
+    for (const side of [1, -1]) {
+      if (median === (side > 0 ? 1 : 0)) continue; // side +1 builds on the right of the line's direction
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const [x0, z0] = pts[i], [x1, z1] = pts[i + 1];
+        const L = Math.hypot(x1 - x0, z1 - z0);
+        if (L < o.lotWidth[0]) continue;
+        // along the segment; n points away from the street on this side
+        const d = side > 0 ? [(x1 - x0) / L, (z1 - z0) / L] : [(x0 - x1) / L, (z0 - z1) / L];
+        const n = [-d[1], d[0]];
+        const start = side > 0 ? [x0, z0] : [x1, z1];
+        for (let t = 0; t + o.lotWidth[0] <= L;) {
+          const lw = Math.min(L - t, o.lotWidth[0] + rand() * (o.lotWidth[1] - o.lotWidth[0]));
+          let front = null, depth = 0;
+          for (const g of o.frontGaps) {
+            const off = w / 2 + g;
+            const p = [start[0] + d[0] * t + n[0] * off, start[1] + d[1] * t + n[1] * off];
+            depth = o.depths.find((D) => fits(p, d, n, lw, D)) || 0;
+            if (depth) { front = p; break; }
+          }
+          if (!front) { t += 1.5; continue; } // blocked here: step on and try again
+          place(corners(front, d, n, lw, depth));
+          // rows behind, as long as the block has room
+          let back = depth + o.backGap;
+          for (let r = 1; r < o.rows; r++) {
+            const p = [front[0] + n[0] * back, front[1] + n[1] * back];
+            const D = o.depths.find((DD) => fits(p, d, n, lw, DD));
+            if (!D) break;
+            place(corners(p, d, n, lw, D));
+            back += D + o.backGap;
+          }
+          t += lw;
+        }
+      }
+    }
+  }
+
+  // Heights: the median top of the mapped (tagged) neighbours within contextRadius, ±1 storey per lot
+  const ctx = bucketIndex();
+  for (const b of context) if (b.area <= o.contextMaxArea) ctx.add(b, [b.x - o.contextRadius, b.z - o.contextRadius, b.x + o.contextRadius, b.z + o.contextRadius]);
+  const fallback = median(context.filter((b) => b.area <= o.contextMaxArea).map((b) => b.top)) ?? 4 * o.level;
+  return placed.map(({ ring, cx, cz }) => {
+    const near = ctx.near(cx, cz).filter((b) => Math.hypot(b.x - cx, b.z - cz) <= o.contextRadius).map((b) => b.top);
+    const typical = near.length >= 3 ? median(near) : fallback;
+    const storeys = Math.max(1, Math.round(typical / o.level) + Math.round((rand() - 0.5) * 2.4));
+    return { outer: ring, storeys, top: storeys * o.level, context: near.length >= 3 ? near.length : 0 };
+  });
+}

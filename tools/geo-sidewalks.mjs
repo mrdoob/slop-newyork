@@ -176,12 +176,9 @@ function crosses([px, pz], [qx, qz], [ax, az], [bx, bz]) {
   return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
-export function inferSidewalks(roadGraph, paths, pathKinds) {
-  const grid = walkIndex(paths, pathKinds);
-  const RG = roadGraph;
-  const nodeCount = RG.nodes.length / 2;
-  const reach = new Float32Array(nodeCount), degree = new Uint16Array(nodeCount);
-  for (const [a, b, , w] of RG.links) for (const n of [a, b]) { reach[n] = Math.max(reach[n], w / 2); degree[n]++; }
+// Per link of a road graph: the side (0 left, 1 right of a -> b) that faces the opposite one-way carriageway of a dual
+// carriageway (i.e. its median), or -1
+export function medianSides(RG) {
   // One-way links' midpoints & travel directions, to find the opposite carriageway of a dual carriageway
   const mids = RG.links.map((l) => {
     const pts = linkLine(RG, l);
@@ -190,7 +187,6 @@ export function inferSidewalks(roadGraph, paths, pathKinds) {
     const sign = l[5] === -1 ? -1 : 1;
     return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, dx: ((x1 - x0) / L) * sign, dz: ((z1 - z0) / L) * sign, L, oneway: l[5] !== 0 };
   });
-  // Side (0 left, 1 right of a -> b) of link i that faces an opposite one-way carriageway, or -1
   function medianSide(i) {
     const m = mids[i];
     if (!m.oneway) return -1;
@@ -205,6 +201,16 @@ export function inferSidewalks(roadGraph, paths, pathKinds) {
     }
     return -1;
   }
+  return RG.links.map((_, i) => medianSide(i));
+}
+
+export function inferSidewalks(roadGraph, paths, pathKinds) {
+  const grid = walkIndex(paths, pathKinds);
+  const RG = roadGraph;
+  const nodeCount = RG.nodes.length / 2;
+  const reach = new Float32Array(nodeCount), degree = new Uint16Array(nodeCount);
+  for (const [a, b, , w] of RG.links) for (const n of [a, b]) { reach[n] = Math.max(reach[n], w / 2); degree[n]++; }
+  const medianSide = medianSides(RG);
   const out = [];
   const ends = new Map(); // node -> [{ p, toward: unit vector along the sidewalk towards the node, sw, link }]
   const addEnd = (n, p, q, sw, link) => {
@@ -218,7 +224,7 @@ export function inferSidewalks(roadGraph, paths, pathKinds) {
     const street = w >= MIN_STREET_W && RG.highway[i] !== 'service';
     const mapped = sidesOf(linkLine(RG, l), w, grid);
     const sw = RG.sidewalkWidth[i] || DEFAULT_SIDEWALK_W(w);
-    const median = medianSide(i);
+    const median = medianSide[i];
     [0, 1].forEach((side) => {
       const tag = tags[side];
       if (tag === 2 || tag === 3 || mapped[side]) return; // no / separate / already mapped

@@ -176,7 +176,8 @@ async function init() {
   const pct = (k) => Math.round((100 * st.bySource[k]) / st.total);
   document.getElementById('stats').textContent =
     `${st.total} buildings · heights: ${pct('height')}% height tag, ${pct('levels')}% storey count, ` +
-    `${pct('estimate')}% estimated · tallest ${st.maxTop} m`;
+    `${pct('estimate')}% estimated · tallest ${st.maxTop} m` +
+    (st.infill ? ` · +${st.infill} stand-ins (footprint & height inferred where OSM maps none)` : '');
   let showEstimates = false;
   const toggle = document.getElementById('btn-estimates');
   const setEstimates = (on) => {
@@ -186,6 +187,17 @@ async function init() {
   };
   toggle.addEventListener('click', () => setEstimates(!showEstimates));
   window.addEventListener('keydown', (ev) => { if (ev.key === 'e' || ev.key === 'E') setEstimates(!showEstimates); });
+  // Stand-ins (I): shown by default, so blocks OSM leaves empty don't read as open ground; hide them to see OSM alone
+  const infillButton = document.getElementById('btn-infill');
+  let showInfill = true;
+  const setInfill = (on) => {
+    showInfill = on;
+    buildings.setShowInfill(on);
+    infillButton.setAttribute('aria-pressed', String(on));
+  };
+  infillButton.hidden = !st.infill;
+  infillButton.addEventListener('click', () => setInfill(!showInfill));
+  window.addEventListener('keydown', (ev) => { if ((ev.key === 'i' || ev.key === 'I') && st.infill) setInfill(!showInfill); });
 
   // Reference photo (M): NLSC aerial orthophotos draped on the ground, loaded from NLSC only when shown, to check roads
   // & footprints by eye

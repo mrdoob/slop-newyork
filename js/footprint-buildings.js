@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { attribute, positionWorld, normalWorld, cameraPosition, abs, fract, floor, sin, step, smoothstep, mix, max, vec3, float, uniform } from 'three/tsl';
+import { attribute, positionWorld, normalWorld, cameraPosition, abs, fract, floor, sin, step, smoothstep, mix, max, min, vec3, float, uniform } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // js/footprint-buildings.js
@@ -15,6 +15,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // balcony slabs, glass curtain wall, podium window bands, plain walls) in storeys of LEVEL_M, and shopfronts on the
 // ground floor. Buildings whose height is an estimate carry an `estimate` attribute; setShowEstimates(true) tints them
 // so they are never mistaken for measured data.
+// geo.infill (optional, same row shape): stand-in buildings whose footprint is inferred too, not mapped. They form a
+// separate mesh (infillMesh, setShowInfill) and tint violet where estimates tint orange.
 
 const LEVEL_M = 3.2; // storey height, matches tools/geo-height.mjs
 const GROUND_FLOOR_M = 4.2; // shopfront storey
@@ -107,8 +109,9 @@ function buildFootprintBuildings(scene, geo) {
   const parts = [];
   const wallColour = new THREE.Color();
   const roofColour = new THREE.Color();
-  const stats = { total: 0, bySource: Object.fromEntries(geo.heightSources.map((s) => [s, 0])), maxTop: 0 };
+  const stats = { total: 0, bySource: Object.fromEntries(geo.heightSources.map((s) => [s, 0])), maxTop: 0, infill: 0 };
   const counted = new Set(); // OSM buildings, not the pieces a landmark shape splits one into (id_base, id_m1, ...)
+  // est: 0 mapped / tagged height, 1 estimated height, 2 stand-in (footprint & height inferred: geo.infill)
   const paint = (g, wall, roof, capVertices, est, facade, base) => {
     const n = g.attributes.position.count;
     const col = new Float32Array(n * 3);
@@ -119,7 +122,10 @@ function buildFootprintBuildings(scene, geo) {
     g.setAttribute('base', new THREE.BufferAttribute(new Float32Array(n).fill(base), 1));
     parts.push(g);
   };
-  for (const [id, outer, holes, top, base, source, kind, osmColour, roofIdx = 0, roofH = 0, osmRoofColour = 0, facadeIdx = 0, topScale = 1] of geo.buildings) {
+  const rows = [...geo.buildings.map((b) => [b, false]), ...(geo.infill || []).map((b) => [b, true])];
+  let infillParts = 0;
+  for (const [[id, outer, holes, top, base, source, kind, osmColour, roofIdx = 0, roofH = 0, osmRoofColour = 0, facadeIdx = 0, topScale = 1], isInfill] of rows) {
+    if (isInfill && !infillParts) infillParts = parts.length; // stand-ins follow the mapped buildings in `parts`
     if (!(top - base > 0) || outer.length < 6) continue;
     const shape = roofShapes[roofIdx] || 'flat';
     const eaves = shape === 'flat' ? top : Math.max(base + 0.5, top - roofH);
@@ -143,7 +149,7 @@ function buildFootprintBuildings(scene, geo) {
     wallColour.offsetHSL(0, 0, (hash01(id) - 0.5) * 0.08);
     if (osmRoofColour) roofColour.setStyle(osmRoofColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN * 0.5);
     else roofColour.setHex(ROOF_COLOUR).lerp(wallColour, 0.25);
-    const est = source === estimateIndex ? 1 : 0;
+    const est = isInfill ? 2 : source === estimateIndex ? 1 : 0;
     // ExtrudeGeometry lists its caps first (group 0), then the walls
     paint(g, wallColour, roofColour, g.groups.length ? g.groups[0].count : 0, est, facadeIdx, base);
     if (shape !== 'flat') {
@@ -153,16 +159,24 @@ function buildFootprintBuildings(scene, geo) {
       paint(roof, roofColour, roofColour, 0, est, NONE, base);
     }
     const osmId = id.split('_')[0];
-    if (!counted.has(osmId)) {
+    if (isInfill) stats.infill++;
+    else if (!counted.has(osmId)) {
       counted.add(osmId);
       stats.total++;
       stats.bySource[geo.heightSources[source]]++;
     }
     stats.maxTop = Math.max(stats.maxTop, top);
   }
-  const geometry = mergeGeometries(parts, false);
+  const merge = (list) => {
+    if (!list.length) return null;
+    const g = mergeGeometries(list, false);
+    g.computeBoundingSphere();
+    return g;
+  };
+  const mapped = infillParts ? parts.slice(0, infillParts) : parts;
+  const geometry = merge(mapped);
+  const infillGeometry = infillParts ? merge(parts.slice(infillParts)) : null;
   for (const g of parts) g.dispose();
-  geometry.computeBoundingSphere();
 
   // --- Facade shader ------------------------------------------------------------------------------------------------
   const showEstimates = uniform(0);
@@ -201,7 +215,9 @@ function buildFootprintBuildings(scene, geo) {
 
   const baseCol = attribute('color', 'vec3');
   const estimate = attribute('estimate', 'float');
-  const tinted = mix(baseCol, vec3(1.0, 0.45, 0.15), estimate.mul(showEstimates).mul(0.75));
+  // Highlight: estimated heights orange, stand-ins (inferred footprints) violet
+  const tintCol = mix(vec3(1.0, 0.45, 0.15), vec3(0.55, 0.35, 0.95), step(1.5, estimate));
+  const tinted = mix(baseCol, tintCol, min(estimate, 1).mul(showEstimates).mul(0.75));
   // Wall: floor slabs show as darker bands on punched facades; curtain-wall frames take the building colour
   const wallCol = mix(tinted, tinted.mul(0.72), punched.mul(slab).mul(wall).mul(near).mul(float(1).sub(groundFloor)));
   // Glass: dark tinted panes; curtain walls a deeper blue-green (they mirror the sky through the environment map);
@@ -223,10 +239,20 @@ function buildFootprintBuildings(scene, geo) {
   mesh.receiveShadow = true;
   mesh.name = 'footprint-buildings';
   scene.add(mesh);
+  let infillMesh = null;
+  if (infillGeometry) {
+    infillMesh = new THREE.Mesh(infillGeometry, material);
+    infillMesh.castShadow = true;
+    infillMesh.receiveShadow = true;
+    infillMesh.name = 'footprint-buildings-infill';
+    scene.add(infillMesh);
+  }
   return {
     mesh,
+    infillMesh,
     stats,
-    setShowEstimates(on) { showEstimates.value = on ? 1 : 0; }
+    setShowEstimates(on) { showEstimates.value = on ? 1 : 0; },
+    setShowInfill(on) { if (infillMesh) infillMesh.visible = on; }
   };
 }
 

@@ -12,8 +12,9 @@ import { toWorld, BOX, LANDMARKS, AREA, AREA_NAME, load, log } from './geo-taipe
 import { buildingHeight } from './geo-height.mjs';
 import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
 import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgraph.mjs';
-import { fitRoadWidths, inferSidewalks, sidewalkFootways } from './geo-sidewalks.mjs';
+import { fitRoadWidths, inferSidewalks, sidewalkFootways, medianSides } from './geo-sidewalks.mjs';
 import { buildFurniture, FURNITURE_KINDS, FURNITURE_SOURCES } from './geo-furniture.mjs';
+import { infillBuildings, INFILL } from './geo-infill.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL(`../js/${AREA.out}`, import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
@@ -238,8 +239,44 @@ for (const g of green.filter((g) => g.kind === 'forest')) {
 }
 log(`${green.length} green areas; ${trees.length} trees: ${TREE_SOURCES.map((s, i) => `${trees.filter((t) => t[2] === i).length} ${s}`).join(', ')}`);
 
+// --- Stand-in buildings where OSM maps none (tools/geo-infill.mjs): inferred footprints AND heights ----------------------
+// Kept out of `buildings` (GEO.infill) so they stay labelled; open ground from osm_open.json (parking, schoolyards,
+// temple courts, plazas, water, rail…) and green areas get none.
+const unflat = (a) => { const r = []; for (let i = 0; i < a.length; i += 2) r.push([a[i], a[i + 1]]); return r; };
+const node = (i) => [roadGraph.nodes[2 * i], roadGraph.nodes[2 * i + 1]];
+const medians = medianSides(roadGraph);
+const streetLines = roadGraph.links.map(([a, b, , w, , , inner], i) => ({ pts: [node(a), ...unflat(inner), node(b)], w, median: medians[i] }));
+const openRings = [], railLines = [];
+for (const e of load('osm_open.json').elements) {
+  const t = e.tags || {};
+  const line = e.type === 'way' && e.geometry && (t.railway || t.man_made || t.barrier) && (e.geometry[0].lat !== e.geometry.at(-1).lat || e.geometry[0].lon !== e.geometry.at(-1).lon);
+  if (line) railLines.push({ pts: e.geometry.map((g) => toWorld(g.lon, g.lat)), w: t.railway ? 6 : 4 }); // rail, dykes, floodwalls
+  else for (const [outer] of polygons(e)) openRings.push(outer);
+}
+// Elevated roads (viaducts; left out of the street graph) still stand on piers over the ground: no lots under them.
+// Width: the width tag, else lanes × 3.25 m + 1 m, else 10 m (a default, not a measurement).
+const ELEVATED_CLASSES = /^(motorway|trunk|primary|secondary|tertiary)(_link)?$/;
+for (const e of load('osm_roads.json').elements) {
+  const t = e.tags || {};
+  if (e.type !== 'way' || !e.geometry || !ELEVATED_CLASSES.test(t.highway || '') || !(parseFloat(t.layer) > 0 || t.bridge)) continue;
+  const w = parseFloat(t.width) || (parseInt(t.lanes, 10) ? parseInt(t.lanes, 10) * 3.25 + 1 : 10);
+  railLines.push({ pts: e.geometry.map((g) => toWorld(g.lon, g.lat)), w });
+}
+const [bx0, bz1] = toWorld(BOX[1], BOX[0]), [bx1, bz0] = toWorld(BOX[3], BOX[2]);
+const infill = !AREA.infill ? [] : infillBuildings({
+  links: streetLines,
+  corridors: [...streetLines, ...paths.filter((p) => !(p[2] > 0)).map((p) => ({ pts: p[3], w: Math.max(1, p[1]) })), ...railLines],
+  obstacles: [...outlines, ...parts].map((x) => x.outer),
+  open: [...openRings, ...green.map((g) => g.outer)],
+  bounds: [bx0, bz0, bx1, bz1],
+  context: buildings.filter((x) => x.h.source !== 'estimate' && x.h.base < 1 && !x.b.id.includes('_')).map((x) => ({ x: x.b.c[0], z: x.b.c[1], top: x.h.top, area: x.b.area }))
+});
+if (AREA.infill) log(`stand-in buildings (inferred, not mapped): ${infill.length} lots, ${infill.filter((b) => b.context).length} with heights from ≥ 3 mapped neighbours, ` +
+  `${Math.min(...infill.map((b) => b.storeys))}–${Math.max(...infill.map((b) => b.storeys))} storeys; ${openRings.length} open-ground areas kept clear`);
+
 // --- Street furniture -------------------------------------------------------------------------------------------------
-const furniture = buildFurniture(load('osm_furniture.json').elements, toWorld, roadGraph, (x, z) => groundRings.some((r) => pointInRing(x, z, r)));
+const solidRings = [...groundRings, ...infill.map((b) => b.outer)];
+const furniture = buildFurniture(load('osm_furniture.json').elements, toWorld, roadGraph, (x, z) => solidRings.some((r) => pointInRing(x, z, r)));
 log(`street furniture: ${FURNITURE_KINDS.map((k, i) => [k, furniture.filter((f) => f[0] === i)]).filter(([, l]) => l.length)
   .map(([k, l]) => `${l.length} ${k}${l.some((f) => f[4] === 1) ? ` (${l.filter((f) => f[4] === 1).length} inferred)` : ''}`).join(', ')}`);
 
@@ -262,6 +299,11 @@ const GEO = {
   buildings: buildings.map(({ b, h, colour, roof, facade, topScale }) => [b.id, flat(b.outer), b.holes.map(flat), q(h.top), q(h.base), SOURCES.indexOf(h.source), kindId(b.kind), colour,
     ROOF_SHAPES.indexOf(roof.shape), q(roof.height), roof.colour, FACADES.indexOf(facade), Math.round((topScale ?? 1) * 1000) / 1000]),
   landmarks,
+  // Stand-in buildings: rows of lots along street frontages where OSM maps no building and no open ground
+  // (tools/geo-infill.mjs). Footprint AND height are inferred (height: the median of mapped neighbours' heights,
+  // ±1 storey), NOT mapped data; same row shape as `buildings` (source 'estimate', kind 'infill'), ids 'i<n>'.
+  infillNote: !AREA.infill ? 'none: stand-ins are off for this area' : `inferred stand-ins, not OSM buildings: lots ${INFILL.lotWidth.join('–')} m wide facing streets with no mapped building`,
+  infill: infill.map((b, i) => [`i${i}`, flat(b.outer), [], q(b.top), 0, SOURCES.indexOf('estimate'), kindId('infill'), 0, 0, 0, 0, FACADES.indexOf('punched'), 1]),
   // Street centreline graph of the drivable roads (tools/geo-osm-roadgraph.mjs; same shape as NYC's GEO.roadGraph):
   // nodes [x, z, ...], links [node a, node b, name index, curb-to-curb width, travel lanes, direction (1: a -> b,
   // -1: b -> a, 0: both), inner shape points [x, z, ...]], names, signals, and per link `widthSource` (index into

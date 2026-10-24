@@ -185,6 +185,13 @@ Mapping task list: `tools/gap-tasks.mjs` (after validate-heights for the area) -
 (3d.taipei-derived). Imagery OK for tracing: editor-layer-index lists NLSC EMAP5/EMAP6_OPENDATA (OGDL 1.0, maps not
 photos) + iD's global Bing/Esri layers. NLSC PHOTO2 orthophoto (our M overlay) is NOT in the index (NLSC user licence,
 judged ODbL-incompatible by talk-tw 2016) — view only, don't trace.
+Stand-in buildings (`tools/geo-infill.mjs`, owner OK'd as labelled inference): lots 4.5–9 m wide, rows ≤ 4 deep, along
+street frontage with no mapped building / open ground (`osm_open.json`: parking, schools, temples, plazas, water, rail,
+dykes) / walkway / viaduct / median side (`medianSides()` in geo-sidewalks). Height = median of mapped tagged
+neighbours ≤ 80 m ±1 storey. Output `GEO.infill` (same rows as buildings, kind 'infill', ids i<n>), separate mesh,
+violet on E, hide with I. Per-area `infill` flag in AREAS: Wanhua on (3,270 lots; local check: 65% of unmapped
+buildings covered, 14% of lots no measured building within 12 m, heights 0.88×), Xinyi off (46% would be on open
+ground). validate-heights.mjs reports these numbers for the area's generated file.
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments

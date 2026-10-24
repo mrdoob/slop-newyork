@@ -32,9 +32,13 @@ import { makeFrame } from './geo-frame.mjs';
 // Boxes are [S, W, N, E] degrees and must match the q_*.overpassql bounds in the area's data directory (at 25° N,
 // 1 km ≈ 0.00902° of latitude and ≈ 0.00991° of longitude). Xinyi: ±1 km of Taipei 101 (the first milestone used the
 // 1 km box [25.029, 121.559, 25.039, 121.570]). Wanhua: ±0.5 km of the temple.
+// `infill`: add stand-in buildings where OSM maps none (tools/geo-infill.mjs). Chosen per area from the local check
+// against measured buildings (tools/validate-heights.mjs): in Wanhua, where OSM lacks whole blocks, 14% of stand-ins
+// have no measured building within 12 m; in Xinyi, where unmapped frontage is mostly real open space (plazas, tower
+// setbacks, the Elephant Mountain slopes), 46% do, so Xinyi gets none.
 const AREAS = {
-  xinyi: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0249, 121.5546, 25.043, 121.5744], data: 'data-taipei/', out: 'taipei-geodata.js' },
-  wanhua: { lat0: 25.037276, lon0: 121.499881, origin: 'Lungshan Temple', box: [25.0328, 121.4949, 25.0418, 121.5048], data: 'data-taipei/wanhua/', out: 'taipei-wanhua-geodata.js' }
+  xinyi: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0249, 121.5546, 25.043, 121.5744], data: 'data-taipei/', out: 'taipei-geodata.js', infill: false },
+  wanhua: { lat0: 25.037276, lon0: 121.499881, origin: 'Lungshan Temple', box: [25.0328, 121.4949, 25.0418, 121.5048], data: 'data-taipei/wanhua/', out: 'taipei-wanhua-geodata.js', infill: true }
 };
 const AREA_NAME = process.env.GEO_AREA || 'xinyi';
 const AREA = AREAS[AREA_NAME];
