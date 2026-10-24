@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { BODY_SPECS, buildCarGeometry, buildSteerableWheelGeo, createLoftedCarMaterial } from './actor-models.js';
 import { createWalker, createCyclist } from './player-actors.js';
 import { ufoModel, rocketModel, launchPad, smokeTrail } from './sky-craft.js';
+import { heightAt } from './terrain.js';
 
 // js/simple-vehicles.js
 // The player for footprint cities (GEO.buildings + GEO.infill + GEO.roadGraph + GEO.paths): on foot, on a bicycle, in a
@@ -25,16 +26,22 @@ const CELL = 32; // building index cell (m)
 const WORLD_LIMIT = 1500; // default for options.worldLimit: keep the player over the ground plane (m from the origin)
 
 // --- Building index: footprint rings bucketed on a grid, for point-in-footprint queries ---------------------------------
+// (heights are absolute: each building stands on its lowest ground, as js/footprint-buildings.js draws it)
 function buildIndex(geo) {
+  const terrain = heightAt(geo);
   const cells = new Map();
   const items = [];
-  for (const [, outer, , top, base] of [...geo.buildings, ...(geo.infill || [])]) {
+  const rows = [...geo.buildings.map((b) => [b, false]), ...(geo.infill || []).map((b) => [b, true])];
+  let infillSolid = true; // stand-ins block only while they're shown (setInfill)
+  for (const [[, outer, , top, base], infill] of rows) {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (let i = 0; i < outer.length; i += 2) {
       x0 = Math.min(x0, outer[i]); x1 = Math.max(x1, outer[i]);
       z0 = Math.min(z0, outer[i + 1]); z1 = Math.max(z1, outer[i + 1]);
     }
-    const id = items.push({ ring: outer, top, base, x0, x1, z0, z1 }) - 1;
+    let g = Infinity;
+    for (let i = 0; i < outer.length; i += 2) g = Math.min(g, terrain(outer[i], outer[i + 1]));
+    const id = items.push({ ring: outer, top: top + g, base: base + g, x0, x1, z0, z1, infill }) - 1;
     for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++) {
       for (let cz = Math.floor(z0 / CELL); cz <= Math.floor(z1 / CELL); cz++) {
         const k = `${cx},${cz}`;
@@ -56,18 +63,22 @@ function buildIndex(geo) {
     const out = [];
     for (const id of cells.get(`${Math.floor(x / CELL)},${Math.floor(z / CELL)}`) || []) {
       const b = items[id];
-      if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && inRing(x, z, b.ring)) out.push(b);
+      if ((infillSolid || !b.infill) && x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && inRing(x, z, b.ring)) out.push(b);
     }
     return out;
   };
   return {
     // Is the point inside a building volume between heights y0 and y1?
-    solid: (x, z, y0, y1) => at(x, z).some((b) => b.base < y1 && b.top > y0)
+    setInfill(on) { infillSolid = on; },
+    solid: (x, z, y0, y1) => at(x, z).some((b) => b.base < y1 && b.top > y0),
+    // the same, with y0 & y1 measured from the ground at (x, z) (for things that move along the ground)
+    solidAbove: (x, z, y0, y1) => { const g = terrain(x, z); return at(x, z).some((b) => b.base < g + y1 && b.top > g + y0); }
   };
 }
 
 // --- Ground: raised sidewalks (GEO.paths of kind 'sidewalk'), for the walker's feet and the cyclist's wheels -----------
 function buildGround(geo) {
+  const terrain = heightAt(geo);
   const cells = new Map();
   const sw = (geo.pathKinds || []).indexOf('sidewalk');
   for (const [k, w, elev, pts] of geo.paths || []) {
@@ -89,7 +100,7 @@ function buildGround(geo) {
     const t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / L2));
     return Math.hypot(x0 + dx * t - x, z0 + dz * t - z) < r;
   });
-  return { onSidewalk, height: (x, z) => (onSidewalk(x, z) ? SIDEWALK_Y : STREET_Y) };
+  return { onSidewalk, terrain, height: (x, z) => terrain(x, z) + (onSidewalk(x, z) ? SIDEWALK_Y : STREET_Y) };
 }
 
 // --- Models (built facing -z) -----------------------------------------------------------------------------------------
@@ -346,7 +357,7 @@ class SimpleVehicles {
 
   _personFits(x, z, r) {
     if (Math.abs(x) > this.limit || Math.abs(z) > this.limit) return false;
-    for (const [ox, oz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) if (this.index.solid(x + ox, z + oz, 0.2, 1.7)) return false;
+    for (const [ox, oz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) if (this.index.solidAbove(x + ox, z + oz, 0.2, 1.7)) return false;
     return true;
   }
 
@@ -372,7 +383,7 @@ class SimpleVehicles {
     if (Math.abs(x) > this.limit || Math.abs(z) > this.limit) return false;
     const s = Math.sin(h), c = Math.cos(h);
     for (const oz of [-BIKE.len / 2, 0, BIKE.len / 2]) {
-      for (const ox of [-BIKE.wid / 2, BIKE.wid / 2]) if (this.index.solid(x + ox * c + oz * s, z - ox * s + oz * c, 0.2, 1.7)) return false;
+      for (const ox of [-BIKE.wid / 2, BIKE.wid / 2]) if (this.index.solidAbove(x + ox * c + oz * s, z - ox * s + oz * c, 0.2, 1.7)) return false;
     }
     if (this.blocked && this.blocked(x, z, -s, -c, BIKE.len / 2, BIKE.wid / 2)) return false;
     return true;
@@ -419,7 +430,7 @@ class SimpleVehicles {
     const s = Math.sin(h), c = Math.cos(h);
     for (const [ox, oz] of [[-CAR.wid / 2, -CAR.len / 2], [CAR.wid / 2, -CAR.len / 2], [-CAR.wid / 2, CAR.len / 2], [CAR.wid / 2, CAR.len / 2], [0, -CAR.len / 2]]) {
       const px = x + ox * c + oz * s, pz = z - ox * s + oz * c;
-      if (this.index.solid(px, pz, 0.2, 1.6)) return false;
+      if (this.index.solidAbove(px, pz, 0.2, 1.6)) return false;
     }
     if (this.blocked && this.blocked(x, z, -s, -c, CAR.len / 2, CAR.wid / 2)) return false;
     return true;
@@ -435,7 +446,7 @@ class SimpleVehicles {
     p.pitch += (Math.atan2(vy, p.speed) - p.pitch) * Math.min(1, dt * 4);
     const nx = p.x - Math.sin(p.heading) * p.speed * dt;
     const nz = p.z - Math.cos(p.heading) * p.speed * dt;
-    const ny = Math.min(PLANE.ceiling, Math.max(4, p.y + vy * dt));
+    const ny = Math.min(PLANE.ceiling, Math.max(this.ground.terrain(p.x, p.z) + 4, p.y + vy * dt)); // not into the hills
     if (Math.abs(nx) < this.limit && Math.abs(nz) < this.limit && !this.index.solid(nx, nz, ny - 2, ny + 2)) {
       p.x = nx;
       p.z = nz;
@@ -458,7 +469,7 @@ class SimpleVehicles {
     u.vz += (tz - u.vz) * k;
     u.vy += (ty - u.vy) * Math.min(1, dt * 3);
     const nx = u.x + u.vx * dt, nz = u.z + u.vz * dt;
-    const ny = Math.min(UFO.ceiling, Math.max(2.5, u.y + u.vy * dt));
+    const ny = Math.min(UFO.ceiling, Math.max(this.ground.terrain(u.x, u.z) + 2.5, u.y + u.vy * dt));
     const clear = (x, y, z) => Math.abs(x) < this.limit && Math.abs(z) < this.limit &&
       [[0, 0], [UFO.radius, 0], [-UFO.radius, 0], [0, UFO.radius], [0, -UFO.radius]].every(([ox, oz]) => !this.index.solid(x + ox, z + oz, y - 1.4, y + 2));
     if (clear(nx, u.y, nz)) { u.x = nx; u.z = nz; } else { u.vx *= -0.3; u.vz *= -0.3; }
@@ -471,8 +482,9 @@ class SimpleVehicles {
   _resetRocket(x, z) {
     const [px, pz] = this._clearSpot(x, z, 10);
     this._padAt = { x: px, z: pz };
-    this.pad.position.set(px, 0, pz);
-    Object.assign(this.rocket, { x: px, y: 0.6, z: pz, pitch: Math.PI / 2, vx: 0, vy: 0, vz: 0, throttle: 0, crashed: 0 });
+    const g = this.ground.terrain(px, pz);
+    this.pad.position.set(px, g, pz);
+    Object.assign(this.rocket, { x: px, y: g + 0.6, z: pz, pitch: Math.PI / 2, vx: 0, vy: 0, vz: 0, throttle: 0, crashed: 0 });
   }
 
   _flyRocket(dt, throttle, steer, boost, pitch) {
@@ -484,7 +496,8 @@ class SimpleVehicles {
       return;
     }
     r.throttle = Math.max(0, Math.min(1, r.throttle + throttle * dt * 0.8));
-    const onPad = r.y <= 0.61 && Math.hypot(r.vx, r.vy, r.vz) < 0.5;
+    const floorY = this.ground.terrain(r.x, r.z) + 0.6;
+    const onPad = r.y <= floorY + 0.01 && Math.hypot(r.vx, r.vy, r.vz) < 0.5;
     if (!onPad) {
       r.heading += steer * ROCKET.yaw * dt;
       r.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, r.pitch + pitch * ROCKET.pitch * dt));
@@ -504,9 +517,10 @@ class SimpleVehicles {
       r.vz += (fz * sp - r.vz) * k;
     }
     let nx = r.x + r.vx * dt, ny = r.y + r.vy * dt, nz = r.z + r.vz * dt;
-    if (ny <= 0.6) { // on the ground
+    const groundY = this.ground.terrain(nx, nz) + 0.6;
+    if (ny <= groundY) { // on the ground
       if (r.vy < -ROCKET.crashSpeed) { r.crashed = 2; return; }
-      ny = 0.6;
+      ny = groundY;
       r.vy = Math.max(0, r.vy);
       r.vx *= 0.9;
       r.vz *= 0.9;
@@ -524,7 +538,7 @@ class SimpleVehicles {
 
   _sync() {
     const c = this.car;
-    c.group.position.set(c.x, 0.08, c.z);
+    c.group.position.set(c.x, 0.08 + this.ground.terrain(c.x, c.z), c.z);
     c.group.rotation.set(0, c.heading, 0);
     for (const w of c.wheels) {
       w.w.rotation.x = c.spin;
@@ -542,7 +556,8 @@ class SimpleVehicles {
     um.tilt.rotation.x = -fwdV / UFO.boost * 0.35;
     um.ring.rotation.y = u.time * 1.5;
     const slow = 1 - Math.min(1, Math.hypot(u.vx, u.vz) / 8);
-    um.beam(u.y, Math.max(slow * 0.6, this._night ?? 0) * (u.y < 400 ? 1 : 0));
+    const above = u.y - this.ground.terrain(u.x, u.z);
+    um.beam(above, Math.max(slow * 0.6, this._night ?? 0) * (above < 400 ? 1 : 0));
     // Rocket: nose along heading & pitch (built nose-up, so tip it forward by 90° - pitch)
     const r = this.rocket, rm = this.rocketModel;
     rm.group.position.set(r.x, r.y, r.z);
@@ -558,15 +573,16 @@ class SimpleVehicles {
       // behind the rocket horizontally and above its nose, looking at it (and the city below once it climbs)
       const r = this.rocket, cp = Math.cos(r.pitch);
       const hx = -Math.sin(r.heading), hz = -Math.cos(r.heading);
-      const climbing = Math.min(1, Math.max(0, r.y - 20) / 200); // on the pad: from the side; aloft: from above
-      this._camGoal.set(r.x - hx * 38, Math.max(3, r.y + 8 + climbing * 22), r.z - hz * 38);
+      const g = this.ground.terrain(r.x, r.z);
+      const climbing = Math.min(1, Math.max(0, r.y - g - 20) / 200); // on the pad: from the side; aloft: from above
+      this._camGoal.set(r.x - hx * 38, Math.max(g + 3, r.y + 8 + climbing * 22), r.z - hz * 38);
       const k = snap ? 1 : 1 - Math.exp(-dt * 6);
       camera.position.lerp(this._camGoal, k);
       this._look.set(r.x + hx * cp * 12, r.y + 10 - climbing * 6, r.z + hz * cp * 12);
       camera.lookAt(this._look);
       return;
     }
-    const y = this.mode === 'plane' || this.mode === 'ufo' ? v.y : this.mode === 'car' ? 0 : this.ground.height(v.x, v.z);
+    const y = this.mode === 'plane' || this.mode === 'ufo' ? v.y : this.mode === 'car' ? this.ground.terrain(v.x, v.z) : this.ground.height(v.x, v.z);
     // [back, up, ahead, look height] behind each kind of player
     const [back, up, ahead, lookY] = { walk: [4.3, 1.95, 4, 1.55], bike: [5.5, 2.3, 6, 1.3], car: [9, 3.6, 8, 1.4], plane: [26, 7, 30, 2], ufo: [24, 9, 14, 0] }[this.mode];
     this._fwd.set(-Math.sin(v.heading), 0, -Math.cos(v.heading));

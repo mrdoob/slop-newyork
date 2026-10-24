@@ -11,7 +11,7 @@ Fork it, remix it, improve it, break it. Make games, animations, films, experime
 ## Taipei port (in progress)
 
 This fork is being retargeted to Taipei. It currently covers the whole of Xinyi District (信義區, about 11 km² around
-Taipei 101; its south-east hills are drawn flat until terrain data is in) and a 1 km box around Lungshan Temple in
+Taipei 101, with the Four Beasts hills in its south-east) and a 1 km box around Lungshan Temple in
 Wanhua (`index.html?area=wanhua`): open `index.html` over http in a WebGPU
 browser (the original New York simulation is now `nyc.html`). Building footprints come from OpenStreetMap (`tools/build-taipei-geodata.mjs`, `GEO_AREA=wanhua` for the
 second box). **The Wanhua box has large holes:** OSM maps roughly a third of its buildings (about 390 outlines where
@@ -20,8 +20,9 @@ reading as wasteland, the Wanhua box adds about 3,300 **stand-in buildings** (`t
 along street frontages where OSM maps no building and no open ground, with heights from the mapped neighbours. Their
 footprints and heights are both **inferred, not mapped**; they are kept apart in the data (`GEO.infill`), tinted violet
 with E, and hidden with I. Checked locally against the 3D model, about 14% of them stand where no building does. The
-Xinyi District gets none: OSM maps most of it, its remaining gaps are scattered, and stand-ins there would mostly
-(55–60%) land on real open ground. Both areas also use **building-permit footprints** from Taipei's open
+In Xinyi District OSM maps most buildings and the remaining gaps are scattered; its stand-ins (about 7,500, limited
+to built-up blocks) are less certain, about 39% standing where no building does, so they start **hidden** (I shows
+them). Both areas also use **building-permit footprints** from Taipei's open
 building-permit drawings (臺北市建築執照套繪圖, OGDL v1) where OSM maps no building: real outlines with floor counts
 for buildings permitted up to 2018 (newer permits may not be built yet), 88 in Xinyi District and 34 in Wanhua.
 
@@ -55,6 +56,11 @@ the player. At night, which windows are lit and which shops are open is random, 
 hold buttons drive the player, and the viewer lowers its resolution, shadows and traffic to keep the frame rate up.
 Every panel can be minimized (the map-data credit always stays visible).
 
-Geographic data: NYC Open Data and © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); Taipei map data © OpenStreetMap contributors (ODbL); Taipei building-permit footprints: [臺北市建築執照套繪圖](https://data.gov.tw/dataset/151936), 臺北市建築管理工程處 (Open Government Data License v1.0).
+**Terrain** (Xinyi District): ground heights from the open AWS Terrain Tiles (Mapzen, from NASA's SRTM, ~30 m), with
+buildings filtered out of that surface model and the basin floor set to 0, so the city stays flat and the hills rise;
+approximate (peaks read 15–50 m below their surveyed heights). Everything stands on it. Hillsides are tinted wooded green
+as a look, not data.
+
+Geographic data: NYC Open Data and © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); Taipei map data © OpenStreetMap contributors (ODbL); Taipei building-permit footprints: [臺北市建築執照套繪圖](https://data.gov.tw/dataset/151936), 臺北市建築管理工程處 (Open Government Data License v1.0); elevation: [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Mapzen; SRTM, NASA).
 
 Forked from [mrdoob/slop-newyork](https://github.com/mrdoob/slop-newyork) (MIT). Third-party data and dependencies retain their respective licenses.

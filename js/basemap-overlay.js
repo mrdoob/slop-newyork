@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { heightAt } from './terrain.js';
 
 // js/basemap-overlay.js
 // A reference map draped on the ground under the city, for checking roads & footprints by eye against another source.
@@ -41,9 +42,15 @@ function buildBasemapOverlay(scene, geo, options) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
-  const plane = new THREE.Mesh(new THREE.PlaneGeometry(wx1 - wx0, wz1 - wz0), new THREE.MeshBasicNodeMaterial({ map: texture }));
-  plane.rotation.x = -Math.PI / 2;
-  plane.position.set((wx0 + wx1) / 2, y, (wz0 + wz1) / 2);
+  // On terrain (GEO.terrain) the photo is a grid of ~20 m cells lifted onto the ground; flat cities get one quad
+  const cell = geo.terrain ? 20 : Infinity;
+  const segX = Math.max(1, Math.ceil(Math.abs(wx1 - wx0) / cell)), segZ = Math.max(1, Math.ceil(Math.abs(wz1 - wz0) / cell));
+  const planeGeo = new THREE.PlaneGeometry(wx1 - wx0, wz1 - wz0, segX, segZ);
+  planeGeo.rotateX(-Math.PI / 2);
+  planeGeo.translate((wx0 + wx1) / 2, y, (wz0 + wz1) / 2);
+  const ground = heightAt(geo), p = planeGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + ground(p.getX(i), p.getZ(i)));
+  const plane = new THREE.Mesh(planeGeo, new THREE.MeshBasicNodeMaterial({ map: texture }));
   plane.visible = false;
   plane.name = 'basemap-overlay';
   plane.renderOrder = -1;

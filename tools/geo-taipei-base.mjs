@@ -37,13 +37,20 @@ import { makeFrame } from './geo-frame.mjs';
 // 1 km ≈ 0.00902° of latitude and ≈ 0.00991° of longitude). Xinyi: the district's bounding box (its queries select the
 // district area itself; the 2 km milestone box was [25.0249, 121.5546, 25.043, 121.5744]). Wanhua: ±0.5 km of the temple.
 // `boundary`: the OSM relation of the district outline (osm_boundary.json), exported as GEO.frame.boundary.
+// `terrain`: ground heights from open elevation tiles (tools/geo-terrain.mjs); without it the area is flat.
 // `permits`: add building-permit footprints (permits.json, tools/extract-permits.mjs) where OSM maps no building.
 // `infill`: add stand-in buildings where OSM maps none (tools/geo-infill.mjs). Chosen per area from the local check
 // against measured buildings (tools/validate-heights.mjs): in Wanhua, where OSM lacks whole blocks, 14% of stand-ins
 // have no measured building within 12 m; in Xinyi, where unmapped frontage is mostly real open space (plazas, tower
-// setbacks, the Elephant Mountain slopes), 46% do, so Xinyi gets none.
+// setbacks, the Elephant Mountain slopes), 46% do. For the whole district (local check, 18,049 measured buildings, 5,585
+// without an OSM footprint) the frontage rules alone put 55–60% of stand-ins on open ground; limited to built-up fabric
+// (minCover), off trunk/primary/secondary frontage and 15 m clear of large buildings, 39% (7,500 lots covering ~1,500
+// gaps). That is too uncertain to show by default: `infillShown: false` starts them hidden (the viewer's I button).
 const AREAS = {
-  xinyi: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0081, 121.5526, 25.0496, 121.5923], boundary: 2881027, data: 'data-taipei/', out: 'taipei-geodata.js', infill: false, permits: true },
+  xinyi: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0081, 121.5526, 25.0496, 121.5923], boundary: 2881027, data: 'data-taipei/', out: 'taipei-geodata.js',
+    // stand-ins only inside built-up fabric, off the big roads, clear of towers; hidden until the viewer turns them on
+    infill: { skipClasses: ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link'], largeClear: 15, minCover: 0.2 },
+    infillShown: false, permits: true, terrain: true },
   wanhua: { lat0: 25.037276, lon0: 121.499881, origin: 'Lungshan Temple', box: [25.0328, 121.4949, 25.0418, 121.5048], data: 'data-taipei/wanhua/', out: 'taipei-wanhua-geodata.js', infill: true, permits: true }
 };
 const AREA_NAME = process.env.GEO_AREA || 'xinyi';

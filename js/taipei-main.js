@@ -13,6 +13,7 @@ import { buildBasemapOverlay } from './basemap-overlay.js';
 import { FootprintMap } from './footprint-map.js';
 import { TimeOfDay } from './time-of-day.js';
 import { initPanels } from './hud-panels.js';
+import { buildTerrainMesh } from './terrain.js';
 import { TouchControls } from './touch-controls.js';
 
 // js/taipei-main.js
@@ -119,13 +120,19 @@ async function init() {
   const reach = Math.max(Math.abs((w - GEO.frame.lon0) * kx), Math.abs((e - GEO.frame.lon0) * kx), Math.abs((n - GEO.frame.lat0) * ky), Math.abs((s - GEO.frame.lat0) * ky)) + 300;
 
   // Ground: the lots and plazas between the streets
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(half * 6, half * 6),
-    new THREE.MeshStandardNodeMaterial({ color: 0x8c8a83, roughness: 0.95 })
-  );
+  const groundMaterial = new THREE.MeshStandardNodeMaterial({ color: 0x8c8a83, roughness: 0.95 });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(half * 6, half * 6), groundMaterial);
   ground.rotation.x = -Math.PI / 2;
+  ground.position.y = GEO.terrain ? -0.1 : 0; // beyond the terrain grid: flat land just under it
   ground.receiveShadow = true;
   scene.add(ground);
+  // Hills (GEO.terrain; Xinyi's Four Beasts): the ground follows them, and so does everything placed on it
+  // Hillsides tint towards a wooded green as they rise above the basin (a look, not data: Taipei's hills are wooded, OSM
+  // maps only some of the woods, which draw on top as green areas with trees)
+  const hillMaterial = new THREE.MeshStandardNodeMaterial({ roughness: 0.95 });
+  hillMaterial.colorNode = mix(color(0x8c8a83), color(0x5a6b45), smoothstep(6.0, 30.0, positionLocal.y));
+  const terrainMesh = buildTerrainMesh(GEO, hillMaterial);
+  if (terrainMesh) scene.add(terrainMesh);
 
   // Sky reflections (glass, car paint): an environment map of a blue sky over a grey city floor
   const envScene = new THREE.Scene();
@@ -195,6 +202,7 @@ async function init() {
     `${st.total} buildings · heights: ${pct('height')}% height tag, ${pct('levels')}% storey count, ` +
     `${st.bySource.permit ? `${pct('permit')}% permit drawings, ` : ''}${pct('estimate')}% estimated · tallest ${st.maxTop} m` +
     (st.infill ? ` · +${st.infill} stand-ins (footprint & height inferred where OSM maps none)` : '');
+  const infillState = document.getElementById('stats').appendChild(document.createElement('span'));
   let showEstimates = false;
   const toggle = document.getElementById('btn-estimates');
   const setEstimates = (on) => {
@@ -206,13 +214,17 @@ async function init() {
   window.addEventListener('keydown', (ev) => { if (ev.key === 'e' || ev.key === 'E') setEstimates(!showEstimates); });
   // Stand-ins (I): shown by default, so blocks OSM leaves empty don't read as open ground; hide them to see OSM alone
   const infillButton = document.getElementById('btn-infill');
-  let showInfill = true;
+  let player = null; // the SimpleVehicles below, once made
+  let showInfill = GEO.infillShown ?? true; // an area whose stand-ins are less certain starts with them hidden
   const setInfill = (on) => {
     showInfill = on;
     buildings.setShowInfill(on);
+    player?.index.setInfill(on); // hidden stand-ins don't block the player
     infillButton.setAttribute('aria-pressed', String(on));
+    infillState.textContent = st.infill && !on ? ' (hidden: I or the button shows them)' : '';
   };
   infillButton.hidden = !st.infill;
+  setInfill(showInfill);
   infillButton.addEventListener('click', () => setInfill(!showInfill));
   window.addEventListener('keydown', (ev) => { if ((ev.key === 'i' || ev.key === 'I') && st.infill) setInfill(!showInfill); });
 
@@ -236,7 +248,7 @@ async function init() {
 
   // Player: on foot, bicycle (YouBike yellow), car & plane. Taiwan drives on the right; the car starts on the widest road
   // near Taipei 101 (the walker & cyclist beside it), the plane south of it
-  const vehicles = new SimpleVehicles(scene, GEO, {
+  const vehicles = (player = new SimpleVehicles(scene, GEO, {
     spawnNear: { x: t101 ? t101.x : 0, z: t101 ? t101.z : 0 },
     driveOnRight: true,
     worldLimit: reach,
@@ -247,7 +259,8 @@ async function init() {
     // UFO over the landmark; the rocket's pad on the nearest open ground south of it
     ufoSpawn: { x: (t101 ? t101.x : 0) + 60, y: 140, z: (t101 ? t101.z : 0) + 160, heading: 0 },
     rocketPad: { x: (t101 ? t101.x : 0) + half * 0.1, z: (t101 ? t101.z : 0) + half * 0.35 }
-  });
+  }));
+  player.index.setInfill(showInfill);
   const modeButtons = [...document.querySelectorAll('[data-mode]')];
   const vehicleStatus = document.getElementById('vehicle-status');
   // Touch: a stick and hold buttons (js/touch-controls.js, shared with NYC; its mode names are NYC's)

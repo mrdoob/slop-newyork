@@ -1,9 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { heightAt, drape } from './terrain.js';
 
 // js/green-areas.js
 // Parks, gardens, lawns and woods as ground patches (GEO.green: [kind index into GEO.greenKinds, outer ring]), and
-// trees (GEO.trees) handed to trees.js. City-agnostic: everything comes in through `geo`.
+// trees (GEO.trees) handed to trees.js. Both follow the ground (GEO.terrain, js/terrain.js) when there is one.
+// City-agnostic: everything comes in through `geo`.
 
 // Colour (sRGB) and stacking height above the ground plane per kind; anything else draws like a park
 const KINDS = {
@@ -28,10 +30,12 @@ function buildGreenAreas(scene, geo) {
   }
   const group = new THREE.Group();
   group.name = 'green-areas';
+  const ground = heightAt(geo);
   for (const [kind, parts] of byKind) {
-    const g = mergeGeometries(parts, false);
+    let g = mergeGeometries(parts, false);
     for (const p of parts) p.dispose();
-    g.translate(0, KINDS[kind].y, 0);
+    if (geo.terrain) g = drape(g, (x, z) => ground(x, z) + KINDS[kind].y, 16); // fine enough to lie on the hills
+    else g.translate(0, KINDS[kind].y, 0);
     const mesh = new THREE.Mesh(g, new THREE.MeshStandardNodeMaterial({ color: KINDS[kind].colour, roughness: 0.95 }));
     mesh.receiveShadow = true;
     group.add(mesh);
@@ -43,9 +47,10 @@ function buildGreenAreas(scene, geo) {
 // Tree sites for trees.js createTreeField: a tagged height sets the size, otherwise a typical street tree; species
 // and size vary by position (the tree models are generic broadleaf species, not identified ones)
 function treeSites(geo) {
+  const ground = heightAt(geo);
   return (geo.trees || []).map(([x, z, , h]) => {
     const r = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
-    return { x, z, y: 0, species: Math.floor(r * 3), scale: h ? Math.min(1.6, Math.max(0.4, h / 12)) : 0.7 + r * 0.3, tier: 0 };
+    return { x, z, y: ground(x, z), species: Math.floor(r * 3), scale: h ? Math.min(1.6, Math.max(0.4, h / 12)) : 0.7 + r * 0.3, tier: 0 };
   });
 }
 

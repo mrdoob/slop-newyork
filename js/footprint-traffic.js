@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { BODY_SPECS, buildCarGeometry, buildCarProxyGeometry, createLoftedCarMaterial } from './actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { SIGNAL_STATE } from './signal-control.js';
+import { heightAt } from './terrain.js';
 
 // js/footprint-traffic.js
 // Cars driving a street centreline graph (GEO.roadGraph) and pedestrians walking its footways (GEO.paths), for cities
@@ -100,6 +101,7 @@ function trimLine(pts, d0, d1) {
 
 // --- Cars --------------------------------------------------------------------------------------------------------------
 function buildCars(scene, geo, options, signals, rand) {
+  const terrain = heightAt(geo); // cars & people follow the ground (GEO.terrain)
   const RG = geo.roadGraph;
   const driveOnRight = options.driveOnRight ?? true;
   const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
@@ -312,7 +314,7 @@ function buildCars(scene, geo, options, signals, rand) {
     for (const c of cars) {
       const mesh = meshes[c.kind][Math.hypot(c.x - cx, c.z - cz) < FAR_CAR ? 0 : 1];
       const slot = mesh.count++;
-      dummy.position.set(c.x, ROAD_Y, c.z);
+      dummy.position.set(c.x, ROAD_Y + terrain(c.x, c.z), c.z);
       dummy.rotation.set(0, c.yaw, 0);
       dummy.updateMatrix();
       mesh.setMatrixAt(slot, dummy.matrix);
@@ -393,7 +395,8 @@ function buildPedestrians(scene, geo, options, signals, rand) {
       })
     });
   }
-  const ground = (owner) => owner.y;
+  const terrain = heightAt(geo);
+  const ground = (owner, x, z) => owner.y + terrain(x, z); // owner.y: on the way (sidewalk kerb, stairs) above the ground
   const p = {};
   const walkers = []; // people out on crossings (cars give way to them)
   function update(dt, camera) {

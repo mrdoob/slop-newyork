@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { attribute, uniform, vec3, float, uv, smoothstep, length } from 'three/tsl';
+import { heightAt } from './terrain.js';
 
 // js/street-furniture.js
 // Street furniture (GEO.furniture: [kind index into GEO.furnitureKinds, x, z, yaw, source, extra]) as low-poly
@@ -80,6 +81,8 @@ function buildStreetFurniture(scene, geo, options = {}) {
     postBoxColours: [0xc8261e], ...options
   };
   const kinds = geo.furnitureKinds || [];
+  const ground = heightAt(geo); // items stand on the ground (GEO.terrain), at the sidewalk's kerb height
+  const KERB_H = 0.15;
   const geos = models(o);
   // Instances per model: [x, z, yaw, colour | null]
   const placed = new Map();
@@ -123,7 +126,7 @@ function buildStreetFurniture(scene, geo, options = {}) {
     for (const [k, list] of byTile) {
       const mesh = new THREE.InstancedMesh(geos[name], material, list.length);
       list.forEach(([x, z, yaw, c], i) => {
-        dummy.position.set(x, 0, z);
+        dummy.position.set(x, geo.terrain ? ground(x, z) + KERB_H : 0, z);
         dummy.rotation.set(0, yaw, 0);
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
@@ -148,7 +151,8 @@ function buildStreetFurniture(scene, geo, options = {}) {
     poolMat.opacityNode = float(1).sub(smoothstep(0.0, 1.0, r)).pow(1.6).mul(0.32).mul(night);
     pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(14, 14).rotateX(-Math.PI / 2), poolMat, lamps.length);
     lamps.forEach(([x, z, yaw], i) => {
-      dummy.position.set(x + Math.sin(yaw) * 1.55, 0.2, z + Math.cos(yaw) * 1.55); // under the head, 1.55 m towards the road
+      const px = x + Math.sin(yaw) * 1.55, pz = z + Math.cos(yaw) * 1.55; // under the head, 1.55 m towards the road
+      dummy.position.set(px, ground(px, pz) + 0.2, pz);
       dummy.rotation.set(0, 0, 0);
       dummy.updateMatrix();
       pools.setMatrixAt(i, dummy.matrix);

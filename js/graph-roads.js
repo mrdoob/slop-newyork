@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { heightAt, resample } from './terrain.js';
 import { attribute, fract, step, mix, color, float } from 'three/tsl';
 
 // js/graph-roads.js
@@ -22,8 +23,13 @@ const KERB = 0x9a968e;
 const SIDEWALK_H = 0.15; // m: sidewalk top above the ground (kerb height)
 const ZEBRA_PAINT = 0xe6e6e0;
 
-// Ribbon along `pts` ([[x, z], ...]) between lateral offsets o0..o1 (left of travel = negative), at height y (a number,
-// or per-point heights for ramps).
+// Ground height under (x, z) (js/terrain.js; 0 for flat cities), set per build: everything drawn here sits on it
+let ground = () => 0;
+// Polylines are resampled this finely when there is terrain, so the ribbons follow the slopes
+const TERRAIN_STEP_M = 8;
+
+// Ribbon along `pts` ([[x, z], ...]) between lateral offsets o0..o1 (left of travel = negative), at height y above the
+// ground (a number, or per-point heights for ramps).
 // Appends to `buf` { pos, along, idx } and returns nothing. `along` is the running distance for dashes and stripes.
 function ribbon(buf, pts, o0, o1, y) {
   const n = pts.length;
@@ -47,7 +53,8 @@ function ribbon(buf, pts, o0, o1, y) {
     if (i > 0) dist += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
     const [x, z] = pts[i];
     const h = typeof y === 'number' ? y : y[i];
-    buf.pos.push(x + mx * o0 * scale, h, z + mz * o0 * scale, x + mx * o1 * scale, h, z + mz * o1 * scale);
+    const xa = x + mx * o0 * scale, za = z + mz * o0 * scale, xb = x + mx * o1 * scale, zb = z + mz * o1 * scale;
+    buf.pos.push(xa, h + ground(xa, za), za, xb, h + ground(xb, zb), zb);
     buf.along.push(dist, dist);
     if (i > 0) {
       const v = base + 2 * i;
@@ -58,11 +65,12 @@ function ribbon(buf, pts, o0, o1, y) {
 
 function disc(buf, x, z, r, y, segs = 16) {
   const c = buf.pos.length / 3;
-  buf.pos.push(x, y, z);
+  buf.pos.push(x, y + ground(x, z), z);
   buf.along.push(0);
   for (let i = 0; i < segs; i++) {
     const a = (i / segs) * Math.PI * 2;
-    buf.pos.push(x + Math.cos(a) * r, y, z + Math.sin(a) * r);
+    const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+    buf.pos.push(px, y + ground(px, pz), pz);
     buf.along.push(0);
     buf.idx.push(c, c + 1 + ((i + 1) % segs), c + 1 + i); // counter-clockwise seen from above
   }
@@ -104,12 +112,14 @@ function buildGraphRoads(scene, geo, options = {}) {
   const centreColour = options.centreLineColour ?? 0xf2f2ee;
   const laneColour = options.laneLineColour ?? 0xf2f2ee;
   const RG = geo.roadGraph;
+  ground = heightAt(geo);
+  const follow = geo.terrain ? (pts) => resample(pts, TERRAIN_STEP_M) : (pts) => pts;
   const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
   const links = RG.links.map(([a, b, , w, lanes, dir, inner]) => {
     const pts = [node(a)];
     for (let i = 0; i < inner.length; i += 2) pts.push([inner[i], inner[i + 1]]);
     pts.push(node(b));
-    return { a, b, w, lanes, dir, pts };
+    return { a, b, w, lanes, dir, pts: follow(pts) };
   });
   // Junction size: the widest link meeting at each node; degree for trimming markings
   const reach = new Float32Array(RG.nodes.length / 2);
@@ -155,8 +165,9 @@ function buildGraphRoads(scene, geo, options = {}) {
   const sidewalks = newBuf();
   const kerbPos = []; // kerb faces: vertical quads along both edges of every sidewalk
   for (const [k, w, elev, flatPts, heights] of geo.paths || []) {
-    const pts = [];
+    let pts = [];
     for (let i = 0; i < flatPts.length; i += 2) pts.push([flatPts[i], flatPts[i + 1]]);
+    if (!heights) pts = follow(pts); // (ramps keep their points: their heights are per point)
     if (elev > 0) {
       ribbon(decks, pts, -w / 2, w / 2, heights ? heights.map((h) => Math.max(h, Y.crossing)) : elev);
       continue;
@@ -169,7 +180,8 @@ function buildGraphRoads(scene, geo, options = {}) {
         for (const e of [0, 1]) { // left & right edge
           const a = (v - 2 + e) * 3, b = (v + e) * 3;
           const [ax, az, bx, bz] = [p[a], p[a + 2], p[b], p[b + 2]];
-          kerbPos.push(ax, 0, az, bx, 0, bz, bx, SIDEWALK_H, bz, ax, 0, az, bx, SIDEWALK_H, bz, ax, SIDEWALK_H, az);
+          const ay = p[a + 1], by = p[b + 1]; // sidewalk top (on the ground); the kerb face drops SIDEWALK_H from it
+          kerbPos.push(ax, ay - SIDEWALK_H, az, bx, by - SIDEWALK_H, bz, bx, by, bz, ax, ay - SIDEWALK_H, az, bx, by, bz, ax, ay, az);
         }
       }
       continue;
@@ -226,7 +238,7 @@ function buildGraphRoads(scene, geo, options = {}) {
     const pos = top.attributes.position.array;
     const bottom = top.clone();
     const bp = bottom.attributes.position.array;
-    for (let i = 1; i < bp.length; i += 3) bp[i] = Math.max(Y.path, pos[i] - SKYWALK_DECK_M);
+    for (let i = 1; i < bp.length; i += 3) bp[i] = Math.max(Y.path + ground(bp[i - 1], bp[i + 1]), pos[i] - SKYWALK_DECK_M);
     const m = new THREE.MeshStandardNodeMaterial({ color: 0xa8a49c, roughness: 0.7, side: THREE.DoubleSide });
     for (const g of [top, bottom]) {
       const mesh = new THREE.Mesh(g, m);

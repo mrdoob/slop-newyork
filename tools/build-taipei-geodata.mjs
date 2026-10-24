@@ -7,8 +7,9 @@
 // outline is tagged 508 m but covers the whole podium, while its parts step up to the spire). Heights come from
 // tools/geo-height.mjs and keep their source (tag, levels or estimate) in the output.
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { toWorld, BOX, LANDMARKS, AREA, AREA_NAME, load, log } from './geo-taipei-base.mjs';
+import { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, load, log } from './geo-taipei-base.mjs';
 import { buildingHeight, estimateHeight, LEVEL_M } from './geo-height.mjs';
 import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
 import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgraph.mjs';
@@ -16,6 +17,7 @@ import { fitRoadWidths, inferSidewalks, sidewalkFootways, medianSides } from './
 import { buildFurniture, expandDocks, FURNITURE_KINDS, FURNITURE_SOURCES } from './geo-furniture.mjs';
 import { infillBuildings, INFILL } from './geo-infill.mjs';
 import { kerbClear } from './geo-kerb.mjs';
+import { buildTerrain } from './geo-terrain.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL(`../js/${AREA.out}`, import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
@@ -111,6 +113,19 @@ if (AREA.boundary) {
   log(`boundary: relation ${AREA.boundary}, ${boundary.length} ring(s), ${Math.round(boundary.reduce((t, r) => t + Math.abs(ringArea(r)), 0) / 1e4) / 100} km²`);
 }
 const inBoundary = (x, z) => !boundary.length || boundary.some((r) => pointInRing(x, z, r));
+
+// --- Terrain (AREA.terrain; tools/geo-terrain.mjs): ground heights from open SRTM-based elevation tiles, cached in the
+// area's data directory (terrain/). Exported every TERRAIN_STEP m (decimetres) as GEO.terrain.
+const TERRAIN_STEP = 20;
+let terrain = null;
+if (AREA.terrain) {
+  const t = await buildTerrain(BOX, frame, path.join(fileURLToPath(new URL(AREA.data, import.meta.url)), 'terrain'), log);
+  const k = TERRAIN_STEP / t.step, nx = Math.floor((t.nx - 1) / k) + 1, nz = Math.floor((t.nz - 1) / k) + 1;
+  const h = [];
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) h.push(t.h[j * k * t.nx + i * k]);
+  terrain = { x0: t.x0, z0: t.z0, step: TERRAIN_STEP, nx, nz, h, max: t.max,
+    source: 'AWS Terrain Tiles (Mapzen terrarium; SRTM, NASA), buildings filtered out, basin floor at 0; approximate' };
+}
 
 // --- Collect outlines and parts --------------------------------------------------------------------------------------
 const osm = load('osm_buildings.json');
@@ -423,9 +438,13 @@ const GEO = {
   buildings: buildings.map(({ b, h, colour, roof, facade, topScale }) => [b.id, flat(b.outer), b.holes.map(flat), q(h.top), q(h.base), SOURCES.indexOf(h.source), kindId(b.kind), colour,
     ROOF_SHAPES.indexOf(roof.shape), q(roof.height), roof.colour, FACADES.indexOf(facade), Math.round((topScale ?? 1) * 1000) / 1000]),
   landmarks,
+  // Ground heights (tools/geo-terrain.mjs): { x0, z0, step, nx, nz, h: decimetres row by row (z, then x), source } or
+  // absent (flat). Approximate (30 m SRTM, buildings filtered out); everything stands on it in the viewer.
+  ...(terrain ? { terrain } : {}),
   // Stand-in buildings: rows of lots along street frontages where OSM maps no building and no open ground
   // (tools/geo-infill.mjs). Footprint AND height are inferred (height: the median of mapped neighbours' heights,
   // ±1 storey), NOT mapped data; same row shape as `buildings` (source 'estimate', kind 'infill'), ids 'i<n>'.
+  infillShown: AREA.infillShown ?? true, // whether the viewer starts with the stand-ins shown
   infillNote: !infillOpts ? 'none: stand-ins are off for this area' : `inferred stand-ins, not OSM buildings: lots ${INFILL.lotWidth.join('–')} m wide facing streets with no mapped building`,
   infill: infill.map((b, i) => [`i${i}`, flat(b.outer), [], q(b.top), 0, SOURCES.indexOf('estimate'), kindId('infill'), 0, 0, 0, 0, FACADES.indexOf('punched'), 1]),
   // Street centreline graph of the drivable roads (tools/geo-osm-roadgraph.mjs; same shape as NYC's GEO.roadGraph):

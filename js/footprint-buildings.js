@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { attribute, positionWorld, normalWorld, cameraPosition, abs, fract, floor, sin, step, smoothstep, mix, max, min, vec3, float, uniform } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { heightAt } from './terrain.js';
 
 // js/footprint-buildings.js
 // Extrudes real building footprints (GEO.buildings from a tools/build-*-geodata.mjs build) into one merged mesh.
@@ -15,6 +16,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // balcony slabs, glass curtain wall, podium window bands, plain walls) in storeys of LEVEL_M, and shopfronts on the
 // ground floor. Buildings whose height is an estimate carry an `estimate` attribute; setShowEstimates(true) tints them
 // so they are never mistaken for measured data.
+// On terrain (GEO.terrain, js/terrain.js) each building stands at the lowest ground under its outline (its uphill side
+// sinks into the slope rather than its downhill side floating); storeys & shopfronts count from there (`ground` attribute).
 // geo.infill (optional, same row shape): stand-in buildings whose footprint is inferred too, not mapped. They form a
 // separate mesh (infillMesh, setShowInfill) and tint violet where estimates tint orange.
 
@@ -112,6 +115,8 @@ function buildFootprintBuildings(scene, geo) {
   const stats = { total: 0, bySource: Object.fromEntries(geo.heightSources.map((s) => [s, 0])), maxTop: 0, infill: 0 };
   const counted = new Set(); // OSM buildings, not the pieces a landmark shape splits one into (id_base, id_m1, ...)
   // est: 0 mapped / tagged height, 1 estimated height, 2 stand-in (footprint & height inferred: geo.infill)
+  const ground = heightAt(geo);
+  let groundY = 0; // the building being painted's ground height
   const paint = (g, wall, roof, capVertices, est, facade, base) => {
     const n = g.attributes.position.count;
     const col = new Float32Array(n * 3);
@@ -120,6 +125,8 @@ function buildFootprintBuildings(scene, geo) {
     g.setAttribute('estimate', new THREE.BufferAttribute(new Float32Array(n).fill(est), 1));
     g.setAttribute('facade', new THREE.BufferAttribute(new Float32Array(n).fill(facade), 1));
     g.setAttribute('base', new THREE.BufferAttribute(new Float32Array(n).fill(base), 1));
+    g.setAttribute('ground', new THREE.BufferAttribute(new Float32Array(n).fill(groundY), 1));
+    if (groundY) g.translate(0, groundY, 0);
     parts.push(g);
   };
   const rows = [...geo.buildings.map((b) => [b, false]), ...(geo.infill || []).map((b) => [b, true])];
@@ -127,6 +134,8 @@ function buildFootprintBuildings(scene, geo) {
   for (const [[id, outer, holes, top, base, source, kind, osmColour, roofIdx = 0, roofH = 0, osmRoofColour = 0, facadeIdx = 0, topScale = 1], isInfill] of rows) {
     if (isInfill && !infillParts) infillParts = parts.length; // stand-ins follow the mapped buildings in `parts`
     if (!(top - base > 0) || outer.length < 6) continue;
+    groundY = Infinity;
+    for (let i = 0; i < outer.length; i += 2) groundY = Math.min(groundY, ground(outer[i], outer[i + 1]));
     const shape = roofShapes[roofIdx] || 'flat';
     const eaves = shape === 'flat' ? top : Math.max(base + 0.5, top - roofH);
     let g;
@@ -195,7 +204,7 @@ function buildFootprintBuildings(scene, geo) {
   };
   const punched = is('punched'), curtain = is('curtain'), podium = is('podium'), plain = is('plain'), none = is('none');
   const wall = step(abs(normalWorld.y), float(0.5)).mul(float(1).sub(none));
-  const y = positionWorld.y;
+  const y = positionWorld.y.sub(attribute('ground', 'float')); // height above the building's own ground
   const along = positionWorld.x.mul(normalWorld.z.negate()).add(positionWorld.z.mul(normalWorld.x));
   const fy = fract(y.div(LEVEL_M));
   const band = (v, lo, hi) => step(lo, v).mul(step(v, hi));

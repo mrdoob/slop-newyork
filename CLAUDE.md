@@ -224,6 +224,17 @@ ground → Xinyi infill stays off. Permit footprints (`tools/extract-permits.mjs
 2023+ ~20%), height source 'permit' (floors × 3.2; ~0.75× measured, like OSM levels). Viewer: worldLimit from box,
 fog / camera scale with area, shadow square ±1 km follows the camera focus (TimeOfDay.follow), traffic capped
 (560 cars / 760 people desktop), overlay z16 for big areas, furniture in 400 m tiles culled by distance per kind.
+Xinyi stand-ins: rule E (skip trunk/primary/secondary frontage, 15 m clear of > 2,500 m² buildings, minCover 0.2 = ≥ 20%
+of ground within 100 m already built) → 7,511 lots, 39% on open ground (A–D 54–60%, F/G 37% but cover far less);
+`infillShown: false` → hidden until I; hidden stand-ins don't collide. No open footprint source for the rest:
+Microsoft ML footprints have no Taiwan tiles; Taipei 1:1000 topo buildings are fee/application, not open.
+Terrain (`tools/geo-terrain.mjs`, AREA.terrain, xinyi only): AWS Terrain Tiles terrarium z14 (Mapzen; SRTM) cached in
+`tools/data-taipei/terrain/`, 10 m grid, opening 140 m (buildings out) in the basin, raw-ish on hills, floor (5th pct)
+→ 0 with 10 m fade; exported every 20 m as GEO.terrain (decimetres). Elephant Mt reads ~136 m (SRTM 153, survey 183).
+Renderer: `js/terrain.js` (heightAt / drape / resample / buildTerrainMesh): roads & sidewalks resampled 8 m + lifted,
+green areas draped, buildings at lowest ground under outline (`ground` attribute for facades), trees / furniture /
+signals / cars / people / player / UFO / rocket pad on it; collision index absolute (solidAbove for ground modes);
+photo overlay draped; hillsides tinted green above ~6–30 m (look, not data).
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments

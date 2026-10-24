@@ -30,6 +30,8 @@ export const INFILL = {
   rows: 4, // rows per frontage at most
   skipClasses: [], // OSM highway classes whose frontage gets no lots (e.g. boulevards lined with plazas & setbacks)
   largeClear: 0, // m kept clear around `large` buildings
+  minCover: 0, // share of the ground within coverRadius that mapped buildings must already cover (0: no rule): stand-ins
+  coverRadius: 100, //   then only fill gaps inside built-up fabric, not hillsides, campuses or the city's edge
   clearance: 0.3, // m kept from corridors, buildings and other lots
   sample: 1.25, // m between test points inside a lot
   contextRadius: 80, // m: mapped neighbours used for a lot's height
@@ -89,12 +91,34 @@ export function infillBuildings({ links, corridors, obstacles, open, bounds, con
     for (let i = 0; i + 1 < pts.length; i++) segs.add({ a: pts[i], b: pts[i + 1], r: w / 2 + o.clearance }, bboxOf([pts[i], pts[i + 1]], w / 2 + o.clearance));
   }
   const rings = bucketIndex();
-  for (const r of [...obstacles, ...open]) rings.add({ r, bb: bboxOf(r, o.clearance) }, bboxOf(r, o.clearance));
+  for (const r of obstacles) rings.add({ r, bb: bboxOf(r, o.clearance), solid: true }, bboxOf(r, o.clearance));
+  for (const r of open) rings.add({ r, bb: bboxOf(r, o.clearance), solid: false }, bboxOf(r, o.clearance));
   const lots = bucketIndex();
   const placed = [];
   const bigs = bucketIndex();
   for (const b of large) { const r = b.r + o.largeClear; bigs.add({ ...b, r }, [b.x - r, b.z - r, b.x + r, b.z + r]); }
   const skip = new Set(o.skipClasses);
+  // Built-up fabric: 10 m cells whose centre lies in a mapped building, summed over a square of side 2 × coverRadius
+  let coverAt = () => 1;
+  if (o.minCover > 0) {
+    const C = 10, nx = Math.ceil((bx1 - bx0) / C), nz = Math.ceil((bz1 - bz0) / C);
+    const sat = new Uint32Array((nx + 1) * (nz + 1)); // summed-area table of built cells
+    for (let j = 0; j < nz; j++) {
+      for (let i = 0; i < nx; i++) {
+        const x = bx0 + (i + 0.5) * C, z = bz0 + (j + 0.5) * C;
+        let built = 0;
+        for (const { r, bb, solid } of rings.near(x, z)) if (solid && x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pointInRing(x, z, r)) { built = 1; break; }
+        sat[(j + 1) * (nx + 1) + i + 1] = built + sat[j * (nx + 1) + i + 1] + sat[(j + 1) * (nx + 1) + i] - sat[j * (nx + 1) + i];
+      }
+    }
+    const R = Math.round(o.coverRadius / C);
+    coverAt = (x, z) => {
+      const ci = Math.floor((x - bx0) / C), cj = Math.floor((z - bz0) / C);
+      const i0 = Math.max(0, ci - R), i1 = Math.min(nx, ci + R + 1), j0 = Math.max(0, cj - R), j1 = Math.min(nz, cj + R + 1);
+      const n = (i1 - i0) * (j1 - j0);
+      return n > 0 ? (sat[j1 * (nx + 1) + i1] - sat[j0 * (nx + 1) + i1] - sat[j1 * (nx + 1) + i0] + sat[j0 * (nx + 1) + i0]) / n : 0;
+    };
+  }
 
   const free = (x, z) => {
     if (x < bx0 || x > bx1 || z < bz0 || z > bz1) return false;
@@ -148,6 +172,7 @@ export function infillBuildings({ links, corridors, obstacles, open, bounds, con
             if (depth) { front = p; break; }
           }
           if (!front) { t += 1.5; continue; } // blocked here: step on and try again
+          if (coverAt(front[0] + n[0] * 6, front[1] + n[1] * 6) < o.minCover) { t += lw; continue; } // not built-up fabric
           place(corners(front, d, n, lw, depth));
           // rows behind, as long as the block has room
           let back = depth + o.backGap;

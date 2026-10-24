@@ -209,6 +209,14 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     assert.equal(modules.length, 8);
     assert.ok(modules.every((b) => b[12] > 1), 'modules flare outward');
     assert.equal(Math.max(...modules.map((b) => b[3])), 386);
+    // Terrain: the basin flat around Taipei 101, the Four Beasts hills rising south-east (Elephant Mountain ~180 m;
+    // the SRTM-based grid reads lower), and stand-ins present but starting hidden
+    const T = GEO.terrain;
+    assert.ok(T && T.h.length === T.nx * T.nz && T.step === 20, 'terrain grid');
+    const hAt = (x, z) => { const i = Math.round((x - T.x0) / T.step), j = Math.round((z - T.z0) / T.step); return T.h[j * T.nx + i] / 10; };
+    assert.ok(hAt(0, 0) < 2, `Taipei 101 ground ${hAt(0, 0)} m`);
+    assert.ok(hAt(1184, 716) > 80 && hAt(1184, 716) < 220, `Elephant Mountain ${hAt(1184, 716)} m`);
+    assert.ok(GEO.infill.length > 1000 && GEO.infillShown === false, 'Xinyi stand-ins start hidden');
     // An underground station hall mapped as a part (level=-1, no storeys above ground) is not drawn
     assert.ok(!GEO.buildings.some((b) => b[0] === 'w810653309'), 'underground part left out');
     // Nothing stands in a drawn carriageway

@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { attribute, color, float, mix } from 'three/tsl';
+import { heightAt } from './terrain.js';
 
 // js/signal-control.js
 // Traffic signals at the signalised nodes of a street centreline graph (GEO.roadGraph.signals): a two-phase controller
@@ -17,6 +18,7 @@ const ARM_Y = 5.7;
 const STATE = { GREEN: 0, AMBER: 1, RED: 2 };
 
 function buildSignalControl(scene, geo, options = {}) {
+  const ground = heightAt(geo); // poles stand on the ground (GEO.terrain)
   const { green = 26, amber = 3, allRed = 2 } = options.timing || {};
   const driveOnRight = options.driveOnRight ?? true;
   const RG = geo.roadGraph;
@@ -145,15 +147,16 @@ function buildSignalControl(scene, geo, options = {}) {
       const px = sx + rx * (l.w / 2 + 0.7), pz = sz + rz * (l.w / 2 + 0.7); // pole just off the kerb
       const facing = Math.atan2(-ux, -uz); // heads face oncoming traffic
       const reach = Math.min(Math.max(3, (l.dir === 0 ? l.w / 2 : l.w) * 0.75), 8);
+      const gy = ground(px, pz);
       // Pole
-      dummy.position.set(px, POLE_H / 2, pz);
+      dummy.position.set(px, gy + POLE_H / 2, pz);
       dummy.rotation.set(0, facing, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       poleMats.push(dummy.matrix.clone());
       // Arm over the road (towards the centre line, -r)
       const ax = px - rx * reach / 2, az = pz - rz * reach / 2;
-      dummy.position.set(ax, ARM_Y, az);
+      dummy.position.set(ax, gy + ARM_Y, az);
       dummy.scale.set(1, 1, reach);
       dummy.rotation.set(0, Math.atan2(-rx, -rz), 0);
       dummy.updateMatrix();
@@ -162,7 +165,7 @@ function buildSignalControl(scene, geo, options = {}) {
       dummy.scale.set(1, 1, 1);
       dummy.rotation.set(0, facing, 0);
       for (const [hx, hy, hz] of [[px - rx * reach, ARM_Y - 0.55, pz - rz * reach], [px, 3.1, pz]]) {
-        v.set(hx, hy, hz);
+        v.set(hx, gy + hy, hz);
         dummy.position.copy(v);
         dummy.updateMatrix();
         headMats.push(dummy.matrix.clone());
