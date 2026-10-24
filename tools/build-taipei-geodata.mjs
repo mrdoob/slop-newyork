@@ -13,7 +13,7 @@ import { buildingHeight } from './geo-height.mjs';
 import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
 import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgraph.mjs';
 import { fitRoadWidths, inferSidewalks, sidewalkFootways, medianSides } from './geo-sidewalks.mjs';
-import { buildFurniture, FURNITURE_KINDS, FURNITURE_SOURCES } from './geo-furniture.mjs';
+import { buildFurniture, expandDocks, FURNITURE_KINDS, FURNITURE_SOURCES } from './geo-furniture.mjs';
 import { infillBuildings, INFILL } from './geo-infill.mjs';
 import { kerbClear } from './geo-kerb.mjs';
 
@@ -308,6 +308,9 @@ for (const f of builtFurniture) {
   if (c.moved) kerbed.moved++;
   furniture.push(c.moved ? [f[0], c.x, c.z, c.yaw, f[4], f[5]] : f);
 }
+// Bikes at stations & racks, after their kiosk has moved: the row goes where it is off the roads and out of buildings
+const docks = expandDocks(furniture, (x, z) => { const c = clear(x, z, 0.4); return c && !c.moved && !solid(x, z); });
+furniture.push(...docks);
 const treeCount = trees.length;
 for (let i = trees.length - 1; i >= 0; i--) {
   const [x, z, src] = trees[i];

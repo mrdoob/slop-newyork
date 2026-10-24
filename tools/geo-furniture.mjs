@@ -9,9 +9,11 @@
 //   - street lamps: OSM maps very few here, while streets this wide are lit; one every LAMP_M along each kerb of
 //     streets ≥ 9 m wide (one kerb for 6–9 m streets), clear of junctions, buildings and mapped lamps.
 //   - scooters: rows filling mapped motorcycle_parking areas (the area is mapped, the number of scooters is not).
+//   - bikes (expandDocks): one per dock in a row beside a bike-share kiosk (count from its mapped capacity) or a
+//     bicycle rack (4), on whichever side of it keeps the row clear.
 
 export const FURNITURE_KINDS = ['street_lamp', 'bus_stop', 'bus_shelter', 'subway_entrance', 'bicycle_rental', 'fire_hydrant', 'flagpole',
-  'drinking_water', 'post_box', 'waste_basket', 'telephone', 'vending_machine', 'bicycle_parking', 'scooter'];
+  'drinking_water', 'post_box', 'waste_basket', 'telephone', 'vending_machine', 'bicycle_parking', 'scooter', 'bike_share', 'bike'];
 export const FURNITURE_SOURCES = ['mapped', 'inferred'];
 
 const LAMP_M = 32;
@@ -111,4 +113,25 @@ export function buildFurniture(elements, toWorld, roadGraph, solid = () => false
     }
   });
   return rows;
+}
+
+// One bike per dock in a row beside each bike-share kiosk / bicycle rack, along the kerb (the item's +x). The row
+// starts DOCK_START m from the item on one side; it goes to whichever side leaves more bikes where ok(x, z), and bikes
+// that still land somewhere not ok (a road, a building) are left out. Returns the new 'bike_share' / 'bike' rows.
+const DOCK_M = 0.62;
+const DOCK_START = { bicycle_rental: 0.9, bicycle_parking: 1.1 };
+export function expandDocks(rows, ok = () => true) {
+  const out = [];
+  for (const [k, x, z, yaw, , extra] of rows) {
+    const kind = FURNITURE_KINDS[k];
+    if (!(kind in DOCK_START)) continue;
+    const n = kind === 'bicycle_rental' ? Math.min(14, Math.max(4, Math.round((extra || 10) / 3))) : 4;
+    const ax = Math.cos(yaw), az = -Math.sin(yaw); // the model's +x in the world
+    const row = (side) => Array.from({ length: n }, (_, i) => { const t = side * (DOCK_START[kind] + i * DOCK_M); return [x + ax * t, z + az * t]; });
+    const sides = [1, -1].map((side) => row(side).filter(([bx, bz]) => ok(bx, bz)));
+    const bikes = sides[1].length > sides[0].length ? sides[1] : sides[0];
+    const bike = FURNITURE_KINDS.indexOf(kind === 'bicycle_rental' ? 'bike_share' : 'bike');
+    for (const [bx, bz] of bikes) out.push([bike, bx, bz, yaw, FURNITURE_SOURCES.indexOf('inferred'), 0]);
+  }
+  return out;
 }

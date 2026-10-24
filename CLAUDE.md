@@ -197,6 +197,9 @@ drawn carriageway move straight out to the drawn kerb (per-kind margin); inferre
 are dropped; build logs counts. Estimated widths narrow (≥ 3.5 m) where > 10% of kerb samples hit buildings.
 Stand-ins avoid every at-grade OSM highway way. access=no ways reopened by vehicle/motor_vehicle/motorcar tags are
 drivable. Building parts on negative levels only / 0 storeys above ground are skipped (underground station hall).
+Junction discs (nodes of degree ≥ 2, radius = widest link's half width, as graph-roads.js) count as road in kerbClear.
+Bike-share / rack bikes are generated in the build (`expandDocks`, kinds bike_share / bike, inferred), not the renderer:
+row goes to the clear side of the kiosk; bikes on roads or in buildings are left out.
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments

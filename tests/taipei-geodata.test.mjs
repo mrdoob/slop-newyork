@@ -11,7 +11,7 @@ import { roofOf, facadeOf } from '../tools/geo-building-style.mjs';
 import { infillBuildings } from '../tools/geo-infill.mjs';
 import { kerbClear } from '../tools/geo-kerb.mjs';
 import { fitRoadWidths, inferSidewalks, sidewalkFootways } from '../tools/geo-sidewalks.mjs';
-import { buildFurniture, FURNITURE_KINDS } from '../tools/geo-furniture.mjs';
+import { buildFurniture, FURNITURE_KINDS, expandDocks } from '../tools/geo-furniture.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -119,8 +119,22 @@ test('items inside a drawn carriageway move out to its kerb, or report null when
   assert.ok(Math.abs(a.yaw - Math.PI) < 1e-9 || Math.abs(a.yaw + Math.PI) < 1e-9, 'facing the road (north, -z)');
   const b = clear(20, 3, 0.5);
   assert.ok(b.moved && b.z < -5, 'building on the near kerb: the far kerb instead');
+  // A junction disc (three links at a node) is road too, out to the widest link's half width
+  const J = { nodes: [0, 0, -50, 0, 50, 0, 0, 50], links: [[1, 0, 0, 10, 2, 0, []], [0, 2, 0, 10, 2, 0, []], [0, 3, 0, 6, 2, 0, []]], names: [''] };
+  const corner = kerbClear(J)(4.2, 4.2, 0.5);
+  assert.ok(corner.moved && Math.hypot(corner.x, corner.z) >= 5.4, 'out of the junction disc');
   const walled = kerbClear(RG, () => true);
   assert.equal(walled(0, 3), null, 'nowhere clear');
+});
+
+test('bike-share docks line up on the side of the kiosk that is clear', () => {
+  const kiosk = [FURNITURE_KINDS.indexOf('bicycle_rental'), 0, 0, 0, 0, 12]; // yaw 0: the row runs along x
+  const free = expandDocks([kiosk]);
+  assert.equal(free.length, 4);
+  assert.ok(free.every(([k, x, z, , src]) => FURNITURE_KINDS[k] === 'bike_share' && x > 0 && z === 0 && src === 1));
+  const flipped = expandDocks([kiosk], (x) => x < 0); // a road on the +x side
+  assert.ok(flipped.length === 4 && flipped.every(([, x]) => x < 0));
+  assert.equal(expandDocks([kiosk], () => false).length, 0, 'no room: no bikes');
 });
 
 test('alleys closed by access=no stay drivable when a vehicle tag reopens them', () => {

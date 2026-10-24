@@ -1,7 +1,8 @@
 // tools/geo-kerb.mjs
 // Keeping point objects (street furniture, trees) off the carriageways the viewer draws.
 //
-// The drawn carriageway is the street centre line widened to its curb-to-curb width, and that width is often an
+// The drawn carriageway is the street centre line widened to its curb-to-curb width, plus a disc at every junction (where
+// two or more links meet) as wide as its widest link (js/graph-roads.js); the width is often an
 // estimate (lanes × 3.25 m, a class default, or fitted to mapped sidewalks: tools/geo-osm-roadgraph.mjs,
 // tools/geo-sidewalks.mjs). A hydrant or tree mapped correctly at the real kerb can then land inside the drawn road.
 // kerbClear() moves such a point straight out to the nearest drawn kerb (plus a margin), so it stands where the street
@@ -16,6 +17,11 @@ const CELL = 20;
 export function kerbClear(RG, solid = () => false) {
   const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
   const segs = [];
+  // Junction discs, as js/graph-roads.js: radius = the widest link's half width, at nodes of degree ≥ 2. A disc is a
+  // zero-length segment, so the same distance test covers it.
+  const reach = new Float32Array(RG.nodes.length / 2), degree = new Uint16Array(RG.nodes.length / 2);
+  for (const [a, b, , w] of RG.links) for (const n of [a, b]) { reach[n] = Math.max(reach[n], w / 2); degree[n]++; }
+  for (let n = 0; n < reach.length; n++) if (degree[n] >= 2) segs.push({ a: node(n), b: node(n), r: reach[n] });
   for (const [a, b, , w, , , inner] of RG.links) {
     const pts = [node(a)];
     for (let k = 0; k < inner.length; k += 2) pts.push([inner[k], inner[k + 1]]);
@@ -39,7 +45,8 @@ export function kerbClear(RG, solid = () => false) {
     const dx = x1 - x0, dz = z1 - z0, L2 = dx * dx + dz * dz || 1e-9;
     const t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / L2));
     const px = x0 + dx * t, pz = z0 + dz * t;
-    return { px, pz, d: Math.hypot(px - x, pz - z), nx: -dz / Math.sqrt(L2), nz: dx / Math.sqrt(L2) };
+    const L = Math.sqrt(L2) > 1e-6 ? Math.sqrt(L2) : 0;
+    return { px, pz, d: Math.hypot(px - x, pz - z), nx: L ? -dz / L : 1, nz: L ? dx / L : 0 };
   };
   // The carriageway the point is deepest inside (smallest d / r), or null
   const inside = (x, z, extra = 0) => {

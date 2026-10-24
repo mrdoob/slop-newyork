@@ -3,8 +3,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // js/street-furniture.js
 // Street furniture (GEO.furniture: [kind index into GEO.furnitureKinds, x, z, yaw, source, extra]) as low-poly
-// instanced models, one InstancedMesh per kind; each model's front (+z) faces the road (yaw). Bike-share stations and
-// bicycle racks expand into one bike per dock. City-agnostic: colours that belong to a city (bike-share livery, post
+// instanced models, one InstancedMesh per kind; each model's front (+z) faces the road (yaw). The bikes at bike-share
+// stations and racks come as items of their own (kinds bike_share, bike). City-agnostic: colours that belong to a city (bike-share livery, post
 // boxes) come in through `options`.
 
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
@@ -87,18 +87,9 @@ function buildStreetFurniture(scene, geo, options = {}) {
   };
   let seed = 1;
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (const [k, x, z, yaw, , extra] of geo.furniture || []) {
+  for (const [k, x, z, yaw] of geo.furniture || []) {
     const kind = kinds[k];
-    if (kind === 'bicycle_rental' || kind === 'bicycle_parking') {
-      // docks in a row beside the kiosk / rack, bikes facing the road
-      const n = kind === 'bicycle_rental' ? Math.min(14, Math.max(4, Math.round((extra || 10) / 3))) : 4;
-      const ax = Math.cos(yaw), az = -Math.sin(yaw); // the model's +x in the world
-      put(kind, x, z, yaw);
-      for (let i = 0; i < n; i++) {
-        const t = (kind === 'bicycle_rental' ? 0.9 : -1.1) + i * 0.62;
-        put(kind === 'bicycle_rental' ? 'bike_share' : 'bike', x + ax * t, z + az * t, yaw);
-      }
-    } else if (kind === 'scooter') {
+    if (kind === 'scooter') {
       put('scooter', x, z, yaw + (rand() - 0.5) * 0.15, SCOOTER_PAINT[Math.floor(rand() * SCOOTER_PAINT.length)]);
     } else {
       put(kind, x, z, yaw);
