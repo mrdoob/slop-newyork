@@ -1,13 +1,15 @@
 import * as THREE from 'three/webgpu';
 import { BODY_SPECS, buildCarGeometry, buildSteerableWheelGeo, createLoftedCarMaterial } from './actor-models.js';
 import { createWalker, createCyclist } from './player-actors.js';
+import { ufoModel, rocketModel, launchPad, smokeTrail } from './sky-craft.js';
 
 // js/simple-vehicles.js
 // The player for footprint cities (GEO.buildings + GEO.infill + GEO.roadGraph + GEO.paths): on foot, on a bicycle, in a
-// car or in a plane, with a chase camera; teleport() moves whichever is active. City-agnostic: buildings, roads and
+// car, in a plane, a UFO or a rocket, with a chase camera; teleport() moves whichever is active. City-agnostic: buildings, roads and
 // sidewalks come in through `geo`; colours and traffic side through `options`.
 //
-// Controls: W/S or Up/Down forward & back, A/D or Left/Right turn, Shift faster (run / sprint); plane: R/F climb & descend.
+// Controls: W/S or Up/Down forward & back, A/D or Left/Right turn, Shift faster (run / sprint); plane & UFO: R/F climb &
+// descend. Rocket: W/S throttle up & down, A/D yaw, R/F pitch up & down; it launches from a pad and crashes back to it.
 // The walker and cyclist stop at building walls; the walker steps up onto raised sidewalks (GEO.paths of kind sidewalk).
 // The car stays on the ground and stops at building walls (and wherever options.blocked(x, z, fx, fz, halfLength,
 // halfWidth) reports its body would hit something, e.g. other cars or people); the plane can't fly through buildings.
@@ -15,6 +17,8 @@ import { createWalker, createCyclist } from './player-actors.js';
 const WALK = { speed: 1.6, run: 5.2, back: 1.0, turn: 2.6, radius: 0.3 };
 const BIKE = { len: 1.8, wid: 0.6, accel: 2.6, brake: 6, drag: 0.12, maxSpeed: 6.5, boostSpeed: 10, reverseSpeed: 1, turn: 1.9 }; // YouBike pace
 const SIDEWALK_Y = 0.15, STREET_Y = 0.08; // raised sidewalks and asphalt (js/graph-roads.js)
+const UFO = { speed: 35, boost: 95, climb: 14, turn: 1.6, radius: 6, ceiling: 2500 };
+const ROCKET = { thrust: 28, boostThrust: 60, gravity: 9.8, drag: 0.00008, yaw: 0.7, pitch: 0.8, ceiling: 12000, crashSpeed: 22 };
 const CAR = { len: 4.5, wid: 1.86, accel: 9, brake: 18, drag: 0.6, maxSpeed: 22, boostSpeed: 38, reverseSpeed: 7, turn: 0.55 };
 const PLANE = { minSpeed: 18, cruise: 45, maxSpeed: 90, accel: 14, turnRate: 0.9, climbRate: 22, ceiling: 1500 };
 const CELL = 32; // building index cell (m)
@@ -192,6 +196,17 @@ class SimpleVehicles {
     Object.assign(this.plane, p);
     car.group.visible = plane.group.visible = false;
     scene.add(car.group, plane.group);
+    // UFO: hovering over the start; rocket: upright on a launch pad on clear ground near options.rocketPad
+    this.ufoModel = ufoModel(options.ufoColour);
+    const us = options.ufoSpawn ?? { x: 0, y: 80, z: 300, heading: 0 };
+    this.ufo = { x: us.x, y: us.y, z: us.z, heading: us.heading ?? 0, vx: 0, vy: 0, vz: 0, time: 0 };
+    this.rocketModel = rocketModel(options.rocketColour, options.rocketAccent);
+    this.pad = launchPad();
+    this.smoke = smokeTrail(scene, 600);
+    this._padAt = options.rocketPad ?? { x: 0, z: 600 };
+    this.rocket = { x: 0, y: 0, z: 0, heading: 0, pitch: Math.PI / 2, vx: 0, vy: 0, vz: 0, throttle: 0, time: 0, crashed: 0, puff: 0 };
+    this.ufoModel.group.visible = this.rocketModel.group.visible = this.pad.visible = false;
+    scene.add(this.ufoModel.group, this.rocketModel.group, this.pad);
     // On foot and on a bicycle: they start beside the car, on the nearest clear spot
     this.walkerModel = createWalker(scene);
     this.cyclistModel = createCyclist(scene, { frameColour: options.bikeColour });
@@ -199,6 +214,7 @@ class SimpleVehicles {
     const [wx, wz] = this._clearSpot(spawn.x, spawn.z, WALK.radius);
     this.walker = { x: wx, z: wz, heading: spawn.heading, speed: 0 };
     this.bike = { x: spawn.x, z: spawn.z, heading: spawn.heading, speed: 0, lean: 0, pedalling: false };
+    this._resetRocket(this._padAt.x, this._padAt.z);
     this._sync();
     this._fwd = new THREE.Vector3();
     this._camGoal = new THREE.Vector3();
@@ -216,7 +232,7 @@ class SimpleVehicles {
 
   // The active player's ground position & heading ('orbit': null)
   get active() {
-    return { walk: this.walker, bike: this.bike, car: this.car, plane: this.plane }[this.mode] || null;
+    return { walk: this.walker, bike: this.bike, car: this.car, plane: this.plane, ufo: this.ufo, rocket: this.rocket }[this.mode] || null;
   }
 
   setMode(mode, camera) {
@@ -229,6 +245,8 @@ class SimpleVehicles {
     this.mode = mode;
     this.car.group.visible = mode === 'car';
     this.plane.group.visible = mode === 'plane';
+    this.ufoModel.group.visible = mode === 'ufo';
+    this.rocketModel.group.visible = this.pad.visible = mode === 'rocket';
     this.walkerModel.visible = mode === 'walk';
     this.cyclistModel.visible = mode === 'bike';
     if (mode === 'walk') this.walkerModel.pose(1, this.walker.x, this.walker.z, this.walker.heading, this._groundFn);
@@ -245,6 +263,10 @@ class SimpleVehicles {
       Object.assign(this.active, { x: cx, z: cz, speed: 0 });
     } else if (this.mode === 'plane') {
       Object.assign(this.plane, { x, z, y: Math.max(this.plane.y, 150) });
+    } else if (this.mode === 'ufo') {
+      Object.assign(this.ufo, { x, z, y: Math.max(this.ufo.y, 60), vx: 0, vy: 0, vz: 0 });
+    } else if (this.mode === 'rocket') {
+      this._resetRocket(x, z); // a new pad there
     } else return null;
     this._sync();
     if (this.mode === 'walk') this.walkerModel.pose(1, this.walker.x, this.walker.z, this.walker.heading, this._groundFn);
@@ -255,6 +277,8 @@ class SimpleVehicles {
   // Lights for the time of day: 0 (day) .. 1 (night)
   setNight(f) {
     this.cyclistModel.setLight(f * 60);
+    this.ufoModel.setNight(f);
+    this._night = f;
   }
 
   get status() {
@@ -263,6 +287,12 @@ class SimpleVehicles {
     if (this.mode === 'bike') return `Bicycle · ${kmh(this.bike.speed)} km/h`;
     if (this.mode === 'car') return `Car · ${kmh(this.car.speed)} km/h`;
     if (this.mode === 'plane') return `Plane · ${kmh(this.plane.speed)} km/h · ${Math.round(this.plane.y)} m`;
+    if (this.mode === 'ufo') return `UFO · ${kmh(Math.hypot(this.ufo.vx, this.ufo.vy, this.ufo.vz))} km/h · ${Math.round(this.ufo.y)} m`;
+    if (this.mode === 'rocket') {
+      const r = this.rocket;
+      if (r.crashed > 0) return 'Rocket · crashed! Back to the pad…';
+      return `Rocket · ${kmh(Math.hypot(r.vx, r.vy, r.vz))} km/h · ${Math.round(r.y)} m · thrust ${Math.round(r.throttle * 100)}%`;
+    }
     return '';
   }
 
@@ -288,7 +318,10 @@ class SimpleVehicles {
     else if (this.mode === 'bike') this._ride(dt, throttle, steer, boost);
     else if (this.mode === 'car') this._driveCar(dt, throttle, steer, boost);
     else if (this.mode === 'plane') this._flyPlane(dt, throttle, steer, boost, clamp(this._axis(['KeyR'], ['KeyF']) + t.up - t.down));
+    else if (this.mode === 'ufo') this._flyUfo(dt, throttle, steer, boost, clamp(this._axis(['KeyR'], ['KeyF']) + t.up - t.down));
+    else if (this.mode === 'rocket') this._flyRocket(dt, throttle, steer, boost, clamp(this._axis(['KeyR'], ['KeyF']) + t.up - t.down));
     else return;
+    this.smoke.update(dt);
     this._sync();
     if (this.mode === 'walk') this.walkerModel.pose(dt, this.walker.x, this.walker.z, this.walker.heading, this._groundFn);
     if (this.mode === 'bike') {
@@ -413,6 +446,81 @@ class SimpleVehicles {
     p.prop.rotation.z += dt * (20 + p.speed);
   }
 
+  _flyUfo(dt, throttle, steer, boost, climb) {
+    const u = this.ufo;
+    u.time += dt;
+    u.heading += steer * UFO.turn * dt;
+    const top = boost ? UFO.boost : UFO.speed;
+    const tx = -Math.sin(u.heading) * throttle * top, tz = -Math.cos(u.heading) * throttle * top, ty = climb * UFO.climb * (boost ? 2 : 1);
+    const k = Math.min(1, dt * 1.8);
+    u.vx += (tx - u.vx) * k;
+    u.vz += (tz - u.vz) * k;
+    u.vy += (ty - u.vy) * Math.min(1, dt * 3);
+    const nx = u.x + u.vx * dt, nz = u.z + u.vz * dt;
+    const ny = Math.min(UFO.ceiling, Math.max(2.5, u.y + u.vy * dt));
+    const clear = (x, y, z) => Math.abs(x) < WORLD_LIMIT && Math.abs(z) < WORLD_LIMIT &&
+      [[0, 0], [UFO.radius, 0], [-UFO.radius, 0], [0, UFO.radius], [0, -UFO.radius]].every(([ox, oz]) => !this.index.solid(x + ox, z + oz, y - 1.4, y + 2));
+    if (clear(nx, u.y, nz)) { u.x = nx; u.z = nz; } else { u.vx *= -0.3; u.vz *= -0.3; }
+    if (clear(u.x, ny, u.z)) u.y = ny; else u.vy = 0;
+  }
+
+  // The rocket stands on its pad until thrust lifts it; gravity pulls, thrust pushes along the nose, and the flight path
+  // swings towards the nose while the engine burns (arcade, not orbital mechanics). Hitting a building or the ground
+  // too fast is a crash: it goes back to its pad.
+  _resetRocket(x, z) {
+    const [px, pz] = this._clearSpot(x, z, 10);
+    this._padAt = { x: px, z: pz };
+    this.pad.position.set(px, 0, pz);
+    Object.assign(this.rocket, { x: px, y: 0.6, z: pz, pitch: Math.PI / 2, vx: 0, vy: 0, vz: 0, throttle: 0, crashed: 0 });
+  }
+
+  _flyRocket(dt, throttle, steer, boost, pitch) {
+    const r = this.rocket;
+    r.time += dt;
+    if (r.crashed > 0) {
+      r.crashed -= dt;
+      if (r.crashed <= 0) this._resetRocket(this._padAt.x, this._padAt.z);
+      return;
+    }
+    r.throttle = Math.max(0, Math.min(1, r.throttle + throttle * dt * 0.8));
+    const onPad = r.y <= 0.61 && Math.hypot(r.vx, r.vy, r.vz) < 0.5;
+    if (!onPad) {
+      r.heading += steer * ROCKET.yaw * dt;
+      r.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, r.pitch + pitch * ROCKET.pitch * dt));
+    }
+    const cp = Math.cos(r.pitch);
+    const fx = -Math.sin(r.heading) * cp, fy = Math.sin(r.pitch), fz = -Math.cos(r.heading) * cp;
+    const acc = r.throttle * (boost ? ROCKET.boostThrust : ROCKET.thrust);
+    const v = Math.hypot(r.vx, r.vy, r.vz);
+    const drag = ROCKET.drag * v;
+    r.vx += (fx * acc - r.vx * drag) * dt;
+    r.vy += (fy * acc - ROCKET.gravity - r.vy * drag) * dt;
+    r.vz += (fz * acc - r.vz * drag) * dt;
+    if (acc > 0 && v > 5) { // the path follows the nose
+      const k = Math.min(1, dt * 1.2 * r.throttle), sp = Math.hypot(r.vx, r.vy, r.vz);
+      r.vx += (fx * sp - r.vx) * k;
+      r.vy += (fy * sp - r.vy) * k;
+      r.vz += (fz * sp - r.vz) * k;
+    }
+    let nx = r.x + r.vx * dt, ny = r.y + r.vy * dt, nz = r.z + r.vz * dt;
+    if (ny <= 0.6) { // on the ground
+      if (r.vy < -ROCKET.crashSpeed) { r.crashed = 2; return; }
+      ny = 0.6;
+      r.vy = Math.max(0, r.vy);
+      r.vx *= 0.9;
+      r.vz *= 0.9;
+    }
+    ny = Math.min(ROCKET.ceiling, ny);
+    if (Math.abs(nx) > WORLD_LIMIT * 6 || Math.abs(nz) > WORLD_LIMIT * 6 || this.index.solid(nx, nz, ny, ny + 4)) { r.crashed = 2; return; }
+    r.x = nx; r.y = ny; r.z = nz;
+    // smoke from the nozzle while the engine burns
+    r.puff -= Math.max(dt / 0.035, (Math.hypot(r.vx, r.vy, r.vz) * dt) / 1.8); // every 35 ms or 1.8 m, whichever comes first
+    if (r.throttle > 0.05 && r.puff <= 0) {
+      r.puff = 1;
+      this.smoke.emit(r.x - fx * 1.5 + (Math.random() - 0.5), r.y - fy * 1.5, r.z - fz * 1.5 + (Math.random() - 0.5), 0.7 + r.throttle);
+    }
+  }
+
   _sync() {
     const c = this.car;
     c.group.position.set(c.x, 0.08, c.z);
@@ -425,14 +533,41 @@ class SimpleVehicles {
     const p = this.plane;
     p.group.position.set(p.x, p.y, p.z);
     p.group.rotation.set(p.pitch, p.heading, p.bank, 'YXZ');
+    // UFO: bobbing, leaning into its motion, its rim spinning; the beam reaches the ground when it hovers or at night
+    const u = this.ufo, um = this.ufoModel;
+    um.group.position.set(u.x, u.y + Math.sin(u.time * 2.2) * 0.35, u.z);
+    um.group.rotation.y = u.heading;
+    const fwdV = -(u.vx * Math.sin(u.heading) + u.vz * Math.cos(u.heading)); // forward speed
+    um.tilt.rotation.x = -fwdV / UFO.boost * 0.35;
+    um.ring.rotation.y = u.time * 1.5;
+    const slow = 1 - Math.min(1, Math.hypot(u.vx, u.vz) / 8);
+    um.beam(u.y, Math.max(slow * 0.6, this._night ?? 0) * (u.y < 400 ? 1 : 0));
+    // Rocket: nose along heading & pitch (built nose-up, so tip it forward by 90° - pitch)
+    const r = this.rocket, rm = this.rocketModel;
+    rm.group.position.set(r.x, r.y, r.z);
+    rm.group.rotation.set(-(Math.PI / 2 - r.pitch), r.heading, 0, 'YXZ');
+    rm.group.visible = this.mode === 'rocket' && !(r.crashed > 0);
+    rm.flame(r.crashed > 0 ? 0 : r.throttle, r.time);
   }
 
   _follow(camera, dt, snap = false) {
     const v = this.active;
     if (!v) return;
-    const y = this.mode === 'plane' ? v.y : this.mode === 'car' ? 0 : this.ground.height(v.x, v.z);
+    if (this.mode === 'rocket') {
+      // behind the rocket horizontally and above its nose, looking at it (and the city below once it climbs)
+      const r = this.rocket, cp = Math.cos(r.pitch);
+      const hx = -Math.sin(r.heading), hz = -Math.cos(r.heading);
+      const climbing = Math.min(1, Math.max(0, r.y - 20) / 200); // on the pad: from the side; aloft: from above
+      this._camGoal.set(r.x - hx * 38, Math.max(3, r.y + 8 + climbing * 22), r.z - hz * 38);
+      const k = snap ? 1 : 1 - Math.exp(-dt * 6);
+      camera.position.lerp(this._camGoal, k);
+      this._look.set(r.x + hx * cp * 12, r.y + 10 - climbing * 6, r.z + hz * cp * 12);
+      camera.lookAt(this._look);
+      return;
+    }
+    const y = this.mode === 'plane' || this.mode === 'ufo' ? v.y : this.mode === 'car' ? 0 : this.ground.height(v.x, v.z);
     // [back, up, ahead, look height] behind each kind of player
-    const [back, up, ahead, lookY] = { walk: [4.3, 1.95, 4, 1.55], bike: [5.5, 2.3, 6, 1.3], car: [9, 3.6, 8, 1.4], plane: [26, 7, 30, 2] }[this.mode];
+    const [back, up, ahead, lookY] = { walk: [4.3, 1.95, 4, 1.55], bike: [5.5, 2.3, 6, 1.3], car: [9, 3.6, 8, 1.4], plane: [26, 7, 30, 2], ufo: [24, 9, 14, 0] }[this.mode];
     this._fwd.set(-Math.sin(v.heading), 0, -Math.cos(v.heading));
     this._camGoal.set(v.x, y + up, v.z).addScaledVector(this._fwd, -back);
     const k = snap ? 1 : 1 - Math.exp(-dt * 5);

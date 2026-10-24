@@ -212,6 +212,8 @@ time (loop `adapt`). Touch: NYC `js/touch-controls.js` reused unchanged (calls v
 mode names mapped walk/bike→cyclist, plane→helicopter). Panels: `js/hud-panels.js` makes every [data-panel] minimizable
 (state in localStorage; data-collapse-small = minimized by default on phones); `.panel-keep` credit stays visible (ODbL).
 Full map pinch-zooms.
+UFO (6) & rocket (7): models in `js/sky-craft.js` (saucer + beam, rocket + flame, launch pad, smoke pool), flight in
+simple-vehicles (`_flyUfo` hover/strafe-free, `_flyRocket` thrust + gravity, crash -> back to pad). Pure game props.
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments

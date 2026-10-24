@@ -44,7 +44,8 @@ material and height, not surveyed.
 
 The project code is available under the [MIT License](LICENSE).
 
-The Taipei viewer has five modes: orbit, walk, bike (a YouBike-style city bike), car and plane (keys 1–5). Press T
+The Taipei viewer has seven modes: orbit, walk, bike (a YouBike-style city bike), car, plane, UFO and rocket
+(keys 1–7; the UFO and the rocket's launch pad are, of course, made up). Press T
 for a full map (click anywhere to teleport) and L to step through day, golden hour, dusk and night. A minimap follows
 the player. At night, which windows are lit and which shops are open is random, not data. On phones and tablets a joystick and
 hold buttons drive the player, and the viewer lowers its resolution, shadows and traffic to keep the frame rate up.

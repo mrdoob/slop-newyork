@@ -331,7 +331,7 @@ test('the Taipei viewer never loads NYC map data or the NYC-only modules', () =>
     for (const [, spec] of src.matchAll(/:\s*'\.\/([\w-]+-geodata\.js)'/g)) visit(spec);
   };
   visit('taipei-main.js');
-  for (const f of ['player-actors.js', 'footprint-map.js', 'time-of-day.js', 'taipei-geodata.js', 'taipei-wanhua-geodata.js']) assert.ok(seen.has(f), f);
+  for (const f of ['player-actors.js', 'sky-craft.js', 'hud-panels.js', 'footprint-map.js', 'time-of-day.js', 'taipei-geodata.js', 'taipei-wanhua-geodata.js']) assert.ok(seen.has(f), f);
   for (const nyc of ['nyc-geodata.js', 'tsl-materials.js', 'city-config.js', 'lighting.js', 'controllers.js', 'nyc-map.js']) {
     assert.ok(!seen.has(nyc), `the Taipei viewer pulls in ${nyc}`);
   }

@@ -237,19 +237,22 @@ async function init() {
     bikeColour: 0xf0b400,
     blocked: (x, z, fx, fz, hl, hw) =>
       traffic.carOverlaps(x, z, fx, fz, hl + 0.1, hw + 0.1) || traffic.pedNear(x + fx * hl * 0.6, z + fz * hl * 0.6, 1.6) || traffic.pedNear(x - fx * hl * 0.6, z - fz * hl * 0.6, 1.6),
-    planeSpawn: { x: -half * 0.25, y: 220, z: half * 0.9, heading: 0 }
+    planeSpawn: { x: -half * 0.25, y: 220, z: half * 0.9, heading: 0 },
+    // UFO over the landmark; the rocket's pad on the nearest open ground south of it
+    ufoSpawn: { x: (t101 ? t101.x : 0) + 60, y: 140, z: (t101 ? t101.z : 0) + 160, heading: 0 },
+    rocketPad: { x: (t101 ? t101.x : 0) + half * 0.1, z: (t101 ? t101.z : 0) + half * 0.35 }
   });
   const modeButtons = [...document.querySelectorAll('[data-mode]')];
   const vehicleStatus = document.getElementById('vehicle-status');
   // Touch: a stick and hold buttons (js/touch-controls.js, shared with NYC; its mode names are NYC's)
   const touchControls = new TouchControls(vehicles);
-  const TOUCH_MODE = { walk: 'cyclist', bike: 'cyclist', car: 'car', plane: 'helicopter' };
+  const TOUCH_MODE = { walk: 'cyclist', bike: 'cyclist', car: 'car', plane: 'helicopter', ufo: 'helicopter', rocket: 'helicopter' };
   touchControls.setEnabled(false);
   const setMode = (mode) => {
     if (mode === 'orbit' && vehicles.mode !== 'orbit') {
       // keep looking at where the vehicle was
       const v = vehicles.active;
-      controls.target.set(v.x, vehicles.mode === 'plane' ? v.y : 0, v.z);
+      controls.target.set(v.x, ['plane', 'ufo', 'rocket'].includes(vehicles.mode) ? v.y : 0, v.z);
     }
     vehicles.setMode(mode, camera);
     controls.enabled = mode === 'orbit';
@@ -261,7 +264,7 @@ async function init() {
   };
   for (const b of modeButtons) b.addEventListener('click', () => setMode(b.dataset.mode));
   window.addEventListener('keydown', (ev) => {
-    const mode = { Digit1: 'orbit', Digit2: 'walk', Digit3: 'bike', Digit4: 'car', Digit5: 'plane' }[ev.code];
+    const mode = { Digit1: 'orbit', Digit2: 'walk', Digit3: 'bike', Digit4: 'car', Digit5: 'plane', Digit6: 'ufo', Digit7: 'rocket' }[ev.code];
     if (mode) setMode(mode);
   });
 
@@ -316,12 +319,21 @@ async function init() {
   traffic.update(1 / 60, camera, null);
   vehicles.car.group.visible = vehicles.plane.group.visible = true;
   vehicles.walkerModel.visible = vehicles.cyclistModel.visible = true;
+  // UFO with its beam, rocket with its flame, pad and a puff of smoke
+  vehicles.ufoModel.group.visible = vehicles.rocketModel.group.visible = vehicles.pad.visible = true;
+  vehicles.ufoModel.beam(50, 1);
+  vehicles.rocketModel.flame(1, 0);
+  vehicles.smoke.emit(vehicles.rocket.x, 5, vehicles.rocket.z);
+  vehicles.smoke.update(0);
   furniture.setNight(1); // the night-only lamplight compiles now too (uniforms don't change pipelines)
   await loading.step(0.45, 'Compiling shaders');
   await precompile(renderer, scene, camera, (f) => loading.set(0.45 + 0.55 * f, 'Compiling shaders'));
   furniture.setNight(0);
   vehicles.car.group.visible = vehicles.plane.group.visible = false;
   vehicles.walkerModel.visible = vehicles.cyclistModel.visible = false;
+  vehicles.ufoModel.group.visible = vehicles.rocketModel.group.visible = vehicles.pad.visible = false;
+  vehicles.ufoModel.beam(0, 0);
+  vehicles.rocketModel.flame(0, 0);
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -351,7 +363,7 @@ async function init() {
     if (vehicles.mode === 'orbit') controls.update();
     else vehicles.update(dt, camera);
     signals.update(dt);
-    traffic.update(dt, camera, vehicles.mode === 'orbit' || vehicles.mode === 'plane' ? null : vehicles.active); // cars keep clear of the player
+    traffic.update(dt, camera, ['walk', 'bike', 'car'].includes(vehicles.mode) ? vehicles.active : null); // cars keep clear of the player
     vehicleStatus.textContent = vehicles.status;
     map.updateMini();
     renderer.render(scene, camera);
