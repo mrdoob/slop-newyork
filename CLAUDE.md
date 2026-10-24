@@ -307,3 +307,18 @@ Local results: Xinyi seedRadius 5 → 4,473 lots, 14% on open ground (was 39%), 
 stand-in (54% within 4 m), heights 2.5 m off → shown by default; Wanhua seedRadius 8 → 59% gaps, 4% open, 3.7 m (was
 63%, 12%, 7.6 m); Xinyi + Da'an seedRadius 5 → 12% open, 2.8 m. Estimates left: Xinyi 16% (was 53%), city 11% (was
 34%); they run 1.35–1.4× tall (biased remainder: buildings without doors) — retune later. Frame: Xinyi ~27 ms mean.
+Roads near Taipei 101 (owner: "fix roads near Taipei 101"): Songzhi / Songshou Rd lack `lanes`, so links sat at the
+6.5 m class default except where mapped sidewalks on both sides let `fitRoadWidths` widen them (23–27 m) → the
+boulevards necked down to two lanes every other block. `continueWidths` (geo-sidewalks): a class-default link takes the
+median fitted width of the same-named street (same direction type) within 300 m, kerb-checked against buildings and
+capped at a dual carriageway's median; width source 'same street' (WIDTH_SOURCES[4]). Xinyi 104 links, city 256,
+Wanhua 36.
+Objects on roads near 101 (owner: "fix objects on roads near taipei 101"): (1) signal poles were placed at load time at
+fixed kerb offsets without checking other roads: 13/121 vehicle and 30/196 pedestrian poles near 101 stood in a
+carriageway. `signal-control.js` takes `options.clear` (taipei-main passes tools/geo-kerb.mjs `kerbClear`, a pure module):
+poles move to the nearest clear kerb (arm re-aimed to keep the head over its lanes; no arm if > reach + 4 m) or are left
+out (Xinyi: 149 moved, 4 dropped). (2) Songzhi Rd's fitted 27 m covered its own east verge (tree rows, grass 10–25 m
+from the centre line). Widening (fit + continuity) now stops short of mapped trees / tree rows / grass / parks /
+walkways (`verge`, > 5% of samples across the surface) but NEVER narrows below the starting width — a first version did,
+and squeezed Ren'ai Rd (26 → 5.5 m: its planted median is inside the road) and Keelung / Zhongxiao to 3 m. Side
+effect: 3.5 m service alleys are no longer bumped to the 5.5 m two-way minimum over their own mapped footways.

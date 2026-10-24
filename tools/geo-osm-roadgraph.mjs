@@ -36,7 +36,7 @@ const DEFAULT_LANES = {
 const SERVICE_WIDTH = { alley: 3.5, driveway: 3, parking_aisle: 5 };
 const PATH_WIDTH = { footway: 2.5, sidewalk: 2.5, crossing: 4, pedestrian: 6, cycleway: 2.5, steps: 2.5, path: 2, track: 3, bridleway: 2 };
 export const PATH_KINDS = ['footway', 'crossing', 'pedestrian', 'cycleway', 'steps', 'path', 'sidewalk'];
-export const WIDTH_SOURCES = ['width tag', 'lanes tag', 'class default', 'fitted to sidewalks'];
+export const WIDTH_SOURCES = ['width tag', 'lanes tag', 'class default', 'fitted to sidewalks', 'same street'];
 export const SIDEWALK_TAGS = ['unknown', 'yes', 'no', 'separate'];
 // OSM sidewalk tags of a way -> [left, right] SIDEWALK_TAGS indices
 function sidewalkSides(t) {

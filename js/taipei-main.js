@@ -7,6 +7,7 @@ import { SimpleVehicles } from './simple-vehicles.js';
 import { buildGreenAreas, treeSites } from './green-areas.js';
 import { createTreeField } from './trees.js';
 import { buildSignalControl } from './signal-control.js';
+import { kerbClear } from '../tools/geo-kerb.mjs';
 import { buildViaduct } from './viaduct.js';
 import { buildFootprintTraffic } from './footprint-traffic.js';
 import { buildStreetFurniture } from './street-furniture.js';
@@ -190,7 +191,9 @@ async function init() {
   // left, then amber, green, with a square red-digit countdown beside the red lamp; pedestrian signals are two lenses,
   // a red standing figure over a green walking one (Taipei's animated 小綠人, quickening and flashing as time runs out)
   // with a countdown. The timing stays a plausible fixed cycle, not the city's real signal plans.
-  const signals = buildSignalControl(scene, GEO, { driveOnRight: true, style: { armHead: 'horizontal', countdown: true, pedestrian: true } });
+  // poles keep out of the drawn carriageways, as the build keeps furniture out of them (tools/geo-kerb.mjs)
+  const signals = buildSignalControl(scene, GEO, { driveOnRight: true, style: { armHead: 'horizontal', countdown: true, pedestrian: true },
+    clear: kerbClear(GEO.roadGraph) });
   const traffic = buildFootprintTraffic(scene, GEO, {
     signals,
     driveOnRight: true,

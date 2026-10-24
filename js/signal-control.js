@@ -13,6 +13,9 @@ import { heightAt } from './terrain.js';
 //                      'crossing'): two lenses, a red standing figure over a green walking one (animated, quicker and
 //                      then flashing as time runs out), with a green countdown above
 //   style.pedFlashS    seconds of flashing green at the end of the walk phase (default 5)
+//   clear              (x, z, margin) -> { x, z, moved } | null: where a pole may stand, given its intended spot (e.g.
+//                      tools/geo-kerb.mjs kerbClear: out of the drawn carriageways). A pole that lands in another road
+//                      moves to the spot it returns, or is left out on null. Without it poles stand where placed.
 //
 // Junction nodes closer than CLUSTER_M are one intersection (a dual carriageway crossing is several graph nodes) and
 // share a clock. Each approach belongs to the intersection's main axis (phase 0: the widest road) or the cross axis
@@ -32,6 +35,8 @@ function buildSignalControl(scene, geo, options = {}) {
   const ground = heightAt(geo); // poles stand on the ground (GEO.terrain)
   const { green = 26, amber = 3, allRed = 2 } = options.timing || {};
   const style = { armHead: 'vertical', countdown: false, pedestrian: false, pedFlashS: 5, ...(options.style || {}) };
+  const clear = options.clear || ((x, z) => ({ x, z, moved: false }));
+  const poleStats = { moved: 0, dropped: 0 };
   const driveOnRight = options.driveOnRight ?? true;
   const RG = geo.roadGraph;
   const signalised = new Set(RG.signals || []);
@@ -162,21 +167,29 @@ function buildSignalControl(scene, geo, options = {}) {
       const ux = -ox, uz = -oz; // travel direction
       const side = driveOnRight ? 1 : -1;
       const rx = -uz * side, rz = ux * side; // kerb side of travel
-      const px = sx + rx * (l.w / 2 + 0.7), pz = sz + rz * (l.w / 2 + 0.7); // pole just off the kerb
+      const kx = sx + rx * (l.w / 2 + 0.7), kz = sz + rz * (l.w / 2 + 0.7); // pole just off the kerb
       const facing = Math.atan2(-ux, -uz); // heads face oncoming traffic
       const reach = Math.min(Math.max(3, (l.dir === 0 ? l.w / 2 : l.w) * 0.75), 8);
+      const hx = kx - rx * reach, hz = kz - rz * reach; // the arm's head, over the lanes
+      // the pole's spot may lie in another road (a slip lane, the crossing street's junction): move it out, or leave it out
+      const spot = clear(kx, kz, 0.3);
+      if (!spot) { poleStats.dropped++; continue; }
+      if (spot.moved) poleStats.moved++;
+      const px = spot.x, pz = spot.z, armLen = Math.hypot(hx - px, hz - pz);
       const gy = ground(px, pz);
       const c = clusterOf(n), phase = phaseOf(c, Math.atan2(ux, uz));
       poleMats.push(place(px, gy + POLE_H / 2, pz, facing));
-      // Arm over the road (towards the centre line, -r)
-      dummy.position.set(px - rx * reach / 2, gy + ARM_Y, pz - rz * reach / 2);
-      dummy.scale.set(1, 1, reach);
-      dummy.rotation.set(0, Math.atan2(-rx, -rz), 0);
-      dummy.updateMatrix();
-      armMats.push(dummy.matrix.clone());
-      // Heads: over the lanes at the arm's end (hanging just under it), and low on the pole
+      // Arm over the road, from the pole to the head (re-aimed when the pole moved; none when that grew too long)
       const armY = style.armHead === 'horizontal' ? ARM_Y - 0.3 : ARM_Y - 0.55;
-      armHeads.push({ m: place(px - rx * reach, gy + armY, pz - rz * reach, facing), c, phase });
+      if (armLen <= reach + 4) {
+        dummy.position.set((px + hx) / 2, gy + ARM_Y, (pz + hz) / 2);
+        dummy.scale.set(1, 1, armLen);
+        dummy.rotation.set(0, Math.atan2(hx - px, hz - pz), 0);
+        dummy.updateMatrix();
+        armMats.push(dummy.matrix.clone());
+        // Heads: over the lanes at the arm's end (hanging just under it), and low on the pole
+        armHeads.push({ m: place(hx, gy + armY, hz, facing), c, phase });
+      }
       poleHeads.push({ m: place(px, gy + 3.1, pz, facing), c, phase });
     }
   }
@@ -280,7 +293,10 @@ function buildSignalControl(scene, geo, options = {}) {
       // at each end (f: from that end across the road): a pole just behind it and beside the crossing, its head facing
       // across, to the people waiting at the other end
       for (const [ex, ez, fx, fz] of [[ax, az, dx, dz], [bx, bz, -dx, -dz]]) {
-        const x = ex - fx * 0.8 - fz * 2.4, z = ez - fz * 0.8 + fx * 2.4, gy = ground(x, z);
+        const spot = clear(ex - fx * 0.8 - fz * 2.4, ez - fz * 0.8 + fx * 2.4, 0.3);
+        if (!spot) { poleStats.dropped++; continue; }
+        if (spot.moved) poleStats.moved++;
+        const x = spot.x, z = spot.z, gy = ground(x, z);
         pedPoles.push(place(x, gy + PED_POLE_H / 2, z, 0));
         peds.push({ m: place(x, gy + PED_HEAD_Y, z, Math.atan2(fx, fz)), c, phase });
       }
@@ -365,7 +381,7 @@ function buildSignalControl(scene, geo, options = {}) {
   }
   update(0);
 
-  return { group, stateAt, walkAllowed, update, STATE, stats: { intersections: clusters.size, heads: armHeads.length + poleHeads.length, pedestrian: peds.length } };
+  return { group, stateAt, walkAllowed, update, STATE, stats: { intersections: clusters.size, heads: armHeads.length + poleHeads.length, pedestrian: peds.length, poles: poleStats } };
 }
 
 export { buildSignalControl, STATE as SIGNAL_STATE };

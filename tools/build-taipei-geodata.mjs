@@ -13,7 +13,7 @@ import { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, load, has, log } from 
 import { buildingHeight, estimateHeight, LEVEL_M } from './geo-height.mjs';
 import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
 import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgraph.mjs';
-import { fitRoadWidths, inferSidewalks, sidewalkFootways, medianSides } from './geo-sidewalks.mjs';
+import { fitRoadWidths, continueWidths, inferSidewalks, sidewalkFootways, medianSides } from './geo-sidewalks.mjs';
 import { buildFurniture, expandDocks, FURNITURE_KINDS, FURNITURE_SOURCES } from './geo-furniture.mjs';
 import { infillBuildings, INFILL } from './geo-infill.mjs';
 import { kerbClear } from './geo-kerb.mjs';
@@ -452,7 +452,41 @@ const rampDepth = roadGraph.links.map(() => 0);
 // Road widths checked against mapped sidewalks, then sidewalks along kerbs that have none mapped
 const groundRings = buildings.filter((x) => x.h.base < 1).map((x) => x.b.outer);
 const inGround = ringIndex(groundRings);
-const fit = fitRoadWidths(roadGraph, paths, PATH_KINDS, inGround);
+// Verges an estimated road width must not cover: mapped trees & tree rows (1 m around), grass, parks & gardens (at
+// grade), and mapped walkways along the street (not crossings: they cross it)
+const verge = (() => {
+  const CELLV = 20, cells = new Map();
+  const put = (item, x0, z0, x1, z1) => {
+    for (let a = Math.floor(x0 / CELLV); a <= Math.floor(x1 / CELLV); a++) for (let c = Math.floor(z0 / CELLV); c <= Math.floor(z1 / CELLV); c++) {
+      const k = `${a},${c}`; if (!cells.has(k)) cells.set(k, []); cells.get(k).push(item);
+    }
+  };
+  const seg = (a, b, r) => put({ a, b, r }, Math.min(a[0], b[0]) - r, Math.min(a[1], b[1]) - r, Math.max(a[0], b[0]) + r, Math.max(a[1], b[1]) + r);
+  for (const e of street) {
+    const t = e.tags || {};
+    if (e.type === 'node' && t.natural === 'tree') { const p = toWorld(e.lon, e.lat); seg(p, p, 1); }
+    if (e.type !== 'way' || !e.geometry || parseFloat(t.layer) < 0) continue;
+    const pts = e.geometry.map((g) => toWorld(g.lon, g.lat));
+    if (t.natural === 'tree_row') for (let i = 0; i + 1 < pts.length; i++) seg(pts[i], pts[i + 1], 1);
+    else if (/^(grass|forest)$/.test(t.landuse || '') || /^(park|garden)$/.test(t.leisure || '') || t.natural === 'wood') {
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (const [x, z] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+      put({ ring: pts }, x0, z0, x1, z1);
+    }
+  }
+  for (const [k, w, elev, pts] of paths) {
+    if (k === PATH_KINDS.indexOf('crossing') || elev > 0) continue;
+    for (let i = 0; i + 1 < pts.length; i++) seg(pts[i], pts[i + 1], w / 2);
+  }
+  return (x, z) => (cells.get(`${Math.floor(x / CELLV)},${Math.floor(z / CELLV)}`) || []).some((it) => {
+    if (it.ring) return pointInRing(x, z, it.ring);
+    const [ax, az] = it.a, [bx, bz] = it.b, dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1e-9;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+    return Math.hypot(ax + dx * t - x, az + dz * t - z) < it.r;
+  });
+})();
+const fit = fitRoadWidths(roadGraph, paths, PATH_KINDS, inGround, verge);
+const continued = continueWidths(roadGraph, inGround, WIDTH_SOURCES.indexOf('same street'), verge);
 const PATH_SOURCES = ['mapped', 'tagged', 'inferred'];
 for (const p of paths) p.push(0);
 const promoted = sidewalkFootways(roadGraph, paths, PATH_KINDS);
@@ -460,7 +494,7 @@ for (const pi of promoted) paths[pi][0] = PATH_KINDS.indexOf('sidewalk');
 const inferred = inferSidewalks(roadGraph, paths, PATH_KINDS);
 for (const [line, w, source] of inferred) paths.push([PATH_KINDS.indexOf('sidewalk'), w, 0, line, 0, PATH_SOURCES.indexOf(source)]);
 log(`${promoted.length} mapped footways along kerbs drawn as sidewalks; ${inferred.corners} sidewalk corners`);
-log(`road widths fitted to mapped sidewalks: ${fit.widened} widened, ${fit.narrowed} narrowed; sidewalks: ${PATH_SOURCES.map((s, i) => `${paths.filter((p) => PATH_KINDS[p[0]] === 'sidewalk' && p[5] === i).length} ${s}`).join(', ')}`);
+log(`road widths fitted to mapped sidewalks: ${fit.widened} widened, ${fit.narrowed} narrowed, ${continued.changed} widened to their street's fitted width; sidewalks: ${PATH_SOURCES.map((s, i) => `${paths.filter((p) => PATH_KINDS[p[0]] === 'sidewalk' && p[5] === i).length} ${s}`).join(', ')}`);
 const widthSource = roadGraph.widthSource;
 const linkClass = roadGraph.highway; // OSM highway class per link (stand-in rules use it)
 delete roadGraph.highway;

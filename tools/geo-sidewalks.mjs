@@ -111,11 +111,34 @@ function kerbBlocked(pts, w, solid) {
   return n ? bad / n : 0;
 }
 
+// Share of samples across a road of width w (every SAMPLE_M along it, at 30, 60 and 90% of the half width each side) that
+// fall where verge(x, z): mapped trees, tree rows, grass, parks and walkways the road must not cover
+function surfaceBlocked(pts, w, verge) {
+  let n = 0, bad = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x0, z0] = pts[i], [x1, z1] = pts[i + 1];
+    const L = Math.hypot(x1 - x0, z1 - z0);
+    if (L < 1) continue;
+    const nx = -(z1 - z0) / L, nz = (x1 - x0) / L;
+    for (let d = SAMPLE_M / 2; d < L; d += SAMPLE_M) {
+      const x = x0 + ((x1 - x0) * d) / L, z = z0 + ((z1 - z0) * d) / L;
+      for (const f of [-0.9, -0.6, -0.3, 0.3, 0.6, 0.9]) { n++; if (verge(x + (nx * f * w) / 2, z + (nz * f * w) / 2)) bad++; }
+    }
+  }
+  return n ? bad / n : 0;
+}
+// Narrow an estimated width (0.5 m steps, not below `min`) until the road no longer covers its mapped verges
+const VERGE_MAX = 0.05;
+const clearOfVerges = (line, w, min, verge) => { while (w > min && surfaceBlocked(line, w, verge) > VERGE_MAX) w = Math.max(min, w - 0.5); return w; };
+
 // A dual carriageway's estimated widths keep at least MEDIAN_MIN_M between its two directions: the drawn road is centred
 // on the mapped centre line, so widening one carriageway towards its outer sidewalk widens it into the median as much,
 // and could cover the median (where an elevated railway's piers stand) and the opposite carriageway
 const MEDIAN_MIN_M = 2;
-export function fitRoadWidths(roadGraph, paths, pathKinds, solid = () => false) {
+// verge(x, z): mapped trees, tree rows, green areas and walkways: widening never spreads over them (a boulevard's centre
+// line with planted verges between it and the sidewalk must not be drawn over its own trees); it never narrows a road
+// below its starting width either (a planted median inside the road)
+export function fitRoadWidths(roadGraph, paths, pathKinds, solid = () => false, verge = () => false) {
   const grid = walkIndex(paths, pathKinds);
   const FITTED = 3;
   const median = medianInfo(roadGraph);
@@ -138,6 +161,9 @@ export function fitRoadWidths(roadGraph, paths, pathKinds, solid = () => false) 
     // an estimated width that runs into the buildings lining the street (lanes narrower than their class default)
     // narrows until its kerbs clear them, to a 3.5 m lane at least
     while (next > 3.5 && kerbBlocked(line, next, solid) > 0.1) next = Math.max(3.5, next - 0.5);
+    // widening stops short of the street's mapped verges (never below its starting width: a boulevard's planted median
+    // lies inside its drawn road and must not squeeze it)
+    if (next > w) next = clearOfVerges(line, next, w, verge);
     if (Math.abs(next - w) < 0.5) return;
     if (next > w) widened++;
     else narrowed++;
@@ -146,6 +172,43 @@ export function fitRoadWidths(roadGraph, paths, pathKinds, solid = () => false) 
     roadGraph.widthSource[i] = FITTED;
   });
   return { widened, narrowed };
+}
+
+// Width continuity along a street: a link still at its class default width (no width / lanes tag, and no mapped
+// sidewalks on both sides to fit to) takes the median width of the same-named street's fitted links (same direction
+// type) within CONTINUITY_M, so a boulevard measured on some blocks doesn't drop to two lanes on the next. It still
+// narrows where its kerbs would run into buildings and stays clear of a dual carriageway's median. Width source
+// `SAME_STREET` (an inference from the street's own fitted blocks, not a measurement).
+const CONTINUITY_M = 300;
+export function continueWidths(roadGraph, solid = () => false, SAME_STREET = 4, verge = () => false) {
+  const RG = roadGraph, FITTED = 3, DEFAULT = 2;
+  const median = medianInfo(RG);
+  const mids = RG.links.map((l) => { const pts = linkLine(RG, l), a = pts[0], b = pts[pts.length - 1]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; });
+  const fittedByName = new Map();
+  RG.links.forEach((l, i) => {
+    if (RG.widthSource[i] !== FITTED || !RG.names[l[2]]) return;
+    const k = `${l[2]}|${l[5] === 0 ? 0 : 1}`;
+    if (!fittedByName.has(k)) fittedByName.set(k, []);
+    fittedByName.get(k).push(i);
+  });
+  let changed = 0;
+  RG.links.forEach((l, i) => {
+    if (RG.widthSource[i] !== DEFAULT || !RG.names[l[2]]) return;
+    const near = (fittedByName.get(`${l[2]}|${l[5] === 0 ? 0 : 1}`) || []).filter((j) => Math.hypot(mids[j][0] - mids[i][0], mids[j][1] - mids[i][1]) < CONTINUITY_M);
+    if (!near.length) return;
+    const ws = near.map((j) => RG.links[j][3]).sort((a, b) => a - b);
+    let next = ws[ws.length >> 1];
+    if (median[i].gap) next = Math.min(next, median[i].gap - MEDIAN_MIN_M);
+    const line = linkLine(RG, l);
+    while (next > l[3] && kerbBlocked(line, next, solid) > 0.05) next -= 1; // clear of buildings
+    next = Math.round(clearOfVerges(line, next, l[3], verge) * 10) / 10; // and of the street's own trees, grass, walkways
+    if (next < l[3] + 1) return;
+    l[3] = next;
+    l[4] = Math.max(1, Math.min(Math.max(l[4], Math.floor(next / 3.4)), Math.floor(next / 2.6)));
+    RG.widthSource[i] = SAME_STREET;
+    changed++;
+  });
+  return { changed };
 }
 
 // Offset a polyline `off` m to the right of its direction (mitred), then trim d0 / d1 m off its ends
