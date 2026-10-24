@@ -129,7 +129,13 @@ function buildFootprintBuildings(scene, geo) {
     if (!(top - base > 0) || outer.length < 6) continue;
     const shape = roofShapes[roofIdx] || 'flat';
     const eaves = shape === 'flat' ? top : Math.max(base + 0.5, top - roofH);
-    const g = new THREE.ExtrudeGeometry(shapeOf(outer, holes), { depth: eaves - base, bevelEnabled: false, curveSegments: 1 });
+    let g;
+    try {
+      g = new THREE.ExtrudeGeometry(shapeOf(outer, holes), { depth: eaves - base, bevelEnabled: false, curveSegments: 1 });
+    } catch {
+      // a footprint whose holes can't be triangulated (degenerate or crossing rings): drawn solid instead
+      g = new THREE.ExtrudeGeometry(shapeOf(outer, []), { depth: eaves - base, bevelEnabled: false, curveSegments: 1 });
+    }
     g.rotateX(-Math.PI / 2); // extrusion axis -> +y, shape (x, -z) -> world (x, z)
     g.translate(0, base, 0);
     g.deleteAttribute('uv');

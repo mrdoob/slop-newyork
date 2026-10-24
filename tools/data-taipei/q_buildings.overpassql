@@ -1,8 +1,10 @@
-[out:json][timeout:120];
+[out:json][timeout:300];
+// Xinyi District (信義區, OSM relation 2881027; area id = 3600000000 + relation id)
+area(id:3602881027)->.d;
 (
-  way["building"](25.0249,121.5546,25.0430,121.5744);
-  relation["building"](25.0249,121.5546,25.0430,121.5744);
-  way["building:part"](25.0249,121.5546,25.0430,121.5744);
-  relation["building:part"](25.0249,121.5546,25.0430,121.5744);
+  way["building"](area.d);
+  relation["building"](area.d);
+  way["building:part"](area.d);
+  relation["building:part"](area.d);
 );
 out geom;

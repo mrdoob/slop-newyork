@@ -1,6 +1,6 @@
 // js/footprint-map.js
 // A minimap and a full map for footprint cities, drawn from the same data as the 3D city (GEO.buildings, GEO.infill,
-// GEO.roadGraph, GEO.green, GEO.frame.box): the minimap follows the player north-up; the full map shows the whole area,
+// GEO.roadGraph, GEO.green, GEO.frame.box & .boundary): the minimap follows the player north-up; the full map shows the whole area,
 // zooms with the wheel, pans by dragging, names the street under the pointer and teleports the player where it is
 // clicked. City-agnostic: colours and labels come in through `options`.
 //
@@ -75,11 +75,18 @@ class FootprintMap {
     strokeLinks(c.road, 0);
     for (const b of geo.buildings) if (b[4] < 1) poly(b[1], c.building);
     for (const b of geo.infill || []) poly(b[1], c.infill);
-    // The box edge: beyond it there is no data
+    // The area's edge: the district outline when there is one (GEO.frame.boundary), else the box; beyond it, no data
     g.strokeStyle = c.boxEdge;
     g.lineWidth = 2;
     g.setLineDash([8, 6]);
-    g.strokeRect(PAD_M * ppm, PAD_M * ppm, cv.width - 2 * PAD_M * ppm, cv.height - 2 * PAD_M * ppm);
+    if (geo.frame.boundary?.length) {
+      for (const ring of geo.frame.boundary) {
+        g.beginPath();
+        for (let i = 0; i < ring.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, X(ring[i]), Z(ring[i + 1]));
+        g.closePath();
+        g.stroke();
+      }
+    } else g.strokeRect(PAD_M * ppm, PAD_M * ppm, cv.width - 2 * PAD_M * ppm, cv.height - 2 * PAD_M * ppm);
     return cv;
   }
 

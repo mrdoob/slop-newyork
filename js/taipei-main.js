@@ -108,13 +108,15 @@ async function init() {
   const scene = new THREE.Scene();
   const sky = new THREE.Color(0xb9cddc);
   scene.background = sky;
-  scene.fog = new THREE.Fog(sky, 2500, 9000);
 
   // Box extent in world metres, from the frame's [S, W, N, E] box
   const [s, w, n, e] = GEO.frame.box;
   const kx = (Math.PI / 180) * 6378137 * Math.cos((GEO.frame.lat0 * Math.PI) / 180);
   const ky = (Math.PI / 180) * 6378137;
   const half = Math.max((e - w) * kx, (n - s) * ky) / 2;
+  scene.fog = new THREE.Fog(sky, Math.max(2500, half * 2.4), Math.max(9000, half * 8)); // haze beyond the area's far side
+  // farthest the box reaches from the origin (the origin, the landmark, needn't be its centre), plus room to turn back
+  const reach = Math.max(Math.abs((w - GEO.frame.lon0) * kx), Math.abs((e - GEO.frame.lon0) * kx), Math.abs((n - GEO.frame.lat0) * ky), Math.abs((s - GEO.frame.lat0) * ky)) + 300;
 
   // Ground: the lots and plazas between the streets
   const ground = new THREE.Mesh(
@@ -140,7 +142,9 @@ async function init() {
   sun.position.set(-700, 1100, 500); // afternoon sun from the south-west
   sun.castShadow = true;
   sun.shadow.mapSize.setScalar(TOUCH ? 2048 : 4096);
-  const reachM = half * 1.15; // shadows over the whole box
+  // Shadows over the whole box when it's small; a large area (a whole district) gets a 2 km shadow square that follows
+  // the camera's focus (TimeOfDay.follow), so the shadow map's detail doesn't spread over kilometres
+  const reachM = Math.min(half * 1.15, 1000);
   Object.assign(sun.shadow.camera, { left: -reachM, right: reachM, top: reachM, bottom: -reachM, near: 10, far: 4500 });
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.6;
@@ -164,8 +168,9 @@ async function init() {
     signals,
     driveOnRight: true,
     // Xinyi's 2 km box: 320 cars, 420 people; other boxes in proportion to their area
-    carCount: Math.round(320 * (half / 1000) ** 2 * (TOUCH ? 0.5 : 1)),
-    pedCount: Math.round(420 * (half / 1000) ** 2 * (TOUCH ? 0.5 : 1)),
+    // (capped for whole districts: beyond the camera the extra traffic would cost frames, not add anything seen)
+    carCount: Math.round(Math.min(TOUCH ? 260 : 560, 320 * (half / 1000) ** 2 * (TOUCH ? 0.5 : 1))),
+    pedCount: Math.round(Math.min(TOUCH ? 340 : 760, 420 * (half / 1000) ** 2 * (TOUCH ? 0.5 : 1))),
     taxiShare: 0.14,
     taxiColour: 0xf3c316,
     palette: [0xf4f4f2, 0xf4f4f2, 0xf4f4f2, 0xc8cbcf, 0xc8cbcf, 0x8a8e93, 0x1c1e21, 0x1c1e21, 0x24395a, 0x7d1d22]
@@ -173,7 +178,7 @@ async function init() {
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 20000);
   // From the south-east, the whole box in view (Xinyi: 1500, 820, 1800 with Taipei 101 at the centre)
-  camera.position.set(half * 1.5, half * 0.82, half * 1.8);
+  camera.position.set(half * Math.min(1.5, 2200 / half), half * Math.min(0.82, 1300 / half), half * Math.min(1.8, 2600 / half)); // a district: ~3.5 km out
   const controls = new OrbitControls(camera, renderer.domElement);
   const t101 = GEO.landmarks['Taipei 101'];
   controls.target.set(t101 ? t101.x : 0, half * 0.12, t101 ? t101.z : 0);
@@ -188,7 +193,7 @@ async function init() {
   const pct = (k) => Math.round((100 * st.bySource[k]) / st.total);
   document.getElementById('stats').textContent =
     `${st.total} buildings · heights: ${pct('height')}% height tag, ${pct('levels')}% storey count, ` +
-    `${pct('estimate')}% estimated · tallest ${st.maxTop} m` +
+    `${st.bySource.permit ? `${pct('permit')}% permit drawings, ` : ''}${pct('estimate')}% estimated · tallest ${st.maxTop} m` +
     (st.infill ? ` · +${st.infill} stand-ins (footprint & height inferred where OSM maps none)` : '');
   let showEstimates = false;
   const toggle = document.getElementById('btn-estimates');
@@ -215,7 +220,7 @@ async function init() {
   // & footprints by eye
   const overlay = buildBasemapOverlay(scene, GEO, {
     url: (z, x, y) => `https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/${z}/${y}/${x}`,
-    zoom: 17,
+    zoom: half > 1500 ? 16 : 17, // a district at z17 would be ~250 tiles
     credit: 'Reference photo © 內政部國土測繪中心 (NLSC)'
   });
   const overlayButton = document.getElementById('btn-overlay');
@@ -234,6 +239,7 @@ async function init() {
   const vehicles = new SimpleVehicles(scene, GEO, {
     spawnNear: { x: t101 ? t101.x : 0, z: t101 ? t101.z : 0 },
     driveOnRight: true,
+    worldLimit: reach,
     bikeColour: 0xf0b400,
     blocked: (x, z, fx, fz, hl, hw) =>
       traffic.carOverlaps(x, z, fx, fz, hl + 0.1, hw + 0.1) || traffic.pedNear(x + fx * hl * 0.6, z + fz * hl * 0.6, 1.6) || traffic.pedNear(x - fx * hl * 0.6, z - fz * hl * 0.6, 1.6),
@@ -354,12 +360,16 @@ async function init() {
     else if (ms < 18 && ++fast >= 3) { next = Math.min(maxRatio, ratio * 1.1); fast = 0; }
     if (Math.abs(next - ratio) > 0.01) { ratio = next; renderer.setPixelRatio(ratio); }
   };
+  let cullTick = 0;
   const timer = new THREE.Timer();
   renderer.setAnimationLoop((time) => {
     timer.update(time);
     const dt = timer.getDelta();
     adapt(dt);
     timeOfDay.update(dt);
+    if ((cullTick = (cullTick + 1) % 15) === 0) furniture.update(camera); // distant small furniture off, 4× a second
+    const focus = vehicles.active ?? controls.target;
+    timeOfDay.follow(focus.x, focus.z);
     if (vehicles.mode === 'orbit') controls.update();
     else vehicles.update(dt, camera);
     signals.update(dt);

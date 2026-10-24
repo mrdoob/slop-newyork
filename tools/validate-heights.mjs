@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { toWorld, BOX, AREA, AREA_NAME, load, log } from './geo-taipei-base.mjs';
 import { buildingHeight, estimateHeight, ESTIMATE_TIERS, LEVEL_M } from './geo-height.mjs';
+import { tm2ToGeo } from './geo-twd97.mjs';
 
 const ROOT = 'https://3d.taipei/data/3dTiles/115_A/';
 const CACHE = fileURLToPath(new URL('data-local/3dtaipei/', import.meta.url));
@@ -55,23 +56,6 @@ function mul(a, b) {
   return o;
 }
 const apply = (m, [x, y, z]) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
-
-// TWD97 TM2 (zone 121°E) easting/northing -> latitude/longitude (GRS80 transverse Mercator inverse)
-function tm2ToGeo(E, N) {
-  const k0 = 0.9999, lon0 = (121 * Math.PI) / 180, e2 = 0.00669438002290, ep2 = e2 / (1 - e2);
-  const x = E - 250000, M = N / k0;
-  const mu = M / (A * (1 - e2 / 4 - (3 * e2 * e2) / 64 - (5 * e2 ** 3) / 256));
-  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
-  const phi1 = mu + ((3 * e1) / 2 - (27 * e1 ** 3) / 32) * Math.sin(2 * mu) + ((21 * e1 * e1) / 16 - (55 * e1 ** 4) / 32) * Math.sin(4 * mu) +
-    ((151 * e1 ** 3) / 96) * Math.sin(6 * mu) + ((1097 * e1 ** 4) / 512) * Math.sin(8 * mu);
-  const C1 = ep2 * Math.cos(phi1) ** 2, T1 = Math.tan(phi1) ** 2;
-  const N1 = A / Math.sqrt(1 - e2 * Math.sin(phi1) ** 2), R1 = (A * (1 - e2)) / (1 - e2 * Math.sin(phi1) ** 2) ** 1.5;
-  const D = x / (N1 * k0);
-  const lat = phi1 - ((N1 * Math.tan(phi1)) / R1) * (D * D / 2 - ((5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D ** 4) / 24 +
-    ((61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * D ** 6) / 720);
-  const lon = lon0 + (D - ((1 + 2 * T1 + C1) * D ** 3) / 6 + ((5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D ** 5) / 120) / Math.cos(phi1);
-  return [(lat * 180) / Math.PI, (lon * 180) / Math.PI];
-}
 
 // --- glTF EXT_structural_metadata property tables -> rows ----------------------------------------------------------------
 function metadataRows(buf) {
@@ -159,11 +143,27 @@ const outlines = osm.elements.filter((e) => e.type === 'way' && e.tags && e.tags
     const area = ringArea(ring);
     return { id: e.id, tags: e.tags, ring, area, type: e.tags.building, h: buildingHeight(e.tags, area) };
   });
+// measured centres bucketed on a 25 m grid (a whole district has tens of thousands)
+const GRID = 25, grid = new Map();
+for (const m of measured.values()) {
+  const k = `${Math.floor(m.at[0] / GRID)},${Math.floor(m.at[1] / GRID)}`;
+  if (!grid.has(k)) grid.set(k, []);
+  grid.get(k).push(m);
+}
+const measuredIn = (ring) => {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const [x, z] of ring) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+  const out = [];
+  for (let i = Math.floor(x0 / GRID); i <= Math.floor(x1 / GRID); i++) {
+    for (let j = Math.floor(z0 / GRID); j <= Math.floor(z1 / GRID); j++) for (const m of grid.get(`${i},${j}`) || []) if (pointInRing(m.at[0], m.at[1], ring)) out.push(m);
+  }
+  return out;
+};
 const matches = [];
 for (const o of outlines) {
   // the tallest measured building standing in this footprint (OSM outlines can hold several surveyed blocks)
   let best = null;
-  for (const m of measured.values()) if (pointInRing(m.at[0], m.at[1], o.ring) && (!best || m.h > best.h)) best = m;
+  for (const m of measuredIn(o.ring)) if (!best || m.h > best.h) best = m;
   if (best) matches.push({ ...o, measured: best.h, floors: best.floors });
 }
 log(`${matches.length} of ${outlines.length} OSM outlines matched to a measured building`);
@@ -220,7 +220,9 @@ for (const [type, row] of Object.entries(knots)) console.log(`  ${type.padEnd(12
 const footprints = osm.elements.filter((e) => e.tags && (e.tags.building || e.tags['building:part']))
   .flatMap((e) => (e.type === 'way' ? [e.geometry] : (e.members || []).filter((m) => m.role === 'outer').map((m) => m.geometry)))
   .filter(Boolean).map((geom) => geom.map((g) => toWorld(g.lon, g.lat)));
-const gaps = [...measured.values()].filter((m) => m.h >= 4 && !footprints.some((r) => pointInRing(m.at[0], m.at[1], r)));
+const covered = new Set(footprints.flatMap(measuredIn));
+const gaps = [...measured.values()].filter((m) => m.h >= 4 && !covered.has(m));
+const gapSet = new Set(gaps);
 const cells = new Map();
 for (const g of gaps) {
   const k = `${Math.floor(g.at[0] / 50) * 50},${Math.floor(g.at[1] / 50) * 50}`;
@@ -273,5 +275,5 @@ if (GEO.infill?.length) {
 
 fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, knots, gapCells, infill: infillReport,
   // measured centres ≥ 4 m [x, z, 1 if no OSM footprint], for local debug plots
-  centres: [...measured.values()].filter((m) => m.h >= 4).map((m) => [Math.round(m.at[0]), Math.round(m.at[1]), gaps.includes(m) ? 1 : 0]) }, null, 1));
+  centres: [...measured.values()].filter((m) => m.h >= 4).map((m) => [Math.round(m.at[0]), Math.round(m.at[1]), gapSet.has(m) ? 1 : 0, Math.round(m.h * 10) / 10]) }, null, 1));
 log(`report written to ${REPORT} (git-ignored)`);

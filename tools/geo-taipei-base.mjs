@@ -9,11 +9,13 @@
 //   - The origin is Taipei 101 (25.033964 N, 121.564468 E), which is also the projection's tangent point, so world
 //     origin = projection origin. Checked against OSM: the Taipei 101 outline (way 1159328965) averages to (14, 2) m
 //     from the origin, i.e. the origin lies on the tower's site.
-//   - No harbour islands, piers or coastline: both boxes are inland.
+//   - No harbour islands, piers or coastline: both areas are inland.
 //
 // Areas (GEO_AREA=<name>, default xinyi). Each has its own frame origin, box, landmarks, inputs and output file, so a
 // second district is a second dataset rather than a wider box:
-//   xinyi   2 km box around Taipei 101: the best-mapped area, the first milestone.
+//   xinyi   the whole of Xinyi District (信義區, OSM relation 2881027; queries select the district area, the box is its
+//           bounding box): the best-mapped area. Earlier milestones used 1 km and 2 km boxes around Taipei 101. The
+//           south-east quarter is the Four Beasts hills (Elephant Mountain…), drawn flat until terrain data is in.
 //   wanhua  1 km box around Lungshan Temple (艋舺龍山寺, way 198401479, centre 25.037276 N, 121.499881 E): the old
 //           district, low walk-ups and shophouses, sparse OSM height tags; stresses the height fallback. No landmark
 //           height is pinned (no published, sourced figure for the temple roof).
@@ -23,6 +25,8 @@
 //   osm_roads.json       highway ways in BOX                                © OpenStreetMap contributors (ODbL)
 //   osm_street.json      trees, tree rows, traffic signals, parks/green     © OpenStreetMap contributors (ODbL)
 //   osm_furniture.json   lamps, bus stops, MRT entrances, YouBike, hydrants… © OpenStreetMap contributors (ODbL)
+//   osm_open.json        open ground (parking, schools, plazas, water…)     © OpenStreetMap contributors (ODbL)
+//   osm_boundary.json    the area's administrative boundary (when it is a district) © OpenStreetMap contributors (ODbL)
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,15 +34,17 @@ import { fileURLToPath } from 'node:url';
 import { makeFrame } from './geo-frame.mjs';
 
 // Boxes are [S, W, N, E] degrees and must match the q_*.overpassql bounds in the area's data directory (at 25° N,
-// 1 km ≈ 0.00902° of latitude and ≈ 0.00991° of longitude). Xinyi: ±1 km of Taipei 101 (the first milestone used the
-// 1 km box [25.029, 121.559, 25.039, 121.570]). Wanhua: ±0.5 km of the temple.
+// 1 km ≈ 0.00902° of latitude and ≈ 0.00991° of longitude). Xinyi: the district's bounding box (its queries select the
+// district area itself; the 2 km milestone box was [25.0249, 121.5546, 25.043, 121.5744]). Wanhua: ±0.5 km of the temple.
+// `boundary`: the OSM relation of the district outline (osm_boundary.json), exported as GEO.frame.boundary.
+// `permits`: add building-permit footprints (permits.json, tools/extract-permits.mjs) where OSM maps no building.
 // `infill`: add stand-in buildings where OSM maps none (tools/geo-infill.mjs). Chosen per area from the local check
 // against measured buildings (tools/validate-heights.mjs): in Wanhua, where OSM lacks whole blocks, 14% of stand-ins
 // have no measured building within 12 m; in Xinyi, where unmapped frontage is mostly real open space (plazas, tower
 // setbacks, the Elephant Mountain slopes), 46% do, so Xinyi gets none.
 const AREAS = {
-  xinyi: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0249, 121.5546, 25.043, 121.5744], data: 'data-taipei/', out: 'taipei-geodata.js', infill: false },
-  wanhua: { lat0: 25.037276, lon0: 121.499881, origin: 'Lungshan Temple', box: [25.0328, 121.4949, 25.0418, 121.5048], data: 'data-taipei/wanhua/', out: 'taipei-wanhua-geodata.js', infill: true }
+  xinyi: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0081, 121.5526, 25.0496, 121.5923], boundary: 2881027, data: 'data-taipei/', out: 'taipei-geodata.js', infill: false, permits: true },
+  wanhua: { lat0: 25.037276, lon0: 121.499881, origin: 'Lungshan Temple', box: [25.0328, 121.4949, 25.0418, 121.5048], data: 'data-taipei/wanhua/', out: 'taipei-wanhua-geodata.js', infill: true, permits: true }
 };
 const AREA_NAME = process.env.GEO_AREA || 'xinyi';
 const AREA = AREAS[AREA_NAME];
@@ -67,4 +73,4 @@ const LANDMARKS = AREA_NAME !== 'xinyi' ? {} : {
   }
 };
 
-export { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, load, log };
+export { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, AREAS, load, log };

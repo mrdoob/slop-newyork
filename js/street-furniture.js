@@ -106,20 +106,37 @@ function buildStreetFurniture(scene, geo, options = {}) {
   const dummy = new THREE.Object3D();
   const colour = new THREE.Color();
   const SMALL = new Set(['fire_hydrant', 'waste_basket', 'drinking_water', 'bike', 'bike_share', 'scooter']);
+  // One InstancedMesh per kind per TILE_M square, so the renderer can frustum-cull tiles and update() can skip tiles
+  // farther from the camera than the kind can be made out (a whole district has ~10,000 items, ~850k triangles)
+  const TILE_M = 400;
+  const SHOW_M = { fire_hydrant: 300, waste_basket: 300, drinking_water: 300, bike: 300, bike_share: 300, scooter: 300, post_box: 300,
+    telephone: 300, vending_machine: 300, bicycle_parking: 300, bus_stop: 700, bicycle_rental: 700, flagpole: 900, street_lamp: 900 };
+  const tiles = [];
   for (const [name, items] of placed) {
-    const mesh = new THREE.InstancedMesh(geos[name], material, items.length);
+    const byTile = new Map();
+    for (const it of items) {
+      const k = `${Math.floor(it[0] / TILE_M)},${Math.floor(it[1] / TILE_M)}`;
+      if (!byTile.has(k)) byTile.set(k, []);
+      byTile.get(k).push(it);
+    }
     const tinted = items.some((it) => it[3] !== null);
-    items.forEach(([x, z, yaw, c], i) => {
-      dummy.position.set(x, 0, z);
-      dummy.rotation.set(0, yaw, 0);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      if (tinted) mesh.setColorAt(i, colour.setHex(c ?? 0xffffff));
-    });
-    mesh.name = `furniture-${name}`;
-    mesh.castShadow = !SMALL.has(name);
-    mesh.receiveShadow = true;
-    group.add(mesh);
+    for (const [k, list] of byTile) {
+      const mesh = new THREE.InstancedMesh(geos[name], material, list.length);
+      list.forEach(([x, z, yaw, c], i) => {
+        dummy.position.set(x, 0, z);
+        dummy.rotation.set(0, yaw, 0);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        if (tinted) mesh.setColorAt(i, colour.setHex(c ?? 0xffffff));
+      });
+      mesh.computeBoundingSphere();
+      mesh.name = `furniture-${name}`;
+      mesh.castShadow = !SMALL.has(name);
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      const [i, j] = k.split(',').map(Number);
+      tiles.push({ mesh, cx: (i + 0.5) * TILE_M, cz: (j + 0.5) * TILE_M, show: (SHOW_M[name] ?? 1500) + TILE_M * 0.71 });
+    }
   }
   // Pools of lamplight on the ground under each lamp head, shown at night (additive, no lighting cost)
   const lamps = placed.get('street_lamp') || [];
@@ -145,7 +162,14 @@ function buildStreetFurniture(scene, geo, options = {}) {
   return {
     group,
     counts: Object.fromEntries([...placed].map(([k, v]) => [k, v.length])),
-    setNight(f) { night.value = f; if (pools) pools.visible = f > 0.01; }
+    setNight(f) { night.value = f; if (pools) pools.visible = f > 0.01; },
+    // Show only the tiles near enough to the camera for their kind (call every few frames)
+    update(camera) {
+      const { x, z } = camera.position;
+      for (const t of tiles) t.mesh.visible = Math.hypot(t.cx - x, t.cz - z) < t.show;
+    },
+    // All tiles on (e.g. to compile their shaders up front)
+    showAll() { for (const t of tiles) t.mesh.visible = true; }
   };
 }
 

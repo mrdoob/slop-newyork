@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { makeFrame } from '../tools/geo-frame.mjs';
@@ -11,12 +12,15 @@ test('Taipei frame puts Taipei 101 at the origin, north-up, in metres', () => {
   assert.ok(xn === 0 && Math.abs(zn + 110.8) < 0.5, `0.001° north -> (${xn}, ${zn})`); // north is -z
 });
 
-test('Taipei 2 km test box is centred on the origin, ±1 km each way', () => {
+test('Taipei Xinyi box is the district bounding box and contains Taipei 101', () => {
   const [s, w, n, e] = BOX;
-  const [x0, z1] = taipei.toWorld(w, s);
-  const [x1, z0] = taipei.toWorld(e, n);
-  for (const v of [x0, z0]) assert.ok(v < -980 && v > -1020, `west/north edge ${v}`);
-  for (const v of [x1, z1]) assert.ok(v > 980 && v < 1020, `east/south edge ${v}`);
+  assert.ok(s < 25.033964 && n > 25.033964 && w < 121.564468 && e > 121.564468, 'Taipei 101 (the origin) inside');
+  // every vertex of the district outline (OSM relation 2881027) lies in the box, which hugs it within ~50 m
+  const rel = JSON.parse(fs.readFileSync(new URL('../tools/data-taipei/osm_boundary.json', import.meta.url))).elements.find((x) => x.id === 2881027);
+  const pts = rel.members.flatMap((m) => m.geometry || []);
+  assert.ok(pts.length > 100 && pts.every((p) => p.lat >= s && p.lat <= n && p.lon >= w && p.lon <= e), 'district inside the box');
+  const lats = pts.map((p) => p.lat), lons = pts.map((p) => p.lon);
+  for (const [a, b] of [[s, Math.min(...lats)], [n, Math.max(...lats)], [w, Math.min(...lons)], [e, Math.max(...lons)]]) assert.ok(Math.abs(a - b) < 0.0005);
 });
 
 test('theta is the bearing of frame north and origin shifts the frame', () => {

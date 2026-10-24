@@ -8,15 +8,18 @@
 // while the block has room. NOTHING here is mapped: footprints and heights are both inferred, and the output is kept
 // apart from the OSM buildings (GEO.infill) so it can be labelled, highlighted and hidden.
 //
-// infillBuildings({ links, corridors, obstacles, open, bounds, context, seed }) -> [{ outer: [[x, z] x4], top, storeys }]
-//   links      [{ pts: [[x, z], ...], w, median }]  drivable street centre lines & curb-to-curb widths: lots face these;
-//                                           median: the side (0 left, 1 right) facing a dual carriageway's median: no lots
+// infillBuildings({ links, corridors, obstacles, open, bounds, context, large, seed }, opts) -> [{ outer, top, storeys }]
+//   links      [{ pts: [[x, z], ...], w, median, cls }]  drivable street centre lines & curb-to-curb widths: lots face
+//                                           these; median: the side (0 left, 1 right) facing a dual carriageway's median: no
+//                                           lots; cls: the OSM highway class (see opts.skipClasses)
 //   corridors  [{ pts, w }]                 everything lots must stay clear of: streets, walkways, sidewalks, rail
 //   obstacles  [[[x, z], ...], ...]         mapped building rings
 //   open       [[[x, z], ...], ...]         open-ground rings (no buildings inferred inside)
 //   bounds     [x0, z0, x1, z1]             the area's box in world metres
 //   context    [{ x, z, top, area }]        mapped buildings with a height tag or storey count: heights come from the
 //                                           street's own mapped neighbours
+//   large      [{ x, z, r }]                big mapped buildings (towers, malls) as circles: no lots within r + opts.largeClear
+//                                           (in a planned district they stand in plazas, not in rows of shophouses)
 // Lot widths, depths and gaps are defaults (INFILL), not survey data.
 
 export const INFILL = {
@@ -25,6 +28,8 @@ export const INFILL = {
   frontGaps: [0.4, 2.0, 3.6], // m beyond the street's curb (sidewalk / arcade); the nearest that fits is used
   backGap: 1.5, // m between a row and the row behind it (a rear lane / light well)
   rows: 4, // rows per frontage at most
+  skipClasses: [], // OSM highway classes whose frontage gets no lots (e.g. boulevards lined with plazas & setbacks)
+  largeClear: 0, // m kept clear around `large` buildings
   clearance: 0.3, // m kept from corridors, buildings and other lots
   sample: 1.25, // m between test points inside a lot
   contextRadius: 80, // m: mapped neighbours used for a lot's height
@@ -72,7 +77,7 @@ function segDist(x, z, [x0, z0], [x1, z1]) {
 }
 const median = (a) => { const s = a.slice().sort((p, q) => p - q); return s.length ? s[Math.floor(s.length / 2)] : null; };
 
-export function infillBuildings({ links, corridors, obstacles, open, bounds, context, seed = 1 }, opts = {}) {
+export function infillBuildings({ links, corridors, obstacles, open, bounds, context, large = [], seed = 1 }, opts = {}) {
   const o = { ...INFILL, ...opts };
   let s = seed;
   const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
@@ -87,11 +92,15 @@ export function infillBuildings({ links, corridors, obstacles, open, bounds, con
   for (const r of [...obstacles, ...open]) rings.add({ r, bb: bboxOf(r, o.clearance) }, bboxOf(r, o.clearance));
   const lots = bucketIndex();
   const placed = [];
+  const bigs = bucketIndex();
+  for (const b of large) { const r = b.r + o.largeClear; bigs.add({ ...b, r }, [b.x - r, b.z - r, b.x + r, b.z + r]); }
+  const skip = new Set(o.skipClasses);
 
   const free = (x, z) => {
     if (x < bx0 || x > bx1 || z < bz0 || z > bz1) return false;
     for (const g of segs.near(x, z)) if (segDist(x, z, g.a, g.b) < g.r) return false;
     for (const { r, bb } of rings.near(x, z)) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pointInRing(x, z, r)) return false;
+    for (const b of bigs.near(x, z)) if (Math.hypot(x - b.x, z - b.z) < b.r) return false;
     for (const q of lots.near(x, z)) if (pointInRing(x, z, q.grown)) return false;
     return true;
   };
@@ -117,7 +126,8 @@ export function infillBuildings({ links, corridors, obstacles, open, bounds, con
     placed.push(item);
   };
 
-  for (const { pts, w, median = -1 } of links) {
+  for (const { pts, w, median = -1, cls } of links) {
+    if (skip.has(cls)) continue;
     for (const side of [1, -1]) {
       if (median === (side > 0 ? 1 : 0)) continue; // side +1 builds on the right of the line's direction
       for (let i = 0; i + 1 < pts.length; i++) {

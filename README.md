@@ -10,8 +10,9 @@ Fork it, remix it, improve it, break it. Make games, animations, films, experime
 
 ## Taipei port (in progress)
 
-This fork is being retargeted to Taipei. It currently covers a 2 km box around Taipei 101 (Xinyi and around) and a
-1 km box around Lungshan Temple in Wanhua (`index.html?area=wanhua`): open `index.html` over http in a WebGPU
+This fork is being retargeted to Taipei. It currently covers the whole of Xinyi District (信義區, about 11 km² around
+Taipei 101; its south-east hills are drawn flat until terrain data is in) and a 1 km box around Lungshan Temple in
+Wanhua (`index.html?area=wanhua`): open `index.html` over http in a WebGPU
 browser (the original New York simulation is now `nyc.html`). Building footprints come from OpenStreetMap (`tools/build-taipei-geodata.mjs`, `GEO_AREA=wanhua` for the
 second box). **The Wanhua box has large holes:** OSM maps roughly a third of its buildings (about 390 outlines where
 Taipei's 3D city model has over 5,000), so empty blocks there are missing data, not open space. To keep it from
@@ -19,12 +20,15 @@ reading as wasteland, the Wanhua box adds about 3,300 **stand-in buildings** (`t
 along street frontages where OSM maps no building and no open ground, with heights from the mapped neighbours. Their
 footprints and heights are both **inferred, not mapped**; they are kept apart in the data (`GEO.infill`), tinted violet
 with E, and hidden with I. Checked locally against the 3D model, about 14% of them stand where no building does. The
-Xinyi box gets none: its unmapped frontage is mostly real open space.
+Xinyi District gets none: OSM maps most of it, its remaining gaps are scattered, and stand-ins there would mostly
+(55–60%) land on real open ground. Both areas also use **building-permit footprints** from Taipei's open
+building-permit drawings (臺北市建築執照套繪圖, OGDL v1) where OSM maps no building: real outlines with floor counts
+for buildings permitted up to 2018 (newer permits may not be built yet), 88 in Xinyi District and 34 in Wanhua.
 
 **The Taipei skyline is partially estimated.** Where OSM gives a building's `height` or storey count, that is used;
-where it gives neither (52% of buildings in the 2 km Xinyi box, 38% in Wanhua), the height is inferred from building type and
+where it gives neither (53% of buildings in Xinyi District, 38% in Wanhua), the height is inferred from building type and
 footprint area by `estimateHeight()` in `tools/geo-height.mjs`. Its parameters were checked locally against measured
-heights from Taipei's 3D city models (median error about 5 m in the Xinyi box, 8 m in Wanhua); those measured heights are not
+heights from Taipei's 3D city models (median error about 5 m across Xinyi District, 8 m in Wanhua); those measured heights are not
 redistributed here. Estimated buildings are labelled in the data and can be
 highlighted in the viewer (press E). Taipei 101 renders at its real 508 m from OSM's building parts. Streets are
 drawn from the OSM road graph; road widths come from the `width` or `lanes` tags where present and otherwise from a
@@ -51,6 +55,6 @@ the player. At night, which windows are lit and which shops are open is random, 
 hold buttons drive the player, and the viewer lowers its resolution, shadows and traffic to keep the frame rate up.
 Every panel can be minimized (the map-data credit always stays visible).
 
-Geographic data: NYC Open Data and © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); Taipei map data © OpenStreetMap contributors (ODbL).
+Geographic data: NYC Open Data and © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); Taipei map data © OpenStreetMap contributors (ODbL); Taipei building-permit footprints: [臺北市建築執照套繪圖](https://data.gov.tw/dataset/151936), 臺北市建築管理工程處 (Open Government Data License v1.0).
 
 Forked from [mrdoob/slop-newyork](https://github.com/mrdoob/slop-newyork) (MIT). Third-party data and dependencies retain their respective licenses.

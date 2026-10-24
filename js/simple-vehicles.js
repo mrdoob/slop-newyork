@@ -22,7 +22,7 @@ const ROCKET = { thrust: 28, boostThrust: 60, gravity: 9.8, drag: 0.00008, yaw: 
 const CAR = { len: 4.5, wid: 1.86, accel: 9, brake: 18, drag: 0.6, maxSpeed: 22, boostSpeed: 38, reverseSpeed: 7, turn: 0.55 };
 const PLANE = { minSpeed: 18, cruise: 45, maxSpeed: 90, accel: 14, turnRate: 0.9, climbRate: 22, ceiling: 1500 };
 const CELL = 32; // building index cell (m)
-const WORLD_LIMIT = 1500; // keep vehicles over the ground plane (m from the origin)
+const WORLD_LIMIT = 1500; // default for options.worldLimit: keep the player over the ground plane (m from the origin)
 
 // --- Building index: footprint rings bucketed on a grid, for point-in-footprint queries ---------------------------------
 function buildIndex(geo) {
@@ -178,6 +178,7 @@ const GROUND_MODES = new Set(['walk', 'bike', 'car']);
 class SimpleVehicles {
   constructor(scene, geo, options = {}) {
     this.geo = geo;
+    this.limit = options.worldLimit ?? WORLD_LIMIT;
     this.index = buildIndex(geo);
     this.ground = buildGround(geo);
     this.keys = new Set();
@@ -344,7 +345,7 @@ class SimpleVehicles {
   }
 
   _personFits(x, z, r) {
-    if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) return false;
+    if (Math.abs(x) > this.limit || Math.abs(z) > this.limit) return false;
     for (const [ox, oz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) if (this.index.solid(x + ox, z + oz, 0.2, 1.7)) return false;
     return true;
   }
@@ -368,7 +369,7 @@ class SimpleVehicles {
   }
 
   _bikeFits(x, z, h) {
-    if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) return false;
+    if (Math.abs(x) > this.limit || Math.abs(z) > this.limit) return false;
     const s = Math.sin(h), c = Math.cos(h);
     for (const oz of [-BIKE.len / 2, 0, BIKE.len / 2]) {
       for (const ox of [-BIKE.wid / 2, BIKE.wid / 2]) if (this.index.solid(x + ox * c + oz * s, z - ox * s + oz * c, 0.2, 1.7)) return false;
@@ -414,7 +415,7 @@ class SimpleVehicles {
   }
 
   _carFits(x, z, h) {
-    if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) return false;
+    if (Math.abs(x) > this.limit || Math.abs(z) > this.limit) return false;
     const s = Math.sin(h), c = Math.cos(h);
     for (const [ox, oz] of [[-CAR.wid / 2, -CAR.len / 2], [CAR.wid / 2, -CAR.len / 2], [-CAR.wid / 2, CAR.len / 2], [CAR.wid / 2, CAR.len / 2], [0, -CAR.len / 2]]) {
       const px = x + ox * c + oz * s, pz = z - ox * s + oz * c;
@@ -435,7 +436,7 @@ class SimpleVehicles {
     const nx = p.x - Math.sin(p.heading) * p.speed * dt;
     const nz = p.z - Math.cos(p.heading) * p.speed * dt;
     const ny = Math.min(PLANE.ceiling, Math.max(4, p.y + vy * dt));
-    if (Math.abs(nx) < WORLD_LIMIT && Math.abs(nz) < WORLD_LIMIT && !this.index.solid(nx, nz, ny - 2, ny + 2)) {
+    if (Math.abs(nx) < this.limit && Math.abs(nz) < this.limit && !this.index.solid(nx, nz, ny - 2, ny + 2)) {
       p.x = nx;
       p.z = nz;
       p.y = ny;
@@ -458,7 +459,7 @@ class SimpleVehicles {
     u.vy += (ty - u.vy) * Math.min(1, dt * 3);
     const nx = u.x + u.vx * dt, nz = u.z + u.vz * dt;
     const ny = Math.min(UFO.ceiling, Math.max(2.5, u.y + u.vy * dt));
-    const clear = (x, y, z) => Math.abs(x) < WORLD_LIMIT && Math.abs(z) < WORLD_LIMIT &&
+    const clear = (x, y, z) => Math.abs(x) < this.limit && Math.abs(z) < this.limit &&
       [[0, 0], [UFO.radius, 0], [-UFO.radius, 0], [0, UFO.radius], [0, -UFO.radius]].every(([ox, oz]) => !this.index.solid(x + ox, z + oz, y - 1.4, y + 2));
     if (clear(nx, u.y, nz)) { u.x = nx; u.z = nz; } else { u.vx *= -0.3; u.vz *= -0.3; }
     if (clear(u.x, ny, u.z)) u.y = ny; else u.vy = 0;
@@ -511,7 +512,7 @@ class SimpleVehicles {
       r.vz *= 0.9;
     }
     ny = Math.min(ROCKET.ceiling, ny);
-    if (Math.abs(nx) > WORLD_LIMIT * 6 || Math.abs(nz) > WORLD_LIMIT * 6 || this.index.solid(nx, nz, ny, ny + 4)) { r.crashed = 2; return; }
+    if (Math.abs(nx) > this.limit * 6 || Math.abs(nz) > this.limit * 6 || this.index.solid(nx, nz, ny, ny + 4)) { r.crashed = 2; return; }
     r.x = nx; r.y = ny; r.z = nz;
     // smoke from the nozzle while the engine burns
     r.puff -= Math.max(dt / 0.035, (Math.hypot(r.vx, r.vy, r.vz) * dt) / 1.8); // every 35 ms or 1.8 m, whichever comes first

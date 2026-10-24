@@ -72,6 +72,17 @@ class TimeOfDay {
     this._apply(s);
   }
 
+  // Keep the sun's shadow camera over (x, z) (the camera's focus): snapped to a 16 m grid so the shadow map doesn't
+  // shimmer as the focus moves
+  follow(x, z) {
+    const { sun, target, distance } = this.parts;
+    const sx = Math.round(x / 16) * 16, sz = Math.round(z / 16) * 16;
+    if (sx === target.x && sz === target.z) return;
+    target.set(sx, 0, sz);
+    sun.position.copy(target).addScaledVector(this._current.sunDir, distance);
+    sun.target.position.copy(target);
+  }
+
   _snapshot(p) {
     return {
       sunDir: new THREE.Vector3(...p.sunDir).normalize(),

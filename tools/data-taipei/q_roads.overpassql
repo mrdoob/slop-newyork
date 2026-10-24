@@ -1,3 +1,5 @@
-[out:json][timeout:120];
-( way["highway"](25.0249,121.5546,25.0430,121.5744); );
+[out:json][timeout:300];
+// Xinyi District (信義區, OSM relation 2881027; area id = 3600000000 + relation id)
+area(id:3602881027)->.d;
+( way["highway"](area.d); );
 out geom;

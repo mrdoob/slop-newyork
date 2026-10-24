@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { toWorld, BOX, LANDMARKS, AREA, AREA_NAME, load, log } from './geo-taipei-base.mjs';
-import { buildingHeight } from './geo-height.mjs';
+import { buildingHeight, estimateHeight, LEVEL_M } from './geo-height.mjs';
 import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
 import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgraph.mjs';
 import { fitRoadWidths, inferSidewalks, sidewalkFootways, medianSides } from './geo-sidewalks.mjs';
@@ -34,6 +34,24 @@ function pointInRing(x, z, r) {
     if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
   }
   return inside;
+}
+// Point-in-any-ring test over many rings, bucketed on a grid by bounding box (a whole district has ~9,000 footprints)
+function ringIndex(rings, cell = 25) {
+  const cells = new Map();
+  for (const r of rings) {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const [x, z] of r) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+    const item = { r, x0, z0, x1, z1 };
+    for (let i = Math.floor(x0 / cell); i <= Math.floor(x1 / cell); i++) {
+      for (let j = Math.floor(z0 / cell); j <= Math.floor(z1 / cell); j++) {
+        const k = `${i},${j}`;
+        if (!cells.has(k)) cells.set(k, []);
+        cells.get(k).push(item);
+      }
+    }
+  }
+  return (x, z) => (cells.get(`${Math.floor(x / cell)},${Math.floor(z / cell)}`) || [])
+    .some((b) => x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && pointInRing(x, z, b.r));
 }
 // Area-weighted centroid (falls back to the vertex mean for degenerate rings)
 function centroid(r) {
@@ -84,6 +102,16 @@ function polygons(e) {
   return outers.map((o) => [o, inners.filter((h) => pointInRing(...h[0], o))]);
 }
 
+// --- District outline (areas defined by an administrative boundary) ---------------------------------------------------
+const boundary = [];
+if (AREA.boundary) {
+  const rel = load('osm_boundary.json').elements.find((e) => e.type === 'relation' && e.id === AREA.boundary);
+  if (!rel) throw new Error(`boundary relation ${AREA.boundary} not in osm_boundary.json`);
+  for (const [outer] of polygons(rel)) boundary.push(outer);
+  log(`boundary: relation ${AREA.boundary}, ${boundary.length} ring(s), ${Math.round(boundary.reduce((t, r) => t + Math.abs(ringArea(r)), 0) / 1e4) / 100} km²`);
+}
+const inBoundary = (x, z) => !boundary.length || boundary.some((r) => pointInRing(x, z, r));
+
 // --- Collect outlines and parts --------------------------------------------------------------------------------------
 const osm = load('osm_buildings.json');
 const outlines = [];
@@ -115,7 +143,8 @@ for (const o of outlines) {
 log(`${outlines.length} outlines (${replaced} modelled by parts), ${parts.length} parts; skipped ${underground} underground, ${broken} without geometry`);
 
 // --- Heights ---------------------------------------------------------------------------------------------------------
-const SOURCES = ['height', 'levels', 'estimate'];
+// 'permit': floors from Taipei's building-permit drawings (footprint and floor count both from the permit, not OSM)
+const SOURCES = ['height', 'levels', 'estimate', 'permit'];
 const kinds = [];
 const kindId = (k) => (kinds.includes(k) ? kinds.indexOf(k) : kinds.push(k) - 1);
 const buildings = [];
@@ -135,6 +164,51 @@ for (const o of outlines) {
   if (!o.parts.length) emit(o, null);
 }
 for (const p of parts) emit(p, outlines.find((o) => o.parts.includes(p)) || null);
+
+// --- Building-permit footprints where OSM maps no building (permits.json, tools/extract-permits.mjs) -----------------------
+// 臺北市建築執照套繪圖 (Taipei building-permit drawings, OGDL v1): real footprints of buildings permitted since ~2001, with
+// floor counts. Used only where no OSM building stands (OSM stays the base), only for permits issued by PERMIT_MAX_YEAR
+// (newer ones may not be built yet; the cut-off is checked locally against measured buildings, validate-heights.mjs), and
+// newest first where amendments of one permit overlap. Height = floors × LEVEL_M, source 'permit'; no floor count: an
+// estimate, labelled so.
+// Checked against measured buildings (Xinyi District, local): permits up to 2018 have a building standing in 76–77% of
+// cases, 2019–22 in 49%, 2023 on ~20% (or still the old, lower building being replaced)
+const PERMIT_MAX_YEAR = 2018;
+const PERMIT_MIN_AREA = 15; // m²: pavilions, lift shafts and kiosks below this are left out
+const permitStats = { used: 0, overOsm: 0, tooNew: 0, small: 0, outside: 0, duplicate: 0 };
+if (AREA.permits) {
+  const file = load('permits.json');
+  const osmGround = ringIndex(buildings.filter((x) => x.h.base < 1).map((x) => x.b.outer));
+  const osmCentres = buildings.filter((x) => x.h.base < 1).map((x) => x.b.c || centroid(x.b.outer));
+  const accepted = [];
+  const feats = file.features.slice().sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+  feats.forEach((f, i) => {
+    const rings = f.rings.map((r) => openRing(r.map(([lon, lat]) => toWorld(lon, lat)))).filter(Boolean);
+    if (!rings.length) return;
+    rings.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)));
+    const outer = rings[0], c = centroid(outer);
+    const holes = rings.slice(1).filter((h) => h.length >= 3 && Math.abs(ringArea(h)) >= 1 && pointInRing(...centroid(h), outer));
+    const area = Math.abs(ringArea(outer)) - holes.reduce((t, h) => t + Math.abs(ringArea(h)), 0);
+    if (!inBoundary(...c)) { permitStats.outside++; return; }
+    if (f.year && f.year > PERMIT_MAX_YEAR) { permitStats.tooNew++; return; }
+    if (area < PERMIT_MIN_AREA) { permitStats.small++; return; }
+    // over an OSM building: its centre, or most of its outline, inside one; or an OSM building's centre inside it
+    const samples = [c, ...outer.filter((_, k) => k % Math.max(1, Math.floor(outer.length / 12)) === 0)];
+    const inside = samples.filter(([x, z]) => osmGround(x, z)).length;
+    if (osmGround(...c) || inside / samples.length > 0.3 || osmCentres.some(([x, z]) => Math.abs(x - c[0]) < 80 && Math.abs(z - c[1]) < 80 && pointInRing(x, z, outer))) {
+      permitStats.overOsm++;
+      return;
+    }
+    if (accepted.some((r) => pointInRing(...c, r) || pointInRing(...centroid(r), outer))) { permitStats.duplicate++; return; }
+    accepted.push(outer);
+    permitStats.used++;
+    const b = { id: `p${i}`, tags: {}, outer, holes, area, kind: 'yes', c };
+    const h = f.floors > 0 ? { top: f.floors * LEVEL_M, base: 0, source: 'permit' } : { top: estimateHeight('yes', area), base: 0, source: 'estimate' };
+    buildings.push({ b, h, colour: 0, roof: roofOf({}, area, h.top, 0), facade: facadeOf({}, 'yes', h.top, 0) });
+  });
+  log(`permit footprints (${file.source}, OGDL v1): ${permitStats.used} added where OSM has none; skipped ${permitStats.overOsm} over OSM buildings, ` +
+    `${permitStats.tooNew} permitted after ${PERMIT_MAX_YEAR}, ${permitStats.duplicate} overlapping amendments, ${permitStats.small} < ${PERMIT_MIN_AREA} m², ${permitStats.outside} outside the area`);
+}
 
 // --- Landmarks: the rendered top must match the known height ---------------------------------------------------------
 const landmarks = {};
@@ -179,7 +253,8 @@ const signalIds = new Set(street.filter((e) => e.type === 'node' && e.tags && (e
 const { roadGraph, paths } = buildOsmRoadGraph(load('osm_roads.json').elements, toWorld, log, { signalIds });
 // Road widths checked against mapped sidewalks, then sidewalks along kerbs that have none mapped
 const groundRings = buildings.filter((x) => x.h.base < 1).map((x) => x.b.outer);
-const fit = fitRoadWidths(roadGraph, paths, PATH_KINDS, (x, z) => groundRings.some((r) => pointInRing(x, z, r)));
+const inGround = ringIndex(groundRings);
+const fit = fitRoadWidths(roadGraph, paths, PATH_KINDS, inGround);
 const PATH_SOURCES = ['mapped', 'tagged', 'inferred'];
 for (const p of paths) p.push(0);
 const promoted = sidewalkFootways(roadGraph, paths, PATH_KINDS);
@@ -189,6 +264,7 @@ for (const [line, w, source] of inferred) paths.push([PATH_KINDS.indexOf('sidewa
 log(`${promoted.length} mapped footways along kerbs drawn as sidewalks; ${inferred.corners} sidewalk corners`);
 log(`road widths fitted to mapped sidewalks: ${fit.widened} widened, ${fit.narrowed} narrowed; sidewalks: ${PATH_SOURCES.map((s, i) => `${paths.filter((p) => PATH_KINDS[p[0]] === 'sidewalk' && p[5] === i).length} ${s}`).join(', ')}`);
 const widthSource = roadGraph.widthSource;
+const linkClass = roadGraph.highway; // OSM highway class per link (stand-in rules use it)
 delete roadGraph.highway;
 delete roadGraph.sidewalk;
 delete roadGraph.sidewalkWidth;
@@ -213,7 +289,7 @@ const TREE_SOURCES = ['osm tree', `tree row (every ${7} m)`, `wooded area (every
 const TREE_ROW_M = 7;
 const WOOD_M = 9;
 const groundFootprints = buildings.filter((x) => x.h.base < 1).map((x) => x.b.outer);
-const inBuilding = (x, z) => groundFootprints.some((r) => pointInRing(x, z, r));
+const inBuilding = ringIndex(groundFootprints);
 const hash = (x, z, k) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
 const trees = [];
 const plant = (x, z, source, h) => { if (!inBuilding(x, z)) trees.push([q(x), q(z), source, h ? q(h) : 0]); };
@@ -250,7 +326,7 @@ log(`${green.length} green areas; ${trees.length} trees: ${TREE_SOURCES.map((s, 
 const unflat = (a) => { const r = []; for (let i = 0; i < a.length; i += 2) r.push([a[i], a[i + 1]]); return r; };
 const node = (i) => [roadGraph.nodes[2 * i], roadGraph.nodes[2 * i + 1]];
 const medians = medianSides(roadGraph);
-const streetLines = roadGraph.links.map(([a, b, , w, , , inner], i) => ({ pts: [node(a), ...unflat(inner), node(b)], w, median: medians[i] }));
+const streetLines = roadGraph.links.map(([a, b, , w, , , inner], i) => ({ pts: [node(a), ...unflat(inner), node(b)], w, median: medians[i], cls: linkClass[i] }));
 const openRings = [], railLines = [];
 for (const e of load('osm_open.json').elements) {
   const t = e.tags || {};
@@ -276,20 +352,26 @@ for (const e of load('osm_roads.json').elements) {
   if (e.type !== 'way' || !e.geometry || !t.highway || t.tunnel || t.indoor || parseFloat(t.layer) < 0 || parseFloat(t.layer) > 0 || t.bridge || /^-/.test(t.level || '')) continue;
   rawWays.push({ pts: e.geometry.map((g) => toWorld(g.lon, g.lat)), w: parseFloat(t.width) || 2 });
 }
-const infill = !AREA.infill ? [] : infillBuildings({
+// AREA.infill: true, or the stand-in rules for the area (geo-infill.mjs INFILL options); GEO_INFILL (JSON) overrides
+// them for local experiments against measured buildings
+const infillOpts = process.env.GEO_INFILL ? JSON.parse(process.env.GEO_INFILL) : AREA.infill;
+const LARGE_M2 = 2500; // m²: footprints this big are 'large' for the stand-in rules
+const permitBuildings = buildings.filter((x) => x.b.id.startsWith('p')).map((x) => x.b);
+const infill = !infillOpts ? [] : infillBuildings({
   links: streetLines,
   corridors: [...streetLines, ...paths.filter((p) => !(p[2] > 0)).map((p) => ({ pts: p[3], w: Math.max(1, p[1]) })), ...railLines, ...rawWays],
-  obstacles: [...outlines, ...parts].map((x) => x.outer),
+  obstacles: [...outlines, ...parts, ...permitBuildings].map((x) => x.outer),
+  large: [...outlines, ...permitBuildings].filter((x) => x.area > LARGE_M2).map((x) => ({ x: x.c[0], z: x.c[1], r: Math.sqrt(x.area / Math.PI) })),
   open: [...openRings, ...green.map((g) => g.outer)],
   bounds: [bx0, bz0, bx1, bz1],
   context: buildings.filter((x) => x.h.source !== 'estimate' && x.h.base < 1 && !x.b.id.includes('_')).map((x) => ({ x: x.b.c[0], z: x.b.c[1], top: x.h.top, area: x.b.area }))
-});
-if (AREA.infill) log(`stand-in buildings (inferred, not mapped): ${infill.length} lots, ${infill.filter((b) => b.context).length} with heights from ≥ 3 mapped neighbours, ` +
+}, infillOpts === true ? {} : infillOpts).filter((b) => inBoundary(...b.outer[0]) && inBoundary(...b.outer[2])); // inside the district
+if (infillOpts) log(`stand-in buildings (inferred, not mapped): ${infill.length} lots, ${infill.filter((b) => b.context).length} with heights from ≥ 3 mapped neighbours, ` +
   `${Math.min(...infill.map((b) => b.storeys))}–${Math.max(...infill.map((b) => b.storeys))} storeys; ${openRings.length} open-ground areas kept clear`);
 
 // --- Street furniture -------------------------------------------------------------------------------------------------
 const solidRings = [...groundRings, ...infill.map((b) => b.outer)];
-const solid = (x, z) => solidRings.some((r) => pointInRing(x, z, r));
+const solid = ringIndex(solidRings);
 const builtFurniture = buildFurniture(load('osm_furniture.json').elements, toWorld, roadGraph, solid);
 
 // --- Off the drawn carriageways (tools/geo-kerb.mjs) -------------------------------------------------------------------
@@ -327,7 +409,7 @@ const GEO = {
   version: 1,
   city: 'taipei',
   area: AREA_NAME,
-  frame: { lat0: AREA.lat0, lon0: AREA.lon0, bearingDeg: 0, origin: AREA.origin, units: 'm', box: BOX },
+  frame: { lat0: AREA.lat0, lon0: AREA.lon0, bearingDeg: 0, origin: AREA.origin, units: 'm', box: BOX, boundary: boundary.map(flat) },
   // Height sources, indexed by a building's `source` field. 'estimate' means inferred by tools/geo-height.mjs
   // estimateHeight() from building type and footprint area: NOT measured data.
   heightSources: SOURCES,
@@ -344,7 +426,7 @@ const GEO = {
   // Stand-in buildings: rows of lots along street frontages where OSM maps no building and no open ground
   // (tools/geo-infill.mjs). Footprint AND height are inferred (height: the median of mapped neighbours' heights,
   // ±1 storey), NOT mapped data; same row shape as `buildings` (source 'estimate', kind 'infill'), ids 'i<n>'.
-  infillNote: !AREA.infill ? 'none: stand-ins are off for this area' : `inferred stand-ins, not OSM buildings: lots ${INFILL.lotWidth.join('–')} m wide facing streets with no mapped building`,
+  infillNote: !infillOpts ? 'none: stand-ins are off for this area' : `inferred stand-ins, not OSM buildings: lots ${INFILL.lotWidth.join('–')} m wide facing streets with no mapped building`,
   infill: infill.map((b, i) => [`i${i}`, flat(b.outer), [], q(b.top), 0, SOURCES.indexOf('estimate'), kindId('infill'), 0, 0, 0, 0, FACADES.indexOf('punched'), 1]),
   // Street centreline graph of the drivable roads (tools/geo-osm-roadgraph.mjs; same shape as NYC's GEO.roadGraph):
   // nodes [x, z, ...], links [node a, node b, name index, curb-to-curb width, travel lanes, direction (1: a -> b,
@@ -379,8 +461,11 @@ const json = JSON.stringify(GEO);
 const header = `// js/${AREA.out} — GENERATED by tools/build-taipei-geodata.mjs (GEO_AREA=${AREA_NAME}), do not edit by hand.
 // Taipei geography in the simulation's world frame: 1 unit = 1 m, x = east, z = south, origin at ${AREA.origin}.
 // Polygons are flat [x0, z0, x1, z1, ...] arrays.
-// Building footprints, tagged heights, roads, signals, trees, green areas & street furniture © OpenStreetMap contributors (ODbL). Heights with source 'estimate'
-// (${count.estimate} of ${buildings.length}) are inferred from building type and footprint area, not measured.
+// Building footprints, tagged heights, roads, signals, trees, green areas & street furniture © OpenStreetMap contributors (ODbL).
+// Building footprints with ids p<n> and height source 'permit': 臺北市建築執照套繪圖, 臺北市建築管理工程處 (Taipei City
+// building-permit drawings, Open Government Data License v1.0, https://data.gov.tw/dataset/151936).
+// Heights with source 'estimate' (${count.estimate} of ${buildings.length}) are inferred from building type and footprint
+// area, not measured.
 `;
 fs.writeFileSync(OUT, `${header}export const GEO = ${json};\n`);
 log(`wrote ${OUT} (${(fs.statSync(OUT).size / 1024).toFixed(0)} KB)`);

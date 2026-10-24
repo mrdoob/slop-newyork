@@ -174,14 +174,19 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     assert.equal(result.status, 0, result.stderr + result.stdout);
     const { GEO } = await import(pathToFileURL(out).href);
     assert.equal(GEO.city, 'taipei');
-    assert.deepEqual(GEO.heightSources, ['height', 'levels', 'estimate']);
+    assert.deepEqual(GEO.heightSources, ['height', 'levels', 'estimate', 'permit']);
+    // The whole district: its outline, and buildings across it
+    assert.ok(GEO.frame.boundary.length === 1 && GEO.frame.boundary[0].length > 100, 'district outline');
+    // Building-permit footprints (ids p<n>) only where no OSM building stands, with a floor-count height
     assert.equal(GEO.landmarks['Taipei 101'].top, 508);
     assert.ok(Math.hypot(GEO.landmarks['Taipei 101'].x, GEO.landmarks['Taipei 101'].z) < 60, 'Taipei 101 sits at the origin');
-    assert.ok(GEO.buildings.length > 800, `${GEO.buildings.length} buildings`);
+    assert.ok(GEO.buildings.length > 8000, `${GEO.buildings.length} buildings`);
+    const permits = GEO.buildings.filter((b) => b[0].startsWith('p'));
+    assert.ok(permits.length > 50 && permits.every((b) => ['permit', 'estimate'].includes(GEO.heightSources[b[5]])), `${permits.length} permit footprints`);
     const tops = [];
     for (const [id, outer, holes, top, base, source, kind, , roof, roofH, , facade] of GEO.buildings) {
       assert.ok(roof >= 0 && roof < GEO.roofShapes.length && roofH >= 0 && roofH <= top - base && facade >= 0 && facade < GEO.facades.length, id);
-      assert.match(id, /^[wr]\d+(_(base|m\d+))?$/); // OSM id, or a landmark shape piece of one
+      assert.match(id, /^([wr]\d+(_(base|m\d+))?|p\d+)$/); // OSM id, a landmark shape piece of one, or a permit footprint
       assert.ok(outer.length >= 6 && outer.length % 2 === 0, id);
       assert.ok(Array.isArray(holes), id);
       assert.ok(top > base && base >= 0, `${id}: ${base}..${top}`);

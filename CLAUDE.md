@@ -15,8 +15,8 @@ Smoke test for whole pipeline on city's best-mapped area (Xinyi). Bad here where
 data best → worse everywhere; good → expanding = bigger bbox. Don't widen area
 until 1 km render passes criteria below.
 
-**Expanded (owner's call) to a 2 km box** (S,W,N,E) `25.0249, 121.5546, 25.0430, 121.5744` (±1 km of 101; `BOX` in
-`tools/geo-taipei-base.mjs`, same bounds in every `q_*.overpassql`). At 2 km, 52% of heights are estimates (17% in the
+**Expanded (owner's call) to the whole of Xinyi District** (earlier: a 2 km box `25.0249, 121.5546, 25.0430, 121.5744`;
+`BOX` in `tools/geo-taipei-base.mjs` is now the district's bbox, queries select the district area). At 2 km, 52% of heights are estimates (17% in the
 1 km core); SE corner is the foot of Elephant Mountain — ground is flat (no terrain yet).
 Original 1 km test box (S,W,N,E): `25.029, 121.559, 25.039, 121.570`. NOTE: box computed
 by hand from origin, not verified — paste buildings query into overpass-turbo.eu,
@@ -214,6 +214,16 @@ mode names mapped walk/bike→cyclist, plane→helicopter). Panels: `js/hud-pane
 Full map pinch-zooms.
 UFO (6) & rocket (7): models in `js/sky-craft.js` (saucer + beam, rocket + flame, launch pad, smoke pool), flight in
 simple-vehicles (`_flyUfo` hover/strafe-free, `_flyRocket` thrust + gravity, crash -> back to pad). Pure game props.
+Whole Xinyi District (owner's call): `xinyi` area = district (OSM relation 2881027; q_*.overpassql select `area(id:3602881027)`,
+BOX = its bbox, GEO.frame.boundary = outline, drawn on the map). 8,679 buildings, 3,885 links; build ~8 s (point-in-
+building tests via `ringIndex` — were 103 s). Local check: 18,049 measured buildings ≥ 4 m in the district, 5,585 (31%)
+without an OSM footprint, scattered (most of the bbox's 16k gaps are in Da'an / Songshan / Nangang outside it);
+estimates 5.0 m median error (1.11×). Stand-ins tried with skipClasses / largeClear / rows: 54–60% of lots on open
+ground → Xinyi infill stays off. Permit footprints (`tools/extract-permits.mjs` → `permits.json`, OGDL v1, committed;
+`geo-twd97.mjs` TWD97→WGS84): only where no OSM building, permits ≤ 2018 (measured: ≤2018 76–77% built, 2019–22 49%,
+2023+ ~20%), height source 'permit' (floors × 3.2; ~0.75× measured, like OSM levels). Viewer: worldLimit from box,
+fog / camera scale with area, shadow square ±1 km follows the camera focus (TimeOfDay.follow), traffic capped
+(560 cars / 760 people desktop), overlay z16 for big areas, furniture in 400 m tiles culled by distance per kind.
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments
