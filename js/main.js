@@ -18,7 +18,8 @@ import { WEATHER_SAMPLES, weatherLabel } from './world/weather.js';
 import { CityMapSystem } from './ui/city-map.js';
 import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js';
 import { CityAudioSystem } from './audio/audio-system.js';
-import { buildTerrain, hillGround } from './world/terrain.js';
+import { buildTerrain } from './world/terrain.js';
+import { groundHeight } from './world/ground.js';
 import { buildTepicLandmarks } from './world/tepic-landmarks.js';
 
 // js/main.js
@@ -107,10 +108,11 @@ async function initApp() {
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
-  controllerManager.setTerrain(hillGround);
-  trafficSystem.setHillQuery(hillGround);
+  // The ground (ground.js): the hills over the flat city, and the town's own slopes under them with ?slopes=1
+  controllerManager.setTerrain(groundHeight);
+  trafficSystem.setHillQuery(groundHeight);
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
-  const solidAt = (x, z) => controllerManager.isSolidAt(x, z, 1.5, hillGround(x, z));
+  const solidAt = (x, z) => controllerManager.isSolidAt(x, z, 1.5, groundHeight(x, z));
   trafficSystem.setSolidQuery(solidAt);
   streetDetails.breaker?.setSolidQuery(solidAt);
   // Saved positions belong to one city's frame: the key carries the city's name
@@ -151,7 +153,7 @@ async function initApp() {
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
-  cameraSystem.setGroundQuery(hillGround); // the chase cameras stay over the hills
+  cameraSystem.setGroundQuery(groundHeight); // the chase cameras stay over the ground
   // The scenic cameras frame the city's own spots (see cameras.js)
   const T = TELEPORT_LOCATIONS;
   cameraSystem.setScenicAnchors({

@@ -608,18 +608,19 @@ const signs = [];
 // =====================================================================================================================
 // 5D. TERRAIN: the hills around the valley (Cerro de San Juan, Cerro de la Cruz, the lomas) from the Terrarium elevation
 //     tiles (tools/data/tepic/fetch-terrain.sh). The city itself stays flat: the valley floor's slow tilt (a wide blur
-//     of the elevation under the streets & blocks) is taken off, and what rises above it fades in away from them
+//     of the elevation under the streets & blocks) is taken off, and what rises above it fades in away from them.
+//     That tilt is kept apart as `ground`, the town's own slopes, for ?slopes=1 (js/world/ground.js)
 // =====================================================================================================================
-const terrain = (() => {
+const { ground = null, ...terrainGrid } = (() => {
   const dir = path.join(DATA, 'terrain');
-  if (!fs.existsSync(dir)) return null;
+  if (!fs.existsSync(dir)) return {};
   const Z = 12, N = 2 ** Z;
   const tiles = new Map();
   for (const f of fs.readdirSync(dir)) {
     const m = /^12_(\d+)_(\d+)\.png$/.exec(f);
     if (m) tiles.set(`${m[1]}_${m[2]}`, decodePNG(fs.readFileSync(path.join(dir, f)), zlib.inflateSync));
   }
-  if (!tiles.size) return null;
+  if (!tiles.size) return {};
   const pixel = (gx, gy) => {
     const t = tiles.get(`${Math.floor(gx / 256)}_${Math.floor(gy / 256)}`);
     if (!t) return NaN;
@@ -679,24 +680,24 @@ const terrain = (() => {
   let sum = 0, cnt = 0;
   for (const e of E) if (Number.isFinite(e)) { sum += e; cnt++; }
   for (let k = 0; k < E.length; k++) if (!Number.isFinite(E[k])) E[k] = sum / cnt;
-  // separable box blur (3 passes ~ a Gaussian of sigma ~ r)
-  const blur = (src, r) => {
+  // separable box blur (3 passes ~ a Gaussian of sigma ~ r cells) over a w x h grid, the hills' by default
+  const blur = (src, r, w = TW, h = TH) => {
     let a = Float32Array.from(src), b = new Float32Array(src.length);
     for (let pass = 0; pass < 3; pass++) {
-      for (let j = 0; j < TH; j++) {
+      for (let j = 0; j < h; j++) {
         let acc = 0;
-        for (let i = -r; i <= r; i++) acc += a[j * TW + Math.min(TW - 1, Math.max(0, i))];
-        for (let i = 0; i < TW; i++) {
-          b[j * TW + i] = acc / (2 * r + 1);
-          acc += a[j * TW + Math.min(TW - 1, i + r + 1)] - a[j * TW + Math.max(0, i - r)];
+        for (let i = -r; i <= r; i++) acc += a[j * w + Math.min(w - 1, Math.max(0, i))];
+        for (let i = 0; i < w; i++) {
+          b[j * w + i] = acc / (2 * r + 1);
+          acc += a[j * w + Math.min(w - 1, i + r + 1)] - a[j * w + Math.max(0, i - r)];
         }
       }
-      for (let i = 0; i < TW; i++) {
+      for (let i = 0; i < w; i++) {
         let acc = 0;
-        for (let j = -r; j <= r; j++) acc += b[Math.min(TH - 1, Math.max(0, j)) * TW + i];
-        for (let j = 0; j < TH; j++) {
-          a[j * TW + i] = acc / (2 * r + 1);
-          acc += b[Math.min(TH - 1, j + r + 1) * TW + i] - b[Math.max(0, j - r) * TW + i];
+        for (let j = -r; j <= r; j++) acc += b[Math.min(h - 1, Math.max(0, j)) * w + i];
+        for (let j = 0; j < h; j++) {
+          a[j * w + i] = acc / (2 * r + 1);
+          acc += b[Math.min(h - 1, j + r + 1) * w + i] - b[Math.max(0, j - r) * w + i];
         }
       }
     }
@@ -746,6 +747,75 @@ const terrain = (() => {
     out[k] = Math.round(Math.min(3200, h) * 10);
     if (h > peak) peak = h;
   }
+  // The ground under the town (js/world/ground.js, ?slopes=1): the city's own elevation on a finer grid than the
+  // hills', blurred over ~110 m. SRTM measures roofs & treetops, and what's wanted is a street's grade, not each house.
+  // Like the hills' floor it is the built-up cells' elevation only (a normalised blur), so a hill beside a street
+  // doesn't lift it, and away from the city it eases to the city's mean, the floor the hills stand on now.
+  // Heights are over the datum, the lowest point of the town (built-up cells in BOX), so its ground is never under y = 0
+  const GCELL = 25, GMARGIN = 1200;
+  // over the detailed city (BOX) and a margin for the roads leaving it
+  const GX0 = Math.floor((BOX.x0 - GMARGIN) / GCELL) * GCELL, GZ0 = Math.floor((BOX.z0 - GMARGIN) / GCELL) * GCELL;
+  const GW = Math.ceil((BOX.x1 + GMARGIN - GX0) / GCELL) + 1, GH = Math.ceil((BOX.z1 + GMARGIN - GZ0) / GCELL) + 1;
+  // a field of the hills' grid at (x, z), bilinear
+  const coarse = (arr, x, z) => {
+    const fx = Math.min(TW - 1.001, Math.max(0, (x - TX0) / CELL)), fz = Math.min(TH - 1.001, Math.max(0, (z - TZ0) / CELL));
+    const i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j, k = j * TW + i;
+    return (arr[k] * (1 - tx) + arr[k + 1] * tx) * (1 - tz) + (arr[k + TW] * (1 - tx) + arr[k + TW + 1] * tx) * tz;
+  };
+  const GE = new Float32Array(GW * GH), GU = new Float32Array(GW * GH), GD = new Float32Array(GW * GH);
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const k = j * GW + i, x = GX0 + i * GCELL, z = GZ0 + j * GCELL;
+    const e = elevation(...toLonLat(x, z));
+    GE[k] = Number.isFinite(e) ? e : coarse(E, x, z);
+    GU[k] = coarse(U, x, z);
+    GD[k] = coarse(D, x, z);
+  }
+  const GEU = GE.map((e, k) => e * GU[k]);
+  const gNear = [blur(GEU, 4, GW, GH), blur(GU, 4, GW, GH)];
+  const gFar = [blur(GEU, 20, GW, GH), blur(GU, 20, GW, GH)];
+  const GF = new Float32Array(GW * GH);
+  let datum = Infinity, datumK = 0;
+  for (let k = 0; k < GF.length; k++) {
+    const wN = gNear[1][k], wF = gFar[1][k];
+    const f = wN > 0.05 ? gNear[0][k] / wN : wF > 0.01 ? gFar[0][k] / wF : floorMean;
+    GF[k] = f + (floorMean - f) * smooth(300, GMARGIN, GD[k]);
+    if (GU[k] >= 0.5 && GF[k] < datum && inBox(GX0 + (k % GW) * GCELL, GZ0 + Math.floor(k / GW) * GCELL)) { datum = GF[k]; datumK = k; }
+  }
+  datum = Math.round(datum * 10) / 10;
+  const groundOut = new Int16Array(GW * GH);
+  for (let k = 0; k < GF.length; k++) groundOut[k] = Math.round((GF[k] - datum) * 10);
+  const gAt = (x, z) => {
+    const fx = (x - GX0) / GCELL, fz = (z - GZ0) / GCELL;
+    const i = Math.min(GW - 2, Math.max(0, Math.floor(fx))), j = Math.min(GH - 2, Math.max(0, Math.floor(fz)));
+    const tx = fx - i, tz = fz - j, k = j * GW + i;
+    return ((groundOut[k] * (1 - tx) + groundOut[k + 1] * tx) * (1 - tz) + (groundOut[k + GW] * (1 - tx) + groundOut[k + GW + 1] * tx) * tz) / 10;
+  };
+  {
+    // the grades the town's streets get: drivable ways, sampled every 10 m, in the built-up city
+    const grades = [];
+    let top = 0;
+    for (const w of ways) {
+      if (!DRIVE.has(w.tags.highway)) continue;
+      const pts = w.geometry.map((g) => toWorld(g.lon, g.lat));
+      for (let i = 1; i < pts.length; i++) {
+        const [ax, az] = pts[i - 1], [bx, bz] = pts[i];
+        const len = Math.hypot(bx - ax, bz - az);
+        for (let s = 0; s + 10 <= len; s += 10) {
+          const x0 = ax + (bx - ax) * s / len, z0 = az + (bz - az) * s / len;
+          const x1 = ax + (bx - ax) * (s + 10) / len, z1 = az + (bz - az) * (s + 10) / len;
+          if (coarse(U, x0, z0) < 0.5 || !inBox(x0, z0)) continue;
+          grades.push(Math.abs(gAt(x1, z1) - gAt(x0, z0)) / 10);
+          top = Math.max(top, gAt(x0, z0));
+        }
+      }
+    }
+    grades.sort((a, b) => a - b);
+    const pc = (q) => (grades[Math.floor(q * (grades.length - 1))] * 100).toFixed(1);
+    const [dLon, dLat] = toLonLat(GX0 + (datumK % GW) * GCELL, GZ0 + Math.floor(datumK / GW) * GCELL);
+    log(`ground: ${GW} x ${GH} cells of ${GCELL} m, datum ${datum} m a.s.l. (at ${dLat.toFixed(4)},${dLon.toFixed(4)}), town up to ${top.toFixed(0)} m over it, plaza ${gAt(0, 0).toFixed(1)} m; street grades p50 ${pc(0.5)}%, p90 ${pc(0.9)}%, p99 ${pc(0.99)}%, max ${pc(1)}%`);
+  }
+  const ground = { x0: GX0, z0: GZ0, cell: GCELL, w: GW, h: GH, datum, floor: Math.round((floorMean - datum) * 10) / 10, data: Buffer.from(groundOut.buffer).toString('base64') };
+
   // the cross on Cerro de la Cruz
   const crossPoi = (poisOSM.elements || []).find((e) => e.tags && /cerro de la cruz/i.test(e.tags.name || ''));
   const cross = crossPoi ? toWorld(crossPoi.lon, crossPoi.lat).map(q) : null;
@@ -789,8 +859,9 @@ const terrain = (() => {
     }
   }
   log(`terrain: ${TW} x ${TH} cells of ${CELL} m, highest ${Math.round(peak)} m over the valley floor (${Math.round(floorMean)} m a.s.l.), ${missing} cells off the tiles`);
-  return { x0: TX0, z0: TZ0, cell: CELL, w: TW, h: TH, floor: Math.round(floorMean), data: Buffer.from(out.buffer).toString('base64'), cross, paths };
+  return { x0: TX0, z0: TZ0, cell: CELL, w: TW, h: TH, floor: Math.round(floorMean), data: Buffer.from(out.buffer).toString('base64'), cross, paths, ground };
 })();
+const terrain = ground ? terrainGrid : null;
 
 // =====================================================================================================================
 // 6. TELEPORTS & START: named spots snapped onto the nearest drivable street
@@ -888,7 +959,10 @@ const GEO = {
   signs,
   // The hills around the valley: heights (dm, Int16 little-endian, base64) over the flat city on a w x h grid of
   // `cell` m from (x0, z0), row by row; `cross`: the Cerro de la Cruz summit
-  terrain
+  terrain,
+  // The ground under the town (?slopes=1): heights (dm, Int16 little-endian, base64) over `datum` (m a.s.l., the
+  // town's lowest point) on a w x h grid of `cell` m from (x0, z0), row by row; `floor`: its height away from town
+  ground
 };
 
 const json = JSON.stringify(GEO);

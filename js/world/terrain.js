@@ -2,45 +2,16 @@ import * as THREE from 'three/webgpu';
 import { float, color, mix, smoothstep, positionWorld, normalWorld, vec2, sin, fract, dot, floor } from 'three/tsl';
 import { GEO } from './city-geodata.js';
 import { cityUniforms } from '../render/tsl-materials.js';
+import { SINK, hillHeights, terrainHeight, hillGround } from './ground.js';
 
 // js/world/terrain.js
 // The hills around the valley (city-geodata.js `terrain`, from open elevation data, see tools/build-tepic-geodata.mjs):
 // a heightfield over the flat city, zero under its streets and houses and rising beyond them (Cerro de San Juan to the
-// west, Cerro de la Cruz to the north with its cross, the lomas). terrainHeight(x, z) gives its height anywhere, for
-// the controllers (the player can't drive up a slope) and anything set down on the hills.
+// west, Cerro de la Cruz to the north with its cross, the lomas). Its heights & terrainHeight(x, z) live in ground.js,
+// with the rest of the ground; they are re-exported here for the modules that import them from the hills.
 
 const T = GEO.terrain || null;
-let heights = null;
-if (T) {
-  const bin = atob(T.data);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const dm = new Int16Array(bytes.buffer);
-  heights = new Float32Array(dm.length);
-  for (let i = 0; i < dm.length; i++) heights[i] = dm[i] / 10;
-}
-
-const SINK = 0.08; // the flat parts of the hills' mesh sit just under the streets & meadows
-
-/**
- * Height (m) of the hills over the flat city at world (x, z), on the very triangles the mesh draws (each grid cell
- * split from its +x corner to its +z corner): 0 in town and beyond the data
- */
-function terrainHeight(x, z) {
-  if (!heights) return 0;
-  const fx = (x - T.x0) / T.cell, fz = (z - T.z0) / T.cell;
-  if (fx < 0 || fz < 0 || fx >= T.w - 1 || fz >= T.h - 1) return 0;
-  const i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j;
-  const k = j * T.w + i;
-  const h00 = heights[k], h10 = heights[k + 1], h01 = heights[k + T.w], h11 = heights[k + T.w + 1];
-  return tx + tz <= 1 ? h00 + (h10 - h00) * tx + (h01 - h00) * tz : h11 + (h01 - h11) * (1 - tx) + (h10 - h11) * (1 - tz);
-}
-
-/** The ground's height for anything standing on the hills (0 in the flat city) */
-function hillGround(x, z) {
-  const h = terrainHeight(x, z);
-  return h > SINK ? h - SINK : 0;
-}
+const heights = hillHeights; // the hills' grid, decoded once by ground.js
 
 // value noise for the hillside colouring
 const hash = (p) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
