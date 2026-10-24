@@ -26,7 +26,6 @@ const CUT_Z = GEO.frame.cutZ;
 const CITY = GEO.frame;
 const HAS_GRID = CITY.grid !== false;
 const HAS_WATER = CITY.waterfront !== false;
-const FAR = 2e5; // far enough to be nowhere, small enough for float32 shader constants (smoothstep edges must stay apart)
 function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
@@ -153,8 +152,8 @@ const STREETS = !HAS_GRID ? [] : [
 // ---------------------------------------------------------------------------------------------------------------------
 // Central Park (the NYC Parks property: 59th to 110th St, 5th Ave to Central Park West, at the park walls)
 // ---------------------------------------------------------------------------------------------------------------------
-// (an empty box far away where the city has no Central Park)
-const CENTRAL_PARK_BOUNDS = GEO.centralPark ? { ...GEO.centralPark.bounds } : { minX: FAR, maxX: FAR + 1, minZ: FAR, maxZ: FAR + 1 };
+// (null in a city without it: every consumer skips the park)
+const CENTRAL_PARK_BOUNDS = GEO.centralPark ? { ...GEO.centralPark.bounds } : null;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Shoreline: the island's bulkhead line (piers cut off) south of the cut; west / east shore x at any z
@@ -417,7 +416,7 @@ for (const s of GEO.streets) {
     westX,
     eastX,
     runs,
-    splitByCentralPark: s.z > CENTRAL_PARK_BOUNDS.minZ && s.z < CENTRAL_PARK_BOUNDS.maxZ
+    splitByCentralPark: !!CENTRAL_PARK_BOUNDS && s.z > CENTRAL_PARK_BOUNDS.minZ && s.z < CENTRAL_PARK_BOUNDS.maxZ
   });
 }
 ALL_STREETS.sort((a, b) => a.z - b.z);
@@ -735,7 +734,7 @@ function getBlockBounds(col, row) {
 function getLocationLabel(x, z) {
   if (!HAS_GRID) {
     // "Place · Street & Street": the point of interest or the colonia, over the nearest street corner
-    const near = nearestRoads(x, z, 90);
+    const near = nearestRoads(x, z, 90).filter((r) => r.road.name); // (many streets are unnamed in OpenStreetMap)
     const streets = near.length > 1 && near[1].dist < 40 ? `${near[0].road.name} & ${near[1].road.name}` : near.length ? near[0].road.name : '';
     let place = null;
     for (const lm of NYC_LANDMARKS) if (Math.hypot(x - lm.x, z - lm.z) < 70) { place = lm.name; break; }

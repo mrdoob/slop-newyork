@@ -533,6 +533,8 @@ function buildStreetDetails(scene) {
   const lampLensInst = addMatrixArrayInstanced(lampLensGeo, lampBulbGlow, lampHeadMatrices, false);
   const pedPostInst = addMatrixArrayInstanced(pedLampPostGeo, poleMetalMat, pedPostMatrices);
   const pedGlobeInst = addMatrixArrayInstanced(pedGlobeGeo, pedGlobeGlow, pedPostMatrices, false);
+  // knock-over props hide their instances (mayhem.js): their meshes keep their own shadows (no static stand-ins)
+  for (const m of [poleInst, armInst, lampHousingInst, lampLensInst, pedPostInst, pedGlobeInst]) if (m) m.userData.keepOwnShadow = true;
   for (const b of breakables) {
     const parts = [];
     const add = (mesh, index) => { if (mesh && index >= 0) parts.push({ mesh, index }); };
@@ -876,6 +878,7 @@ function buildStreetDetails(scene) {
     hydrantInst.setMatrixAt(i, dummy.matrix);
   });
   hydrantInst.count = hydrantPositions.length;
+  hydrantInst.userData.keepOwnShadow = true;
   hydrantInst.instanceMatrix.needsUpdate = true;
   if (hydrantPositions.length) group.add(hydrantInst);
   hydrantPositions.forEach(([hx, hz], i) => breakables.push({ kind: 'hydrant', x: hx, z: hz, yaw: 0, ground: 0.215, parts: [{ mesh: hydrantInst, index: i }] }));
@@ -919,93 +922,95 @@ function buildStreetDetails(scene) {
 
   // B. Central Park (59th to 110th St, 5th Ave to Central Park West; city-config.js CENTRAL_PARK_BOUNDS), on the lawn
   const cp = CPB;
-  // B1. Central Park South (59th St) dense woodland border
-  for (let tx = cp.minX + 8; tx <= cp.maxX - 8; tx += 9.5) {
-    treePositions.push({ x: tx, y: CP_LAWN_Y, z: cp.maxZ - 5, scale: 0.95, species: 0 });
-    treePositions.push({ x: tx + 3.5, y: CP_LAWN_Y, z: cp.maxZ - 16, scale: 1.0, species: mixSpecies(hashPos(tx, 1, 2), 0.5, 0.1) });
-    if (hashPos(tx, 7, 3) > 0.35) {
-      treePositions.push({ x: tx - 2.5, y: CP_LAWN_Y, z: cp.maxZ - 31, scale: 1.05, species: mixSpecies(hashPos(tx, 3, 4), 0.4, 0.15) });
-    }
-  }
-
-  // B2. 5th Avenue & Central Park West perimeter rows inside the park wall
-  for (let tz = cp.maxZ - 10; tz >= cp.minZ + 10; tz -= 14) {
-    treePositions.push({ x: cp.maxX - 5, y: CP_LAWN_Y, z: tz, scale: 0.92, species: mixSpecies(hashPos(tz, 1, 1), 0.55, 0.1) });
-    treePositions.push({ x: cp.maxX - 15, y: CP_LAWN_Y, z: tz - 6, scale: 0.98, species: mixSpecies(hashPos(tz, 2, 1), 0.3, 0.1) });
-    treePositions.push({ x: cp.minX + 5, y: CP_LAWN_Y, z: tz, scale: 0.92, species: mixSpecies(hashPos(tz, 3, 1), 0.55, 0.1) });
-    treePositions.push({ x: cp.minX + 15, y: CP_LAWN_Y, z: tz - 6, scale: 0.98, species: mixSpecies(hashPos(tz, 4, 1), 0.3, 0.1) });
-  }
-
-  // B3. The Mall & Literary Walk quadruple row of towering American Elms (66th to 72nd St)
-  const cpClear = centralParkClearings;
-  const mall = cpClear && cpClear.mall;
-  if (mall) {
-    for (let tz = mall.z0 + 4; tz <= mall.z1 - 4; tz += 9.5) {
-      for (const [dx, sc] of [[-16, 1.08], [-9, 1.0], [9, 1.0], [16, 1.08]]) treePositions.push({ x: mall.x + dx, y: CP_LAWN_Y, z: tz, scale: sc, species: 2 });
-    }
-  }
-
-  // B4. Woodlands: a jittered grid over the park kept clear of the meadows, water, drives, transverses, rock outcrops
-  //     & terraces (laid out by city-grid.js), densest in the Ramble (between the Lake & the 79th St transverse) & the
-  //     North Woods (north of 102nd St), with glades
-  if (cpClear) {
-    const withBox = (pts) => {
-      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-      for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
-      return { pts, x0: x0 - 4, x1: x1 + 4, z0: z0 - 4, z1: z1 + 4 };
-    };
-    const polys = cpClear.polygons.map(withBox);
-    const drives = cpClear.drives.map((wp) => {
-      const b = withBox(wp.map(([x, z]) => ({ x, z })));
-      return { wp, x0: b.x0 - 4, x1: b.x1 + 4, z0: b.z0 - 4, z1: b.z1 + 4 };
-    });
-    const inPoly = (x, z, pts) => {
-      let inside = false;
-      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-        const a = pts[i];
-        const b = pts[j];
-        if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
-      }
-      return inside;
-    };
-    const segDist = (px, pz, [ax, az], [bx, bz]) => {
-      const dx = bx - ax;
-      const dz = bz - az;
-      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
-      return Math.hypot(px - ax - dx * t, pz - az - dz * t);
-    };
-    const blocked = (x, z) => {
-      for (const P of polys) {
-        if (x < P.x0 || x > P.x1 || z < P.z0 || z > P.z1) continue;
-        for (const [ox, oz] of [[0, 0], [3.5, 0], [-3.5, 0], [0, 3.5], [0, -3.5]]) if (inPoly(x + ox, z + oz, P.pts)) return true;
-      }
-      for (const D of drives) {
-        if (x < D.x0 || x > D.x1 || z < D.z0 || z > D.z1) continue;
-        for (let i = 0; i < D.wp.length - 1; i++) if (segDist(x, z, D.wp[i], D.wp[i + 1]) < 7.5) return true;
-      }
-      for (const r of cpClear.rects) if (x > r.minX - 2.5 && x < r.maxX + 2.5 && z > r.minZ - 2.5 && z < r.maxZ + 2.5) return true;
-      for (const c of cpClear.circles) if (Math.hypot(x - c.x, z - c.z) < c.r) return true;
-      return false;
-    };
-    const SP = 13;
-    const z79 = streetZ(79);
-    const z102 = streetZ(102);
-    for (let gz = cp.maxZ - 24; gz >= cp.minZ + 12; gz -= SP) {
-      for (let gx = cp.minX + 22; gx <= cp.maxX - 22; gx += SP) {
-        const tx = gx + (hashPos(gx, 2.1, gz) - 0.5) * SP * 0.95;
-        const tz = gz + (hashPos(gz, 5.7, gx) - 0.5) * SP * 0.95;
-        const woods = (tz > z79 && tz < z79 + 300 && tx > cp.minX + 120 && tx < cp.minX + 480) || (tz < z102 && tx < cp.minX + 520);
-        const glade = Math.sin(tx * 0.019 + 1.3) * Math.sin(tz * 0.016 + 0.4) > 0.6;
-        const grove = Math.sin(tx * 0.009 + tz * 0.004) + Math.sin(tz * 0.011 - tx * 0.006 + 2.0); // dense groves vs open scatter
-        const skip = grove > 0.6 ? 0.05 : (grove < -0.8 ? 0.55 : 0.2);
-        if (!woods && (glade || hashPos(tx, 9.1, tz) < skip)) continue;
-        if (blocked(tx, tz)) continue;
-        const r = hashPos(tz, 6.6, tx);
-        const scale = r < 0.18 ? 0.55 + r * 0.8 : 0.72 + Math.pow(r, 0.8) * 0.72; // some young understory trees
-        treePositions.push({ x: tx, y: CP_LAWN_Y, z: tz, scale, species: mixSpecies(hashPos(tx, 4.4, tz), 0.4, 0.15) });
+  if (cp) {
+    // B1. Central Park South (59th St) dense woodland border
+    for (let tx = cp.minX + 8; tx <= cp.maxX - 8; tx += 9.5) {
+      treePositions.push({ x: tx, y: CP_LAWN_Y, z: cp.maxZ - 5, scale: 0.95, species: 0 });
+      treePositions.push({ x: tx + 3.5, y: CP_LAWN_Y, z: cp.maxZ - 16, scale: 1.0, species: mixSpecies(hashPos(tx, 1, 2), 0.5, 0.1) });
+      if (hashPos(tx, 7, 3) > 0.35) {
+        treePositions.push({ x: tx - 2.5, y: CP_LAWN_Y, z: cp.maxZ - 31, scale: 1.05, species: mixSpecies(hashPos(tx, 3, 4), 0.4, 0.15) });
       }
     }
-  }
+
+    // B2. 5th Avenue & Central Park West perimeter rows inside the park wall
+    for (let tz = cp.maxZ - 10; tz >= cp.minZ + 10; tz -= 14) {
+      treePositions.push({ x: cp.maxX - 5, y: CP_LAWN_Y, z: tz, scale: 0.92, species: mixSpecies(hashPos(tz, 1, 1), 0.55, 0.1) });
+      treePositions.push({ x: cp.maxX - 15, y: CP_LAWN_Y, z: tz - 6, scale: 0.98, species: mixSpecies(hashPos(tz, 2, 1), 0.3, 0.1) });
+      treePositions.push({ x: cp.minX + 5, y: CP_LAWN_Y, z: tz, scale: 0.92, species: mixSpecies(hashPos(tz, 3, 1), 0.55, 0.1) });
+      treePositions.push({ x: cp.minX + 15, y: CP_LAWN_Y, z: tz - 6, scale: 0.98, species: mixSpecies(hashPos(tz, 4, 1), 0.3, 0.1) });
+    }
+
+    // B3. The Mall & Literary Walk quadruple row of towering American Elms (66th to 72nd St)
+    const cpClear = centralParkClearings;
+    const mall = cpClear && cpClear.mall;
+    if (mall) {
+      for (let tz = mall.z0 + 4; tz <= mall.z1 - 4; tz += 9.5) {
+        for (const [dx, sc] of [[-16, 1.08], [-9, 1.0], [9, 1.0], [16, 1.08]]) treePositions.push({ x: mall.x + dx, y: CP_LAWN_Y, z: tz, scale: sc, species: 2 });
+      }
+    }
+
+    // B4. Woodlands: a jittered grid over the park kept clear of the meadows, water, drives, transverses, rock outcrops
+    //     & terraces (laid out by city-grid.js), densest in the Ramble (between the Lake & the 79th St transverse) & the
+    //     North Woods (north of 102nd St), with glades
+    if (cpClear) {
+      const withBox = (pts) => {
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+        return { pts, x0: x0 - 4, x1: x1 + 4, z0: z0 - 4, z1: z1 + 4 };
+      };
+      const polys = cpClear.polygons.map(withBox);
+      const drives = cpClear.drives.map((wp) => {
+        const b = withBox(wp.map(([x, z]) => ({ x, z })));
+        return { wp, x0: b.x0 - 4, x1: b.x1 + 4, z0: b.z0 - 4, z1: b.z1 + 4 };
+      });
+      const inPoly = (x, z, pts) => {
+        let inside = false;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+          const a = pts[i];
+          const b = pts[j];
+          if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+        }
+        return inside;
+      };
+      const segDist = (px, pz, [ax, az], [bx, bz]) => {
+        const dx = bx - ax;
+        const dz = bz - az;
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
+        return Math.hypot(px - ax - dx * t, pz - az - dz * t);
+      };
+      const blocked = (x, z) => {
+        for (const P of polys) {
+          if (x < P.x0 || x > P.x1 || z < P.z0 || z > P.z1) continue;
+          for (const [ox, oz] of [[0, 0], [3.5, 0], [-3.5, 0], [0, 3.5], [0, -3.5]]) if (inPoly(x + ox, z + oz, P.pts)) return true;
+        }
+        for (const D of drives) {
+          if (x < D.x0 || x > D.x1 || z < D.z0 || z > D.z1) continue;
+          for (let i = 0; i < D.wp.length - 1; i++) if (segDist(x, z, D.wp[i], D.wp[i + 1]) < 7.5) return true;
+        }
+        for (const r of cpClear.rects) if (x > r.minX - 2.5 && x < r.maxX + 2.5 && z > r.minZ - 2.5 && z < r.maxZ + 2.5) return true;
+        for (const c of cpClear.circles) if (Math.hypot(x - c.x, z - c.z) < c.r) return true;
+        return false;
+      };
+      const SP = 13;
+      const z79 = streetZ(79);
+      const z102 = streetZ(102);
+      for (let gz = cp.maxZ - 24; gz >= cp.minZ + 12; gz -= SP) {
+        for (let gx = cp.minX + 22; gx <= cp.maxX - 22; gx += SP) {
+          const tx = gx + (hashPos(gx, 2.1, gz) - 0.5) * SP * 0.95;
+          const tz = gz + (hashPos(gz, 5.7, gx) - 0.5) * SP * 0.95;
+          const woods = (tz > z79 && tz < z79 + 300 && tx > cp.minX + 120 && tx < cp.minX + 480) || (tz < z102 && tx < cp.minX + 520);
+          const glade = Math.sin(tx * 0.019 + 1.3) * Math.sin(tz * 0.016 + 0.4) > 0.6;
+          const grove = Math.sin(tx * 0.009 + tz * 0.004) + Math.sin(tz * 0.011 - tx * 0.006 + 2.0); // dense groves vs open scatter
+          const skip = grove > 0.6 ? 0.05 : (grove < -0.8 ? 0.55 : 0.2);
+          if (!woods && (glade || hashPos(tx, 9.1, tz) < skip)) continue;
+          if (blocked(tx, tz)) continue;
+          const r = hashPos(tz, 6.6, tx);
+          const scale = r < 0.18 ? 0.55 + r * 0.8 : 0.72 + Math.pow(r, 0.8) * 0.72; // some young understory trees
+          treePositions.push({ x: tx, y: CP_LAWN_Y, z: tz, scale, species: mixSpecies(hashPos(tx, 4.4, tz), 0.4, 0.15) });
+        }
+      }
+    }
+  } // Central Park
 
   // B5. The squares, the other parks & the plazas (sites laid out by city-grid.js)
   for (const s of parkTreeSites || []) treePositions.push(s);

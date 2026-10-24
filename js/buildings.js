@@ -1985,7 +1985,7 @@ function buildCityBlocks(scene) {
   }
   function overlapsParkOrLandmark(minX, maxX, minZ, maxZ) {
     const cp = CENTRAL_PARK_BOUNDS;
-    if (maxX > cp.minX && minX < cp.maxX && maxZ > cp.minZ && minZ < cp.maxZ) return true;
+    if (cp && maxX > cp.minX && minX < cp.maxX && maxZ > cp.minZ && minZ < cp.maxZ) return true;
     return LANDMARK_RESERVE.some((h) => hitR(h, minX, maxX, minZ, maxZ));
   }
 
@@ -2012,8 +2012,10 @@ function buildCityBlocks(scene) {
   // Blocks the real buildings stand on (city-geodata.js `houses`, Overture Maps): built house by house (A2) instead
   const HOUSES = GEO.houses || [];
   const houseBlocks = new Set();
+  const houseBlock = new Array(HOUSES.length / 7); // the block each house stands on (A2 groups them by it)
   for (let i = 0; i < HOUSES.length; i += 7) {
     const b = blockAt(HOUSES[i] / 10, HOUSES[i + 1] / 10);
+    houseBlock[i / 7] = b;
     if (b) houseBlocks.add(b);
   }
   for (const b of BLOCKS) {
@@ -2047,7 +2049,7 @@ function buildCityBlocks(scene) {
       const floors = HOUSES[i + 5];
       const front = HOUSES[i + 6] & 3;
       const shop = HOUSES[i + 6] >= 4;
-      const b = blockAt(cx, cz);
+      const b = houseBlock[i / 7];
       const key = b ? b.id : -1;
       let blk = byBlock.get(key);
       if (!blk) {

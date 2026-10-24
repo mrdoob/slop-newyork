@@ -153,8 +153,7 @@ class PropBreaker {
     this.props = props;
     this.looks = looks;
     this.cells = new Map();
-    this.debris = [];
-    this.maxDebris = 40;
+    this.debris = []; // falling stand-ins; once lying still they stay put (the prop's instance stays hidden)
     this.listener = null;
     this.event = { a: null, b: null, kind: 'prop', x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, speed: 0 };
     this.group = new THREE.Group();
@@ -169,7 +168,6 @@ class PropBreaker {
     const jetMat = new THREE.MeshStandardNodeMaterial({ color: 0xcfe8ff, roughness: 0.15, metalness: 0.0, transparent: true, opacity: 0.55 });
     this.jetGeo = new THREE.CylinderGeometry(0.05, 0.35, 1, 10, 1, true).translate(0, 0.5, 0);
     this.jetMat = jetMat;
-    this._m = new THREE.Matrix4();
   }
 
   key(ix, iz) {
@@ -213,7 +211,7 @@ class PropBreaker {
   knock(p, vx, vz, speed, hit) {
     p.broken = true;
     if (p.light) p.light.broken = true;
-    for (const part of p.parts) hideInstance(part.mesh, part.index, this._m);
+    for (const part of p.parts) hideInstance(part.mesh, part.index);
     // the stand-in falls the way the player was going
     const dir = Math.atan2(vx, vz);
     const look = this.looks[p.kind] || [];
@@ -248,11 +246,6 @@ class PropBreaker {
     }
     this.group.add(root);
     this.debris.push(d);
-    if (this.debris.length > this.maxDebris) {
-      const old = this.debris.shift();
-      this.group.remove(old.root);
-      if (old.jet) this.group.remove(old.jet);
-    }
     if (this.listener) {
       const e = this.event;
       e.a = p;
@@ -265,8 +258,13 @@ class PropBreaker {
   }
 
   animate(dt) {
+    let settled = 0;
     for (const d of this.debris) {
       d.age += dt;
+      if (d.done) {
+        settled++;
+        continue;
+      }
       if (d.fly) {
         const f = d.fly;
         f.vy -= GRAVITY * dt;
@@ -285,13 +283,22 @@ class PropBreaker {
         const fade = Math.max(0, Math.min(1, (40 - d.age) / 6));
         d.jet.scale.set(flick * fade + 0.001, (7 + Math.sin(d.age * 9) * 0.6) * fade + 0.001, flick * fade + 0.001);
         d.jet.visible = fade > 0;
+        if (!d.jet.visible) {
+          this.group.remove(d.jet);
+          d.jet = null;
+        }
       }
+      // lying still with no water left: nothing more to animate
+      const still = d.fly ? d.fly.y === 0 && d.fly.vy === 0 && Math.hypot(d.fly.vx, d.fly.vz) < 0.05 : d.fall.rest >= 1;
+      if (still && !d.jet) d.done = true;
     }
+    // keep the list to the props still moving
+    if (settled > 64) this.debris = this.debris.filter((d) => !d.done);
   }
 }
 
 // Hides instance `index` of a static InstancedMesh, wherever scene-culling.js moved it (mesh.userData.chunked)
-function hideInstance(mesh, index, tmp = new THREE.Matrix4()) {
+function hideInstance(mesh, index) {
   let target = mesh;
   let j = index;
   const ch = mesh.userData && mesh.userData.chunked;
@@ -304,7 +311,6 @@ function hideInstance(mesh, index, tmp = new THREE.Matrix4()) {
   attr.array.fill(0, j * 16, j * 16 + 16);
   if (attr.addUpdateRange) attr.addUpdateRange(j * 16, 16);
   attr.needsUpdate = true;
-  void tmp;
 }
 
 export { BONES, boxHit, startTumble, stepTumble, tumblePose, startTopple, stepTopple, hideInstance, PropBreaker };

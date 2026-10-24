@@ -169,9 +169,12 @@ const canyonSkyAONode = Fn(() => {
   const wp = positionWorld;
   // Open sky inside Central Park (city-config.js CENTRAL_PARK_BOUNDS, 5th Ave to Central Park West, 59th to 110th St)
   const cp = CENTRAL_PARK_BOUNDS;
-  const inParkX = smoothstep(cp.minX - 10.0, cp.minX + 20.0, wp.x).mul(float(1.0).sub(smoothstep(cp.maxX - 20.0, cp.maxX + 10.0, wp.x)));
-  const inParkZ = smoothstep(cp.minZ - 10.0, cp.minZ + 30.0, wp.z).mul(float(1.0).sub(smoothstep(cp.maxZ - 30.0, cp.maxZ + 10.0, wp.z)));
-  const inPark = inParkX.mul(inParkZ);
+  let inPark = float(0.0);
+  if (cp) {
+    const inParkX = smoothstep(cp.minX - 10.0, cp.minX + 20.0, wp.x).mul(float(1.0).sub(smoothstep(cp.maxX - 20.0, cp.maxX + 10.0, wp.x)));
+    const inParkZ = smoothstep(cp.minZ - 10.0, cp.minZ + 30.0, wp.z).mul(float(1.0).sub(smoothstep(cp.maxZ - 30.0, cp.maxZ + 10.0, wp.z)));
+    inPark = inParkX.mul(inParkZ);
+  }
 
   const heightOpenness = smoothstep(0.0, 68.0, wp.y);
   const streetCrevice = smoothstep(0.0, 7.5, wp.y).mul(0.22).add(0.78);
@@ -2610,9 +2613,12 @@ function createWaterMaterial() {
     const tShore = mix(float(8000.0), clamp(tShoreRaw, 60.0, 8000.0), step(0.0, tShoreRaw)).toVar();
     const onIsland = step(tIsland, tShore);
     // Park lakes: the walls of buildings around Central Park's rectangle, seen from inside it
-    const ca = vec2(CPB.minX, CPB.minZ).sub(P).mul(inv);
-    const cb = vec2(CPB.maxX, CPB.maxZ).sub(P).mul(inv);
-    const tPark = clamp(min(max(ca.x, cb.x), max(ca.y, cb.y)), 60.0, 4200.0);
+    let tPark = float(4200.0);
+    if (CPB) {
+      const ca = vec2(CPB.minX, CPB.minZ).sub(P).mul(inv);
+      const cb = vec2(CPB.maxX, CPB.maxZ).sub(P).mul(inv);
+      tPark = clamp(min(max(ca.x, cb.x), max(ca.y, cb.y)), 60.0, 4200.0);
+    }
     const lake = step(0.5, pond);
 
     const tHit = mix(min(tIsland, tShore), tPark, lake).toVar();

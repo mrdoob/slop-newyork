@@ -48,6 +48,10 @@ const SPAWN = {
   cyclist: spawnAt(-9, 0.6, 5.2, SPAWN_Z - 8),
   helicopter: spawnAt(-60, -110, -110, SPAWN_Z - 60)
 };
+// HUD names of the player's characters & vehicles, in the city's language
+const LABELS = CITY && CITY.grid === false
+  ? { person: 'Peatón', car: 'Taxi de Tepic', cyclist: 'Ciclista', helicopter: 'Helicóptero turístico' }
+  : { person: 'Pedestrian', car: 'NYC Yellow Taxi', cyclist: 'NYC Bike Lane Cyclist', helicopter: 'Sightseeing Helicopter' };
 const groundCollider = { type: 'ground' };
 
 const CAR_DRIVE = {
@@ -465,7 +469,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'person',
-      label: 'Pedestrian',
+      label: LABELS.person,
       mesh: root,
       crowd,
       rig,
@@ -571,7 +575,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'car',
-      label: 'NYC Yellow Taxi',
+      label: LABELS.car,
       mesh: root,
       chassisPivot,
       carState,
@@ -732,7 +736,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'cyclist',
-      label: 'NYC Bike Lane Cyclist',
+      label: LABELS.cyclist,
       mesh: root,
       leanPivot,
       frontWheel,
@@ -823,7 +827,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'helicopter',
-      label: 'Sightseeing Helicopter',
+      label: LABELS.helicopter,
       mesh: root,
       tiltPivot,
       mainRotorPivot,
@@ -849,7 +853,7 @@ class ThirdPersonControllerManager {
   getGroundHeight(x, z, mode = 'person') {
     // Inside Central Park (5th Ave to Central Park West, 59th St to 110th St)
     const cp = CENTRAL_PARK_BOUNDS;
-    if (x > cp.minX && x < cp.maxX && z > cp.minZ && z < cp.maxZ) {
+    if (cp && x > cp.minX && x < cp.maxX && z > cp.minZ && z < cp.maxZ) {
       return 1.24;
     }
     // Inside Bryant Park's Great Lawn (west of the New York Public Library, 40th-42nd St)

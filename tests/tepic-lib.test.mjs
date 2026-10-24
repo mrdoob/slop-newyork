@@ -24,3 +24,29 @@ test('an L-shaped footprint gets the smallest box around it', () => {
   assert.equal(convexHull([[0, 0], [1, 1], [2, 2]]).length, 2, 'collinear points have no area');
   assert.equal(minAreaRect([[0, 0], [1, 1], [2, 2]]), null);
 });
+
+test('an island ringing a road loop is cut open so its outline never covers the loop', async () => {
+  const { extractBlocks, pointInRing } = await import('../tools/tepic-lib.mjs');
+  const W = 80, H = 80;
+  const land = new Uint8Array(W * H).fill(1);
+  const road = (i, j) => { land[j * W + i] = 0; };
+  for (let k = 0; k < W; k++) { road(k, 0); road(k, H - 1); road(0, k); road(W - 1, k); } // the streets around
+  for (let k = 25; k <= 55; k++) for (let t = 0; t < 4; t++) { road(k, 25 + t); road(k, 52 + t); road(25 + t, k); road(52 + t, k); } // a loop inside
+  const { blocks } = extractBlocks({ land, w: W, h: H, x0: 0, z0: 0, res: 1, sidewalk: 1, minArea: 10, lotArea: 1e9 });
+  assert.ok(blocks.length >= 2, 'the ring and the island inside the loop');
+  for (const b of blocks) {
+    for (const [x, z] of [[26.5, 40.5], [53.5, 40.5], [40.5, 26.5], [40.5, 53.5]]) {
+      assert.equal(pointInRing(x, z, b.poly), false, 'no outline covers the loop road');
+    }
+  }
+});
+
+test('large islands are labelled without a flood-fill stack', async () => {
+  const { extractBlocks } = await import('../tools/tepic-lib.mjs');
+  const W = 1200, H = 1200;
+  const land = new Uint8Array(W * H).fill(1);
+  for (let k = 0; k < W; k++) { land[k] = 0; land[(H - 1) * W + k] = 0; land[k * W] = 0; land[k * W + W - 1] = 0; }
+  const { blocks } = extractBlocks({ land, w: W, h: H, x0: 0, z0: 0, res: 1, sidewalk: 2, minArea: 10, lotArea: 1e9 });
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].cells, (W - 2) * (H - 2));
+});

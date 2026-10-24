@@ -2098,7 +2098,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     }
     const draw = !hasView || visible(w.x, w.z, 4);
     if (!draw) return false;
-    dummy.position.set(w.x, 0.04 + Math.abs(Math.sin(w.roll)) * 0.0, w.z);
+    dummy.position.set(w.x, 0.04, w.z);
     dummy.rotation.set(0, w.yaw, w.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();

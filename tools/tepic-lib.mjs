@@ -121,6 +121,125 @@ export function maskRects(m, w, h, maxRects = 8, minSide = 8, minArea = 120) {
   return { rects, total, covered };
 }
 
+// Two-pass connected-component labelling (union-find, no flood-fill stack: islands may be tens of millions of cells).
+// Labels the cells where `fg(k)` into `lab` as sign · 1..n (positive land, negative roadway) without touching the rest;
+// `conn8` joins diagonal neighbours too. Returns n.
+function labelPass(lab, W, H, fg, sign, conn8) {
+  let parent = new Int32Array(1 << 16);
+  let next = 1;
+  const find = (x) => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const union = (a, b) => {
+    a = find(a);
+    b = find(b);
+    if (a === b) return a;
+    if (a < b) { parent[b] = a; return a; }
+    parent[a] = b;
+    return b;
+  };
+  const own = (k) => { const v = lab[k] * sign; return v > 0 ? v : 0; };
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const k = j * W + i;
+      if (!fg(k)) continue;
+      let l = i > 0 ? own(k - 1) : 0;
+      if (j > 0) {
+        const up = own(k - W);
+        if (up) l = l ? union(l, up) : up;
+        if (conn8) {
+          const ul = i > 0 ? own(k - W - 1) : 0;
+          if (ul) l = l ? union(l, ul) : ul;
+          const ur = i < W - 1 ? own(k - W + 1) : 0;
+          if (ur) l = l ? union(l, ur) : ur;
+        }
+      }
+      if (!l) {
+        if (next >= parent.length) {
+          const grown = new Int32Array(parent.length * 2);
+          grown.set(parent);
+          parent = grown;
+        }
+        parent[next] = next;
+        l = next++;
+      }
+      lab[k] = sign * l;
+    }
+  }
+  // final labels numbered 1..n in scan order of their first cell
+  const final = new Int32Array(next);
+  let n = 0;
+  for (let k = 0; k < W * H; k++) {
+    const v = lab[k] * sign;
+    if (v <= 0) continue;
+    const r = find(v);
+    if (!final[r]) final[r] = ++n;
+    lab[k] = sign * final[r];
+  }
+  return n;
+}
+
+// Land islands with their cell counts, bounds and first cell (the top-left one, where traceComponent starts)
+function labelLand(lab, D, W, H) {
+  const n = labelPass(lab, W, H, (k) => D[k] === 1, 1, false);
+  const comps = [];
+  for (let id = 1; id <= n; id++) comps.push({ id, n: 0, i0: W, i1: -1, j0: H, j1: -1, start: -1 });
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const id = lab[j * W + i];
+      if (id <= 0) continue;
+      const c = comps[id - 1];
+      if (c.start < 0) c.start = j * W + i;
+      c.n++;
+      if (i < c.i0) c.i0 = i;
+      if (i > c.i1) c.i1 = i;
+      if (j < c.j0) c.j0 = j;
+      if (j > c.j1) c.j1 = j;
+    }
+  }
+  return comps;
+}
+
+// Patches of roadway (8-connected) that don't reach the raster's edge: each is enclosed by one island. Leaves them
+// labelled negative in `lab` (the caller clears them). Returns [{ n, top, cells }]
+function enclosedRoad(lab, D, W, H) {
+  const n = labelPass(lab, W, H, (k) => D[k] === 0, -1, true);
+  const edge = new Uint8Array(n + 1);
+  const size = new Int32Array(n + 1);
+  const top = new Int32Array(n + 1).fill(-1);
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const k = j * W + i;
+      const id = -lab[k];
+      if (id <= 0) continue;
+      size[id]++;
+      if (top[id] < 0) top[id] = k;
+      if (i === 0 || j === 0 || i === W - 1 || j === H - 1) edge[id] = 1;
+    }
+  }
+  const holes = [];
+  const byId = new Map();
+  for (let id = 1; id <= n; id++) {
+    if (edge[id]) continue;
+    const h = { n: size[id], top: top[id], cells: size[id] < 40 ? [] : null };
+    holes.push(h);
+    byId.set(id, h);
+  }
+  if (holes.some((h) => h.cells)) {
+    for (let k = 0; k < W * H; k++) {
+      const id = -lab[k];
+      if (id <= 0) continue;
+      const h = byId.get(id);
+      if (h && h.cells) h.cells.push(k);
+    }
+  }
+  return holes;
+}
+
 /**
  * Curb islands of a city: `land` is a 0/1 raster (w x h cells of `res` metres from (x0, z0)) where 1 is buildable land
  * and the roadways have already been cleared. Returns the labelled components with their outline polygons, lot rects
@@ -130,30 +249,30 @@ export function maskRects(m, w, h, maxRects = 8, minSide = 8, minArea = 120) {
 export function extractBlocks({ land, w: W, h: H, x0, z0, res: RES, sidewalk, minArea = 40, lotArea = 300, classify = null }) {
   const D = land;
   const lab = new Int32Array(W * H);
-  const comps = [];
-  {
-    const stack = new Int32Array(Math.min(W * H, 4e7));
-    for (let s0 = 0; s0 < W * H; s0++) {
-      if (!D[s0] || lab[s0]) continue;
-      const id = comps.length + 1;
-      let sp = 0, n = 0, i0 = W, i1 = -1, j0 = H, j1 = -1;
-      stack[sp++] = s0;
-      lab[s0] = id;
-      while (sp) {
-        const p = stack[--sp];
-        n++;
-        const i = p % W, j = (p - i) / W;
-        if (i < i0) i0 = i;
-        if (i > i1) i1 = i;
-        if (j < j0) j0 = j;
-        if (j > j1) j1 = j;
-        if (i > 0 && D[p - 1] && !lab[p - 1]) { lab[p - 1] = id; stack[sp++] = p - 1; }
-        if (i < W - 1 && D[p + 1] && !lab[p + 1]) { lab[p + 1] = id; stack[sp++] = p + 1; }
-        if (j > 0 && D[p - W] && !lab[p - W]) { lab[p - W] = id; stack[sp++] = p - W; }
-        if (j < H - 1 && D[p + W] && !lab[p + W]) { lab[p + W] = id; stack[sp++] = p + W; }
+  // Islands are 4-connected land; the roadway between them 8-connected (so each enclosed patch of road borders one
+  // island). An island ringing a road loop would be traced by its outer edge alone and cover the loop: small enclosed
+  // patches (stubs of paths inside a block) are filled in, larger ones cut open to the outside with a 1 m slot
+  // straight up from them, then the land is labelled afresh.
+  let comps = labelLand(lab, D, W, H);
+  for (let pass = 0; pass < 8; pass++) {
+    const holes = enclosedRoad(lab, D, W, H);
+    for (let k = 0; k < W * H; k++) if (lab[k] < 0) lab[k] = 0;
+    if (!holes.length) break;
+    let cut = 0;
+    for (const h of holes) {
+      if (h.n < 40) {
+        for (const k of h.cells) D[k] = 1;
+        continue;
       }
-      comps.push({ id, n, i0, i1, j0, j1, start: s0 });
+      const i = h.top % W;
+      let j = (h.top - i) / W - 1;
+      const L = j >= 0 ? lab[j * W + i] : 0;
+      for (; j >= 0 && L && lab[j * W + i] === L; j--) D[j * W + i] = 0;
+      cut++;
     }
+    log(`pass ${pass + 1}: ${holes.length} enclosed patches of road (${cut} cut open, ${holes.length - cut} filled)`);
+    lab.fill(0);
+    comps = labelLand(lab, D, W, H);
   }
   log(`${comps.length} curb islands labelled`);
   // Islands that are open country rather than city blocks (fields, hills, scrub between the roads): no lots, no
