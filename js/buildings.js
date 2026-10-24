@@ -22,6 +22,8 @@ import {
   mx_worley_noise_float
 } from 'three/tsl';
 import {
+  blockAt,
+  HAS_GRID,
   ALL_AVENUES,
   CENTRAL_PARK_BOUNDS,
   ISLAND_BOUNDS,
@@ -39,7 +41,7 @@ import {
   createBillboardMaterial,
   WALL_KINDS
 } from './tsl-materials.js';
-import { GEO } from './nyc-geodata.js';
+import { GEO } from './city-geodata.js';
 import { fdrViaduct, pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
 
 // js/buildings.js
@@ -373,7 +375,15 @@ function buildCityBlocks(scene) {
       warmth: 0.48,
       reflectivity: 0.95,
       seed: 94.3
-    }]
+    }],
+    // 6-9: Tepic's painted stucco houses & shops (aplanado pintado): cream, ochre, terracotta pink and sky blue walls
+    // with small dark windows. Only appended off the Manhattan grid, so New York keeps its six facades
+    ...(HAS_GRID ? [] : [
+      [createPreWarBuildingMaterial, { stoneColor: 0xe8dcc0, trimColor: 0xb8a888, stucco: true, windowGlassColor: 0x1d2a33, windowWidth: 1.6, floorHeight: 3.0, litProbability: 0.5, warmth: 0.85, seed: 63.1 }],
+      [createPreWarBuildingMaterial, { stoneColor: 0xd9a54e, trimColor: 0xf0e2c4, stucco: true, windowGlassColor: 0x1d2a33, windowWidth: 1.6, floorHeight: 3.0, litProbability: 0.5, warmth: 0.9, seed: 71.7 }],
+      [createPreWarBuildingMaterial, { stoneColor: 0xc9796a, trimColor: 0xeedfcf, stucco: true, windowGlassColor: 0x1d2a33, windowWidth: 1.5, floorHeight: 3.0, litProbability: 0.5, warmth: 0.9, seed: 83.9 }],
+      [createPreWarBuildingMaterial, { stoneColor: 0x8fb3c2, trimColor: 0xeef0ea, stucco: true, windowGlassColor: 0x1d2a33, windowWidth: 1.6, floorHeight: 3.0, litProbability: 0.5, warmth: 0.85, seed: 95.2 }]
+    ])
   ];
   const materials = facades.map(([create, opts]) => create({ ...opts, boxLocal: true }));
   // Storey height of each facade: buildings are massed in whole storeys so every window row lines up across tiers
@@ -1419,19 +1429,21 @@ function buildCityBlocks(scene) {
   function lowriseBlock(blk, cfg, x0, x1) {
     const { minZ, maxZ } = blk;
     const halfD = (maxZ - minZ) * 0.5;
+    const [w0, w1] = cfg.lotW || [10, 26];
     let x = x0;
     while (x1 - x > 0.5) {
-      let w = range(10, 26);
+      let w = range(w0, w1);
       if (x1 - x - w < 8) w = x1 - x;
       const lots = chance(0.6)
         ? [rect(x, x + w, minZ, maxZ)]
         : [rect(x, x + w, minZ, minZ + halfD), rect(x, x + w, maxZ - halfD, maxZ)];
       for (const lot of lots) {
-        const mat = pickW([[1, 4], [0, 3], [3, 1]]);
+        const mat = cfg.tepic ? pickW([[6, 5], [7, 3], [8, 3], [9, 2], [1, 1]]) : pickW([[1, 4], [0, 3], [3, 1]]);
         const f = irange(cfg.floors[0], cfg.floors[1]);
         const b = building(blk, mat, lot);
         mass(b, [lot], 0, f);
-        commit(blk, b, { cornice: mat <= 2 && chance(0.6), corniceH: 0.6, roof: f >= 5 ? 'walkup' : 'none', wtP: 0.3 });
+        if (cfg.tepic) commit(blk, b, { cornice: chance(0.25), corniceH: 0.4, roof: 'none', wtP: 0, feP: 0, shops: cfg.floors[1] >= 3 ? 'all' : 0.3 });
+        else commit(blk, b, { cornice: mat <= 2 && chance(0.6), corniceH: 0.6, roof: f >= 5 ? 'walkup' : 'none', wtP: 0.3 });
       }
       x += w;
     }
@@ -1572,6 +1584,7 @@ function buildCityBlocks(scene) {
   // Avenue faced by the block edge at x (`dir` -1: the avenue to its west, +1: to its east): the nearest avenue line
   // running past that z, ~10-25 m beyond the property line (its roadway & sidewalk)
   function avenueName(x, dir, cz) {
+    if (!HAS_GRID) return 'water'; // no avenues: quiet ends (the Tepic layouts put their own shops on every street)
     if (Math.abs(x + dir * 15 - getBroadwayX(cz)) < 5) return 'broadway';
     let best = null;
     for (const ave of ALL_AVENUES) {
@@ -1736,6 +1749,11 @@ function buildCityBlocks(scene) {
   const PROJECTS_STUY_TOWN = { ...PROJECTS, floors: [12, 14], mats: [[1, 1]] };
   const LOWRISE = { kind: 'lowrise', floors: [2, 7] };
   const RIVERFRONT = { kind: 'river' };
+  // Tepic: one- and two-storey houses with flat roofs on the colonias, two to four storeys of shops, hotels and offices
+  // around the plaza; no water towers, no fire escapes
+  const TEPIC_COLONIA = { kind: 'lowrise', floors: [1, 2], tepic: true, lotW: [7, 14] };
+  const TEPIC_CENTRO = { kind: 'lowrise', floors: [2, 4], tepic: true, lotW: [8, 18] };
+  const TEPIC_INDUSTRIAL = { kind: 'lowrise', floors: [1, 2], tepic: true, lotW: [18, 40] };
 
   const CPB = CENTRAL_PARK_BOUNDS;
   function uptownProfile(blk) {
@@ -1765,6 +1783,9 @@ function buildCityBlocks(scene) {
   // Profile of a block by its real neighbourhood (city-config.js districtAt)
   function blockProfile(blk, district) {
     switch (district) {
+      case 'centro': return TEPIC_CENTRO;
+      case 'colonia': return chance(0.08) ? TEPIC_CENTRO : TEPIC_COLONIA;
+      case 'industrial': return TEPIC_INDUSTRIAL;
       case 'riverfront': return RIVERFRONT;
       case 'hudson_yards': return OFFICE_HUDSON_YARDS;
       case 'billionaires_row': return chance(0.6) ? OFFICE_BILLIONAIRES : OFFICE_MIDTOWN;
@@ -1988,8 +2009,15 @@ function buildCityBlocks(scene) {
     for (let k = 0; k < n; k++) out.push([x0, x1, z0 + k * (s + gap), z0 + k * (s + gap) + s]);
     return out;
   }
+  // Blocks the real buildings stand on (city-geodata.js `houses`, Overture Maps): built house by house (A2) instead
+  const HOUSES = GEO.houses || [];
+  const houseBlocks = new Set();
+  for (let i = 0; i < HOUSES.length; i += 7) {
+    const b = blockAt(HOUSES[i] / 10, HOUSES[i + 1] / 10);
+    if (b) houseBlocks.add(b);
+  }
   for (const b of BLOCKS) {
-    if (b.park > 0.6 || b.median) continue;
+    if (b.park > 0.6 || b.median || houseBlocks.has(b)) continue;
     minLot = b.frames ? 12 : 15;
     for (const [th, px, pz, rects] of b.frames || [[0, 0, 0, b.rects]]) {
       xf = th ? { th, cs: Math.cos(th), sn: Math.sin(th), px, pz } : null;
@@ -2005,6 +2033,70 @@ function buildCityBlocks(scene) {
     }
   }
   minLot = 15;
+
+  // A2. THE REAL BUILDINGS (Overture Maps footprints as oriented boxes, see tools/build-tepic-geodata.mjs): painted
+  //     stucco walls with windows all round, the front towards the street with a door or a shop on the ground floor,
+  //     a parapet on some roofs. Grouped per block for the maps & the streaming of roof details
+  {
+    const TEPIC_MATS = materials.length > 6 ? [6, 6, 6, 7, 7, 8, 8, 9] : [0, 1, 2];
+    const byBlock = new Map();
+    for (let i = 0; i < HOUSES.length; i += 7) {
+      const cx = HOUSES[i] / 10, cz = HOUSES[i + 1] / 10;
+      const w = HOUSES[i + 2] / 10, d = HOUSES[i + 3] / 10;
+      const th = HOUSES[i + 4] / 1000;
+      const floors = HOUSES[i + 5];
+      const front = HOUSES[i + 6] & 3;
+      const shop = HOUSES[i + 6] >= 4;
+      const b = blockAt(cx, cz);
+      const key = b ? b.id : -1;
+      let blk = byBlock.get(key);
+      if (!blk) {
+        blk = {
+          id: `house_${key}`, cx: b ? b.cx : cx, cz: b ? b.cz : cz, minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity,
+          district: b ? b.district : 'colonia', cornices: [], waterTowers: [], hvacUnits: [], fireEscapes: [], awnings: [],
+          scaffoldSheds: [], footprints: [], yards: [], maxH: 0, avenueFronts: { w: [], e: [] }
+        };
+        byBlock.set(key, blk);
+      }
+      rand = mulberry32((Math.imul(Math.round(cx * 4), 73856093) ^ Math.imul(Math.round(cz * 4), 19349663) ^ 4421) >>> 0);
+      const mat = pick(TEPIC_MATS);
+      const h = floors * storeys[mat];
+      const tone = rand();
+      const faces = [WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear];
+      faces[front] = shop ? WALL_KINDS.shop : WALL_KINDS.entry;
+      buckets[mat].push({ x: cx, y: h * 0.5, z: cz, w, h, d, faces, tone, ry: th });
+      const cs = Math.cos(th), sn = Math.sin(th);
+      const hx = w * 0.5, hz = d * 0.5;
+      const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;
+      const ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
+      colliders.push({ minX: cx - ex, maxX: cx + ex, minZ: cz - ez, maxZ: cz + ez, minY: 0, maxY: h, obb: { cx, cz, hx, hz, cs, sn } });
+      const pts = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]].map(([u, v]) => ({ x: cx + u * cs + v * sn, z: cz - u * sn + v * cs }));
+      blk.footprints.push({ x0: cx - ex, x1: cx + ex, z0: cz - ez, z1: cz + ez, h, tone, pts });
+      blk.minX = Math.min(blk.minX, cx - ex);
+      blk.maxX = Math.max(blk.maxX, cx + ex);
+      blk.minZ = Math.min(blk.minZ, cz - ez);
+      blk.maxZ = Math.max(blk.maxZ, cz + ez);
+      if (h > blk.maxH) blk.maxH = h;
+      // a low parapet round some flat roofs
+      if (chance(0.45)) blk.cornices.push({ x: cx, y: h, z: cz, w: w + 0.24, h: 0.32, d: d + 0.24, ry: th });
+      // shop awnings over the street front
+      if (shop && chance(0.55)) {
+        const along = front < 2 ? d : w;
+        const ou = front === 0 ? -1 : front === 1 ? 1 : 0;
+        const ov = front === 2 ? -1 : front === 3 ? 1 : 0;
+        const reach = (ou ? hx : hz) + 0.9;
+        const ax = cx + (ou * reach) * cs + (ov * reach) * sn;
+        const az = cz - (ou * reach) * sn + (ov * reach) * cs;
+        // awnings are laid out along local z facing ±x: a front on a local n / s side turns a quarter more
+        blk.awnings.push({ x: ax, y: Math.min(3.2, storeys[mat] * 0.95) - 0.4, z: az, w: 1.8, d: Math.min(8.5, along - 1.2), sideDir: ou || 1, colorIdx: irange(0, 4), ry: th + (ov ? (ov > 0 ? -Math.PI / 2 : Math.PI / 2) : 0), noSign: floors < 2, signY: storeys[mat] + 0.9 });
+      }
+    }
+    for (const blk of byBlock.values()) {
+      blk.footprints.sort((a, b) => a.h - b.h);
+      quadtree.insert(blk);
+      allBlocks.push(blk);
+    }
+  }
 
   // B6. Narrow leftover slabs no building fits on (8-26 m wide: clipped short by the shore highways or cut by Broadway)
   //     become sitting areas: a row or two of honey locusts & planes in tree pits (planted by street-details.js)
@@ -2415,6 +2507,7 @@ function buildCityBlocks(scene) {
       //    roofs share a plane) so roofs & terraces keep their own roofing instead of a stone lid
       for (let i = 0; i < blk.cornices.length && corniceCount < MAX_CORNICES; i++) {
         const c = blk.cornices[i];
+        dummy.rotation.set(0, c.ry ?? blk.ry ?? 0, 0); // (the real buildings turn one by one)
         dummy.position.set(c.x, c.y - c.h * 0.6, c.z);
         dummy.scale.set(c.w, c.h, c.d);
         dummy.updateMatrix();
@@ -2455,6 +2548,7 @@ function buildCityBlocks(scene) {
       // 5. Retail awnings & illuminated storefront fascia signs
       for (let i = 0; i < blk.awnings.length && awningCount < MAX_AWNINGS; i++) {
         const a = blk.awnings[i];
+        dummy.rotation.set(0, a.ry ?? blk.ry ?? 0, 0);
         dummy.position.set(a.x, a.y, a.z);
         dummy.scale.set(a.w, 0.75, a.d);
         dummy.updateMatrix();
@@ -2462,14 +2556,14 @@ function buildCityBlocks(scene) {
         awningInst.setColorAt(awningCount, awningPalette[a.colorIdx % awningPalette.length]);
 
         const themeIdx = awningCount % signInsts.length;
-        if (signCounts[themeIdx] < MAX_SIGNS_PER_THEME) {
-          dummy.position.set(a.x, 4.68, a.z);
+        if (!a.noSign && signCounts[themeIdx] < MAX_SIGNS_PER_THEME) {
+          dummy.position.set(a.x, a.signY ?? 4.68, a.z);
           dummy.scale.set(0.28, 0.86, a.d * 0.92);
           dummy.updateMatrix();
           signInsts[themeIdx].setMatrixAt(signCounts[themeIdx]++, dummy.matrix);
         }
         if (collectNearLights) {
-          activeAwnings.push({ a, themeIdx, ry: blk.ry || 0 });
+          activeAwnings.push({ a, themeIdx, ry: a.ry ?? blk.ry ?? 0 });
         }
         awningCount++;
       }

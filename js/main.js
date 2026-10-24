@@ -3,9 +3,8 @@ import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { createPostProcessing } from './post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
-import { getLocationLabel, isTypingInField, ROADS, NYC_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
+import { CITY, HAS_GRID, HAS_WATER, getLocationLabel, isTypingInField, ROADS, NYC_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
 import { buildCityGrid } from './city-grid.js';
-import { buildBoroughs } from './boroughs.js';
 import { buildLandmarks } from './landmarks.js';
 import { buildCityBlocks } from './buildings.js';
 import { buildStreetDetails } from './street-details.js';
@@ -21,7 +20,8 @@ import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
 
 // js/main.js
-// Main entry point for New York City (Midtown Manhattan) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
+// Main entry point for the city (Tepic, Nayarit; the Manhattan layers stay available behind CITY.grid / waterfront) in
+// Three.js WebGPURenderer & TSL (three.js dev, see index.html)
 
 async function initApp() {
   const container = document.getElementById('canvas-container');
@@ -70,15 +70,17 @@ async function initApp() {
   markInit('lighting');
 
   if (loadingStatus) {
-    loadingStatus.textContent = 'Constructing Manhattan Grid, Landmarks & Streetscape...';
+    loadingStatus.textContent = HAS_GRID ? 'Constructing Manhattan Grid, Landmarks & Streetscape...' : `Construyendo ${CITY.city || 'la ciudad'}: calles, manzanas y colonias...`;
   }
 
   // 3. Build Manhattan Geography, Iconic Landmarks, Blocks, Street Details & Traffic
   const cityGrid = buildCityGrid(scene);
   markInit('cityGrid');
-  const boroughs = buildBoroughs(scene, { sidewalks: cityGrid.sidewalks });
+  // The boroughs around Manhattan and its modelled landmarks only exist on the New York data (boroughs.js runs heavy
+  // rasters of the real shorelines at import, so it is only loaded there)
+  const boroughs = HAS_WATER ? (await import('./boroughs.js')).buildBoroughs(scene, { sidewalks: cityGrid.sidewalks }) : { colliders: [], update: null };
   markInit('boroughs');
-  const { colliders: landmarkColliders } = buildLandmarks(scene);
+  const { colliders: landmarkColliders } = HAS_GRID ? buildLandmarks(scene) : { colliders: [] };
   markInit('landmarks');
   const cityBlocks = buildCityBlocks(scene);
   markInit('blocks');
@@ -101,9 +103,11 @@ async function initApp() {
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
+  // Saved positions belong to one city's frame: the key carries the city's name
+  const PLAYER_STATE_KEY = `${(CITY.city || 'nyc').toLowerCase()}-player-state`;
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   try {
-    const saved = JSON.parse(localStorage.getItem('nyc-player-state'));
+    const saved = JSON.parse(localStorage.getItem(PLAYER_STATE_KEY));
     if (saved?.version === 1) {
       for (const mode of Object.keys(controllerManager.entities)) {
         const p = saved.entities?.[mode];
@@ -120,14 +124,22 @@ async function initApp() {
       const entities = Object.fromEntries(Object.entries(controllerManager.entities).map(([mode, entity]) => [mode, {
         x: entity.position.x, y: entity.position.y, z: entity.position.z, heading: entity.heading
       }]));
-      localStorage.setItem('nyc-player-state', JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities }));
+      localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities }));
     } catch { /* Storage may be disabled or full. */ }
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
+  // Off the Manhattan grid the scenic cameras frame the city's own spots (see cameras.js)
+  if (!HAS_GRID) {
+    const T = TELEPORT_LOCATIONS;
+    cameraSystem.setScenicAnchors({
+      fifthAve: T.plaza, timesSquare: T.alameda, chryslerGCT: T.uan, centralPark: T.loma, bryantPark: T.mercado,
+      waterfront: T.estacion, observatory: T.plaza, drone: T.plaza
+    });
+  }
   const touchControls = new TouchControls(controllerManager);
   const soundButton = document.getElementById('btn-sound');
-  const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, highwayTraffic, streetDetails }, {
+  const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, highwayTraffic, streetDetails, propBreaker: streetDetails.breaker }, {
     onStateChange: updateSoundButton
   });
   function updateSoundButton() {
@@ -554,6 +566,8 @@ async function initApp() {
   // the web fonts change the buttons' widths once they arrive
   if (document.fonts) document.fonts.ready.then(placeModeIndicator);
   markInit('ui');
+  // Debugging handle (the console & tests): the live systems behind the scene
+  window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem };
 
   // The loading screen stays up while the shaders compile (precompileShaders() & the warm-up frame, see the loop) and
   // until the first frame is on screen
@@ -672,6 +686,8 @@ async function initApp() {
       cameraSystem.camera
     );
     highwayTraffic.update(dt, cameraSystem.camera, controllerManager.getActiveEntity(), controllerManager.activeMode);
+    // Lamp posts & hydrants the player's car or bicycle runs into (mayhem.js)
+    if (streetDetails.breaker) streetDetails.breaker.update(dt, controllerManager.getActiveEntity(), controllerManager.activeMode);
     if (!document.hidden && now >= nextPlayerSave) {
       savePlayerState();
       nextPlayerSave = now + 5000;

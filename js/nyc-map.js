@@ -1,4 +1,4 @@
-import { GEO } from './nyc-geodata.js';
+import { GEO } from './city-geodata.js';
 import {
   ROADS,
   BLOCKS,
@@ -38,10 +38,13 @@ import {
 // New Jersey, the harbour islands and the bridges.
 
 const FONT = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-const MIN_ZOOM = 0.015; // full map, pixels per metre: the whole harbour, Staten Island to the Bronx
+const FRAME = (GEO && GEO.frame) || {};
+const CITY_GRID = FRAME.grid !== false; // Manhattan's grid; otherwise an inland city on its own street graph
+const CITY_WATER = FRAME.waterfront !== false;
+const MIN_ZOOM = CITY_WATER ? 0.015 : 0.05; // full map, pixels per metre: the whole harbour, Staten Island to the Bronx
 const MAX_ZOOM = 3.0; // single lots
 const RADAR_SCALE = 0.32; // radar pixels per metre on the ground (zooms out with altitude)
-const GRID_BEARING = (GEO.frame && GEO.frame.bearingDeg) || 29.02; // Manhattan's grid north, degrees east of true north
+const GRID_BEARING = Number.isFinite(FRAME.bearingDeg) ? FRAME.bearingDeg : 29.02; // the grid's north, degrees east of true north
 
 // Map palette, shared by the radar & the atlas (in step with css/style.css): graphite ground with the streets a shade
 // lighter than the blocks they run between, muted parks & water; a taxi-yellow GPS route, white landmarks & player,
@@ -76,6 +79,14 @@ const MAP = {
   halo: 'rgba(8, 11, 15, 0.9)'
 };
 
+// The ground beyond the city: the harbour around Manhattan, dry land around an inland city
+const MAP_BASE = CITY_WATER ? MAP.water : '#101511';
+// An inland city of one- and two-storey houses: its real buildings drawn in warm, brighter tones so every house reads
+if (!CITY_GRID) {
+  MAP.buildings = ['#5a4f45', '#6b5e50', '#7c6c5b'];
+  MAP.buildingEdge = '#2a241f';
+}
+
 // Landmarks modelled by landmarks.js on their real OpenStreetMap lots (outlined in amber)
 const MODELLED_LANDMARKS = [
   'Empire State Building', 'Chrysler Building', 'One Vanderbilt', 'Grand Central Terminal', 'MetLife Building',
@@ -83,8 +94,9 @@ const MODELLED_LANDMARKS = [
   'Flatiron Building', 'One World Trade Center', 'New York Stock Exchange'
 ];
 
-// Borough (0), waterway (1) & neighbourhood (2) names at their real places (world metres)
-const AREA_LABELS = [
+// Borough (0), waterway (1) & neighbourhood (2) names at their real places (world metres); off the grid, the
+// city's colonias (GEO.places)
+const AREA_LABELS = !CITY_GRID ? (GEO.places || []).map((p) => [p.name.toUpperCase(), p.x, p.z, 2]) : [
   ['MANHATTAN', 120, -1500, 0], ['NEW JERSEY', -7000, 2000, 0], ['BROOKLYN', 7850, 8780, 0], ['QUEENS', 8810, -1680, 0],
   ['THE BRONX', 1010, -9640, 0], ['STATEN ISLAND', -1800, 19220, 0],
   ['HUDSON RIVER', -2680, -300, 1], ['HUDSON RIVER', -2650, -5600, 1], ['EAST RIVER', 1700, 800, 1],
@@ -482,8 +494,8 @@ class NYCMapSystem {
     this.searchPath = null;
     this.textWidths = new Map();
     // Default GTA 6-style active GPS waypoint (Times Square / Broadway)
-    const ts = NYC_LANDMARKS.find((l) => l.id === 'timessquare') || { x: 0, z: 0 };
-    this.waypoint = { x: ts.x, z: ts.z, name: 'Times Square & 42nd St' };
+    const ts = NYC_LANDMARKS.find((l) => l.id === 'timessquare') || NYC_LANDMARKS.find((l) => l.id === 'plaza') || NYC_LANDMARKS[0] || { x: 0, z: 0, name: '' };
+    this.waypoint = { x: ts.x, z: ts.z, name: ts.id === 'timessquare' ? 'Times Square & 42nd St' : ts.name || '' };
 
     // Street names measured before the web font arrived would be spaced for the fallback font: measure & draw again
     if (document.fonts) {
@@ -1010,7 +1022,7 @@ class NYCMapSystem {
       c.s = scale;
       c.version = version;
       c.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      c.ctx.fillStyle = MAP.water;
+      c.ctx.fillStyle = MAP_BASE;
       c.ctx.fillRect(0, 0, bw * 2, bh * 2);
       const cv = new MapView(px, pz, scale, w * 2, h * 2, dpr);
       this.drawWorld(c.ctx, cv, true);
@@ -1021,7 +1033,7 @@ class NYCMapSystem {
     const v = new MapView(px, pz, scale, w, h, dpr);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = MAP.water;
+    ctx.fillStyle = MAP_BASE;
     ctx.fillRect(0, 0, bw, bh);
     const k = scale / c.s;
     ctx.drawImage(c.canvas, dpr * ((c.cx - w / c.s - px) * scale + w * 0.5), dpr * ((c.cz - h / c.s - pz) * scale + h * 0.5),
@@ -1169,7 +1181,7 @@ class NYCMapSystem {
     ctx.save();
     // 1. Harbor & River Water Base
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = MAP.water;
+    ctx.fillStyle = MAP_BASE;
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
     // 2. The ground: boroughs, islands, Manhattan's blocks, parks, footprints, highways & bridges

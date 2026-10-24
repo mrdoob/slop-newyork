@@ -26,6 +26,7 @@ import {
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
+  HAS_WATER,
   ISLAND_BOUNDS,
   CENTRAL_PARK_BOUNDS,
   getIslandBoundsAtZ,
@@ -57,7 +58,7 @@ import {
   createRoadPaintMaterial,
   createTunnelShadeMaterial
 } from './tsl-materials.js';
-import { GEO } from './nyc-geodata.js';
+import { GEO } from './city-geodata.js';
 
 // Live construction data consumed by the building and street-detail builders after buildCityGrid().
 let centralParkClearings;
@@ -1490,11 +1491,22 @@ function buildCityGrid(scene) {
   // 1. NEW YORK HARBOR, HUDSON RIVER, EAST RIVER & HARLEM RIVER WATER PLANE
   // =========================================================================
   const waterMat = createWaterMaterial();
-  const harborWaterGeo = new THREE.PlaneGeometry(60000, 60000, 1, 1);
-  harborWaterGeo.rotateX(-Math.PI / 2);
-  const harborWaterMesh = new THREE.Mesh(harborWaterGeo, waterMat);
-  harborWaterMesh.position.set(0, ISLAND_BOUNDS.waterLevel, -50);
-  group.add(harborWaterMesh);
+  if (HAS_WATER) {
+    const harborWaterGeo = new THREE.PlaneGeometry(60000, 60000, 1, 1);
+    harborWaterGeo.rotateX(-Math.PI / 2);
+    const harborWaterMesh = new THREE.Mesh(harborWaterGeo, waterMat);
+    harborWaterMesh.position.set(0, ISLAND_BOUNDS.waterLevel, -50);
+    group.add(harborWaterMesh);
+  } else {
+    // An inland city: dry valley floor out to the horizon around the detailed box (the roads deck sits on it)
+    const groundMat = new THREE.MeshStandardNodeMaterial({ color: 0x56653c, roughness: 0.96, metalness: 0.0 });
+    const groundGeo = new THREE.PlaneGeometry(60000, 60000, 1, 1);
+    groundGeo.rotateX(-Math.PI / 2);
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+    groundMesh.position.set(0, -0.03, 0);
+    groundMesh.receiveShadow = true;
+    group.add(groundMesh);
+  }
 
   // =========================================================================
   // 2. POLYGONAL MANHATTAN ISLAND SEAWALL BULKHEAD & ROADWAY ASPHALT DECK
@@ -1515,8 +1527,7 @@ function buildCityGrid(scene) {
     x: p.x + (p.x < -100 ? -6 : (p.x > 100 ? 6 : 0)),
     z: p.z + (p.z > 1350 ? 6 : (p.z < -1550 ? -6 : 0))
   }));
-  const seawallMesh = createExtrudedPolygonMesh(seawallPolygon, -2.35, 2.31, seawallMat, true, false);
-  group.add(seawallMesh);
+  if (HAS_WATER) group.add(createExtrudedPolygonMesh(seawallPolygon, -2.35, 2.31, seawallMat, true, false));
 
   // Unified Manhattan Roadway Asphalt Deck (Y = 0.0) following true Manhattan coastline
   const roadMat = createRoadSurfaceMaterial();
@@ -1544,6 +1555,7 @@ function buildCityGrid(scene) {
   const curbGeos = [];
   const hedgeGeos = [];
   const SW_TOP = 0.22;
+  const COVER_GROW = Math.max(0.5, ((GEO.frame && GEO.frame.sidewalk) || 4.6) - 0.2);
   for (const b of BLOCKS) {
     if (b.park > 0.6 && !b.median && b.parkName !== 'Bryant Park') continue; // parks build their own perimeter sidewalk (sections 7, 7B)
     if (b.rect) {
@@ -1557,9 +1569,10 @@ function buildCityGrid(scene) {
       curbGeos.push(curb);
       const inner = offsetPolygonInward(b.poly, 0.25);
       if (inner) slabGeos.push(createExtrudedPolygonMesh(inner, 0.03, SW_TOP - 0.03, sidewalkMat).geometry);
-      // rect cover for the consumers that work on rectangles: the lot rects grown back out to the curb
+      // rect cover for the consumers that work on rectangles: the lot rects grown back out to (just short of) the curb,
+      // by the city's sidewalk width (4.6 m in Manhattan, 2.2 m in Tepic: more would reach into the lanes)
       for (const [x0, x1, z0, z1] of b.rects) {
-        const r = { minX: x0 - 4.4, maxX: x1 + 4.4, minZ: z0 - 4.4, maxZ: z1 + 4.4 };
+        const r = { minX: x0 - COVER_GROW, maxX: x1 + COVER_GROW, minZ: z0 - COVER_GROW, maxZ: z1 + COVER_GROW };
         blockSidewalks.push({ cx: (r.minX + r.maxX) * 0.5, cz: (r.minZ + r.maxZ) * 0.5, w: r.maxX - r.minX, d: r.maxZ - r.minZ, block: b, cover: true });
         if (!b.median) roadSidewalks.push(r);
       }
@@ -1816,6 +1829,7 @@ function buildCityGrid(scene) {
   });
 
   const CPG = GEO.centralPark;
+  if (CPG) {
   const flatPts = (flat) => {
     const o = [];
     for (let i = 0; i < flat.length; i += 2) o.push({ x: flat[i], z: flat[i + 1] });
@@ -1993,6 +2007,7 @@ function buildCityGrid(scene) {
   const columbusColumn = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.5, 18, 12), marbleArchMat);
   columbusColumn.position.set(colC.x, 9.5, colC.z);
   group.add(columbusColumn);
+  } // Central Park
 
   // 7B. Madison Square Park, Union Square Park, Washington Square Park, Tompkins Square Park & Battery Park
   //     Flush with the sidewalks: hex-paver walks, granite-coped lawn beds with low hoop fences between radial &
@@ -2280,7 +2295,17 @@ function buildCityGrid(scene) {
   //      Battery...): its curb island paved like a park walk, a granite-coped lawn inset from it under scattered trees
   //      (big planes along the walk), lampposts on the perimeter
   const SPECIAL_PARKS = new Set(['Central Park', 'Madison Square Park', 'Union Square Park', 'Washington Square Park', 'Tompkins Square Park', 'Bryant Park']);
-  const genericParks = BLOCKS.filter((b) => b.park > 0.6 && !b.median && !SPECIAL_PARKS.has(b.parkName) && b.area > 250);
+  const genericParks = BLOCKS.filter((b) => b.park > 0.6 && !b.median && !b.rural && !SPECIAL_PARKS.has(b.parkName) && b.area > 250);
+  // Open country between the roads around an inland city: meadow flush with the road, no walks, lamps or trees
+  {
+    const fieldGeos = [];
+    for (const b of BLOCKS) if (b.rural) fieldGeos.push(createFlatPolygonMesh(b.poly, 0.03, cpMeadowMat, true).geometry);
+    for (let i = 0; i < fieldGeos.length; i += 400) {
+      const m = new THREE.Mesh(mergeGeometries(fieldGeos.slice(i, i + 400), false), cpMeadowMat);
+      m.receiveShadow = true;
+      group.add(m);
+    }
+  }
   for (const b of genericParks) {
     const slab = offsetPolygonInward(b.poly, 0.1) || b.poly;
     group.add(createExtrudedPolygonMesh(b.poly, 0.0, PARK_Y - 0.04, curbMat, true, false));
@@ -2323,7 +2348,8 @@ function buildCityGrid(scene) {
   // ---- The Battery: Castle Clinton at the island's south-west, the esplanade carried around the tip (trees &
   //      lampposts on the seawall coping behind an iron railing), Peter Minuit Plaza's tree grid before the Whitehall
   //      Terminal
-  const GPTS = GEO.points;
+  const GPTS = GEO.points || {};
+  if (GPTS.castleClinton) {
   const castleC = { x: GPTS.castleClinton[0], z: GPTS.castleClinton[1], r: 19 }; // Castle Clinton (below)
   {
     const COPING_TOP = -0.04; // seawall coping (section 2)
@@ -2444,6 +2470,7 @@ function buildCityGrid(scene) {
       if (Math.hypot(lampMatrices[i].elements[12] - cx, lampMatrices[i].elements[14] - cz) < R + 1) lampMatrices.splice(i, 1);
     }
   }
+  } // The Battery
 
   // Instanced plaza & park furniture: NYC Parks slatted benches (seat facing +z) & cast-iron lampposts with globes
   if (benchMatrices.length) {
@@ -2513,7 +2540,7 @@ function buildCityGrid(scene) {
   // 9 & 10. The East River bridges, harbor islands and the surrounding boroughs are built by boroughs.js
 
   // 11. Manhattan's waterfront edge: esplanades, shore highways & riverside park belts (see buildManhattanWaterfrontEdge)
-  const highwayLanes = buildManhattanWaterfrontEdge(group, { blockSidewalks, treeSites, lawnMat: cpLawnMat, curbMat, roadMat });
+  const highwayLanes = HAS_WATER ? buildManhattanWaterfrontEdge(group, { blockSidewalks, treeSites, lawnMat: cpLawnMat, curbMat, roadMat }) : [];
 
   // Batch static sub-meshes by material to reduce per-frame WebGPU draw calls
   batchStaticGroupMeshes(group, new Set([waterMat, roadMat, cpLawnMat, cpMeadowMat]));

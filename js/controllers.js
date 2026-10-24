@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
+  CITY,
   ISLAND_BOUNDS,
   CENTRAL_PARK_BOUNDS,
   getIslandBoundsAtZ,
@@ -31,8 +32,22 @@ import { bryantParkLawn } from './landmarks.js';
 // 3. Cyclist (Sculpted Road Cyclist with Drop-Bar Frame & Aero Helmet)
 // 4. Helicopter (Manhattan Sightseeing Twin-Turbine Chopper)
 
-// Spawn on 5th Ave at 37th St, facing south down the avenue toward the Empire State Building (34th St)
-const SPAWN_Z = streetZ(37);
+// Spawn at the city's start (city-geodata.js frame.start: Tepic's Plaza Principal), or on 5th Ave at 37th St facing
+// south down the avenue toward the Empire State Building (34th St) on the Manhattan grid
+const START = CITY && CITY.start ? CITY.start : null;
+const SPAWN_Z = START ? START.z : streetZ(37);
+// A point `ahead` metres along the start heading and `right` metres to its right (heading 0 faces +z, right is -x)
+function spawnAt(ahead, right, fallbackX, fallbackZ) {
+  if (!START) return { x: fallbackX, z: fallbackZ, heading: 0 };
+  const sx = Math.sin(START.heading), cx = Math.cos(START.heading);
+  return { x: START.x + sx * ahead - cx * right, z: START.z + cx * ahead + sx * right, heading: START.heading };
+}
+const SPAWN = {
+  person: spawnAt(2, 3.4, -11.6, SPAWN_Z + 12),
+  car: spawnAt(0, 0, 3.6, SPAWN_Z + 12),
+  cyclist: spawnAt(-9, 0.6, 5.2, SPAWN_Z - 8),
+  helicopter: spawnAt(-60, -110, -110, SPAWN_Z - 60)
+};
 const groundCollider = { type: 'ground' };
 
 const CAR_DRIVE = {
@@ -454,8 +469,8 @@ class ThirdPersonControllerManager {
       mesh: root,
       crowd,
       rig,
-      position: new THREE.Vector3(-11.6, ISLAND_BOUNDS.sidewalkHeight, SPAWN_Z + 12),
-      heading: 0,
+      position: new THREE.Vector3(SPAWN.person.x, ISLAND_BOUNDS.sidewalkHeight, SPAWN.person.z),
+      heading: SPAWN.person.heading,
       speed: 0,
       verticalVel: 0,
       cameraTargetOffset: new THREE.Vector3(0, 1.55, 0),
@@ -562,8 +577,8 @@ class ThirdPersonControllerManager {
       carState,
       headLights,
       wheels,
-      position: new THREE.Vector3(3.6, 0.0, SPAWN_Z + 12),
-      heading: 0,
+      position: new THREE.Vector3(SPAWN.car.x, 0.0, SPAWN.car.z),
+      heading: SPAWN.car.heading,
       speed: 0,
       vx: 0,
       vz: 0,
@@ -729,8 +744,8 @@ class ThirdPersonControllerManager {
       riderRig,
       helmet,
       headLight,
-      position: new THREE.Vector3(5.2, 0.0, SPAWN_Z - 8),
-      heading: 0,
+      position: new THREE.Vector3(SPAWN.cyclist.x, 0.0, SPAWN.cyclist.z),
+      heading: SPAWN.cyclist.heading,
       speed: 0,
       leanAngle: 0,
       pedalPhase: 0,
@@ -813,8 +828,8 @@ class ThirdPersonControllerManager {
       tiltPivot,
       mainRotorPivot,
       tailRotorPivot,
-      position: new THREE.Vector3(-110, 96, SPAWN_Z - 60),
-      heading: 0.62,
+      position: new THREE.Vector3(SPAWN.helicopter.x, 96, SPAWN.helicopter.z),
+      heading: START ? START.heading + 0.62 : 0.62,
       speed: 0,
       verticalSpeed: 0,
       pitchAngle: 0,

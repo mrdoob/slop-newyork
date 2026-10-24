@@ -1,1 +1,4 @@
 .DS_Store
+.claude/
+tools/data/tepic/overture/
+tools/data/tepic/fetch.log

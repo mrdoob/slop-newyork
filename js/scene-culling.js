@@ -90,7 +90,10 @@ function chunkInstancedMesh(mesh, cell) {
   if (!geo0.boundingBox) geo0.computeBoundingBox();
   const attrs = Object.entries(geo0.attributes);
   const chunks = [];
+  // where each source instance went: chunk number, slot (mayhem.js hides knocked-over props through it)
+  const where = new Int32Array(n * 2).fill(-1);
   for (const ids of cells.values()) {
+    ids.forEach((id, j) => { where[id * 2] = chunks.length; where[id * 2 + 1] = j; });
     const geo = new THREE.BufferGeometry();
     geo.setIndex(geo0.index);
     for (const [name, a] of attrs) {
@@ -120,6 +123,7 @@ function chunkInstancedMesh(mesh, cell) {
     chunk.computeBoundingSphere();
     chunks.push(chunk);
   }
+  mesh.userData.chunked = { chunks, where };
   return chunks;
 }
 

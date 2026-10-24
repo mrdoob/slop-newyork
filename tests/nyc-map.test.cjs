@@ -11,7 +11,7 @@ for (const [width, height, dpr] of [[500, 300, 1], [320, 180, 1.5], [1920, 1080,
     const window = { innerWidth: width, innerHeight: height, devicePixelRatio: dpr };
     const { NYCMapSystem } = loadModule(source, {
       globals: { window, performance: { now: () => 0 } },
-      imports: { './nyc-geodata.js': { GEO: {} }, './city-config.js': { ROADS: [] } }
+      imports: { './city-geodata.js': { GEO: {} }, './city-config.js': { ROADS: [] } }
     });
     const map = Object.create(NYCMapSystem.prototype);
     // Capture the production render viewport; drawing primitives are irrelevant to coordinate conversion.
@@ -103,7 +103,7 @@ function mapHarness() {
   };
   const { NYCMapSystem } = loadModule(source, {
     globals: { window, document },
-    imports: { './nyc-geodata.js': { GEO: { frame: {} } }, './city-config.js': config }
+    imports: { './city-geodata.js': { GEO: { frame: {} } }, './city-config.js': config }
   });
   const teleports = [], toggles = [];
   const map = new NYCMapSystem({

@@ -697,10 +697,11 @@ function createPreWarBuildingMaterial(opts = {}) {
     crownGlowColor = 0xffe0a3,
     seed = 42.0,
     boxLocal = false,
-    cornerPier = 1.2 // solid masonry at both ends of every wall above the shopfronts (box-local mode)
+    cornerPier = 1.2, // solid masonry at both ends of every wall above the shopfronts (box-local mode)
+    stucco = false // rendered & painted walls all round (Mexican houses): rear & side walls in the front's paint, no brick
   } = opts;
 
-  const cacheKey = `${stoneColor}_${trimColor}_${windowWidth}_${floorHeight}_${litProbability}_${warmth}_${crownGlowHeight}_${seed}_${boxLocal}_${cornerPier}`;
+  const cacheKey = `${stoneColor}_${trimColor}_${windowWidth}_${floorHeight}_${litProbability}_${warmth}_${crownGlowHeight}_${seed}_${boxLocal}_${cornerPier}_${stucco}`;
   if (_preWarCache.has(cacheKey)) {
     return _preWarCache.get(cacheKey);
   }
@@ -721,6 +722,7 @@ function createPreWarBuildingMaterial(opts = {}) {
   const uWarmth = uniform(warmth);
   const uCrownGlowHeight = uniform(crownGlowHeight);
   const uSeed = uniform(seed);
+  const uStucco = uniform(stucco ? 1.0 : 0.0);
   const cSoot = color(0x4a4236);
   const cWarmWindow = color(0xffcf86);
   const cCoolWindow = color(0xcfe2ff);
@@ -821,15 +823,16 @@ function createPreWarBuildingMaterial(opts = {}) {
       const pargePatch = smoothstep(0.6, 0.76, noise2D(vec2(uCoord.mul(0.11), vCoord.mul(0.07)).add(tone.mul(37.0))));
       parged.assign(max(step(0.74, fract(tone.mul(3.7))), pargePatch.mul(0.85)));
     });
-    const backTint = mix(backBrick, color(0x8f8b84), parged);
+    // (stucco: the side & rear walls are painted like the front, a shade weathered, and show no mortar joints)
+    const backTint = mix(mix(backBrick, color(0x8f8b84), parged), cStone.mul(mix(float(0.86), float(0.97), tone)), uStucco);
     const mortarJoint = max(
       gridLine(colCoord.mul(brickL), brickL, 0.016),
       gridLine(vCoord, brickH, 0.016)
-    ).mul(float(1.0).sub(isRoof)).mul(float(1.0).sub(parged)).mul(float(1.0).sub(coping));
+    ).mul(float(1.0).sub(isRoof)).mul(float(1.0).sub(parged)).mul(float(1.0).sub(coping)).mul(float(1.0).sub(uStucco));
 
     // Per-brick tint fades out once bricks shrink to a pixel (and soot streaks once they do), so neither can shimmer
     const uFw = fwidth(uCoord);
-    const brickVar = float(1.0).sub(smoothstep(0.5, 1.0, max(uFw.div(brickL), fwidth(rowCoord))));
+    const brickVar = float(1.0).sub(smoothstep(0.5, 1.0, max(uFw.div(brickL), fwidth(rowCoord)))).mul(float(1.0).sub(uStucco));
     const brickCell = vec2(floor(colCoord), courseRow);
     const brickRnd = hash2D(brickCell.add(vec2(uSeed, 5.3))).sub(0.5).mul(brickVar);
     const brickWarmShift = hash2D(brickCell.add(vec2(17.1, uSeed))).sub(0.5).mul(0.12).mul(brickVar);

@@ -7,7 +7,7 @@ import {
   getIslandBoundsAtZ,
   BLOCKS
 } from './city-config.js';
-import { GEO } from './nyc-geodata.js';
+import { GEO } from './city-geodata.js';
 
 // js/road-network.js
 // Drivable road graph derived from the ground layout that city-grid.js actually builds: avenue corridors
@@ -388,7 +388,7 @@ function buildRoadNetwork(sidewalks, obstacles) {
     }
     // Lanes by the street's real curb-to-curb width and direction of travel: one-way streets as wide as the grid's
     // (two lanes from ~9 m), two-way ones a lane each way (two each way from 17 m). Wide or named avenues are major.
-    const MAJOR = /\bAVE\b|AVENUE|BROADWAY|BOWERY|BLVD|PARK ROW/;
+    const MAJOR = /\bAVE\b|AVENUE|BROADWAY|BOWERY|BLVD|PARK ROW|^Avenida\b|^Av\.|Boulevard|Bulevar|Calzada|Libramiento|Perif[eé]rico|^Carretera|Prolongaci[oó]n Avenida/;
     function lanesOf(l) {
       const w = l.w > 3 ? l.w : MAJOR.test(l.name) ? 18 : 9.1;
       const half = w / 2;
@@ -1077,6 +1077,20 @@ function buildRoadNetwork(sidewalks, obstacles) {
       if (n) n.signal = true;
     }
   }
+  // Off the grid, the real traffic signals (OpenStreetMap highway=traffic_signals) mark their junction: the nearest
+  // real junction within 22 m. Only junctions of two roads are signalised: the phases know an avenue and a street
+  const signalPts = (GEO.roadGraph && GEO.roadGraph.signals) || [];
+  const signalled = new Set();
+  for (let i = 0; i < signalPts.length; i += 2) {
+    const sx = signalPts[i], sz = signalPts[i + 1];
+    let best = null, bd = 22;
+    for (const n of nodes) {
+      if (n.shape || n.signal) continue;
+      const d = Math.hypot(n.x - sx, n.z - sz);
+      if (d < bd) { bd = d; best = n; }
+    }
+    if (best) signalled.add(best);
+  }
 
   // 9. Sides & right of way at each node, for traffic.js. Its arms are its sides (one crosswalk and approach each): a
   //    grid intersection keeps east 0, west 1, south 2, north 3, any other arm counts from 4. The arms of one road (on
@@ -1085,6 +1099,13 @@ function buildRoadNetwork(sidewalks, obstacles) {
   //    arms 0, east-west 1), the widest road at a centreline junction.
   computeArms(edges);
   for (const n of nodes) sidesAndGroups(n);
+  let signalCount = 0;
+  for (const n of signalled) {
+    if (n.groupCount !== 2 || n.arms.length < 3) continue;
+    n.signal = true;
+    signalCount++;
+  }
+  if (signalPts.length) console.info(`[roads] ${signalCount} signalised junctions of ${signalPts.length / 2} real traffic signals`);
   for (const e of edges) {
     e.inSide = e.inArm.side; // the side of e.to it arrives over
     e.outSide = e.outArm.side; // the side of e.from it leaves over

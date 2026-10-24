@@ -50,8 +50,41 @@ class CameraSystem {
     this.smoothedSpeed = 0;
     this._desiredPos = new THREE.Vector3();
     this._desiredLook = new THREE.Vector3();
+    // Scenic anchors { presetId: { x, z, heading } } replace the hardcoded Manhattan vantage points (main.js sets them
+    // for a city without the Manhattan grid)
+    this.scenicAnchors = null;
 
     this.bindPointerControls();
+  }
+
+  setScenicAnchors(anchors) {
+    this.scenicAnchors = anchors || null;
+  }
+
+  // A scenic shot framed on an anchor spot: `back` metres behind it along its heading, `side` to its right, `up` high,
+  // looking `ahead` metres past it (heading 0 faces +z; right is -x)
+  scenicFromAnchor(id, elapsed, desiredPos, desiredLook) {
+    const a = this.scenicAnchors && this.scenicAnchors[id];
+    if (!a) return false;
+    const sx = Math.sin(a.heading), cz = Math.cos(a.heading);
+    const at = (ahead, right, y) => [a.x + sx * ahead - cz * right, y, a.z + cz * ahead + sx * right];
+    if (id === 'observatory') {
+      // high over the spot, slowly panning across the roofs towards the hills
+      const pan = Math.sin(elapsed * 0.18) * 120.0;
+      desiredPos.set(...at(-40, 0, 190));
+      desiredLook.set(a.x + pan, 20, a.z - 600);
+    } else if (id === 'drone') {
+      const orbit = elapsed * 0.07 + 0.65;
+      const radius = 420.0 + Math.sin(elapsed * 0.23) * 90.0;
+      const alt = 180.0 + Math.cos(elapsed * 0.19) * 50.0;
+      desiredPos.set(Math.cos(orbit) * radius + a.x, alt, Math.sin(orbit) * radius + a.z);
+      desiredLook.set(a.x, 12.0, a.z);
+    } else {
+      const sway = Math.sin(elapsed * 0.25) * 1.8;
+      desiredPos.set(...at(-28, 3.5 + sway, 6.5));
+      desiredLook.set(...at(90, -4, 9));
+    }
+    return true;
   }
 
   bindPointerControls() {
@@ -256,6 +289,7 @@ class CameraSystem {
       }
 
       case 'centralPark': {
+        if (this.scenicFromAnchor('centralPark', elapsed, desiredPos, desiredLook)) break;
         // Inside Central Park South looking across The Pond, Gapstow Bridge, The Mall, Sheep Meadow & UWS/UES Skylines
         const sway = Math.sin(elapsed * 0.22) * 3.5;
         desiredPos.set(-70.0 + sway, 14.0, -1425.0);
@@ -264,6 +298,7 @@ class CameraSystem {
       }
 
       case 'fifthAve': {
+        if (this.scenicFromAnchor('fifthAve', elapsed, desiredPos, desiredLook)) break;
         // 5th Avenue & 42nd St looking South down the 5th Ave canyon toward the Empire State Building
         const sway = Math.sin(elapsed * 0.25) * 1.8;
         desiredPos.set(0.0 + sway, 6.5, -20.0);
@@ -272,6 +307,7 @@ class CameraSystem {
       }
 
       case 'timesSquare': {
+        if (this.scenicFromAnchor('timesSquare', elapsed, desiredPos, desiredLook)) break;
         // Times Square & Broadway looking across Duffy Square red steps and One Times Square billboards
         const sway = Math.sin(elapsed * 0.3) * 3.0;
         desiredPos.set(-603.0 + sway, 5.5, -290.0);
@@ -280,6 +316,7 @@ class CameraSystem {
       }
 
       case 'chryslerGCT': {
+        if (this.scenicFromAnchor('chryslerGCT', elapsed, desiredPos, desiredLook)) break;
         // Park Ave & 42nd St intersection looking straight at Grand Central, MetLife, and Chrysler Building Crown
         const sway = Math.cos(elapsed * 0.22) * 2.5;
         desiredPos.set(300.0 + sway, 9.5, 95.0);
@@ -288,6 +325,7 @@ class CameraSystem {
       }
 
       case 'observatory': {
+        if (this.scenicFromAnchor('observatory', elapsed, desiredPos, desiredLook)) break;
         // Empire State Building 86th Floor Deck looking North-East across Midtown skyline
         const pan = Math.sin(elapsed * 0.18) * 80.0;
         desiredPos.set(-58.0, 322.0, 660.0);
@@ -296,6 +334,7 @@ class CameraSystem {
       }
 
       case 'bryantPark': {
+        if (this.scenicFromAnchor('bryantPark', elapsed, desiredPos, desiredLook)) break;
         // Inside Bryant Park Great Lawn looking East toward NYPL portico, One Vanderbilt & Chrysler Building
         const sway = Math.sin(elapsed * 0.25) * 1.5;
         const lawn = bryantParkLawn || { minX: -260, maxX: -150, minZ: 40, maxZ: 120, top: 1.3 };
@@ -306,6 +345,7 @@ class CameraSystem {
       }
 
       case 'waterfront': {
+        if (this.scenicFromAnchor('waterfront', elapsed, desiredPos, desiredLook)) break;
         // Over the shimmering East River looking across the FDR Drive, Queensboro Bridge & Midtown Skyline
         const drift = Math.sin(elapsed * 0.15) * 40.0;
         desiredPos.set(1640.0, 60.0, 60.0 + drift);
@@ -314,6 +354,7 @@ class CameraSystem {
       }
 
       case 'drone': {
+        if (this.scenicFromAnchor('drone', elapsed, desiredPos, desiredLook)) break;
         const angle = elapsed * 0.07 + 0.65;
         const radius = 720.0 + Math.sin(elapsed * 0.23) * 140.0;
         const alt = 330.0 + Math.cos(elapsed * 0.19) * 90.0;
