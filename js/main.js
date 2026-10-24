@@ -18,7 +18,7 @@ import { LightingSystem } from './lighting.js';
 import { NYCMapSystem } from './nyc-map.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
-import { buildTerrain, terrainHeight } from './terrain.js';
+import { buildTerrain, hillGround } from './terrain.js';
 import { buildTepicLandmarks } from './tepic-landmarks.js';
 
 // js/main.js
@@ -112,7 +112,8 @@ async function initApp() {
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
-  controllerManager.setTerrain(terrainHeight);
+  controllerManager.setTerrain(hillGround);
+  trafficSystem.setHillQuery(hillGround);
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
   const solidAt = (x, z) => controllerManager.isSolidAt(x, z);
   trafficSystem.setSolidQuery(solidAt);
@@ -143,6 +144,7 @@ async function initApp() {
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
+  cameraSystem.setGroundQuery(hillGround); // the chase cameras stay over the hills
   // Off the Manhattan grid the scenic cameras frame the city's own spots (see cameras.js)
   if (!HAS_GRID) {
     const T = TELEPORT_LOCATIONS;

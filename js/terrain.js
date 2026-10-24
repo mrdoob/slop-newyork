@@ -20,14 +20,26 @@ if (T) {
   for (let i = 0; i < dm.length; i++) heights[i] = dm[i] / 10;
 }
 
-/** Height (m) of the hills over the flat city at world (x, z): 0 in town and beyond the data */
+const SINK = 0.08; // the flat parts of the hills' mesh sit just under the streets & meadows
+
+/**
+ * Height (m) of the hills over the flat city at world (x, z), on the very triangles the mesh draws (each grid cell
+ * split from its +x corner to its +z corner): 0 in town and beyond the data
+ */
 function terrainHeight(x, z) {
   if (!heights) return 0;
   const fx = (x - T.x0) / T.cell, fz = (z - T.z0) / T.cell;
   if (fx < 0 || fz < 0 || fx >= T.w - 1 || fz >= T.h - 1) return 0;
   const i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j;
   const k = j * T.w + i;
-  return (heights[k] * (1 - tx) + heights[k + 1] * tx) * (1 - tz) + (heights[k + T.w] * (1 - tx) + heights[k + T.w + 1] * tx) * tz;
+  const h00 = heights[k], h10 = heights[k + 1], h01 = heights[k + T.w], h11 = heights[k + T.w + 1];
+  return tx + tz <= 1 ? h00 + (h10 - h00) * tx + (h01 - h00) * tz : h11 + (h01 - h11) * (1 - tx) + (h10 - h11) * (1 - tz);
+}
+
+/** The ground's height for anything standing on the hills (0 in the flat city) */
+function hillGround(x, z) {
+  const h = terrainHeight(x, z);
+  return h > SINK ? h - SINK : 0;
 }
 
 // value noise for the hillside colouring
@@ -46,7 +58,6 @@ function buildTerrain(scene) {
     return { group };
   }
   const { w, h, cell, x0, z0 } = T;
-  const SINK = 0.08; // the flat parts sit just under the streets & meadows
   const pos = new Float32Array(w * h * 3);
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < w; i++) {
@@ -95,6 +106,8 @@ function buildTerrain(scene) {
   mesh.receiveShadow = true;
   mesh.castShadow = true;
   group.add(mesh);
+
+  buildHillPaths(group);
 
   // the cross on the summit of Cerro de la Cruz (lit at night)
   if (T.cross) {
@@ -152,4 +165,121 @@ function buildTerrain(scene) {
   return { group };
 }
 
-export { buildTerrain, terrainHeight };
+// The ways up the hills (city-geodata.js terrain.paths): ribbons laid on the hillside (each edge on the ground under
+// it), cobbled, paved or earth; the cobbled calzadas with a dry-stone wall on their downhill side and a lamp every 30 m
+function buildHillPaths(group) {
+  const paths = T.paths || [];
+  const STEP = 2.5;
+  const ribbons = [[], [], []]; // positions per surface
+  const walls = [];
+  const lamps = [];
+  for (const [surface, width, flat] of paths) {
+    const pts = [];
+    for (let i = 0; i < flat.length; i += 2) pts.push([flat[i], flat[i + 1]]);
+    // resample every STEP m
+    const samples = [];
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.01) continue;
+      const n = Math.max(1, Math.ceil(L / STEP));
+      for (let k = 0; k < n; k++) samples.push([ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n, (bx - ax) / L, (bz - az) / L]);
+    }
+    if (pts.length > 1) {
+      const [ax, az] = pts[pts.length - 2], [bx, bz] = pts[pts.length - 1];
+      const L = Math.hypot(bx - ax, bz - az) || 1;
+      samples.push([bx, bz, (bx - ax) / L, (bz - az) / L]);
+    }
+    const hw = width / 2;
+    const out = ribbons[surface];
+    let run = 0;
+    for (let k = 0; k + 1 < samples.length; k++) {
+      const a = samples[k], b = samples[k + 1];
+      const ha = terrainHeight(a[0], a[1]), hb = terrainHeight(b[0], b[1]);
+      run += STEP;
+      if (Math.max(ha, hb) < 0.3) continue; // in town: the streets are there already
+      const corner = (s, side) => {
+        const x = s[0] - s[3] * side * hw, z = s[1] + s[2] * side * hw;
+        return [x, terrainHeight(x, z) + 0.12, z];
+      };
+      const a0 = corner(a, -1), a1 = corner(a, 1), b0 = corner(b, -1), b1 = corner(b, 1);
+      out.push(...a0, ...a1, ...b0, ...a1, ...b1, ...b0); // counter-clockwise from above
+      if (surface === 0 && width >= 4) {
+        // the wall on the downhill side, from the hillside below up to knee height over the path
+        const below = (side) => terrainHeight(a[0] - a[3] * side * (hw + 3), a[1] + a[2] * side * (hw + 3));
+        const side = below(-1) < below(1) ? -1 : 1;
+        const wa = side < 0 ? a0 : a1, wb = side < 0 ? b0 : b1;
+        walls.push([wa, wb]);
+        if (run % 30 < STEP) lamps.push([wa[0] - a[3] * side * -0.5, wa[1], wa[2] + a[2] * side * -0.5]);
+      }
+    }
+  }
+  const surfaces = [
+    // cobbles: rounded river stones in a dark joint
+    (() => {
+      const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.92 });
+      const q = positionWorld.xz.mul(3.2);
+      const cell = fract(q.add(vec2(0.0, floor(q.x).mul(0.5))));
+      const stone = smoothstep(0.08, 0.2, cell.x).mul(smoothstep(0.92, 0.8, cell.x)).mul(smoothstep(0.08, 0.2, cell.y)).mul(smoothstep(0.92, 0.8, cell.y));
+      const tone = vnoise(floor(q).mul(1.7));
+      mat.colorNode = mix(color(0x4e4840), mix(color(0x8b8173), color(0xa89c8a), tone), stone);
+      return mat;
+    })(),
+    new THREE.MeshStandardNodeMaterial({ color: 0xb3ada2, roughness: 0.85 }),
+    new THREE.MeshStandardNodeMaterial({ color: 0x8a6448, roughness: 0.97 })
+  ];
+  ribbons.forEach((list, k) => {
+    if (!list.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(list, 3));
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, surfaces[k]);
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  });
+  if (walls.length) {
+    // a dry-stone wall 0.45 m thick: its outer face reaching 1.2 m down the slope, 0.8 m over the path
+    const pos = [];
+    for (const [a, b] of walls) {
+      const top = 0.8, bot = -1.2;
+      const quad = (p0, p1, y0, y1) => {
+        pos.push(p0[0], p0[1] + y0, p0[2], p1[0], p1[1] + y0, p1[2], p0[0], p0[1] + y1, p0[2]);
+        pos.push(p0[0], p0[1] + y1, p0[2], p1[0], p1[1] + y0, p1[2], p1[0], p1[1] + y1, p1[2]);
+      };
+      quad(a, b, bot, top);
+      quad(b, a, bot, top);
+      // coping
+      pos.push(a[0], a[1] + top, a[2], b[0], b[1] + top, b[2], a[0], a[1] + top + 0.08, a[2]);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.95, side: THREE.DoubleSide });
+    const q = vec2(positionWorld.x.add(positionWorld.z), positionWorld.y).mul(vec2(2.2, 3.4));
+    const c = fract(q.add(vec2(floor(q.y).mul(0.5), 0.0)));
+    const stone = smoothstep(0.05, 0.14, c.x).mul(smoothstep(0.95, 0.86, c.x)).mul(smoothstep(0.06, 0.16, c.y)).mul(smoothstep(0.94, 0.84, c.y));
+    mat.colorNode = mix(color(0x4a453d), mix(color(0x857b6c), color(0xa39784), vnoise(floor(q).mul(1.3))), stone);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  if (lamps.length) {
+    const poleGeo = new THREE.CylinderGeometry(0.07, 0.1, 4.2, 8).translate(0, 2.1, 0);
+    const globeGeo = new THREE.SphereGeometry(0.22, 10, 8).translate(0, 4.35, 0);
+    const poleMat = new THREE.MeshStandardNodeMaterial({ color: 0x1f2124, roughness: 0.5, metalness: 0.5 });
+    const globeMat = new THREE.MeshBasicNodeMaterial();
+    globeMat.colorNode = mix(color(0xd8d6cc), color(0xffe2a8).mul(1.9), smoothstep(0.4, 1.1, cityUniforms.uInteriorGlow));
+    const poles = new THREE.InstancedMesh(poleGeo, poleMat, lamps.length);
+    const globes = new THREE.InstancedMesh(globeGeo, globeMat, lamps.length);
+    const m = new THREE.Matrix4();
+    lamps.forEach(([x, y, z], i) => {
+      m.makeTranslation(x, y - 0.12, z);
+      poles.setMatrixAt(i, m);
+      globes.setMatrixAt(i, m);
+    });
+    poles.castShadow = true;
+    group.add(poles, globes);
+  }
+}
+
+export { buildTerrain, terrainHeight, hillGround };

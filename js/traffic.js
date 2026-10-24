@@ -1724,11 +1724,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     for (let w = 0; w < 2; w++) {
       const wz = w === 0 ? halfBase : -halfBase;
       dummy.rotation.set(v.wheelSpin + w * 0.55, rotY + (w === 0 ? v.steer : 0), roll, 'YXZ');
-      dummy.position.set(v.x - halfTrack * cosY + wz * sinY, radius, v.z + halfTrack * sinY + wz * cosY);
+      dummy.position.set(v.x - halfTrack * cosY + wz * sinY, radius + (v.hy || 0), v.z + halfTrack * sinY + wz * cosY);
       dummy.updateMatrix();
       leftInst.setMatrixAt(i * 2 + w, dummy.matrix);
 
-      dummy.position.set(v.x + halfTrack * cosY + wz * sinY, radius, v.z - halfTrack * sinY + wz * cosY);
+      dummy.position.set(v.x + halfTrack * cosY + wz * sinY, radius + (v.hy || 0), v.z - halfTrack * sinY + wz * cosY);
       dummy.updateMatrix();
       rightInst.setMatrixAt(i * 2 + w, dummy.matrix);
     }
@@ -1757,7 +1757,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const bodyInst = near ? bodies[c.bodyType].near : bodies[c.bodyType].far;
     const slot = bodyInst.count++;
 
-    dummy.position.set(c.x, 0.0, c.z);
+    dummy.position.set(c.x, c.hy || 0, c.z);
     dummy.rotation.set(c.pitch, rotY, c.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -1791,7 +1791,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     // Soft Under-Car Contact Shadow (AO) stays flat on the asphalt
     const visIdx = visibleCars++;
     dummy.rotation.set(0, rotY, 0, 'YXZ');
-    dummy.position.set(c.x, 0.018, c.z);
+    dummy.position.set(c.x, 0.018 + (c.hy || 0), c.z);
     dummy.scale.set(2.22, 1.0, 5.05);
     dummy.updateMatrix();
     carShadowInst.setMatrixAt(visIdx, dummy.matrix);
@@ -1828,14 +1828,14 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     if (hasView && !visible(b.x, b.z, 22)) return;
 
     const i = visibleBuses++;
-    dummy.position.set(b.x, 0.018, b.z);
+    dummy.position.set(b.x, 0.018 + (b.hy || 0), b.z);
     dummy.rotation.set(0, rotY, 0, 'YXZ');
     dummy.scale.set(2.92, 1.0, 12.1);
     dummy.updateMatrix();
     busShadowInst.setMatrixAt(i, dummy.matrix);
 
     // Lofted Bus Body is defined in ground-relative Y (0.36m skirt to 3.0m roof crown)
-    dummy.position.set(b.x, 0.0, b.z);
+    dummy.position.set(b.x, b.hy || 0, b.z);
     dummy.rotation.set(b.pitch, rotY, b.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -1900,7 +1900,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
         const baseInt = (v.bus ? HEADLIGHTS.busIntensity : HEADLIGHTS.intensity) * beamScale * fade;
         // Match the body instance, including suspension and impact rotation.
-        dummy.position.set(v.x, 0, v.z);
+        dummy.position.set(v.x, v.hy || 0, v.z);
         dummy.rotation.set(v.pitch, v.yaw + v.yawOffset, v.roll, 'YXZ');
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
@@ -1931,7 +1931,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const side = redPhase ? -0.36 : 0.36;
       const pt = policeLightPool[policeLightsUsed++];
       pt.color.setHex(redPhase ? 0xff1828 : 0x1868ff);
-      pt.position.set(v.x + side * v._cosY - 0.25 * v._sinY, 1.85, v.z - side * v._sinY - 0.25 * v._cosY);
+      pt.position.set(v.x + side * v._cosY - 0.25 * v._sinY, 1.85 + (v.hy || 0), v.z - side * v._sinY - 0.25 * v._cosY);
       pt.distance = 12.0;
       pt.intensity = 42.0 * tailScale * fade * pulse;
     }
@@ -1947,9 +1947,10 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const SIDEWALK_Y = 0.22;
   const CROSSWALK_Y = 0.012;
   function pedGround(p, x, z) {
-    if (!p.node) return SIDEWALK_Y;
+    const hill = hillAt(x, z);
+    if (!p.node) return SIDEWALK_Y + hill;
     const t = (x - p.ax) * p.ux + (z - p.az) * p.uz;
-    return t > 2 && t < p.len - 2 ? CROSSWALK_Y : SIDEWALK_Y;
+    return (t > 2 && t < p.len - 2 ? CROSSWALK_Y : SIDEWALK_Y) + hill;
   }
 
   // Every rig's gait advances every frame; only those the camera may see (or whose shadow it may see) solve their
@@ -2005,6 +2006,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function setSolidQuery(fn) {
     solidAt = typeof fn === 'function' ? fn : null;
   }
+  // Height of the hills over the flat city (terrain.js): roads & sidewalks climbing them carry their traffic up
+  let hillQuery = null;
+  const hillAt = (x, z) => (hillQuery ? hillQuery(x, z) : 0);
+  function setHillQuery(fn) {
+    hillQuery = typeof fn === 'function' ? fn : null;
+  }
 
   // Does the player's vehicle hit a body of radius r at (x, z) fast enough to knock it over?
   function playerHits(x, z, r) {
@@ -2051,10 +2058,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     poseRider(v); // (a bike out of sight hasn't posed its rider lately)
     v.fallBase = v.fallBase || new Float32Array(BONES * 8);
     v.fallBase.set(r.pose.subarray(0, BONES * 8));
-    const f = startTumble(v.x, 0, v.z, player.vx, player.vz, hit.nx, hit.nz);
+    const g = hillAt(v.x, v.z);
+    const f = startTumble(v.x, g, v.z, player.vx, player.vz, hit.nx, hit.nz);
     // the rider's pivot as it sat (the hips over the saddle)
-    f.y0 = f.py = 1.05;
-    f.ground = 0;
+    f.y0 = f.py = g + 1.05;
+    f.ground = g;
     // the bicycle skids on, falling on its side
     v.wreck = {
       rider: f,
@@ -2070,7 +2078,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
   function renderBike(v, dt, slot) {
     const rotY = v.yaw + v.yawOffset;
-    dummy.position.set(v.x, 0, v.z);
+    dummy.position.set(v.x, v.hy || 0, v.z);
     dummy.rotation.set(0, rotY, -clamp(v.yawRate * v.speed * 0.05, -0.3, 0.3), 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -2085,7 +2093,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // The rider on the saddle of bike v as it stands now, hands on the bars and feet on the pedals
   function poseRider(v) {
     const rotY = v.yaw + v.yawOffset;
-    bikeRoot.position.set(v.x, 0, v.z);
+    bikeRoot.position.set(v.x, v.hy || 0, v.z);
     bikeRoot.rotation.set(0, rotY, -clamp(v.yawRate * v.speed * 0.05, -0.3, 0.3), 'YXZ');
     bikeRoot.updateMatrixWorld(true);
     v.rider.yaw = rotY;
@@ -2096,7 +2104,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // The fallen cyclist and the bicycle on its side; both cleared once they've lain still a while
   function renderWreck(v, dt, slot) {
     const w = v.wreck;
-    const restR = stepTumble(w.rider, dt, 0, solidAt);
+    const restR = stepTumble(w.rider, dt, hillAt(w.px, w.pz), solidAt);
     const k = Math.exp(-2.5 * dt);
     w.vx *= k;
     w.vz *= k;
@@ -2110,7 +2118,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     }
     const draw = !hasView || visible(w.px, w.pz, 4);
     if (!draw) return false;
-    dummy.position.set(w.px, 0.04, w.pz);
+    dummy.position.set(w.px, 0.04 + hillAt(w.px, w.pz), w.pz);
     dummy.rotation.set(0, w.yaw, w.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -2200,6 +2208,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       locate(v);
       knock(v, dt);
       pose(v, dt);
+      v.hy = hillAt(v.x, v.z);
       if (v.bike) {
         const hit = playerHits(v.x, v.z, 0.45);
         if (hit) {
@@ -2317,6 +2326,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     update,
     setCollisionListener,
     setSolidQuery,
+    setHillQuery,
     cars,
     buses,
     bikes,

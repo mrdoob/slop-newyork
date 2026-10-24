@@ -749,6 +749,37 @@ const terrain = (() => {
   // the cross on Cerro de la Cruz
   const crossPoi = (poisOSM.elements || []).find((e) => e.tags && /cerro de la cruz/i.test(e.tags.name || ''));
   const cross = crossPoi ? toWorld(crossPoi.lon, crossPoi.lat).map(q) : null;
+
+  // The ways up the hills (the cobbled calzada to the cross, its stairs & footpaths, the tracks): each as
+  // [surface (0 cobbles, 1 concrete / paving, 2 earth), width (m), flat points] where it climbs over 4 m of hill
+  const heightAt = (x, z) => {
+    const fx = (x - TX0) / CELL, fz = (z - TZ0) / CELL;
+    const i = Math.floor(fx), j = Math.floor(fz);
+    if (i < 0 || j < 0 || i >= TW - 1 || j >= TH - 1) return 0;
+    const tx = fx - i, tz = fz - j, k = j * TW + i;
+    return ((out[k] * (1 - tx) + out[k + 1] * tx) * (1 - tz) + (out[k + TW] * (1 - tx) + out[k + TW + 1] * tx) * tz) / 10;
+  };
+  const CLIMB = /^(unclassified|residential|tertiary|service|pedestrian|footway|path|steps|track|living_street)$/;
+  const paths = [];
+  let pathLen = 0;
+  for (const w of ways) {
+    const t = w.tags;
+    if (!CLIMB.test(t.highway)) continue;
+    const pts = w.geometry.map((g) => toWorld(g.lon, g.lat));
+    let top = 0;
+    for (const [x, z] of pts) top = Math.max(top, heightAt(x, z));
+    if (top < 4) continue;
+    // the trails & tracks of the far hills only near Cerro de la Cruz
+    const minor = /^(path|track)$/.test(t.highway);
+    if (minor && (!cross || Math.min(...pts.map(([x, z]) => Math.hypot(x - cross[0], z - cross[1]))) > 1500)) continue;
+    const surf = t.surface || '';
+    const surface = /cobble|sett|unhewn/.test(surf) ? 0 : /paving|concrete|asphalt|paved/.test(surf) || t.highway === 'steps' || t.highway === 'pedestrian' ? 1 : /^(unclassified|residential|tertiary|living_street)$/.test(t.highway) ? 0 : 2;
+    const width = t.highway === 'path' ? 1.6 : t.highway === 'steps' || t.highway === 'footway' ? 2.2 : t.highway === 'pedestrian' ? 4 : t.highway === 'track' ? 3.2 : 5.5;
+    const line = rdp(pts, 0.6);
+    for (let i = 1; i < line.length; i++) pathLen += Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]);
+    paths.push([surface, width, flat(line)]);
+  }
+  log(`hill paths: ${paths.length} ways, ${(pathLen / 1000).toFixed(1)} km`);
   if (process.env.TERRAIN_DEBUG) {
     for (const [name, x, z] of [['cross', ...(cross || [0, 0])], ['san juan', -3900, 1400], ['plaza', 0, 0]]) {
       const i = Math.round((x - TX0) / CELL), j = Math.round((z - TZ0) / CELL), k = j * TW + i;
@@ -758,7 +789,7 @@ const terrain = (() => {
     }
   }
   log(`terrain: ${TW} x ${TH} cells of ${CELL} m, highest ${Math.round(peak)} m over the valley floor (${Math.round(floorMean)} m a.s.l.), ${missing} cells off the tiles`);
-  return { x0: TX0, z0: TZ0, cell: CELL, w: TW, h: TH, floor: Math.round(floorMean), data: Buffer.from(out.buffer).toString('base64'), cross };
+  return { x0: TX0, z0: TZ0, cell: CELL, w: TW, h: TH, floor: Math.round(floorMean), data: Buffer.from(out.buffer).toString('base64'), cross, paths };
 })();
 
 // =====================================================================================================================

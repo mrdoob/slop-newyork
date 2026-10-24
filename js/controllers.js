@@ -861,10 +861,12 @@ class ThirdPersonControllerManager {
     if (lawn && x > lawn.minX && x < lawn.maxX && z > lawn.minZ && z < lawn.maxZ) {
       return lawn.top;
     }
+    // the hills over the flat city (terrain.js): everyone stands on them
+    const hill = this.terrainAt ? this.terrainAt(x, z) : 0;
     if (mode === 'person') {
-      return this.isPointOnSidewalk(x, z) ? ISLAND_BOUNDS.sidewalkHeight : 0.0;
+      return Math.max(this.isPointOnSidewalk(x, z) ? ISLAND_BOUNDS.sidewalkHeight : 0.0, hill);
     }
-    return 0.0;
+    return hill;
   }
 
   // The colliders whose bounds come within `r` of (x, z), in their original order. They never move, so they are
@@ -1032,8 +1034,9 @@ class ThirdPersonControllerManager {
     this.terrainAt = typeof fn === 'function' ? fn : null;
   }
 
-  // Keeps the active player off the hillsides: on the ground a step onto a slope (over SLOPE_STEP m) is undone and
-  // the speed bounces back; the helicopter can't sink into a hill
+  // The hills: on foot, by bicycle or by car the player climbs them up to its own steepest grade (rise over run: a walker
+  // scrambles up 1:1, a bicycle 1:2.2, a car 1:2.5); a step up anything steeper is undone and the speed bounces back.
+  // The helicopter can't sink into a hill
   keepOffHills(entity, prevX, prevZ) {
     const hill = this.terrainAt;
     if (!hill || !entity) return;
@@ -1045,7 +1048,10 @@ class ThirdPersonControllerManager {
       }
       return;
     }
-    if (h > 0.7 && h > hill(prevX, prevZ)) {
+    const run = Math.hypot(entity.position.x - prevX, entity.position.z - prevZ);
+    const rise = h - hill(prevX, prevZ);
+    const grade = this.activeMode === 'person' ? 1.0 : this.activeMode === 'cyclist' ? 0.45 : 0.4;
+    if (run > 1e-4 && rise > grade * run) {
       entity.position.x = prevX;
       entity.position.z = prevZ;
       if (typeof entity.speed === 'number') entity.speed *= -0.25;

@@ -400,8 +400,20 @@ class CameraSystem {
       this.currentLookAt.lerp(desiredLook, k);
     }
 
+    // never under the hills (terrain.js): over the ground where the camera is, and over the ground halfway to its
+    // target so a ridge between them doesn't hide the player
+    if (this.groundAt) {
+      const p = this.currentPos, t = this.currentLookAt;
+      const g = Math.max(this.groundAt(p.x, p.z), this.groundAt((p.x + t.x) / 2, (p.z + t.z) / 2) - 0.5);
+      if (p.y < g + 1.2) p.y = g + 1.2;
+    }
     this.camera.position.copy(this.currentPos);
     this.camera.lookAt(this.currentLookAt);
+  }
+
+  // Height of the ground (the hills over the flat city) at (x, z): the cameras keep above it
+  setGroundQuery(fn) {
+    this.groundAt = typeof fn === 'function' ? fn : null;
   }
 }
 
