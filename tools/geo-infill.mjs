@@ -20,6 +20,12 @@
 //                                           street's own mapped neighbours
 //   large      [{ x, z, r }]                big mapped buildings (towers, malls) as circles: no lots within r + opts.largeClear
 //                                           (in a planned district they stand in plazas, not in rows of shophouses)
+//   seeds      [[x, z, floors]]             doors (house-number points) where no building is mapped. With opts.seedRadius,
+//                                           only lots within that distance of one are kept (open ground has no doors), and a
+//                                           lot whose nearest door names 2+ floors is that many storeys × opts.addressLevel
+//                                           (fromDoor; the highest floor named is a lower bound). A door left with no lot
+//                                           near it gets one of its own (opts.doorLots): DOOR_LOT_W wide, facing the
+//                                           nearest street, from the door's line back as deep as fits
 // Lot widths, depths and gaps are defaults (INFILL), not survey data.
 
 export const INFILL = {
@@ -36,7 +42,12 @@ export const INFILL = {
   sample: 1.25, // m between test points inside a lot
   contextRadius: 80, // m: mapped neighbours used for a lot's height
   contextMaxArea: 1500, // m²: larger mapped buildings (towers, malls) don't set a street's height
-  level: 3.2 // m per storey, as tools/geo-height.mjs LEVEL_M
+  level: 3.2, // m per storey, as tools/geo-height.mjs LEVEL_M
+  seedRadius: 0, // m: lots only within this of a door (seeds); 0: seeds unused
+  doorLots: true, // with seeds: a lot of its own for each door no frontage lot reached
+  doorLotWidth: 6, // m along the street
+  doorStreetMax: 40, // m: a door further than this from any street centre line gets no lot of its own
+  addressLevel: 3.7 // m per floor named at a door
 };
 
 const CELL = 25; // m: spatial index bucket
@@ -79,7 +90,7 @@ function segDist(x, z, [x0, z0], [x1, z1]) {
 }
 const median = (a) => { const s = a.slice().sort((p, q) => p - q); return s.length ? s[Math.floor(s.length / 2)] : null; };
 
-export function infillBuildings({ links, corridors, obstacles, open, bounds, context, large = [], seed = 1 }, opts = {}) {
+export function infillBuildings({ links, corridors, obstacles, open, bounds, context, large = [], seeds = [], seed = 1 }, opts = {}) {
   const o = { ...INFILL, ...opts };
   let s = seed;
   const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
@@ -189,11 +200,58 @@ export function infillBuildings({ links, corridors, obstacles, open, bounds, con
     }
   }
 
-  // Heights: the median top of the mapped (tagged) neighbours within contextRadius, ±1 storey per lot
+  // Doors: keep only lots by one (seedRadius), and note the nearest door's floors
+  if (o.seedRadius > 0) {
+    const doorIdx = bucketIndex();
+    const reach = o.seedRadius + Math.max(...o.depths) / 2 + o.lotWidth[1] / 2; // a lot's centre to its edge, at most
+    for (const d of seeds) doorIdx.add(d, [d[0] - reach, d[1] - reach, d[0] + reach, d[1] + reach]);
+    const ringDist = (x, z, ring) => {
+      if (pointInRing(x, z, ring)) return 0;
+      let dmin = Infinity;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) dmin = Math.min(dmin, segDist(x, z, ring[j], ring[i]));
+      return dmin;
+    };
+    for (let k = placed.length - 1; k >= 0; k--) {
+      const p = placed[k];
+      let best = null, bd = o.seedRadius;
+      for (const d of doorIdx.near(p.cx, p.cz)) { const dd = ringDist(d[0], d[1], p.ring); if (dd <= bd) { bd = dd; best = d; } }
+      if (!best) placed.splice(k, 1);
+      else p.door = best;
+    }
+    // Doors no lot reached: a lot of their own, facing the nearest street (the door sits on its front)
+    if (o.doorLots) {
+      const reached = new Set(placed.map((p) => p.door));
+      const lotIdx = bucketIndex();
+      for (const p of placed) lotIdx.add(p, bboxOf(p.ring, o.seedRadius));
+      const streetSegs = bucketIndex();
+      for (const { pts, w } of links) for (let i = 0; i + 1 < pts.length; i++) streetSegs.add({ a: pts[i], b: pts[i + 1], w }, bboxOf([pts[i], pts[i + 1]], o.doorStreetMax));
+      for (const d of seeds) {
+        if (reached.has(d)) continue;
+        if (lotIdx.near(d[0], d[1]).some((p) => ringDist(d[0], d[1], p.ring) <= o.seedRadius)) continue;
+        let s = null, sd = o.doorStreetMax;
+        for (const g of streetSegs.near(d[0], d[1])) { const dd = segDist(d[0], d[1], g.a, g.b); if (dd < sd) { sd = dd; s = g; } }
+        if (!s) continue;
+        const L = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]) || 1;
+        let dir = [(s.b[0] - s.a[0]) / L, (s.b[1] - s.a[1]) / L], n = [-dir[1], dir[0]];
+        if ((d[0] - s.a[0]) * n[0] + (d[1] - s.a[1]) * n[1] < 0) { dir = [-dir[0], -dir[1]]; n = [-n[0], -n[1]]; } // n: street -> door
+        const lw = o.doorLotWidth, off = Math.max(0, Math.min(1, sd - s.w / 2 - 0.2)); // the front a little before the door
+        const p = [d[0] - n[0] * off - dir[0] * (lw / 2), d[1] - n[1] * off - dir[1] * (lw / 2)];
+        const depth = o.depths.find((D) => fits(p, dir, n, lw, D));
+        if (!depth) continue;
+        place(corners(p, dir, n, lw, depth));
+        placed[placed.length - 1].door = d;
+        lotIdx.add(placed[placed.length - 1], bboxOf(placed[placed.length - 1].ring, o.seedRadius));
+      }
+    }
+  }
+
+  // Heights: the floors named at the lot's door when 2+, else the median top of the mapped (tagged) neighbours within
+  // contextRadius, ±1 storey per lot
   const ctx = bucketIndex();
   for (const b of context) if (b.area <= o.contextMaxArea) ctx.add(b, [b.x - o.contextRadius, b.z - o.contextRadius, b.x + o.contextRadius, b.z + o.contextRadius]);
   const fallback = median(context.filter((b) => b.area <= o.contextMaxArea).map((b) => b.top)) ?? 4 * o.level;
-  return placed.map(({ ring, cx, cz }) => {
+  return placed.map(({ ring, cx, cz, door }) => {
+    if (door && door[2] >= 2) return { outer: ring, storeys: door[2], top: Math.round(door[2] * o.addressLevel * 10) / 10, context: 0, fromDoor: true };
     const near = ctx.near(cx, cz).filter((b) => Math.hypot(b.x - cx, b.z - cz) <= o.contextRadius).map((b) => b.top);
     const typical = near.length >= 3 ? median(near) : fallback;
     const storeys = Math.max(1, Math.round(typical / o.level) + Math.round((rand() - 0.5) * 2.4));

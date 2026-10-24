@@ -51,17 +51,21 @@ import { makeFrame } from './geo-frame.mjs';
 // setbacks, the Elephant Mountain slopes), 46% do. For the whole district (local check, 18,049 measured buildings, 5,585
 // without an OSM footprint) the frontage rules alone put 55–60% of stand-ins on open ground; limited to built-up fabric
 // (minCover), off trunk/primary/secondary frontage and 15 m clear of large buildings, 39% (7,500 lots covering ~1,500
-// gaps). That is too uncertain to show by default: `infillShown: false` starts them hidden (the viewer's I button).
+// gaps): too uncertain to show. With Taipei's house-number points (addresses.json; doors where no building is mapped),
+// lots stand only within `seedRadius` m of such a door: 14% on open ground, ~2,200 gaps covered, heights from the doors'
+// floors 2.4 m off measured (plain frontage rules + seedRadius 5; with the rules above as well: 9%, ~1,200 gaps).
+// `infillShown: false` would start them hidden (the viewer's I button).
 const AREAS = {
   xinyi: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0081, 121.5526, 25.0496, 121.5923], boundary: 2881027, data: 'data-taipei/', out: 'taipei-geodata.js',
-    // stand-ins only inside built-up fabric, off the big roads, clear of towers; hidden until the viewer turns them on
-    infill: { skipClasses: ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link'], largeClear: 15, minCover: 0.2 },
-    infillShown: false, permits: true, terrain: true, landmarks: ['Taipei 101'] },
+    // stand-ins only by doors where no building is mapped
+    infill: { seedRadius: 5 }, permits: true, terrain: true, landmarks: ['Taipei 101'] },
   city: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0072, 121.5217, 25.0496, 121.5923], boundary: [2881027, 2869465], data: 'data-taipei/city/', out: 'taipei-city-geodata.js',
-    // Xinyi's stand-in rules (checked again for Da'an with tools/validate-heights.mjs before trusting them)
-    infill: { skipClasses: ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link'], largeClear: 15, minCover: 0.2 },
-    infillShown: false, permits: true, terrain: true, landmarks: ['Taipei 101'] },
-  wanhua: { lat0: 25.037276, lon0: 121.499881, origin: 'Lungshan Temple', box: [25.0328, 121.4949, 25.0418, 121.5048], data: 'data-taipei/wanhua/', out: 'taipei-wanhua-geodata.js', infill: true, permits: true }
+    // Xinyi's stand-in rule (checked for Da'an too with tools/validate-heights.mjs)
+    infill: { seedRadius: 5 }, permits: true, terrain: true, landmarks: ['Taipei 101'] },
+  wanhua: { lat0: 25.037276, lon0: 121.499881, origin: 'Lungshan Temple', box: [25.0328, 121.4949, 25.0418, 121.5048], data: 'data-taipei/wanhua/', out: 'taipei-wanhua-geodata.js',
+    // doors within 8 m (local check: 59% of gaps covered, 4% on open ground, heights 3.7 m off; frontage rules alone:
+    // 63%, 12%, 7.6 m)
+    infill: { seedRadius: 8 }, permits: true }
 };
 const AREA_NAME = process.env.GEO_AREA || 'xinyi';
 const AREA = AREAS[AREA_NAME];

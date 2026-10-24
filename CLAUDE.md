@@ -294,3 +294,16 @@ walls and a dark mouth; cars/player follow (`rampDepthAt`). The ground covers a 
 time unchanged (median snaps to vsync 16.7/33.3: use the mean over 300 frames to compare). (3) "missing buildings":
 53% of measured buildings within 150 m of Keelung Rd have no OSM footprint (old blocks along Sec. 2) — OSM gap, not a
 bug; stand-ins exist (I) but Xinyi starts with them hidden.
+Doors (owner: "keep fixing missing buildings"): no open footprint source left (NLSC vector e-map omits buildings; its
+WMTS `BUILDX` per-building outlines and full EMAP are NOT labelled open data — only EMAP5/6_OPENDATA ≤ 1:18,000 are —
+so view-only like PHOTO2; ask NLSC before deriving). Open signal used instead: 臺北市門牌位置數值資料 (data.gov.tw
+155472, OGDL v1, CSV 125 MB, TWD97/TM2, all 12 districts; one row per address, floors as separate rows "91號四樓").
+`tools/extract-addresses.mjs` (raw CSV in data-local; NB a 300 s curl limit truncated it once) → per-area
+`addresses.json` [lon, lat, addresses, highest floor named] (committed). Build: doors → building containing them / ≤ 2 m
+of its edge; `estimate` buildings with floors ≥ 2 → floors × ADDRESS_LEVEL_M 3.85 (source 'address'; local: 1.1 m error,
+1.0×; levels tags 2.2–2.8 m, 0.85×). Unmatched doors (> 3 m from any mapped building) = infill `seeds`: `seedRadius`
+keeps only lots that close to a door, `doorLots` gives a door no lot reached its own 6 m lot, heights from its floors.
+Local results: Xinyi seedRadius 5 → 4,473 lots, 14% on open ground (was 39%), 41% of the district's 5,585 gaps under a
+stand-in (54% within 4 m), heights 2.5 m off → shown by default; Wanhua seedRadius 8 → 59% gaps, 4% open, 3.7 m (was
+63%, 12%, 7.6 m); Xinyi + Da'an seedRadius 5 → 12% open, 2.8 m. Estimates left: Xinyi 16% (was 53%), city 11% (was
+34%); they run 1.35–1.4× tall (biased remainder: buildings without doors) — retune later. Frame: Xinyi ~27 ms mean.

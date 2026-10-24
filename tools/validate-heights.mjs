@@ -240,6 +240,22 @@ const HIT_M = 3, FAR_M = 12;
 let infillReport = null;
 const geoFile = fileURLToPath(new URL(`../js/${AREA.out}`, import.meta.url));
 const { GEO } = fs.existsSync(geoFile) ? await import(geoFile) : { GEO: {} };
+// Heights as the build wrote them (GEO.buildings, with every source: permit and address included), vs measured
+let byGeneratedSource = null;
+if (GEO.buildings?.length) {
+  const rows = {};
+  for (const b of GEO.buildings) {
+    if (b[4] >= 1 || b[0].includes('_')) continue;
+    const r = []; for (let i = 0; i < b[1].length; i += 2) r.push([b[1][i], b[1][i + 1]]);
+    let best = null;
+    for (const m of measuredIn(r)) if (!best || m.h > best.h) best = m;
+    if (!best) continue;
+    (rows[GEO.heightSources[b[5]]] ||= []).push([b[3], best.h]);
+  }
+  byGeneratedSource = Object.fromEntries(Object.entries(rows).map(([k, v]) => [k, { absErrorM: stat(v.map(([t, h]) => Math.abs(t - h))), ratio: stat(v.map(([t, h]) => t / h)) }]));
+  console.log('\nGenerated heights vs measured, by source (as written by the build):');
+  console.table(Object.fromEntries(Object.entries(byGeneratedSource).map(([k, v]) => [k, { n: v.ratio?.n ?? 0, medianAbsErrM: v.absErrorM?.median, medianRatio: v.ratio?.median }])));
+}
 if (GEO.infill?.length) {
   const lots = GEO.infill.map((b) => { const r = []; for (let i = 0; i < b[1].length; i += 2) r.push([b[1][i], b[1][i + 1]]); return { r, top: b[3] }; });
   const near = (x, z, r) => pointInRing(x, z, r) || r.some((p, i) => {
@@ -273,7 +289,7 @@ if (GEO.infill?.length) {
     `(${(100 * infillReport.gapsCovered).toFixed(0)}%); ${(100 * infillReport.lotsFarFromAny).toFixed(0)}% have none within ${FAR_M} m (likely open ground); height vs measured: median error ${infillReport.heightAbsErrM.median} m, ratio ${infillReport.heightRatio.median} (n ${errs.length})`);
 }
 
-fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, knots, gapCells, infill: infillReport,
+fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, byGeneratedSource, knots, gapCells, infill: infillReport,
   // measured centres ≥ 4 m [x, z, 1 if no OSM footprint], for local debug plots
   centres: [...measured.values()].filter((m) => m.h >= 4).map((m) => [Math.round(m.at[0]), Math.round(m.at[1]), gapSet.has(m) ? 1 : 0, Math.round(m.h * 10) / 10]) }, null, 1));
 log(`report written to ${REPORT} (git-ignored)`);

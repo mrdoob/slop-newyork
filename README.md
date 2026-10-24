@@ -17,19 +17,21 @@ around Lungshan Temple in Wanhua (`index.html?area=wanhua`): open `index.html` o
 browser (the original New York simulation is now `nyc.html`). Building footprints come from OpenStreetMap (`tools/build-taipei-geodata.mjs`, `GEO_AREA=wanhua` for the
 second box). **The Wanhua box has large holes:** OSM maps roughly a third of its buildings (about 390 outlines where
 Taipei's 3D city model has over 5,000), so empty blocks there are missing data, not open space. To keep it from
-reading as wasteland, the Wanhua box adds about 3,300 **stand-in buildings** (`tools/geo-infill.mjs`): rows of narrow lots
-along street frontages where OSM maps no building and no open ground, with heights from the mapped neighbours. Their
-footprints and heights are both **inferred, not mapped**; they are kept apart in the data (`GEO.infill`), tinted violet
-with E, and hidden with I. Checked locally against the 3D model, about 14% of them stand where no building does. The
-In Xinyi District OSM maps most buildings and the remaining gaps are scattered; its stand-ins (about 7,500, limited
-to built-up blocks) are less certain, about 39% standing where no building does, so they start **hidden** (I shows
-them). Both areas also use **building-permit footprints** from Taipei's open
+reading as wasteland, every area adds **stand-in buildings** (`tools/geo-infill.mjs`): narrow lots along street
+frontages where OSM maps no building and no open ground, kept only by a **door**: Taipei's open house-number points
+(臺北市門牌位置數值資料, OGDL v1) mark where addresses are, so open ground, which has none, stays open. A stand-in's height
+comes from the highest floor named at its door ("91號四樓"), else from its mapped neighbours. Their footprints and heights
+are **inferred, not mapped**; they are kept apart in the data (`GEO.infill`), tinted violet with E, and hidden with I.
+Checked locally against Taipei's 3D model, about 14% of Xinyi's stand-ins (4% of Wanhua's) stand where no building does;
+they cover about half of the buildings OSM lacks in Xinyi District and 59% in the Wanhua box. Both areas also use **building-permit footprints** from Taipei's open
 building-permit drawings (臺北市建築執照套繪圖, OGDL v1) where OSM maps no building: real outlines with floor counts
 for buildings permitted up to 2018 (newer permits may not be built yet), 88 in Xinyi District and 34 in Wanhua.
 
 **The Taipei skyline is partially estimated.** Where OSM gives a building's `height` or storey count, that is used;
-where it gives neither (53% of buildings in Xinyi District, 38% in Wanhua), the height is inferred from building type and
-footprint area by `estimateHeight()` in `tools/geo-height.mjs`. Its parameters were checked locally against measured
+where it gives neither, the building's doors are next: the highest floor named at them (a lower bound on its storeys) ×
+3.85 m (checked locally: about 1 m from measured heights; 37% of buildings in Xinyi District). Only where there is no door
+either (16% in Xinyi District) is the height inferred from building type and footprint area by `estimateHeight()` in
+`tools/geo-height.mjs`. Its parameters were checked locally against measured
 heights from Taipei's 3D city models (median error about 5 m across Xinyi District, 8 m in Wanhua); those measured heights are not
 redistributed here. Estimated buildings are labelled in the data and can be
 highlighted in the viewer (press E). Taipei 101 renders at its real 508 m from OSM's building parts. Streets are
@@ -75,6 +77,6 @@ basin is flat at 0, since in the city that surface model measures roofs and tree
 approximate (peaks read 15–50 m below their surveyed heights). Everything stands on it. Hillsides are tinted wooded green
 as a look, not data.
 
-Geographic data: NYC Open Data and © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); Taipei map data © OpenStreetMap contributors (ODbL); Taipei building-permit footprints: [臺北市建築執照套繪圖](https://data.gov.tw/dataset/151936), 臺北市建築管理工程處 (Open Government Data License v1.0); elevation: [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Mapzen; SRTM, NASA).
+Geographic data: NYC Open Data and © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); Taipei map data © OpenStreetMap contributors (ODbL); Taipei building-permit footprints: [臺北市建築執照套繪圖](https://data.gov.tw/dataset/151936), 臺北市建築管理工程處 (Open Government Data License v1.0); Taipei house-number points: [臺北市門牌位置數值資料](https://data.gov.tw/dataset/155472), 臺北市政府民政局 (Open Government Data License v1.0); elevation: [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Mapzen; SRTM, NASA).
 
 Forked from [mrdoob/slop-newyork](https://github.com/mrdoob/slop-newyork) (MIT). Third-party data and dependencies retain their respective licenses.

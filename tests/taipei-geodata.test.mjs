@@ -174,7 +174,7 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     assert.equal(result.status, 0, result.stderr + result.stdout);
     const { GEO } = await import(pathToFileURL(out).href);
     assert.equal(GEO.city, 'taipei');
-    assert.deepEqual(GEO.heightSources, ['height', 'levels', 'estimate', 'permit']);
+    assert.deepEqual(GEO.heightSources, ['height', 'levels', 'estimate', 'permit', 'address']);
     // The whole district: its outline, and buildings across it
     assert.ok(GEO.frame.boundary.length === 1 && GEO.frame.boundary[0].length > 100, 'district outline');
     // Building-permit footprints (ids p<n>) only where no OSM building stands, with a floor-count height
@@ -182,7 +182,7 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     assert.ok(Math.hypot(GEO.landmarks['Taipei 101'].x, GEO.landmarks['Taipei 101'].z) < 60, 'Taipei 101 sits at the origin');
     assert.ok(GEO.buildings.length > 8000, `${GEO.buildings.length} buildings`);
     const permits = GEO.buildings.filter((b) => b[0].startsWith('p'));
-    assert.ok(permits.length > 50 && permits.every((b) => ['permit', 'estimate'].includes(GEO.heightSources[b[5]])), `${permits.length} permit footprints`);
+    assert.ok(permits.length > 50 && permits.every((b) => ['permit', 'estimate', 'address'].includes(GEO.heightSources[b[5]])), `${permits.length} permit footprints`);
     const tops = [];
     for (const [id, outer, holes, top, base, source, kind, , roof, roofH, , facade] of GEO.buildings) {
       assert.ok(roof >= 0 && roof < GEO.roofShapes.length && roofH >= 0 && roofH <= top - base && facade >= 0 && facade < GEO.facades.length, id);
@@ -216,7 +216,10 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     const hAt = (x, z) => { const i = Math.round((x - T.x0) / T.step), j = Math.round((z - T.z0) / T.step); return T.h[j * T.nx + i] / 10; };
     assert.ok(hAt(0, 0) < 2, `Taipei 101 ground ${hAt(0, 0)} m`);
     assert.ok(hAt(1184, 716) > 80 && hAt(1184, 716) < 220, `Elephant Mountain ${hAt(1184, 716)} m`);
-    assert.ok(GEO.infill.length > 1000 && GEO.infillShown === false, 'Xinyi stand-ins start hidden');
+    // Stand-ins stand by doors (Taipei house-number points) where no building is mapped, and start shown
+    assert.ok(GEO.infill.length > 1000 && GEO.infillShown === true, 'Xinyi stand-ins by doors, shown');
+    // Heights from the floors named at doors replace most estimates (source 'address')
+    assert.ok(GEO.buildings.filter((b) => GEO.heightSources[b[5]] === 'address').length > 1000, 'door heights');
     // Elevated roads (Civic Boulevard viaduct, Keelung Road's ramps up to it): drawn, not in the road graph; deck heights
     // estimated from layer, coming down to 0 where they meet the street
     const ER = GEO.elevatedRoads;
@@ -321,7 +324,7 @@ test('Xinyi + Da\'an (city) geodata builds as one world around Taipei 101', { ti
     for (const name of ['Dunhua South Road', 'Fuxing South Road', 'Heping East Road', 'Songren Road']) {
       assert.ok(GEO.roadGraph.names.some((n) => n.includes(name)), `${name} in the road graph`);
     }
-    assert.ok(GEO.terrain && GEO.infillShown === false && GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'));
+    assert.ok(GEO.terrain && GEO.infillShown === true && GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'));
     // The elevated Wenhu MRT line through Da'an (deck heights estimated, ramping to 0 at its portals) and the stations
     const { lines, stations } = GEO.rail;
     assert.ok(lines.filter(([up]) => up).length > 10, 'elevated guideway ways');
@@ -371,7 +374,7 @@ test('Wanhua geodata builds in its own frame around Lungshan Temple', { timeout:
     for (const [id, outer, holes, top, base, source, kind] of GEO.infill) {
       assert.match(id, /^i\d+$/);
       assert.equal(GEO.kinds[kind], 'infill');
-      assert.equal(GEO.heightSources[source], 'estimate');
+      assert.ok(['estimate', 'address'].includes(GEO.heightSources[source]), `${id}: ${GEO.heightSources[source]}`);
       assert.ok(outer.length === 8 && holes.length === 0 && base === 0 && top > 0);
       const cx = (outer[0] + outer[2] + outer[4] + outer[6]) / 4, cz = (outer[1] + outer[3] + outer[5] + outer[7]) / 4;
       assert.ok(!rings.some((r) => inRing(cx, cz, r)), `${id} stands on a mapped building`);

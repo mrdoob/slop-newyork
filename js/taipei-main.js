@@ -222,6 +222,7 @@ async function init() {
   const pct = (k) => Math.round((100 * st.bySource[k]) / st.total);
   document.getElementById('stats').textContent =
     `${st.total} buildings · heights: ${pct('height')}% height tag, ${pct('levels')}% storey count, ` +
+    `${st.bySource.address ? `${pct('address')}% floors named at the doors, ` : ''}` +
     `${st.bySource.permit ? `${pct('permit')}% permit drawings, ` : ''}${pct('estimate')}% estimated · tallest ${st.maxTop} m` +
     (st.infill ? ` · +${st.infill} stand-ins (footprint & height inferred where OSM maps none)` : '');
   const infillState = document.getElementById('stats').appendChild(document.createElement('span'));

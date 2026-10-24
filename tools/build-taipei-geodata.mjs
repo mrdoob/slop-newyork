@@ -214,7 +214,8 @@ if (has('osm_transit.json')) {
 
 // --- Heights ---------------------------------------------------------------------------------------------------------
 // 'permit': floors from Taipei's building-permit drawings (footprint and floor count both from the permit, not OSM)
-const SOURCES = ['height', 'levels', 'estimate', 'permit'];
+// 'address': storeys from the highest floor named at the building's doors (Taipei house-number points), see below
+const SOURCES = ['height', 'levels', 'estimate', 'permit', 'address'];
 const kinds = [];
 const kindId = (k) => (kinds.includes(k) ? kinds.indexOf(k) : kinds.push(k) - 1);
 const buildings = [];
@@ -288,6 +289,69 @@ if (AREA.permits) {
   });
   log(`permit footprints (${file.source}, OGDL v1): ${permitStats.used} added where OSM has none; skipped ${permitStats.overOsm} over OSM buildings, ` +
     `${permitStats.tooNew} permitted after ${PERMIT_MAX_YEAR}, ${permitStats.duplicate} overlapping amendments, ${permitStats.small} < ${PERMIT_MIN_AREA} m², ${permitStats.outside} outside the area`);
+}
+
+// --- Doors (addresses.json: 臺北市門牌位置數值資料, OGDL v1; tools/extract-addresses.mjs) --------------------------------
+// One point per door, with the highest floor any address there names ("91號四樓"). Each door belongs to the ground-level
+// building that contains it, else the nearest within DOOR_REACH_M of its outline (doors sit on the facade). A building
+// whose height is only an estimate (no height / storey tag) gets the highest floor named at its doors × ADDRESS_LEVEL_M
+// instead, when that is 2 or more: a lower bound on its storeys (not every floor has its own number), but measured far
+// closer than the type / size estimate. Source 'address'. Doors that belong to no mapped building mark buildings OSM
+// lacks: they place the stand-ins (geo-infill.mjs seeds).
+// ADDRESS_LEVEL_M is tuned LOCALLY (tools/validate-heights.mjs against measured heights, not committed): measured height
+// / (floors named × 3.2 m) has a median of 1.17 in Xinyi; 3.85 m per floor named gives door heights a median of ~1.0×
+// measured and 1.1 m error (estimates: 6 m, 1.4×).
+const ADDRESS_LEVEL_M = 3.85, DOOR_REACH_M = 2, DOOR_UNMATCHED_M = 3;
+let doors = [], doorStats = null;
+if (has('addresses.json')) {
+  doors = load('addresses.json').points.map(([lon, lat, n, floors]) => { const [x, z] = toWorld(lon, lat); return { x, z, n, floors }; })
+    .filter((d) => inBoundary(d.x, d.z));
+  const ground = buildings.filter((x) => x.h.base < 1);
+  const CELLD = 25, cells = new Map();
+  ground.forEach((x, i) => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const [px, pz] of x.b.outer) { x0 = Math.min(x0, px); x1 = Math.max(x1, px); z0 = Math.min(z0, pz); z1 = Math.max(z1, pz); }
+    for (let a = Math.floor((x0 - DOOR_UNMATCHED_M) / CELLD); a <= Math.floor((x1 + DOOR_UNMATCHED_M) / CELLD); a++) {
+      for (let c = Math.floor((z0 - DOOR_UNMATCHED_M) / CELLD); c <= Math.floor((z1 + DOOR_UNMATCHED_M) / CELLD); c++) {
+        const k = `${a},${c}`;
+        if (!cells.has(k)) cells.set(k, []);
+        cells.get(k).push(i);
+      }
+    }
+  });
+  const edgeDist = (x, z, r) => {
+    let d = Infinity;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [ax, az] = r[j], [bx, bz] = r[i], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1e-9;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+      d = Math.min(d, Math.hypot(ax + dx * t - x, az + dz * t - z));
+    }
+    return d;
+  };
+  const floorsAt = new Map(); // ground building index -> highest floor named at its doors
+  doorStats = { doors: doors.length, matched: 0, near: 0, unmatched: 0, heights: 0 };
+  for (const d of doors) {
+    let best = -1, bd = Infinity;
+    for (const i of cells.get(`${Math.floor(d.x / CELLD)},${Math.floor(d.z / CELLD)}`) || []) {
+      const r = ground[i].b.outer;
+      const dist = pointInRing(d.x, d.z, r) && !ground[i].b.holes.some((hl) => pointInRing(d.x, d.z, hl)) ? 0 : edgeDist(d.x, d.z, r);
+      if (dist < bd) { bd = dist; best = i; }
+    }
+    d.mapped = bd <= DOOR_UNMATCHED_M;
+    if (bd <= DOOR_REACH_M) { doorStats.matched++; floorsAt.set(best, Math.max(floorsAt.get(best) || 1, d.floors)); }
+    else if (d.mapped) doorStats.near++;
+    else doorStats.unmatched++;
+  }
+  for (const [i, floors] of floorsAt) {
+    const x = ground[i];
+    if (x.h.source !== 'estimate' || floors < 2 || x.b.id.includes('_')) continue;
+    x.h = { top: Math.round((x.h.base + floors * ADDRESS_LEVEL_M) * 10) / 10, base: x.h.base, source: 'address' };
+    x.roof = roofOf(x.b.tags, x.b.area, x.h.top, x.h.base);
+    x.facade = facadeOf(x.b.tags, x.b.kind, x.h.top, x.h.base);
+    doorStats.heights++;
+  }
+  log(`doors (臺北市門牌位置數值資料, OGDL v1): ${doors.length} in the area; ${doorStats.matched} on mapped buildings, ${doorStats.near} near one, ` +
+    `${doorStats.unmatched} where none is mapped; ${doorStats.heights} estimated heights replaced by floors named at the doors × ${ADDRESS_LEVEL_M} m`);
 }
 
 // --- Landmarks: the rendered top must match the known height ---------------------------------------------------------
@@ -500,8 +564,10 @@ const infill = !infillOpts ? [] : infillBuildings({
   large: [...outlines, ...permitBuildings].filter((x) => x.area > LARGE_M2).map((x) => ({ x: x.c[0], z: x.c[1], r: Math.sqrt(x.area / Math.PI) })),
   open: [...openRings, ...green.map((g) => g.outer)],
   bounds: [bx0, bz0, bx1, bz1],
-  context: buildings.filter((x) => x.h.source !== 'estimate' && x.h.base < 1 && !x.b.id.includes('_')).map((x) => ({ x: x.b.c[0], z: x.b.c[1], top: x.h.top, area: x.b.area }))
-}, infillOpts === true ? {} : infillOpts).filter((b) => inBoundary(...b.outer[0]) && inBoundary(...b.outer[2])); // inside the district
+  context: buildings.filter((x) => x.h.source !== 'estimate' && x.h.base < 1 && !x.b.id.includes('_')).map((x) => ({ x: x.b.c[0], z: x.b.c[1], top: x.h.top, area: x.b.area })),
+  // doors where no building is mapped (see Doors above): when the area's rules ask (seedRadius), lots stand only by them
+  seeds: doors.filter((d) => !d.mapped).map((d) => [d.x, d.z, d.floors])
+}, { addressLevel: ADDRESS_LEVEL_M, ...(infillOpts === true ? {} : infillOpts) }).filter((b) => inBoundary(...b.outer[0]) && inBoundary(...b.outer[2])); // inside the district
 if (infillOpts) log(`stand-in buildings (inferred, not mapped): ${infill.length} lots, ${infill.filter((b) => b.context).length} with heights from ≥ 3 mapped neighbours, ` +
   `${Math.min(...infill.map((b) => b.storeys))}–${Math.max(...infill.map((b) => b.storeys))} storeys; ${openRings.length} open-ground areas kept clear`);
 
@@ -590,7 +656,7 @@ const GEO = {
   // ±1 storey), NOT mapped data; same row shape as `buildings` (source 'estimate', kind 'infill'), ids 'i<n>'.
   infillShown: AREA.infillShown ?? true, // whether the viewer starts with the stand-ins shown
   infillNote: !infillOpts ? 'none: stand-ins are off for this area' : `inferred stand-ins, not OSM buildings: lots ${INFILL.lotWidth.join('–')} m wide facing streets with no mapped building`,
-  infill: infill.map((b, i) => [`i${i}`, flat(b.outer), [], q(b.top), 0, SOURCES.indexOf('estimate'), kindId('infill'), 0, 0, 0, 0, FACADES.indexOf('punched'), 1]),
+  infill: infill.map((b, i) => [`i${i}`, flat(b.outer), [], q(b.top), 0, SOURCES.indexOf(b.fromDoor ? 'address' : 'estimate'), kindId('infill'), 0, 0, 0, 0, FACADES.indexOf('punched'), 1]),
   // Street centreline graph of the drivable roads (tools/geo-osm-roadgraph.mjs; same shape as NYC's GEO.roadGraph):
   // nodes [x, z, ...], links [node a, node b, name index, curb-to-curb width, travel lanes, direction (1: a -> b,
   // -1: b -> a, 0: both), inner shape points [x, z, ...]], names, signals, and per link `widthSource` (index into
@@ -634,6 +700,9 @@ const header = `// js/${AREA.out} — GENERATED by tools/build-taipei-geodata.mj
 // Building footprints, tagged heights, roads, signals, trees, green areas & street furniture © OpenStreetMap contributors (ODbL).
 // Building footprints with ids p<n> and height source 'permit': 臺北市建築執照套繪圖, 臺北市建築管理工程處 (Taipei City
 // building-permit drawings, Open Government Data License v1.0, https://data.gov.tw/dataset/151936).
+// Heights with source 'address' and stand-in placement: storeys from the floors named at a building's doors,
+// 臺北市門牌位置數值資料, 臺北市政府民政局 (Taipei house-number points, Open Government Data License v1.0,
+// https://data.gov.tw/dataset/155472); the highest floor named is a lower bound, scaled per floor.
 // Heights with source 'estimate' (${count.estimate} of ${buildings.length}) are inferred from building type and footprint
 // area, not measured.
 `;
