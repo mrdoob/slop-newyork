@@ -9,6 +9,7 @@ import { buildingHeight, estimateHeight, parseMetres, LEVEL_M } from '../tools/g
 import { buildOsmRoadGraph } from '../tools/geo-osm-roadgraph.mjs';
 import { roofOf, facadeOf } from '../tools/geo-building-style.mjs';
 import { infillBuildings } from '../tools/geo-infill.mjs';
+import { kerbClear } from '../tools/geo-kerb.mjs';
 import { fitRoadWidths, inferSidewalks, sidewalkFootways } from '../tools/geo-sidewalks.mjs';
 import { buildFurniture, FURNITURE_KINDS } from '../tools/geo-furniture.mjs';
 
@@ -107,6 +108,31 @@ test('street furniture: mapped items face the road, lamps are inferred along ker
   assert.ok(lamps.length >= 8 && lamps.every((r) => r[4] === 1 && Math.abs(Math.abs(r[2]) - 6.6) < 0.01), 'inferred lamps at the kerbs');
 });
 
+test('items inside a drawn carriageway move out to its kerb, or report null when no kerb spot is clear', () => {
+  // One 10 m street along z = 0 (x -50..50); a building filling the south kerb at x 10..30
+  const RG = { nodes: [-50, 0, 50, 0], links: [[0, 1, 0, 10, 2, 0, []]], names: [''] };
+  const building = (x, z) => x > 10 && x < 30 && z > 5 && z < 20;
+  const clear = kerbClear(RG, building);
+  assert.deepEqual(clear(0, 8), { x: 0, z: 8, moved: false }, 'on the pavement: untouched');
+  const a = clear(0, 3, 0.5);
+  assert.ok(a.moved && Math.abs(a.x) < 1e-9 && Math.abs(a.z - 5.5) < 1e-9, 'out to the near kerb');
+  assert.ok(Math.abs(a.yaw - Math.PI) < 1e-9 || Math.abs(a.yaw + Math.PI) < 1e-9, 'facing the road (north, -z)');
+  const b = clear(20, 3, 0.5);
+  assert.ok(b.moved && b.z < -5, 'building on the near kerb: the far kerb instead');
+  const walled = kerbClear(RG, () => true);
+  assert.equal(walled(0, 3), null, 'nowhere clear');
+});
+
+test('alleys closed by access=no stay drivable when a vehicle tag reopens them', () => {
+  const way = (id, nodes, tags) => ({ type: 'way', id, nodes, tags, geometry: nodes.map((n) => ({ lon: n, lat: 0 })) });
+  const toWorld = (lon) => [lon * 10, 0];
+  const { roadGraph } = buildOsmRoadGraph([
+    way(1, [0, 1], { highway: 'service', service: 'alley', access: 'no', motor_vehicle: 'yes' }),
+    way(2, [2, 3], { highway: 'service', access: 'no' })
+  ], toWorld);
+  assert.equal(roadGraph.links.length, 1, 'the reopened alley only');
+});
+
 test('underground ways are left out and skywalk stairs ramp to the ground', () => {
   const way = (id, nodes, tags) => ({ type: 'way', id, nodes, tags, geometry: nodes.map((n) => ({ lon: n, lat: 0 })) });
   const toWorld = (lon) => [lon * 10, 0];
@@ -164,6 +190,12 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     assert.equal(modules.length, 8);
     assert.ok(modules.every((b) => b[12] > 1), 'modules flare outward');
     assert.equal(Math.max(...modules.map((b) => b[3])), 386);
+    // An underground station hall mapped as a part (level=-1, no storeys above ground) is not drawn
+    assert.ok(!GEO.buildings.some((b) => b[0] === 'w810653309'), 'underground part left out');
+    // Nothing stands in a drawn carriageway
+    const onRoad = kerbClear(GEO.roadGraph);
+    assert.ok(GEO.furniture.every(([, x, z]) => !onRoad(x, z, 0).moved), 'furniture off the carriageways');
+    assert.ok(GEO.trees.every(([x, z]) => !onRoad(x, z, 0).moved), 'trees off the carriageways');
     // Street furniture: mapped and inferred items, valid kinds
     assert.ok(GEO.furniture.length > 300 && GEO.furniture.every(([k, x, z, yaw, src]) => k >= 0 && k < GEO.furnitureKinds.length && src >= 0 && src < GEO.furnitureSources.length && Number.isFinite(x + z + yaw)));
     for (const k of ['bus_shelter', 'subway_entrance', 'bicycle_rental', 'fire_hydrant']) {
@@ -253,6 +285,8 @@ test('Wanhua geodata builds in its own frame around Lungshan Temple', { timeout:
     assert.ok(GEO.buildings.length > 200 && GEO.buildings.every((b) => b[1].every((v) => Math.abs(v) < 800)));
     assert.ok(GEO.roadGraph.links.length > 200 && GEO.roadGraph.nodes.every((v) => Math.abs(v) < 1500));
     assert.ok(GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'), 'estimates are labelled');
+    const onRoad = kerbClear(GEO.roadGraph);
+    assert.ok(GEO.furniture.every(([, x, z]) => !onRoad(x, z, 0).moved), 'furniture off the carriageways');
     // Stand-ins: kept apart from OSM buildings, labelled, estimated heights, never on a mapped footprint
     assert.ok(GEO.infill.length > 1000, `${GEO.infill.length} stand-ins`);
     assert.match(GEO.infillNote, /inferred/);

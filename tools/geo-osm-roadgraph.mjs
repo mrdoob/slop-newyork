@@ -68,7 +68,9 @@ export function buildOsmRoadGraph(elements, toWorld, log = () => {}, { signalIds
     const pts = e.geometry.map((g) => toWorld(g.lon, g.lat));
     if (hw in DEFAULT_LANES) {
       if (layer >= 1) { skipped++; continue; } // elevated roadways: none in scope yet
-      if (t.area === 'yes' || t.access === 'no') { skipped++; continue; }
+      // access=no closes a way to traffic unless a vehicle tag reopens it (alleys tagged access=no + motor_vehicle=yes)
+      const reopened = ['vehicle', 'motor_vehicle', 'motorcar'].some((k) => /^(yes|designated|destination|permissive)$/.test(t[k] || ''));
+      if (t.area === 'yes' || (t.access === 'no' && !reopened)) { skipped++; continue; }
       const lanes = Math.max(1, Math.round(parseFloat(t.lanes) || DEFAULT_LANES[hw]));
       const tagged = metres(t.width);
       const width = tagged ?? (hw === 'service' && !t.lanes ? SERVICE_WIDTH[t.service] ?? 4 : lanes * LANE_M);

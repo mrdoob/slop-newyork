@@ -15,6 +15,7 @@ import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgrap
 import { fitRoadWidths, inferSidewalks, sidewalkFootways, medianSides } from './geo-sidewalks.mjs';
 import { buildFurniture, FURNITURE_KINDS, FURNITURE_SOURCES } from './geo-furniture.mjs';
 import { infillBuildings, INFILL } from './geo-infill.mjs';
+import { kerbClear } from './geo-kerb.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL(`../js/${AREA.out}`, import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
@@ -90,7 +91,11 @@ const parts = [];
 let underground = 0, broken = 0;
 for (const e of osm.elements) {
   const t = e.tags || {};
-  if (t.location === 'underground' || parseFloat(t.layer) < 0) { underground++; continue; }
+  // Below ground: tagged so, on a negative layer, on negative levels only (level=-1, -2;-1), or with no storeys above
+  // ground but some below (an underground station hall drawn as a part)
+  const levels = String(t.level ?? '').split(/[;,]/).map(parseFloat).filter(Number.isFinite);
+  const belowOnly = (levels.length && levels.every((l) => l < 0)) || (t['building:levels'] === '0' && parseFloat(t['building:levels:underground']));
+  if (t.location === 'underground' || parseFloat(t.layer) < 0 || belowOnly) { underground++; continue; }
   const isPart = t['building:part'] && t['building:part'] !== 'no';
   if (!isPart && !(t.building && t.building !== 'no')) continue;
   const polys = polygons(e);
@@ -263,9 +268,17 @@ for (const e of load('osm_roads.json').elements) {
   railLines.push({ pts: e.geometry.map((g) => toWorld(g.lon, g.lat)), w });
 }
 const [bx0, bz1] = toWorld(BOX[1], BOX[0]), [bx1, bz0] = toWorld(BOX[3], BOX[2]);
+// Every at-grade OSM highway way, drawn or not (private lanes, area outlines, ways the graph leaves out), is a corridor
+// too: a stand-in never stands on a mapped way. 2 m wide unless tagged (a default, not a measurement).
+const rawWays = [];
+for (const e of load('osm_roads.json').elements) {
+  const t = e.tags || {};
+  if (e.type !== 'way' || !e.geometry || !t.highway || t.tunnel || t.indoor || parseFloat(t.layer) < 0 || parseFloat(t.layer) > 0 || t.bridge || /^-/.test(t.level || '')) continue;
+  rawWays.push({ pts: e.geometry.map((g) => toWorld(g.lon, g.lat)), w: parseFloat(t.width) || 2 });
+}
 const infill = !AREA.infill ? [] : infillBuildings({
   links: streetLines,
-  corridors: [...streetLines, ...paths.filter((p) => !(p[2] > 0)).map((p) => ({ pts: p[3], w: Math.max(1, p[1]) })), ...railLines],
+  corridors: [...streetLines, ...paths.filter((p) => !(p[2] > 0)).map((p) => ({ pts: p[3], w: Math.max(1, p[1]) })), ...railLines, ...rawWays],
   obstacles: [...outlines, ...parts].map((x) => x.outer),
   open: [...openRings, ...green.map((g) => g.outer)],
   bounds: [bx0, bz0, bx1, bz1],
@@ -276,7 +289,33 @@ if (AREA.infill) log(`stand-in buildings (inferred, not mapped): ${infill.length
 
 // --- Street furniture -------------------------------------------------------------------------------------------------
 const solidRings = [...groundRings, ...infill.map((b) => b.outer)];
-const furniture = buildFurniture(load('osm_furniture.json').elements, toWorld, roadGraph, (x, z) => solidRings.some((r) => pointInRing(x, z, r)));
+const solid = (x, z) => solidRings.some((r) => pointInRing(x, z, r));
+const builtFurniture = buildFurniture(load('osm_furniture.json').elements, toWorld, roadGraph, solid);
+
+// --- Off the drawn carriageways (tools/geo-kerb.mjs) -------------------------------------------------------------------
+// Drawn road widths are often estimates, so items mapped at the real kerb can fall inside the drawn road. Mapped items
+// move straight out to the drawn kerb (by KERB_MARGIN: how far the model reaches towards the road), as do trees spaced
+// along a mapped tree row; inferred ones (lamps, scooters, trees filling a wood) that land on a road are dropped. Items with no clear kerb spot are dropped.
+const KERB_MARGIN = { bus_shelter: 1.0, subway_entrance: 3.3, bicycle_rental: 0.8, vending_machine: 0.6, telephone: 0.6, tree: 1.2 };
+const clear = kerbClear(roadGraph, solid);
+const kerbed = { moved: 0, dropped: 0, why: {} };
+const drop = (what) => { kerbed.dropped++; kerbed.why[what] = (kerbed.why[what] || 0) + 1; };
+const furniture = [];
+for (const f of builtFurniture) {
+  const kind = FURNITURE_KINDS[f[0]], inferredItem = FURNITURE_SOURCES[f[4]] === 'inferred';
+  const c = clear(f[1], f[2], KERB_MARGIN[kind] ?? 0.5);
+  if (!c || (c.moved && inferredItem)) { drop(`${kind}${inferredItem ? ' (inferred)' : ''}${c ? '' : ' (no clear kerb)'}`); continue; }
+  if (c.moved) kerbed.moved++;
+  furniture.push(c.moved ? [f[0], c.x, c.z, c.yaw, f[4], f[5]] : f);
+}
+const treeCount = trees.length;
+for (let i = trees.length - 1; i >= 0; i--) {
+  const [x, z, src] = trees[i];
+  const c = clear(x, z, KERB_MARGIN.tree);
+  if (!c || (c.moved && TREE_SOURCES[src] === TREE_SOURCES[2])) { trees.splice(i, 1); drop(`${TREE_SOURCES[src]}${c ? '' : ' (no clear kerb)'}`); continue; }
+  if (c.moved) { trees[i] = [q(c.x), q(c.z), src, trees[i][3]]; kerbed.moved++; }
+}
+log(`off the drawn roads: ${kerbed.moved} mapped items moved to the kerb, ${kerbed.dropped} dropped (furniture ${builtFurniture.length} -> ${furniture.length}, trees ${treeCount} -> ${trees.length}): ${JSON.stringify(kerbed.why)}`);
 log(`street furniture: ${FURNITURE_KINDS.map((k, i) => [k, furniture.filter((f) => f[0] === i)]).filter(([, l]) => l.length)
   .map(([k, l]) => `${l.length} ${k}${l.some((f) => f[4] === 1) ? ` (${l.filter((f) => f[4] === 1).length} inferred)` : ''}`).join(', ')}`);
 

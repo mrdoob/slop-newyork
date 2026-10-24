@@ -126,6 +126,9 @@ export function fitRoadWidths(roadGraph, paths, pathKinds, solid = () => false) 
     next = Math.round(Math.max(l[5] === 0 ? 5.5 : 3, Math.min(40, next)) * 10) / 10; // two-way roads keep two lanes
     const line = linkLine(roadGraph, l);
     while (next > w && kerbBlocked(line, next, solid) > 0.05) next = Math.max(w, next - 1); // clear of buildings
+    // an estimated width that runs into the buildings lining the street (lanes narrower than their class default)
+    // narrows until its kerbs clear them, to a 3.5 m lane at least
+    while (next > 3.5 && kerbBlocked(line, next, solid) > 0.1) next = Math.max(3.5, next - 0.5);
     if (Math.abs(next - w) < 0.5) return;
     if (next > w) widened++;
     else narrowed++;

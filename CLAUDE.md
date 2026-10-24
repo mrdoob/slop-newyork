@@ -192,6 +192,11 @@ neighbours ≤ 80 m ±1 storey. Output `GEO.infill` (same rows as buildings, kin
 violet on E, hide with I. Per-area `infill` flag in AREAS: Wanhua on (3,270 lots; local check: 65% of unmapped
 buildings covered, 14% of lots no measured building within 12 m, heights 0.88×), Xinyi off (46% would be on open
 ground). validate-heights.mjs reports these numbers for the area's generated file.
+Off the roads (`tools/geo-kerb.mjs` kerbClear): drawn widths are often estimates, so mapped furniture / trees inside a
+drawn carriageway move straight out to the drawn kerb (per-kind margin); inferred lamps / scooters / wood trees there
+are dropped; build logs counts. Estimated widths narrow (≥ 3.5 m) where > 10% of kerb samples hit buildings.
+Stand-ins avoid every at-grade OSM highway way. access=no ways reopened by vehicle/motor_vehicle/motorcar tags are
+drivable. Building parts on negative levels only / 0 storeys above ground are skipped (underground station hall).
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments
