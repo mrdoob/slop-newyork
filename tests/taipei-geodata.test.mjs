@@ -318,3 +318,21 @@ test('Wanhua geodata builds in its own frame around Lungshan Temple', { timeout:
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the Taipei viewer never loads NYC map data or the NYC-only modules', () => {
+  // Follow relative imports (static and dynamic) from js/taipei-main.js
+  const seen = new Set();
+  const visit = (file) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    const src = fs.readFileSync(path.join(root, 'js', file), 'utf8');
+    for (const [, spec] of src.matchAll(/(?:from\s+|import\s*\(\s*)['"]\.\/([^'"]+)['"]/g)) visit(spec);
+    // dynamically imported area files are listed in AREAS
+    for (const [, spec] of src.matchAll(/:\s*'\.\/([\w-]+-geodata\.js)'/g)) visit(spec);
+  };
+  visit('taipei-main.js');
+  for (const f of ['player-actors.js', 'footprint-map.js', 'time-of-day.js', 'taipei-geodata.js', 'taipei-wanhua-geodata.js']) assert.ok(seen.has(f), f);
+  for (const nyc of ['nyc-geodata.js', 'tsl-materials.js', 'city-config.js', 'lighting.js', 'controllers.js', 'nyc-map.js']) {
+    assert.ok(!seen.has(nyc), `the Taipei viewer pulls in ${nyc}`);
+  }
+});

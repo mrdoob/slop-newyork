@@ -10,6 +10,8 @@ import { buildSignalControl } from './signal-control.js';
 import { buildFootprintTraffic } from './footprint-traffic.js';
 import { buildStreetFurniture } from './street-furniture.js';
 import { buildBasemapOverlay } from './basemap-overlay.js';
+import { FootprintMap } from './footprint-map.js';
+import { TimeOfDay } from './time-of-day.js';
 
 // js/taipei-main.js
 // Taipei viewer (taipei.html): one test box (GEO.frame.box) from OSM, orbit camera, sun & sky. ?area= picks the box:
@@ -123,7 +125,8 @@ async function init() {
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(envScene).texture;
   scene.environmentIntensity = 0.6;
 
-  scene.add(new THREE.HemisphereLight(0xdfeaf5, 0x5a5650, 0.9));
+  const hemi = new THREE.HemisphereLight(0xdfeaf5, 0x5a5650, 0.9);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1dd, 3.2);
   sun.position.set(-700, 1100, 500); // afternoon sun from the south-west
   sun.castShadow = true;
@@ -143,7 +146,7 @@ async function init() {
   buildGreenAreas(scene, GEO);
   scene.add(createTreeField(scene, treeSites(GEO)).group);
   // Street furniture in Taipei's colours: YouBike 2.0 yellow, Chunghwa Post's green & red post box pair, Taipei Metro blue
-  buildStreetFurniture(scene, GEO, { bikeShareColour: 0xf0b400, postBoxColours: [0x2e8b3a, 0xc8261e], metroSignColour: 0x0b5aa2 });
+  const furniture = buildStreetFurniture(scene, GEO, { bikeShareColour: 0xf0b400, postBoxColours: [0x2e8b3a, 0xc8261e], metroSignColour: 0x0b5aa2 });
   await loading.step(0.38, 'Signals, cars & pedestrians');
 
   // Signals & traffic: Taiwan drives on the right; cars mostly white, silver, grey & black, taxis yellow
@@ -217,10 +220,12 @@ async function init() {
   overlayButton.addEventListener('click', () => setOverlay(!overlay.plane.visible));
   window.addEventListener('keydown', (ev) => { if (ev.key === 'm' || ev.key === 'M') setOverlay(!overlay.plane.visible); });
 
-  // Car & plane: Taiwan drives on the right; the car starts on the widest road near Taipei 101, the plane south of it
+  // Player: on foot, bicycle (YouBike yellow), car & plane. Taiwan drives on the right; the car starts on the widest road
+  // near Taipei 101 (the walker & cyclist beside it), the plane south of it
   const vehicles = new SimpleVehicles(scene, GEO, {
     spawnNear: { x: t101 ? t101.x : 0, z: t101 ? t101.z : 0 },
     driveOnRight: true,
+    bikeColour: 0xf0b400,
     blocked: (x, z, fx, fz, hl, hw) =>
       traffic.carOverlaps(x, z, fx, fz, hl + 0.1, hw + 0.1) || traffic.pedNear(x + fx * hl * 0.6, z + fz * hl * 0.6, 1.6) || traffic.pedNear(x - fx * hl * 0.6, z - fz * hl * 0.6, 1.6),
     planeSpawn: { x: -half * 0.25, y: 220, z: half * 0.9, heading: 0 }
@@ -230,8 +235,8 @@ async function init() {
   const setMode = (mode) => {
     if (mode === 'orbit' && vehicles.mode !== 'orbit') {
       // keep looking at where the vehicle was
-      const v = vehicles.mode === 'car' ? vehicles.car : vehicles.plane;
-      controls.target.set(v.x, vehicles.mode === 'car' ? 0 : v.y, v.z);
+      const v = vehicles.active;
+      controls.target.set(v.x, vehicles.mode === 'plane' ? v.y : 0, v.z);
     }
     vehicles.setMode(mode, camera);
     controls.enabled = mode === 'orbit';
@@ -241,17 +246,61 @@ async function init() {
   };
   for (const b of modeButtons) b.addEventListener('click', () => setMode(b.dataset.mode));
   window.addEventListener('keydown', (ev) => {
-    const mode = { Digit1: 'orbit', Digit2: 'car', Digit3: 'plane' }[ev.code];
+    const mode = { Digit1: 'orbit', Digit2: 'walk', Digit3: 'bike', Digit4: 'car', Digit5: 'plane' }[ev.code];
     if (mode) setMode(mode);
   });
+
+  // Map (T): a minimap following the player (or, orbiting, the point the camera looks at); the full map teleports
+  const playerOnMap = () => {
+    const v = vehicles.active;
+    if (v) return { x: v.x, z: v.z, heading: v.heading };
+    const f = new THREE.Vector3();
+    camera.getWorldDirection(f);
+    return { x: controls.target.x, z: controls.target.z, heading: Math.atan2(-f.x, -f.z) };
+  };
+  const map = new FootprintMap(GEO, {
+    mini: document.getElementById('minimap'),
+    full: document.getElementById('fullmap'),
+    fullCanvas: document.getElementById('fullmap-canvas'),
+    hoverInfo: document.getElementById('fullmap-info'),
+    getPlayer: playerOnMap,
+    onTeleport: (x, z) => {
+      if (vehicles.mode !== 'orbit') { vehicles.teleport(x, z, camera); return; }
+      // orbiting: move the camera with its target
+      const dx = x - controls.target.x, dz = z - controls.target.z;
+      controls.target.set(x, controls.target.y, z);
+      camera.position.x += dx;
+      camera.position.z += dz;
+      controls.update();
+    },
+    onToggle: (open) => { vehicles.keys.clear(); if (!open) renderer.domElement.focus(); }
+  });
+  window.addEventListener('keydown', (ev) => {
+    if (ev.code === 'KeyT') map.toggle();
+    else if (ev.code === 'Escape') map.toggle(false);
+  });
+
+  // Time of day (L, or the buttons): sun, sky & ambient light, and at night lit windows, shopfronts, street lamps,
+  // headlamps. Taipei's sun sets in the west; the sun's light covers the box from TimeOfDay's target outwards.
+  const timeOfDay = new TimeOfDay(renderer, scene, { sun, hemi, sky, target: new THREE.Vector3(0, 0, 0), distance: 1400 }, {
+    onNight: [(f) => buildings.setNight(f), (f) => furniture.setNight(f), (f) => vehicles.setNight(f)]
+  });
+  const timeButtons = [...document.querySelectorAll('[data-time]')];
+  const showTime = () => { for (const b of timeButtons) b.setAttribute('aria-pressed', String(b.dataset.time === timeOfDay.id)); };
+  for (const b of timeButtons) b.addEventListener('click', () => { timeOfDay.set(b.dataset.time); showTime(); renderer.domElement.focus(); });
+  window.addEventListener('keydown', (ev) => { if (ev.code === 'KeyL' && !map.open) { timeOfDay.next(ev.shiftKey ? -1 : 1); showTime(); } });
 
   // Shaders: compile with the city's first frame of traffic in place, the car & plane shown for the moment
   signals.update(0);
   traffic.update(1 / 60, camera, null);
   vehicles.car.group.visible = vehicles.plane.group.visible = true;
+  vehicles.walkerModel.visible = vehicles.cyclistModel.visible = true;
+  furniture.setNight(1); // the night-only lamplight compiles now too (uniforms don't change pipelines)
   await loading.step(0.45, 'Compiling shaders');
   await precompile(renderer, scene, camera, (f) => loading.set(0.45 + 0.55 * f, 'Compiling shaders'));
+  furniture.setNight(0);
   vehicles.car.group.visible = vehicles.plane.group.visible = false;
+  vehicles.walkerModel.visible = vehicles.cyclistModel.visible = false;
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -262,14 +311,16 @@ async function init() {
   renderer.setAnimationLoop((time) => {
     timer.update(time);
     const dt = timer.getDelta();
+    timeOfDay.update(dt);
     if (vehicles.mode === 'orbit') controls.update();
     else vehicles.update(dt, camera);
     signals.update(dt);
-    traffic.update(dt, camera, vehicles.mode === 'car' ? vehicles.car : null);
+    traffic.update(dt, camera, vehicles.mode === 'orbit' || vehicles.mode === 'plane' ? null : vehicles.active); // cars keep clear of the player
     vehicleStatus.textContent = vehicles.status;
+    map.updateMini();
     renderer.render(scene, camera);
   });
-  window.__taipei = { scene, camera, controls, buildings, vehicles, setMode, signals, traffic, setOverlay }; // for debugging from the console
+  window.__taipei = { scene, camera, controls, buildings, vehicles, setMode, signals, traffic, setOverlay, map, timeOfDay }; // for debugging from the console
   requestAnimationFrame(() => loading.done());
 }
 

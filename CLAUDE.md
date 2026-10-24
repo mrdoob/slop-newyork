@@ -200,6 +200,13 @@ drivable. Building parts on negative levels only / 0 storeys above ground are sk
 Junction discs (nodes of degree ≥ 2, radius = widest link's half width, as graph-roads.js) count as road in kerbClear.
 Bike-share / rack bikes are generated in the build (`expandDocks`, kinds bike_share / bike, inferred), not the renderer:
 row goes to the clear side of the kiosk; bikes on roads or in buildings are left out.
+Player (viewer): `js/simple-vehicles.js` modes walk / bike / car / plane (keys 2–5), `teleport(x, z)`; person & bike models
+`js/player-actors.js` (NYC cyclist ported with plain materials; PersonRig walk/ride). Walker steps onto raised sidewalks.
+Map: `js/footprint-map.js` (minimap + full map T, click = teleport, hover = street name). Time of day: `js/time-of-day.js`
+(day/golden/dusk/night, L; NYC preset values on DirectionalLight + Hemisphere; cityUniforms.uInteriorGlow drives car
+headlamps; buildings/furniture/bike `setNight(f)`: random lit windows per building, shops, lamp heads + lamp pools).
+NYC lighting.js / controllers.js / nyc-map.js NOT reused: they load NYC data (tsl-materials, city-config); a test
+walks taipei-main's import graph to keep it that way.
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments

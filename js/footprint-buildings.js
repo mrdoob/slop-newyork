@@ -180,6 +180,7 @@ function buildFootprintBuildings(scene, geo) {
 
   // --- Facade shader ------------------------------------------------------------------------------------------------
   const showEstimates = uniform(0);
+  const night = uniform(0); // 0 day .. 1 night: lit windows, shopfronts & signs (setNight)
   const f = attribute('facade', 'float');
   const bBase = attribute('base', 'float');
   const is = (name) => {
@@ -233,6 +234,20 @@ function buildFootprintBuildings(scene, geo) {
   material.colorNode = mix(mix(wallCol, glassCol, glass), signCol, isSign);
   material.roughnessNode = mix(float(0.86), mix(float(0.22), float(0.06), curtain), glass);
   material.metalnessNode = mix(float(0.0), mix(float(0.3), float(0.6), curtain.mul(float(1).sub(groundFloor))), glass);
+  // Night: about half the windows lit (per window bay & storey, warm or cool white), every shopfront lit, signs glowing;
+  // far away, where windows blend into the wall, the average
+  const bay = floor(along.div(mix(float(3.2), float(3.0), curtain)));
+  const storey = floor(y.div(LEVEL_M));
+  const lit = fract(sin(bay.mul(91.17).add(storey.mul(47.3)).add(bBase.mul(13.7))).mul(24634.6345));
+  // each building its own share of lit windows (5–65%), keyed on its colour (every building's differs slightly)
+  const share = fract(sin(baseCol.dot(vec3(127.1, 311.7, 74.7))).mul(43758.5453)).mul(0.6).add(0.05);
+  const on = mix(share.mul(0.6), step(lit, share), near);
+  const roomCol = mix(vec3(1.0, 0.74, 0.45), vec3(0.8, 0.9, 1.0), step(0.75, fract(lit.mul(7.3))));
+  const windowsGlow = roomCol.mul(on).mul(glass).mul(float(1).sub(groundFloor)).mul(0.55);
+  // shops: about a quarter shuttered for the night, the rest lit at varying brightness
+  const shopLit = fract(sin(floor(along.div(4.5)).mul(53.7).add(bBase.mul(7.1)).add(share.mul(91.3))).mul(17453.13));
+  const shopGlow = vec3(1.0, 0.84, 0.6).mul(glass).mul(groundFloor).mul(step(0.25, shopLit)).mul(shopLit.mul(0.45).add(0.15));
+  material.emissiveNode = windowsGlow.add(shopGlow).add(signCol.mul(isSign).mul(1.2)).mul(night);
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
@@ -252,7 +267,8 @@ function buildFootprintBuildings(scene, geo) {
     infillMesh,
     stats,
     setShowEstimates(on) { showEstimates.value = on ? 1 : 0; },
-    setShowInfill(on) { if (infillMesh) infillMesh.visible = on; }
+    setShowInfill(on) { if (infillMesh) infillMesh.visible = on; },
+    setNight(f) { night.value = f; }
   };
 }
 

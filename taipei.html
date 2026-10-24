@@ -51,6 +51,18 @@
     #loading-status { margin: 0; font-size: 13px; color: #b9c3cc; font-variant-numeric: tabular-nums; min-height: 1.4em; text-align: center; padding: 0 16px; }
     #loading.failed #loading-status { color: #ffb4a0; }
     #loading.failed .loading-track { display: none; }
+    .side { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    #minimap { width: 180px; height: 180px; border-radius: 50%; border: 3px solid rgba(20, 24, 28, 0.72); cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+    .time { display: flex; gap: 4px; padding: 5px 6px; border-radius: 8px; background: rgba(20, 24, 28, 0.72); color: #eef2f5; }
+    .time button { font: inherit; color: inherit; background: #3a4450; border: 1px solid #5a6672; border-radius: 6px;
+      padding: 3px 8px; cursor: pointer; }
+    .time button[aria-pressed="true"] { background: #2f6fb0; border-color: #5a9ad8; }
+    #fullmap { position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column; background: rgba(17, 22, 27, 0.86); }
+    #fullmap[hidden] { display: none; }
+    #fullmap-canvas { flex: 1; min-height: 0; width: 100%; cursor: crosshair; touch-action: none; }
+    #fullmap-info { margin: 0; padding: 8px 16px; color: #eef2f5; text-align: center; }
+    @media (max-width: 600px) { #minimap { width: 120px; height: 120px; } }
     #drive-help { position: fixed; top: 58px; left: 12px; margin: 0; padding: 6px 10px; border-radius: 8px;
       background: rgba(20, 24, 28, 0.6); color: #eef2f5; }
   </style>
@@ -66,11 +78,26 @@
   </div>
   <div class="modes">
     <button type="button" data-mode="orbit" aria-pressed="true">1 Orbit</button>
-    <button type="button" data-mode="car" aria-pressed="false">2 Car</button>
-    <button type="button" data-mode="plane" aria-pressed="false">3 Plane</button>
+    <button type="button" data-mode="walk" aria-pressed="false">2 Walk</button>
+    <button type="button" data-mode="bike" aria-pressed="false">3 Bike</button>
+    <button type="button" data-mode="car" aria-pressed="false">4 Car</button>
+    <button type="button" data-mode="plane" aria-pressed="false">5 Plane</button>
     <span id="vehicle-status" aria-live="polite"></span>
   </div>
-  <p id="drive-help" hidden>W/S or ↑/↓ forward &amp; back · A/D or ←/→ turn · Shift faster · Plane: R climb, F descend</p>
+  <div class="side">
+    <canvas id="minimap" title="Map (T): click to open, then click anywhere to teleport" aria-label="Minimap"></canvas>
+    <div class="time" role="group" aria-label="Time of day (L)">
+      <button type="button" data-time="day" aria-pressed="true">Day</button>
+      <button type="button" data-time="golden" aria-pressed="false">Golden</button>
+      <button type="button" data-time="dusk" aria-pressed="false">Dusk</button>
+      <button type="button" data-time="night" aria-pressed="false">Night</button>
+    </div>
+  </div>
+  <div id="fullmap" hidden>
+    <canvas id="fullmap-canvas" aria-label="Map: click to teleport"></canvas>
+    <p id="fullmap-info">Click to teleport · drag to pan · wheel to zoom · T or Esc to close</p>
+  </div>
+  <p id="drive-help" hidden>W/S or ↑/↓ forward &amp; back · A/D or ←/→ turn · Shift run / faster · Plane: R climb, F descend</p>
   <div class="hud">
     <p id="stats">Loading…</p>
     <p>Building heights are partially <strong>estimated</strong> where OpenStreetMap has no height or storey count.
@@ -78,6 +105,7 @@
       <button id="btn-infill" type="button" aria-pressed="true" hidden>Stand-in buildings [I]</button>
       <button id="btn-overlay" type="button" aria-pressed="false">Reference photo [M]</button></p>
     <p id="overlay-credit" hidden></p>
+    <p>Keys: 1–5 orbit / walk / bike / car / plane · T map &amp; teleport · L time of day</p>
     <p>Area: <a href="?area=xinyi">Xinyi (2 km)</a> · <a href="?area=wanhua">Wanhua (1 km)</a></p>
     <p>Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL) ·
       based on <a href="https://github.com/mrdoob/slop-newyork">mrdoob/slop-newyork</a> (MIT)</p>
