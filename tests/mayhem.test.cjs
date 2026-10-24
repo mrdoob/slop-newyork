@@ -5,7 +5,7 @@ const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
 class Matrix4 {}
-const { BONES, boxHit, startTumble, stepTumble, tumblePose, startTopple, stepTopple, hideInstance } = loadModule(
+const { BONES, boxHit, startTumble, stepTumble, slide, tumblePose, startTopple, stepTopple, hideInstance } = loadModule(
   readFileSync(join(__dirname, '../js/mayhem.js'), 'utf8'),
   { imports: { 'three/webgpu': { Matrix4 } }, filename: 'mayhem.js' }
 );
@@ -93,4 +93,22 @@ test('hiding a prop clears its instance where culling moved it', () => {
   const plain = { userData: {}, ...instance() };
   hideInstance(plain, 2);
   assert.deepEqual(Array.from(plain.instanceMatrix.array.subarray(32, 48)), new Array(16).fill(0));
+});
+
+test('a body thrown at a wall bounces off it instead of flying into the building', () => {
+  const wall = (x) => x > 5; // a facade along x = 5
+  const f = startTumble(0, 0, 0, 20, 0, 1, 0, () => 0.5);
+  let furthest = 0;
+  for (let t = 0; t < 10; t += 1 / 60) {
+    stepTumble(f, 1 / 60, 0, wall);
+    furthest = Math.max(furthest, f.px);
+  }
+  assert.ok(furthest <= 5, 'never inside');
+  assert.ok(f.px < 5 && f.px > -10, 'lies in front of the wall, bounced back a few metres');
+  const o = { px: 4.9, pz: 0, vx: 3, vz: 0 };
+  assert.equal(slide(o, 0.3, 0, wall), false);
+  assert.equal(o.px, 4.9);
+  assert.ok(o.vx < 0, 'bounced back');
+  assert.equal(slide(o, -0.3, 0, wall), true);
+  assert.ok(Math.abs(o.px - 4.6) < 1e-9);
 });

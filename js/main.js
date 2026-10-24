@@ -103,6 +103,10 @@ async function initApp() {
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
+  // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
+  const solidAt = (x, z) => controllerManager.isSolidAt(x, z);
+  trafficSystem.setSolidQuery(solidAt);
+  streetDetails.breaker?.setSolidQuery(solidAt);
   // Saved positions belong to one city's frame: the key carries the city's name
   const PLAYER_STATE_KEY = `${(CITY.city || 'nyc').toLowerCase()}-player-state`;
   // Reuse teleport placement so saved players return at rest, close to their last positions.

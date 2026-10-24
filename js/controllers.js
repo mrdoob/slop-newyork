@@ -869,6 +869,19 @@ class ThirdPersonControllerManager {
 
   // The colliders whose bounds come within `r` of (x, z), in their original order. They never move, so they are
   // bucketed once into 48 m cells (tens of thousands of buildings: testing them all every frame cost ~0.5 ms)
+  // Is ground point (x, z) inside a building below `height`? (Things thrown about by knock-downs, mayhem.js)
+  isSolidAt(x, z, height = 1.5) {
+    for (const c of this.nearColliders(x, z, 0)) {
+      if ((c.minY ?? 0) > height || x < c.minX || x > c.maxX || z < c.minZ || z > c.maxZ) continue;
+      if (!c.obb) return true;
+      // the box's own frame: world = c + R_y(θ)·local, so local = R_y(−θ)·(p − c)
+      const { cx, cz, hx, hz, cs, sn } = c.obb;
+      const dx = x - cx, dz = z - cz;
+      if (Math.abs(dx * cs - dz * sn) <= hx && Math.abs(dx * sn + dz * cs) <= hz) return true;
+    }
+    return false;
+  }
+
   nearColliders(x, z, r) {
     const CELL = 48;
     const key = (ix, iz) => (ix + 4096) * 8192 + (iz + 4096);

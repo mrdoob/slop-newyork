@@ -21,7 +21,7 @@ import {
 } from './actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BONES, boxHit, startTumble, stepTumble, tumblePose } from './mayhem.js';
+import { BONES, boxHit, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
 
 // js/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
@@ -2000,6 +2000,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // =========================================================================
   // 8B. KNOCK-DOWNS: the player's car or bicycle throws pedestrians & cyclists to the ground (mayhem.js)
   // =========================================================================
+  // Where walls stand (main.js hands over the player's building colliders): knocked bodies bounce off them
+  let solidAt = null;
+  function setSolidQuery(fn) {
+    solidAt = typeof fn === 'function' ? fn : null;
+  }
+
   // Does the player's vehicle hit a body of radius r at (x, z) fast enough to knock it over?
   function playerHits(x, z, r) {
     if (!player.knocks) return null;
@@ -2027,7 +2033,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // A knocked-over pedestrian flies, lands and lies still, then gets up out of sight (respawned like any other)
   function tumblePed(p, dt) {
     const f = p.fallen;
-    if (stepTumble(f, dt, f.ground) > DOWN_TIME) {
+    if (stepTumble(f, dt, f.ground, solidAt) > DOWN_TIME) {
       p.fallen = null;
       p.placed = false;
       p.rig.placed = false;
@@ -2042,6 +2048,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
   function knockBike(v, hit) {
     const r = v.rider;
+    poseRider(v); // (a bike out of sight hasn't posed its rider lately)
     v.fallBase = v.fallBase || new Float32Array(BONES * 8);
     v.fallBase.set(r.pose.subarray(0, BONES * 8));
     const f = startTumble(v.x, 0, v.z, player.vx, player.vz, hit.nx, hit.nz);
@@ -2051,7 +2058,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     // the bicycle skids on, falling on its side
     v.wreck = {
       rider: f,
-      x: v.x, z: v.z, yaw: v.yaw,
+      px: v.x, pz: v.z, yaw: v.yaw,
       vx: player.vx * 0.7 + hit.nx * 1.5, vz: player.vz * 0.7 + hit.nz * 1.5,
       roll: 0, rollVel: (Math.random() < 0.5 ? -1 : 1) * (2 + player.speed * 0.15), rest: 0
     };
@@ -2071,24 +2078,29 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     bikeWheelInst.setMatrixAt(slot, dummy.matrix);
     bikeFrameInst.setColorAt(slot, v.color);
     v.pedal = (v.pedal + (v.speed * dt) / 0.6) % (Math.PI * 2);
-    bikeRoot.position.copy(dummy.position);
-    bikeRoot.quaternion.copy(dummy.quaternion);
+    poseRider(v);
+    riderCrowd.add(v.rider, Math.hypot(v.x - focusX, v.z - focusZ));
+  }
+
+  // The rider on the saddle of bike v as it stands now, hands on the bars and feet on the pedals
+  function poseRider(v) {
+    const rotY = v.yaw + v.yawOffset;
+    bikeRoot.position.set(v.x, 0, v.z);
+    bikeRoot.rotation.set(0, rotY, -clamp(v.yawRate * v.speed * 0.05, -0.3, 0.3), 'YXZ');
     bikeRoot.updateMatrixWorld(true);
     v.rider.yaw = rotY;
     v.rider.ride(bikeRoot, v.pedal, BIKE_FRAME);
     v.rider.placed = false; // riding poses aren't walking ones: a walk would start afresh
-    riderCrowd.add(v.rider, Math.hypot(v.x - focusX, v.z - focusZ));
   }
 
   // The fallen cyclist and the bicycle on its side; both cleared once they've lain still a while
   function renderWreck(v, dt, slot) {
     const w = v.wreck;
-    const restR = stepTumble(w.rider, dt, 0);
+    const restR = stepTumble(w.rider, dt, 0, solidAt);
     const k = Math.exp(-2.5 * dt);
     w.vx *= k;
     w.vz *= k;
-    w.x += w.vx * dt;
-    w.z += w.vz * dt;
+    slide(w, w.vx * dt, w.vz * dt, solidAt);
     w.roll = clamp(w.roll + w.rollVel * dt, -1.45, 1.45);
     if (Math.abs(w.roll) >= 1.45) w.rollVel = 0;
     if (Math.hypot(w.vx, w.vz) < 0.2) w.rest += dt;
@@ -2096,9 +2108,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       v.wreck = null;
       return false;
     }
-    const draw = !hasView || visible(w.x, w.z, 4);
+    const draw = !hasView || visible(w.px, w.pz, 4);
     if (!draw) return false;
-    dummy.position.set(w.x, 0.04, w.z);
+    dummy.position.set(w.px, 0.04, w.pz);
     dummy.rotation.set(0, w.yaw, w.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -2106,7 +2118,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     bikeWheelInst.setMatrixAt(slot, dummy.matrix);
     bikeFrameInst.setColorAt(slot, v.color);
     tumblePose(v.rider.pose, v.fallBase, w.rider);
-    riderCrowd.add(v.rider, Math.hypot(w.x - focusX, w.z - focusZ));
+    riderCrowd.add(v.rider, Math.hypot(w.px - focusX, w.pz - focusZ));
     return true;
   }
 
@@ -2304,6 +2316,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     group,
     update,
     setCollisionListener,
+    setSolidQuery,
     cars,
     buses,
     bikes,

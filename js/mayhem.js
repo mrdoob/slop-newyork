@@ -51,13 +51,15 @@ function startTumble(x, ground, z, vx, vz, nx, nz, rand = Math.random) {
   };
 }
 
-/** Advances a tumble by dt over ground height `ground`; returns how long it has lain still */
-function stepTumble(f, dt, ground) {
+/**
+ * Advances a tumble by dt over ground height `ground`; returns how long it has lain still. `solidAt(x, z)` (optional)
+ * tells where walls stand: the body bounces back off them instead of flying into a building.
+ */
+function stepTumble(f, dt, ground, solidAt = null) {
   f.t += dt;
   f.vy -= GRAVITY * dt;
-  f.px += f.vx * dt;
+  slide(f, f.vx * dt, f.vz * dt, solidAt);
   f.py += f.vy * dt;
-  f.pz += f.vz * dt;
   f.angle += f.angVel * dt;
   f.spin += f.spinVel * dt;
   // the lowest the pivot can be at this tilt: on its feet (upright) down to lying flat
@@ -116,6 +118,18 @@ function tumblePose(dst, base, f, bones = BONES) {
   }
 }
 
+// Moves o.px, o.pz by (dx, dz) unless that enters a wall, in which case its horizontal velocity bounces back softly
+function slide(o, dx, dz, solidAt) {
+  if (solidAt && (dx || dz) && solidAt(o.px + dx, o.pz + dz)) {
+    o.vx *= -0.25;
+    o.vz *= -0.25;
+    return false;
+  }
+  o.px += dx;
+  o.pz += dz;
+  return true;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Street furniture
 // ---------------------------------------------------------------------------------------------------------------------
@@ -155,6 +169,7 @@ class PropBreaker {
     this.cells = new Map();
     this.debris = []; // falling stand-ins; once lying still they stay put (the prop's instance stays hidden)
     this.listener = null;
+    this.solidAt = null;
     this.event = { a: null, b: null, kind: 'prop', x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, speed: 0 };
     this.group = new THREE.Group();
     this.group.name = 'KnockedProps';
@@ -176,6 +191,11 @@ class PropBreaker {
 
   setCollisionListener(fn) {
     this.listener = typeof fn === 'function' ? fn : null;
+  }
+
+  // Where walls stand, for props knocked flying: (x, z) => boolean
+  setSolidQuery(fn) {
+    this.solidAt = typeof fn === 'function' ? fn : null;
   }
 
   /** Knocks over whatever the player's car or bicycle runs into this frame */
@@ -234,7 +254,7 @@ class PropBreaker {
       fall: startTopple(speed),
       tall: p.kind === 'cobra' ? 8.4 : p.kind === 'post' ? 3.9 : 0.9,
       // hydrants are knocked off their base and thrown
-      fly: p.kind === 'hydrant' ? { vx: vx * 0.6 + hit.nx * 1.5, vy: 3 + speed * 0.12, vz: vz * 0.6 + hit.nz * 1.5, y: 0 } : null,
+      fly: p.kind === 'hydrant' ? { px: p.x, pz: p.z, vx: vx * 0.6 + hit.nx * 1.5, vy: 3 + speed * 0.12, vz: vz * 0.6 + hit.nz * 1.5, y: 0 } : null,
       jet: null
     };
     if (p.kind === 'hydrant') {
@@ -270,8 +290,9 @@ class PropBreaker {
         f.vy -= GRAVITY * dt;
         f.y = Math.max(0, f.y + f.vy * dt);
         if (f.y === 0) { f.vy = f.vy < -2 ? -f.vy * 0.3 : 0; f.vx *= Math.exp(-4 * dt); f.vz *= Math.exp(-4 * dt); }
-        d.root.position.x += f.vx * dt;
-        d.root.position.z += f.vz * dt;
+        slide(f, f.vx * dt, f.vz * dt, this.solidAt);
+        d.root.position.x = f.px;
+        d.root.position.z = f.pz;
         d.root.position.y = f.y;
         d.tilt.rotation.x = Math.min(Math.PI / 2, d.tilt.rotation.x + dt * 6);
       } else if (d.fall.rest < 1) {
@@ -313,4 +334,4 @@ function hideInstance(mesh, index) {
   attr.needsUpdate = true;
 }
 
-export { BONES, boxHit, startTumble, stepTumble, tumblePose, startTopple, stepTopple, hideInstance, PropBreaker };
+export { BONES, boxHit, startTumble, stepTumble, slide, tumblePose, startTopple, stepTopple, hideInstance, PropBreaker };
