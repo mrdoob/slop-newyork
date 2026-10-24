@@ -10,6 +10,7 @@ import { createTreeField } from './trees.js';
 import { buildSignalControl } from './signal-control.js';
 import { buildFootprintTraffic } from './footprint-traffic.js';
 import { buildStreetFurniture } from './street-furniture.js';
+import { buildBasemapOverlay } from './basemap-overlay.js';
 
 // js/taipei-main.js
 // Taipei viewer (taipei.html): the test box around Taipei 101 (GEO.frame.box, 2 km) from OSM, orbit camera, sun & sky.
@@ -179,6 +180,24 @@ async function init() {
   toggle.addEventListener('click', () => setEstimates(!showEstimates));
   window.addEventListener('keydown', (ev) => { if (ev.key === 'e' || ev.key === 'E') setEstimates(!showEstimates); });
 
+  // Reference photo (M): NLSC aerial orthophotos draped on the ground, loaded from NLSC only when shown, to check roads
+  // & footprints by eye
+  const overlay = buildBasemapOverlay(scene, GEO, {
+    url: (z, x, y) => `https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/${z}/${y}/${x}`,
+    zoom: 17,
+    credit: 'Reference photo © 內政部國土測繪中心 (NLSC)'
+  });
+  const overlayButton = document.getElementById('btn-overlay');
+  const overlayCredit = document.getElementById('overlay-credit');
+  const setOverlay = (on) => {
+    overlayButton.setAttribute('aria-pressed', String(on));
+    overlayCredit.hidden = !on;
+    overlayCredit.textContent = overlay.credit;
+    overlay.setVisible(on, (f) => { overlayCredit.textContent = f < 1 ? `${overlay.credit} · loading ${Math.round(f * 100)}%` : overlay.credit; });
+  };
+  overlayButton.addEventListener('click', () => setOverlay(!overlay.plane.visible));
+  window.addEventListener('keydown', (ev) => { if (ev.key === 'm' || ev.key === 'M') setOverlay(!overlay.plane.visible); });
+
   // Car & plane: Taiwan drives on the right; the car starts on the widest road near Taipei 101, the plane south of it
   const vehicles = new SimpleVehicles(scene, GEO, {
     spawnNear: { x: t101 ? t101.x : 0, z: t101 ? t101.z : 0 },
@@ -231,7 +250,7 @@ async function init() {
     vehicleStatus.textContent = vehicles.status;
     renderer.render(scene, camera);
   });
-  window.__taipei = { scene, camera, controls, buildings, vehicles, setMode, signals, traffic }; // for debugging from the console
+  window.__taipei = { scene, camera, controls, buildings, vehicles, setMode, signals, traffic, setOverlay }; // for debugging from the console
   requestAnimationFrame(() => loading.done());
 }
 

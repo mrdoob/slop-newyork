@@ -163,7 +163,12 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
    hydrants…); lamps inferred along kerbs (OSM maps ~17). Taipei 101 tiers: `LANDMARKS.tiers` (shape model of the
    design on OSM footprint/heights; renderer `topScale`). Missing buildings: validate-heights.mjs lists ~667
    3D-model buildings with no OSM footprint (mostly SW of box) — map them in OSM from allowed sources; never trace
-   3d.taipei. Viewer has a loading screen with build-step + shader-compile progress. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
+   3d.taipei. Viewer has a loading screen with build-step + shader-compile progress.
+   Reference photo overlay (M, `js/basemap-overlay.js`): NLSC PHOTO2 WMTS (CORS ok), loaded at runtime only; core
+   roads/footprints line up with it. Traffic sim uses a 32 m car grid; pedestrians beyond 320 m aren't animated
+   (2 km: 5.3 → ~1.5 ms/frame).
+   Terrain: MOI 20 m DTM (data.gov.tw 176927, OGDL v1) is on TGOS, which geo-blocks non-Taiwan IPs (this sandbox exits
+   in NL) — needs a manual download from Taiwan into tools/data-local/dtm/. Open alternative: 臺北市歷年使用執照摘要 (OGDL v1, design
    heights, address-matched, post-2001 only).
 5. Judge against pass/fail criteria. Fix height variation before expanding.
 Then, only then: second 1 km box in OLD district (Wanhua/Datong) to stress

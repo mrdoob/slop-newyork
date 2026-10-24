@@ -26,7 +26,8 @@ here, so sidewalks along streets 6 m or wider are drawn from the roads' sidewalk
 'inferred' in the data, default widths), joined around junction corners. Street furniture (bus stops, MRT entrances,
 YouBike stations, hydrants, flagpoles…) stands where OSM maps it; street lamps, which OSM barely maps here, are spaced
 along kerbs and labelled inferred. Taipei 101's shaft is shaped as its documented base and eight flared modules on
-OSM's footprint and heights. Traffic signals stand where OSM maps them, but their timing is a generic fixed cycle. Trees are
+OSM's footprint and heights. Press M for a reference layer of aerial photos (© 內政部國土測繪中心 NLSC, loaded from their
+map service when shown) to compare roads and footprints by eye. Traffic signals stand where OSM maps them, but their timing is a generic fixed cycle. Trees are
 OSM's mapped trees plus trees spaced along mapped tree rows and through mapped woods (the models are generic
 broadleaf trees, not Taipei species). Cars and pedestrians are simulated, not real traffic. Roof shapes and colours
 come from OSM where tagged; facade styles (curtain wall, punched windows, shopfronts) are inferred from building type,

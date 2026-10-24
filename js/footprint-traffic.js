@@ -23,6 +23,8 @@ const ACCEL = 2.6;
 const BRAKE = 6.5;
 const FAR_CAR = 160; // m: lofted proxy beyond
 const DRAW_PED = 220; // m: pedestrians drawn within
+const ANIMATE_PED = 320; // m: beyond this a pedestrian only moves along its way (its rig re-plants its feet on return)
+const CELL = 32; // m: grid for finding the cars around a car
 
 const DEFAULT_PALETTE = [0xf2f2f0, 0xf2f2f0, 0xc9ccd0, 0xc9ccd0, 0x8d9196, 0x1d1f22, 0x1d1f22, 0x2f4a6e, 0x7a1f1f, 0x5b6f5a];
 
@@ -229,12 +231,24 @@ function buildCars(scene, geo, options, signals, rand) {
   const p = {};
   const dummy = new THREE.Object3D();
   let clock = 0;
+  const grid = new Map();
+  const cellKey = (ix, iz) => ix * 73856093 + iz;
   function update(dt, camera, player, walkers = []) {
     clock += dt;
+    grid.clear();
+    for (const c of cars) {
+      const k = cellKey(Math.floor(c.x / CELL), Math.floor(c.z / CELL));
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(c);
+    }
+    const near = [];
     // Leaders: nearby cars ahead in the same direction (and the player's car, whatever its heading)
     for (const c of cars) {
       let gap = LOOK_AHEAD;
-      for (const o of cars) {
+      near.length = 0;
+      const ix = Math.floor(c.x / CELL), iz = Math.floor(c.z / CELL);
+      for (let gx = -1; gx <= 1; gx++) for (let gz = -1; gz <= 1; gz++) for (const o of grid.get(cellKey(ix + gx, iz + gz)) || []) near.push(o);
+      for (const o of near) {
         if (o === c) continue;
         const rx = o.x - c.x, rz = o.z - c.z;
         const along = rx * c.dx + rz * c.dz;
@@ -423,6 +437,7 @@ function buildPedestrians(scene, geo, options, signals, rand) {
       pd.y = way.ys[p.i - 1] + (way.ys[p.i] - way.ys[p.i - 1]) * p.f;
       if (way.kind === 'crossing' && !pd.waiting) walkers.push(pd);
       const dist = Math.hypot(pd.x - cx, pd.z - cz);
+      if (dist > ANIMATE_PED) { pd.rig.placed = false; continue; } // stands afresh when it comes back into range
       const draw = dist < DRAW_PED;
       pd.rig.update(dt, pd.x, pd.z, Math.atan2(hx, hz), ground, pd, 0, draw);
       if (draw) crowd.add(pd.rig, dist);
