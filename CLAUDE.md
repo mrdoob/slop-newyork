@@ -207,6 +207,11 @@ Map: `js/footprint-map.js` (minimap + full map T, click = teleport, hover = stre
 headlamps; buildings/furniture/bike `setNight(f)`: random lit windows per building, shops, lamp heads + lamp pools).
 NYC lighting.js / controllers.js / nyc-map.js NOT reused: they load NYC data (tsl-materials, city-config); a test
 walks taipei-main's import graph to keep it that way.
+Mobile: `(any-pointer: coarse)` → no MSAA, 2048 shadow map, half traffic, pixel ratio ≤ 1.5 adapting 0.6–1.5 to frame
+time (loop `adapt`). Touch: NYC `js/touch-controls.js` reused unchanged (calls vehicles.setTouchInput/clearTouchInput;
+mode names mapped walk/bike→cyclist, plane→helicopter). Panels: `js/hud-panels.js` makes every [data-panel] minimizable
+(state in localStorage; data-collapse-small = minimized by default on phones); `.panel-keep` credit stays visible (ODbL).
+Full map pinch-zooms.
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments

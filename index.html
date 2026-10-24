@@ -20,19 +20,86 @@
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #b9cddc; font: 13px/1.4 system-ui, sans-serif; }
     canvas { display: block; }
-    .hud { position: fixed; left: 12px; bottom: 12px; right: 12px; max-width: 640px; padding: 8px 12px; border-radius: 8px;
-      background: rgba(20, 24, 28, 0.72); color: #eef2f5; }
+    :root { --edge: 12px; --glass: rgba(20, 24, 28, 0.72); --btn: #3a4450; --btn-edge: #5a6672; --on: #2f6fb0; --on-edge: #5a9ad8;
+      --top: max(var(--edge), env(safe-area-inset-top)); --left: max(var(--edge), env(safe-area-inset-left));
+      --right: max(var(--edge), env(safe-area-inset-right)); --bottom: max(var(--edge), env(safe-area-inset-bottom)); }
+    body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+    canvas { touch-action: none; }
+    kbd { font: 11px/1 ui-monospace, monospace; padding: 1px 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); }
+    /* Panels: data-panel elements get a toggle (js/hud-panels.js); minimized, only the toggle and .panel-keep show */
+    .panel { position: fixed; border-radius: 8px; background: var(--glass); color: #eef2f5; }
+    .panel.is-min > .panel-body, #touch-controls.is-min > .panel-body { display: none; }
+    .panel-toggle { font: inherit; color: inherit; background: var(--btn); border: 1px solid var(--btn-edge); border-radius: 6px;
+      min-width: 28px; min-height: 28px; padding: 0 8px; cursor: pointer; line-height: 1; }
+    .panel.is-min { padding: 4px; }
+    .panel button { font: inherit; color: inherit; background: var(--btn); border: 1px solid var(--btn-edge); border-radius: 6px; cursor: pointer; }
+    .panel button[aria-pressed="true"] { background: var(--on); border-color: var(--on-edge); }
+    /* Top left: modes, help and (on touch screens) the info panel, stacked so they never overlap */
+    .stack { position: fixed; top: var(--top); left: var(--left); display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+      max-width: calc(100vw - var(--left) - var(--right) - 206px); }
+    .stack > .panel { position: relative; }
+    .modes { display: flex; gap: 6px; align-items: flex-start; padding: 6px 8px; }
+    .modes .panel-body { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .modes .panel-body button { padding: 4px 10px; min-height: 30px; }
+    #vehicle-status { margin-left: 4px; font-variant-numeric: tabular-nums; }
+    #drive-help { margin: 0; padding: 6px 10px; display: flex; gap: 8px; align-items: center; }
+    #drive-help[hidden] { display: none; }
+    .side { position: fixed; top: var(--top); right: var(--right); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .side .panel { position: relative; display: flex; gap: 6px; align-items: flex-start; padding: 5px; }
+    #minimap { width: 180px; height: 180px; border-radius: 50%; cursor: pointer; }
+    .time .panel-body { display: flex; gap: 4px; }
+    .time .panel-body button { padding: 3px 8px; min-height: 30px; }
+    .hud { left: var(--left); bottom: var(--bottom); max-width: min(640px, calc(100vw - 2 * var(--edge))); padding: 8px 12px; }
     .hud p { margin: 2px 0; }
     .hud a { color: #9fd0ff; }
-    .hud button { margin-top: 4px; font: inherit; color: inherit; background: #3a4450; border: 1px solid #5a6672;
-      border-radius: 6px; padding: 3px 10px; cursor: pointer; }
-    .hud button[aria-pressed="true"] { background: #c0581f; border-color: #e07a40; }
-    .modes { position: fixed; top: 12px; left: 12px; display: flex; gap: 6px; align-items: center; padding: 6px 8px;
-      border-radius: 8px; background: rgba(20, 24, 28, 0.72); color: #eef2f5; }
-    .modes button { font: inherit; color: inherit; background: #3a4450; border: 1px solid #5a6672; border-radius: 6px;
-      padding: 4px 12px; cursor: pointer; }
-    .modes button[aria-pressed="true"] { background: #2f6fb0; border-color: #5a9ad8; }
-    #vehicle-status { margin-left: 6px; font-variant-numeric: tabular-nums; }
+    .hud .panel-toggle { float: right; margin: 0 0 4px 8px; }
+    .hud.is-min .panel-toggle { float: none; margin: 0 8px 0 0; }
+    .hud.is-min { display: flex; align-items: center; padding: 4px 10px 4px 4px; }
+    .hud-buttons button { margin-top: 4px; padding: 3px 10px; }
+    .credit { font-size: 12px; opacity: 0.9; }
+    #fullmap { position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column; background: rgba(17, 22, 27, 0.86); }
+    #fullmap[hidden] { display: none; }
+    #fullmap-canvas { flex: 1; min-height: 0; width: 100%; cursor: crosshair; }
+    #fullmap-info { margin: 0; padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); color: #eef2f5; display: flex; gap: 12px;
+      justify-content: center; align-items: center; flex-wrap: wrap; text-align: center; }
+    #fullmap-close { font: inherit; color: inherit; background: var(--btn); border: 1px solid var(--btn-edge); border-radius: 6px; padding: 6px 14px; }
+    /* Touch controls (js/touch-controls.js): a movement stick bottom-left, hold buttons bottom-right */
+    #touch-controls { left: 0; right: 0; bottom: 0; background: none; pointer-events: none; padding: 0 var(--right) var(--bottom) var(--left); }
+    #touch-controls[hidden], .panel .touch-action[hidden] { display: none; }
+    #touch-controls .panel-toggle { position: absolute; left: var(--left); bottom: calc(var(--bottom) + 150px); pointer-events: auto; }
+    #touch-controls.is-min .panel-toggle { bottom: var(--bottom); }
+    #touch-controls .panel-body { display: flex; justify-content: space-between; align-items: flex-end; }
+    #touch-stick { position: relative; width: 136px; height: 136px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.25);
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.07) 32%, transparent 33%), var(--glass); pointer-events: auto; touch-action: none; }
+    .touch-stick-axis::before, .touch-stick-axis::after { content: ''; position: absolute; background: rgba(255, 255, 255, 0.14); }
+    .touch-stick-axis::before { top: 16px; bottom: 16px; width: 1px; left: 50%; }
+    .touch-stick-axis::after { left: 16px; right: 16px; height: 1px; top: 50%; }
+    #touch-stick-knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.5);
+      background: rgba(246, 245, 242, 0.85); transform: translate(calc(-50% + var(--stick-x, 0px)), calc(-50% + var(--stick-y, 0px))); pointer-events: none; }
+    #touch-stick.is-pressed #touch-stick-knob { background: #f0b400; border-color: #f0b400; }
+    .touch-actions { display: grid; grid-template-columns: repeat(2, 64px); gap: 10px; }
+    .panel .touch-action { width: 64px; height: 64px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+      border-radius: 50%; background: var(--glass); border-color: rgba(255, 255, 255, 0.25); font-size: 11px; font-weight: 650;
+      pointer-events: auto; touch-action: none; }
+    .touch-action > [aria-hidden] { font-size: 22px; line-height: 1; }
+    .panel .touch-action.is-pressed { background: #f0b400; color: #1b1b1b; }
+    .touch-boost { grid-column: 2; }
+    /* Touch screens: no keyboard hints; the info panel moves up out of the controls' way */
+    body.touch-enabled kbd, body.touch-enabled .keys-help, body.touch-enabled #drive-help { display: none; }
+    .stack > .hud { left: auto; bottom: auto; max-width: none; }
+    body.touch-enabled .modes .panel-body button, body.touch-enabled .time .panel-body button { min-height: 40px; }
+    @media (max-width: 640px) {
+      #minimap { width: 112px; height: 112px; }
+      .stack { max-width: calc(100vw - var(--left) - var(--right) - 168px); }
+      .side .panel { flex-direction: column; align-items: flex-end; }
+      .time .panel-body { flex-direction: column; width: 100%; }
+      .time .panel-body button { min-height: 34px; padding: 2px 8px; }
+      .credit .long { display: none; }
+      .credit { font-size: 11px; }
+      .modes .panel-body button { padding: 4px 8px; }
+      #vehicle-status { flex-basis: 100%; margin: 0; font-size: 12px; }
+      .hud { font-size: 12px; }
+    }
     #loading { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center;
       justify-content: center; gap: 14px; background: radial-gradient(circle at 50% 42%, #23303b, #11161b 70%); color: #eef2f5;
       transition: opacity 0.5s ease, visibility 0.5s; }
@@ -51,20 +118,6 @@
     #loading-status { margin: 0; font-size: 13px; color: #b9c3cc; font-variant-numeric: tabular-nums; min-height: 1.4em; text-align: center; padding: 0 16px; }
     #loading.failed #loading-status { color: #ffb4a0; }
     #loading.failed .loading-track { display: none; }
-    .side { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-    #minimap { width: 180px; height: 180px; border-radius: 50%; border: 3px solid rgba(20, 24, 28, 0.72); cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
-    .time { display: flex; gap: 4px; padding: 5px 6px; border-radius: 8px; background: rgba(20, 24, 28, 0.72); color: #eef2f5; }
-    .time button { font: inherit; color: inherit; background: #3a4450; border: 1px solid #5a6672; border-radius: 6px;
-      padding: 3px 8px; cursor: pointer; }
-    .time button[aria-pressed="true"] { background: #2f6fb0; border-color: #5a9ad8; }
-    #fullmap { position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column; background: rgba(17, 22, 27, 0.86); }
-    #fullmap[hidden] { display: none; }
-    #fullmap-canvas { flex: 1; min-height: 0; width: 100%; cursor: crosshair; touch-action: none; }
-    #fullmap-info { margin: 0; padding: 8px 16px; color: #eef2f5; text-align: center; }
-    @media (max-width: 600px) { #minimap { width: 120px; height: 120px; } }
-    #drive-help { position: fixed; top: 58px; left: 12px; margin: 0; padding: 6px 10px; border-radius: 8px;
-      background: rgba(20, 24, 28, 0.6); color: #eef2f5; }
   </style>
 </head>
 <body>
@@ -76,39 +129,68 @@
     </div>
     <p id="loading-status" aria-live="polite">Downloading three.js &amp; map data…</p>
   </div>
-  <div class="modes">
-    <button type="button" data-mode="orbit" aria-pressed="true">1 Orbit</button>
-    <button type="button" data-mode="walk" aria-pressed="false">2 Walk</button>
-    <button type="button" data-mode="bike" aria-pressed="false">3 Bike</button>
-    <button type="button" data-mode="car" aria-pressed="false">4 Car</button>
-    <button type="button" data-mode="plane" aria-pressed="false">5 Plane</button>
-    <span id="vehicle-status" aria-live="polite"></span>
+  <div class="stack">
+  <section class="modes panel" data-panel="modes" data-title="Modes">
+    <div class="panel-body">
+      <button type="button" data-mode="orbit" aria-pressed="true"><kbd>1</kbd> Orbit</button>
+      <button type="button" data-mode="walk" aria-pressed="false"><kbd>2</kbd> Walk</button>
+      <button type="button" data-mode="bike" aria-pressed="false"><kbd>3</kbd> Bike</button>
+      <button type="button" data-mode="car" aria-pressed="false"><kbd>4</kbd> Car</button>
+      <button type="button" data-mode="plane" aria-pressed="false"><kbd>5</kbd> Plane</button>
+      <span id="vehicle-status" aria-live="polite"></span>
+    </div>
+  </section>
+  <p id="drive-help" class="panel" data-panel="help" data-title="Help" data-collapse-small hidden><span class="panel-body">W/S or ↑/↓ forward &amp; back · A/D or ←/→ turn · Shift run / faster · Plane: R climb, F descend</span></p>
   </div>
   <div class="side">
-    <canvas id="minimap" title="Map (T): click to open, then click anywhere to teleport" aria-label="Minimap"></canvas>
-    <div class="time" role="group" aria-label="Time of day (L)">
-      <button type="button" data-time="day" aria-pressed="true">Day</button>
-      <button type="button" data-time="golden" aria-pressed="false">Golden</button>
-      <button type="button" data-time="dusk" aria-pressed="false">Dusk</button>
-      <button type="button" data-time="night" aria-pressed="false">Night</button>
-    </div>
+    <section class="panel map-panel" data-panel="map" data-title="Map">
+      <div class="panel-body">
+        <canvas id="minimap" title="Map (T): tap to open, then tap anywhere to teleport" aria-label="Minimap"></canvas>
+      </div>
+    </section>
+    <section class="panel time" data-panel="time" data-title="Time" data-collapse-small>
+      <div class="panel-body" role="group" aria-label="Time of day (L)">
+        <button type="button" data-time="day" aria-pressed="true">Day</button>
+        <button type="button" data-time="golden" aria-pressed="false">Golden</button>
+        <button type="button" data-time="dusk" aria-pressed="false">Dusk</button>
+        <button type="button" data-time="night" aria-pressed="false">Night</button>
+      </div>
+    </section>
   </div>
   <div id="fullmap" hidden>
     <canvas id="fullmap-canvas" aria-label="Map: click to teleport"></canvas>
-    <p id="fullmap-info">Click to teleport · drag to pan · wheel to zoom · T or Esc to close</p>
+    <p id="fullmap-info"><span>Click to teleport · drag to pan · wheel to zoom · T or Esc to close</span>
+      <button id="fullmap-close" type="button">Close</button></p>
   </div>
-  <p id="drive-help" hidden>W/S or ↑/↓ forward &amp; back · A/D or ←/→ turn · Shift run / faster · Plane: R climb, F descend</p>
-  <div class="hud">
-    <p id="stats">Loading…</p>
-    <p>Building heights are partially <strong>estimated</strong> where OpenStreetMap has no height or storey count.
-      <button id="btn-estimates" type="button" aria-pressed="false">Highlight estimated [E]</button>
-      <button id="btn-infill" type="button" aria-pressed="true" hidden>Stand-in buildings [I]</button>
-      <button id="btn-overlay" type="button" aria-pressed="false">Reference photo [M]</button></p>
-    <p id="overlay-credit" hidden></p>
-    <p>Keys: 1–5 orbit / walk / bike / car / plane · T map &amp; teleport · L time of day</p>
-    <p>Area: <a href="?area=xinyi">Xinyi (2 km)</a> · <a href="?area=wanhua">Wanhua (1 km)</a></p>
-    <p>Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL) ·
-      based on <a href="https://github.com/mrdoob/slop-newyork">mrdoob/slop-newyork</a> (MIT)</p>
+  <section id="touch-controls" class="panel" data-panel="touch" data-title="Controls" hidden>
+    <div class="panel-body">
+      <div id="touch-stick" role="group" aria-label="Movement joystick: drag up or down to move, left or right to turn">
+        <span class="touch-stick-axis" aria-hidden="true"></span>
+        <span id="touch-stick-knob" aria-hidden="true"></span>
+      </div>
+      <div class="touch-actions" role="group" aria-label="Hold to perform an action">
+        <button class="touch-action" data-touch-action="up" type="button" aria-label="Climb" aria-pressed="false" hidden>
+          <span aria-hidden="true">↑</span><span data-touch-label="up">Climb</span></button>
+        <button class="touch-action" data-touch-action="down" type="button" aria-label="Descend" aria-pressed="false" hidden>
+          <span aria-hidden="true">↓</span><span data-touch-label="down">Descend</span></button>
+        <button class="touch-action touch-boost" data-touch-action="boost" type="button" aria-label="Boost" aria-pressed="false">
+          <span aria-hidden="true">»</span><span data-touch-label="boost">Boost</span></button>
+      </div>
+    </div>
+  </section>
+  <div class="hud panel" data-panel="info" data-title="Info" data-collapse-small>
+    <div class="panel-body">
+      <p id="stats">Loading…</p>
+      <p>Building heights are partially <strong>estimated</strong> where OpenStreetMap has no height or storey count.</p>
+      <p class="hud-buttons"><button id="btn-estimates" type="button" aria-pressed="false">Highlight estimated <kbd>E</kbd></button>
+        <button id="btn-infill" type="button" aria-pressed="true" hidden>Stand-in buildings <kbd>I</kbd></button>
+        <button id="btn-overlay" type="button" aria-pressed="false">Reference photo <kbd>M</kbd></button></p>
+      <p id="overlay-credit" hidden></p>
+      <p class="keys-help">Keys: 1–5 orbit / walk / bike / car / plane · T map &amp; teleport · L time of day</p>
+      <p>Area: <a href="?area=xinyi">Xinyi (2 km)</a> · <a href="?area=wanhua">Wanhua (1 km)</a></p>
+    </div>
+    <p class="panel-keep credit"><span class="long">Map data </span>© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap<span class="long"> contributors</span></a> (ODbL) ·
+      <span class="long">based on </span><a href="https://github.com/mrdoob/slop-newyork"><span class="long">mrdoob/</span>slop-newyork</a> (MIT)</p>
   </div>
 </body>
 </html>

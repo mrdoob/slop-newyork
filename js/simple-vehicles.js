@@ -177,6 +177,8 @@ class SimpleVehicles {
     this.index = buildIndex(geo);
     this.ground = buildGround(geo);
     this.keys = new Set();
+    // Touch input (js/touch-controls.js calls setTouchInput / clearTouchInput): stick axes 0..1, held buttons 0 / 1
+    this.touch = { forward: 0, backward: 0, left: 0, right: 0, boost: 0, up: 0, down: 0 };
     this.mode = 'orbit';
     this.driveOnRight = options.driveOnRight ?? true;
     const car = carModel(options.carColour ?? 0xd8322a);
@@ -264,19 +266,28 @@ class SimpleVehicles {
     return '';
   }
 
+  setTouchInput(action, value) {
+    if (action in this.touch) this.touch[action] = value;
+  }
+
+  clearTouchInput() {
+    for (const k of Object.keys(this.touch)) this.touch[k] = 0;
+  }
+
   _axis(pos, neg) {
     return (pos.some((k) => this.keys.has(k)) ? 1 : 0) - (neg.some((k) => this.keys.has(k)) ? 1 : 0);
   }
 
   update(dt, camera) {
     dt = Math.min(dt, 0.05);
-    const throttle = this._axis(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown']);
-    const steer = this._axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']);
-    const boost = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const t = this.touch, clamp = (v) => Math.max(-1, Math.min(1, v));
+    const throttle = clamp(this._axis(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown']) + t.forward - t.backward);
+    const steer = clamp(this._axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']) + t.left - t.right);
+    const boost = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || t.boost > 0;
     if (this.mode === 'walk') this._walk(dt, throttle, steer, boost);
     else if (this.mode === 'bike') this._ride(dt, throttle, steer, boost);
     else if (this.mode === 'car') this._driveCar(dt, throttle, steer, boost);
-    else if (this.mode === 'plane') this._flyPlane(dt, throttle, steer, boost, this._axis(['KeyR'], ['KeyF']));
+    else if (this.mode === 'plane') this._flyPlane(dt, throttle, steer, boost, clamp(this._axis(['KeyR'], ['KeyF']) + t.up - t.down));
     else return;
     this._sync();
     if (this.mode === 'walk') this.walkerModel.pose(dt, this.walker.x, this.walker.z, this.walker.heading, this._groundFn);
@@ -289,7 +300,7 @@ class SimpleVehicles {
 
   _walk(dt, throttle, steer, boost) {
     const w = this.walker;
-    const target = throttle > 0 ? (boost ? WALK.run : WALK.speed) : throttle < 0 ? -WALK.back : 0;
+    const target = throttle > 0 ? throttle * (boost ? WALK.run : WALK.speed) : throttle * WALK.back; // touch sticks give part throttle
     w.speed += (target - w.speed) * Math.min(1, dt * 8);
     w.heading += steer * WALK.turn * dt;
     const dx = -Math.sin(w.heading) * w.speed * dt, dz = -Math.cos(w.heading) * w.speed * dt;

@@ -188,19 +188,43 @@ class FootprintMap {
     cv.addEventListener('wheel', (e) => {
       e.preventDefault();
       const r = cv.getBoundingClientRect();
-      const [wx, wz] = this._toWorld(e.clientX - r.left, e.clientY - r.top);
-      const f = Math.exp(-e.deltaY * 0.0015);
-      const v = this.view;
-      v.ppm = Math.min(12, Math.max(0.15, v.ppm * f));
-      // keep the point under the pointer in place
-      const [nx, nz] = this._toWorld(e.clientX - r.left, e.clientY - r.top);
-      v.cx += wx - nx;
-      v.cz += wz - nz;
+      zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0015)); // the point under the pointer stays put
       this.renderFull();
     }, { passive: false });
-    cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, moved: false }; cv.setPointerCapture(e.pointerId); });
+    // Pinch (two fingers): zoom about their midpoint; a pinch never teleports
+    const fingers = new Map();
+    let pinch = null;
+    const zoomAt = (px, py, f) => {
+      const [wx, wz] = this._toWorld(px, py);
+      const v = this.view;
+      v.ppm = Math.min(12, Math.max(0.15, v.ppm * f));
+      const [nx, nz] = this._toWorld(px, py);
+      v.cx += wx - nx;
+      v.cz += wz - nz;
+    };
+    cv.addEventListener('pointerdown', (e) => {
+      fingers.set(e.pointerId, [e.clientX, e.clientY]);
+      cv.setPointerCapture(e.pointerId);
+      if (fingers.size === 2) {
+        const [[ax, ay], [bx, by]] = [...fingers.values()];
+        pinch = Math.hypot(bx - ax, by - ay);
+        if (drag) drag.moved = true;
+        return;
+      }
+      drag = { x: e.clientX, y: e.clientY, moved: false };
+    });
+    cv.addEventListener('pointercancel', (e) => { fingers.delete(e.pointerId); drag = null; pinch = null; });
     cv.addEventListener('pointermove', (e) => {
       const r = cv.getBoundingClientRect();
+      if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pinch && fingers.size === 2) {
+        const [[ax, ay], [bx, by]] = [...fingers.values()];
+        const d = Math.hypot(bx - ax, by - ay);
+        zoomAt((ax + bx) / 2 - r.left, (ay + by) / 2 - r.top, d / pinch);
+        pinch = d;
+        this.renderFull();
+        return;
+      }
       if (drag) {
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
         if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
@@ -217,7 +241,9 @@ class FootprintMap {
       if (this.o.hoverInfo) this.o.hoverInfo.textContent = `${street ? `${street} · ` : ''}click to teleport · drag to pan · wheel to zoom · T or Esc to close`;
     });
     cv.addEventListener('pointerup', (e) => {
-      const wasDrag = drag && drag.moved;
+      fingers.delete(e.pointerId);
+      if (pinch) { if (fingers.size < 2) pinch = null; if (drag) drag.moved = true; return; }
+      const wasDrag = !drag || drag.moved;
       drag = null;
       if (wasDrag) return;
       const r = cv.getBoundingClientRect();

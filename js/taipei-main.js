@@ -12,6 +12,8 @@ import { buildStreetFurniture } from './street-furniture.js';
 import { buildBasemapOverlay } from './basemap-overlay.js';
 import { FootprintMap } from './footprint-map.js';
 import { TimeOfDay } from './time-of-day.js';
+import { initPanels } from './hud-panels.js';
+import { TouchControls } from './touch-controls.js';
 
 // js/taipei-main.js
 // Taipei viewer (index.html): one test box (GEO.frame.box) from OSM, orbit camera, sun & sky. ?area= picks the box:
@@ -79,6 +81,13 @@ async function precompile(renderer, scene, camera, onProgress) {
   await Promise.all(Array.from({ length: 8 }, worker));
 }
 
+// Phones & tablets: a touch screen gets lighter settings (no MSAA, a smaller shadow map, half the traffic, a lower pixel
+// ratio that adapts to the frame rate) and starts with the info & help panels minimized
+const TOUCH = window.matchMedia('(any-pointer: coarse)').matches;
+const SMALL = TOUCH || window.innerWidth < 700;
+const panels = initPanels({ small: SMALL });
+if (TOUCH) document.querySelector('.stack').append(document.querySelector('.hud')); // up out of the touch controls' way
+
 const AREAS = { xinyi: './taipei-geodata.js', wanhua: './taipei-wanhua-geodata.js' };
 const AREA = AREAS[new URLSearchParams(location.search).get('area')] ? new URLSearchParams(location.search).get('area') : 'xinyi';
 let GEO;
@@ -86,8 +95,8 @@ let GEO;
 async function init() {
   ({ GEO } = await import(AREAS[AREA]));
   await loading.step(0.02, 'Starting WebGPU');
-  const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: 'high-performance', reversedDepthBuffer: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const renderer = new THREE.WebGPURenderer({ antialias: !TOUCH, powerPreference: 'high-performance', reversedDepthBuffer: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, TOUCH ? 1.5 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -130,7 +139,7 @@ async function init() {
   const sun = new THREE.DirectionalLight(0xfff1dd, 3.2);
   sun.position.set(-700, 1100, 500); // afternoon sun from the south-west
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.setScalar(TOUCH ? 2048 : 4096);
   const reachM = half * 1.15; // shadows over the whole box
   Object.assign(sun.shadow.camera, { left: -reachM, right: reachM, top: reachM, bottom: -reachM, near: 10, far: 4500 });
   sun.shadow.bias = -0.0005;
@@ -155,8 +164,8 @@ async function init() {
     signals,
     driveOnRight: true,
     // Xinyi's 2 km box: 320 cars, 420 people; other boxes in proportion to their area
-    carCount: Math.round(320 * (half / 1000) ** 2),
-    pedCount: Math.round(420 * (half / 1000) ** 2),
+    carCount: Math.round(320 * (half / 1000) ** 2 * (TOUCH ? 0.5 : 1)),
+    pedCount: Math.round(420 * (half / 1000) ** 2 * (TOUCH ? 0.5 : 1)),
     taxiShare: 0.14,
     taxiColour: 0xf3c316,
     palette: [0xf4f4f2, 0xf4f4f2, 0xf4f4f2, 0xc8cbcf, 0xc8cbcf, 0x8a8e93, 0x1c1e21, 0x1c1e21, 0x24395a, 0x7d1d22]
@@ -232,6 +241,10 @@ async function init() {
   });
   const modeButtons = [...document.querySelectorAll('[data-mode]')];
   const vehicleStatus = document.getElementById('vehicle-status');
+  // Touch: a stick and hold buttons (js/touch-controls.js, shared with NYC; its mode names are NYC's)
+  const touchControls = new TouchControls(vehicles);
+  const TOUCH_MODE = { walk: 'cyclist', bike: 'cyclist', car: 'car', plane: 'helicopter' };
+  touchControls.setEnabled(false);
   const setMode = (mode) => {
     if (mode === 'orbit' && vehicles.mode !== 'orbit') {
       // keep looking at where the vehicle was
@@ -242,6 +255,8 @@ async function init() {
     controls.enabled = mode === 'orbit';
     for (const b of modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
     document.getElementById('drive-help').hidden = mode === 'orbit';
+    if (TOUCH_MODE[mode]) touchControls.setMode(TOUCH_MODE[mode]);
+    touchControls.setEnabled(mode !== 'orbit' && !map.open);
     renderer.domElement.focus();
   };
   for (const b of modeButtons) b.addEventListener('click', () => setMode(b.dataset.mode));
@@ -273,8 +288,14 @@ async function init() {
       camera.position.z += dz;
       controls.update();
     },
-    onToggle: (open) => { vehicles.keys.clear(); if (!open) renderer.domElement.focus(); }
+    onToggle: (open) => {
+      vehicles.keys.clear();
+      touchControls.setEnabled(!open && vehicles.mode !== 'orbit');
+      if (!open) renderer.domElement.focus();
+    }
   });
+  document.getElementById('fullmap-close').addEventListener('click', () => map.toggle(false));
+  if (TOUCH) document.querySelector('#fullmap-info span').textContent = 'Tap to teleport · drag to pan · pinch to zoom';
   window.addEventListener('keydown', (ev) => {
     if (ev.code === 'KeyT') map.toggle();
     else if (ev.code === 'Escape') map.toggle(false);
@@ -307,10 +328,25 @@ async function init() {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
+  // Adaptive resolution: every second, a slow average frame lowers the pixel ratio, a run of fast ones raises it again
+  const maxRatio = Math.min(window.devicePixelRatio, TOUCH ? 1.5 : 2), minRatio = TOUCH ? 0.6 : 0.75;
+  let ratio = renderer.getPixelRatio(), frames = 0, frameTime = 0, fast = 0;
+  const adapt = (dt) => {
+    frames++;
+    frameTime += dt;
+    if (frameTime < 1) return;
+    const ms = (1000 * frameTime) / frames;
+    frames = frameTime = 0;
+    let next = ratio;
+    if (ms > 26) { next = Math.max(minRatio, ratio * 0.85); fast = 0; }
+    else if (ms < 18 && ++fast >= 3) { next = Math.min(maxRatio, ratio * 1.1); fast = 0; }
+    if (Math.abs(next - ratio) > 0.01) { ratio = next; renderer.setPixelRatio(ratio); }
+  };
   const timer = new THREE.Timer();
   renderer.setAnimationLoop((time) => {
     timer.update(time);
     const dt = timer.getDelta();
+    adapt(dt);
     timeOfDay.update(dt);
     if (vehicles.mode === 'orbit') controls.update();
     else vehicles.update(dt, camera);
@@ -320,7 +356,7 @@ async function init() {
     map.updateMini();
     renderer.render(scene, camera);
   });
-  window.__taipei = { scene, camera, controls, buildings, vehicles, setMode, signals, traffic, setOverlay, map, timeOfDay }; // for debugging from the console
+  window.__taipei = { renderer, scene, camera, controls, buildings, vehicles, setMode, signals, traffic, setOverlay, map, timeOfDay, panels, touchControls }; // for debugging from the console
   requestAnimationFrame(() => loading.done());
 }
 
