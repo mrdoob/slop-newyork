@@ -391,6 +391,7 @@ log(`${Object.keys(landmarks).length} notable footprints`);
 // 5B. HOUSES: every building footprint of Overture Maps (OpenStreetMap + Microsoft & Google ML footprints), as the
 //     oriented box the game builds: kept inside the property line, its front towards the nearest street
 // =====================================================================================================================
+const HS = 8; // integers per house (see `houses` below)
 const houses = [];
 {
   const file = path.join(DATA, 'overture', 'buildings.geojsonl');
@@ -471,10 +472,160 @@ const houses = [];
       floors = Math.min(12, Math.max(1, floors));
       // Ground floor shops: tagged commercial buildings, most of the centro, a few on every street
       const shop = /commercial|retail|office|supermarket|hotel/.test(cls) || (bestD < 6 && (centro ? hr > 0.25 : hashf(cz, cx) < 0.12));
-      houses.push(Math.round(cx * 10), Math.round(cz * 10), Math.round(w * 10), Math.round(d * 10), Math.round(th * 1000), floors, front + (shop ? 4 : 0));
+      houses.push(Math.round(cx * 10), Math.round(cz * 10), Math.round(w * 10), Math.round(d * 10), Math.round(th * 1000), floors, front + (shop ? 4 : 0), 0);
     }
   }
-  log(`houses: ${houses.length / 7} built of ${read} Overture footprints (${small} too small or large, ${outside} off the blocks, ${squeezed} squeezed out by the streets)`);
+  log(`houses: ${houses.length / HS} built of ${read} Overture footprints (${small} too small or large, ${outside} off the blocks, ${squeezed} squeezed out by the streets)`);
+}
+
+// =====================================================================================================================
+// 5C. SHOP SIGNS: the businesses of Overture Maps' places on the buildings they stand in. Chains get a parody name in
+//     their colours on a fascia band, local businesses their own name on the awning (the centro's first, while the
+//     sign atlas has room), every other shop a generic sign of its trade
+// =====================================================================================================================
+const signs = [];
+{
+  const CHAINS = [
+    // [match on name or brand, parody, background, text, border, big store]
+    [/\boxxo\b/i, 'OKSO', '#d8232a', '#ffffff', '#ffc20e', false],
+    [/\bsoriana\b/i, 'SORIANDA', '#e31837', '#ffffff', '#ffffff', true],
+    [/\bwal-?mart\b/i, 'GUALMART', '#0071ce', '#ffffff', '#ffc220', true],
+    [/\bbodega aurrera\b|\baurrera\b/i, 'BODEGA AHORRERA', '#00873e', '#ffde00', '#ffde00', true],
+    [/\bcasa ley\b|^ley\b|\bley (mololoa|rodeo|express|plaza)\b|\bplaza ley\b/i, 'CASA REY', '#c8102e', '#ffffff', '#003da5', true],
+    [/\bchedraui\b/i, 'CHEDRAUY', '#004b93', '#ffffff', '#f7941d', true],
+    [/\bcoppel\b/i, 'COPPELITO', '#ffd100', '#003a70', '#003a70', true],
+    [/\belektra\b/i, 'ELEKTRÓN', '#ffd200', '#c8102e', '#c8102e', true],
+    [/\bliverpool\b/i, 'LIVERPUL', '#e10098', '#ffffff', '#ffffff', true],
+    [/\bsuburbia\b/i, 'SUBURBIOS', '#6d2077', '#ffffff', '#ffffff', true],
+    [/\bhome depot\b/i, 'CASA DEPOT', '#f96302', '#ffffff', '#ffffff', true],
+    [/\bsam'?s club\b/i, "SAMY'S CLUB", '#0067a0', '#ffffff', '#ffffff', true],
+    [/\bmodelorama\b/i, 'MODELORRAMA', '#0a2a5e', '#ffd100', '#ffd100', false],
+    [/\bkiosko\b/i, 'KIOSKITO', '#e30613', '#ffe600', '#ffe600', false],
+    [/farmacias? guadalajara/i, 'FARMACIAS GUANATOS', '#00529b', '#ffffff', '#e2231a', false],
+    [/farmacias? del ahorro/i, 'FARMACIAS DEL AHORRITO', '#003b71', '#ffffff', '#e30613', false],
+    [/farmacias? benavides/i, 'FARMACIAS BENAVIDOS', '#00539b', '#ffffff', '#ffffff', false],
+    [/farmacias? (de )?similares/i, 'FARMACIAS SIMILARCITOS', '#0077c8', '#ffffff', '#ffd100', false],
+    [/\bpemex\b/i, 'PEMEZ', '#006847', '#ffffff', '#ce1126', false],
+    [/\bbbva\b/i, 'BBVAH', '#004481', '#ffffff', '#ffffff', false],
+    [/\bbanorte\b/i, 'BANORTI', '#eb0029', '#ffffff', '#ffffff', false],
+    [/\bburger king\b/i, 'BURGUER QUING', '#d62300', '#f5ebdc', '#f5ebdc', false],
+    [/\blittle caesars\b/i, 'LITTLE CÉSAR', '#ff6900', '#ffffff', '#ffffff', false],
+    [/\bsubway\b/i, 'SUBGÜEY', '#008c15', '#ffc600', '#ffc600', false]
+  ];
+  const GENERIC = [
+    [/tortiller/i, 'TORTILLERÍA'], [/carnicer/i, 'CARNICERÍA'], [/papeler/i, 'PAPELERÍA'], [/marisc/i, 'MARISCOS'],
+    [/pollo/i, 'POLLOS ASADOS'], [/\btaco/i, 'TACOS'], [/birria/i, 'BIRRIA'], [/torta/i, 'TORTAS AHOGADAS'],
+    [/panader|bakery/i, 'PANADERÍA'], [/ferreter|hardware/i, 'FERRETERÍA'], [/abarrote|food_and_beverage|grocery/i, 'ABARROTES'],
+    [/mini ?s[uú]per|convenience/i, 'MINI SÚPER'], [/farmac|pharmacy/i, 'FARMACIA'], [/est[eé]tica|beauty|salon|barber/i, 'ESTÉTICA'],
+    [/taller|automotive_service/i, 'TALLER MECÁNICO'], [/refaccion|vehicle_parts/i, 'REFACCIONARIA'], [/llant/i, 'LLANTERA'],
+    [/dental/i, 'CONSULTORIO DENTAL'], [/ropa|boutique|fashion/i, 'BOUTIQUE'], [/zapat|shoe/i, 'ZAPATERÍA'],
+    [/flor|flowers/i, 'FLORERÍA'], [/celular|electronics/i, 'CELULARES'], [/caf[eé]|cafe/i, 'CAFÉ'], [/bar\b|cantina/i, 'CANTINA'],
+    [/hamburgues|fast_food/i, 'HAMBURGUESAS'], [/lonch|casual_eatery|food_truck/i, 'LONCHERÍA'], [/restaurant/i, 'RESTAURANTE'],
+    [/gym|gimnas/i, 'GIMNASIO'], [/hotel|motel/i, 'HOTEL'], [/lavander/i, 'LAVANDERÍA'], [/cerrajer/i, 'CERRAJERÍA'],
+    [/veterinari|pet/i, 'VETERINARIA'], [/optic/i, 'ÓPTICA'], [/muebler/i, 'MUEBLERÍA'], [/dulcer/i, 'DULCERÍA'], [/nieve|helad/i, 'NEVERÍA']
+  ];
+  const STREET_TRADES = ['ABARROTES', 'TORTILLERÍA', 'PAPELERÍA', 'MISCELÁNEA', 'FARMACIA', 'ESTÉTICA', 'TACOS', 'LONCHERÍA', 'CARNICERÍA',
+    'FERRETERÍA', 'CELULARES', 'REFACCIONARIA', 'DULCERÍA', 'NEVERÍA', 'BIRRIA', 'MARISCOS', 'PANADERÍA', 'POLLOS ASADOS'];
+  const LOCAL_COLOURS = [['#1f4e8c', '#ffffff'], ['#9e1b1b', '#fff3d6'], ['#1d6b3a', '#ffffff'], ['#f2b705', '#1a1a1a'], ['#ffffff', '#b3121b'],
+    ['#6a1b9a', '#ffffff'], ['#e8611a', '#ffffff'], ['#0b7a75', '#ffffff'], ['#222222', '#ffd34d']];
+  const ATLAS_SLOTS = 816; // js/buildings.js sign atlas: 8 columns x 102 rows
+  const signIndex = new Map();
+  const addSign = (key, entry) => {
+    if (signIndex.has(key)) return signIndex.get(key);
+    if (signs.length >= ATLAS_SLOTS) return 0;
+    signs.push(entry);
+    signIndex.set(key, signs.length);
+    return signs.length;
+  };
+  const hashS = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
+  // chains first, then the trades, so neither is ever crowded out by local names
+  for (const [, text, bg, fg, border, big] of CHAINS) addSign(`chain:${text}`, { text, bg, fg, border, chain: 1, big: big ? 1 : 0 });
+  for (const t of new Set([...GENERIC.map((g) => g[1]), ...STREET_TRADES, 'MISCELÁNEA'])) {
+    const [bg, fg] = LOCAL_COLOURS[hashS(t) % LOCAL_COLOURS.length];
+    addSign(`trade:${t}`, { text: t, bg, fg, border: fg });
+  }
+  const tradeOf = (name, cat) => {
+    for (const [re, t] of GENERIC) if (re.test(name) || re.test(cat)) return t;
+    return null;
+  };
+
+  // houses in 20 m cells, to find the building a business stands in
+  const CELL = 20;
+  const cells = new Map();
+  for (let i = 0; i < houses.length; i += HS) {
+    const k = `${Math.floor(houses[i] / 10 / CELL)},${Math.floor(houses[i + 1] / 10 / CELL)}`;
+    let l = cells.get(k);
+    if (!l) cells.set(k, (l = []));
+    l.push(i);
+  }
+  const houseAt = (x, z, reach) => {
+    let best = -1, bd = Infinity;
+    const ix = Math.floor(x / CELL), iz = Math.floor(z / CELL);
+    for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
+      for (const i of cells.get(`${ix + a},${iz + b}`) || []) {
+        const cx = houses[i] / 10, cz = houses[i + 1] / 10, hw = houses[i + 2] / 20, hd = houses[i + 3] / 20, th = houses[i + 4] / 1000;
+        const dx = x - cx, dz = z - cz;
+        const u = Math.abs(dx * Math.cos(th) - dz * Math.sin(th)) - hw, v = Math.abs(dx * Math.sin(th) + dz * Math.cos(th)) - hd;
+        const d = Math.hypot(Math.max(0, u), Math.max(0, v)); // 0 inside the footprint
+        if (d < bd || (d === 0 && bd === 0 && houses[i + 2] * houses[i + 3] < houses[best + 2] * houses[best + 3])) { bd = d; best = i; }
+      }
+    }
+    return bd <= reach ? best : -1;
+  };
+
+  const file = path.join(DATA, 'overture', 'places.geojsonl');
+  const locals = [];
+  let chains = 0, named = 0, generic = 0;
+  if (fs.existsSync(file)) {
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      const f = JSON.parse(line);
+      const p = f.properties || {};
+      const name = ((p.names && p.names.primary) || '').trim();
+      const brand = (p.brand && p.brand.names && p.brand.names.primary) || '';
+      const cat = p.basic_category || (p.taxonomy && p.taxonomy.primary) || '';
+      if (!name || !f.geometry || f.geometry.type !== 'Point') continue;
+      if (/school|place_of_learning|government|worship|college|university|real_estate|attorney|professional_service|home_service|event_or_party|manufacturer/.test(cat)) continue;
+      const [x, z] = toWorld(f.geometry.coordinates[0], f.geometry.coordinates[1]);
+      if (!inBox(x, z)) continue;
+      const chain = CHAINS.find(([re]) => re.test(name) || re.test(brand));
+      if (chain) {
+        const i = houseAt(x, z, chain[5] ? 40 : 15);
+        if (i < 0) continue;
+        houses[i + 7] = signIndex.get(`chain:${chain[1]}`);
+        houses[i + 6] |= 4; // a shop
+        if (chain[5]) houses[i + 5] = Math.min(houses[i + 5], 2);
+        chains++;
+        continue;
+      }
+      const i = houseAt(x, z, 8);
+      if (i < 0 || houses[i + 7]) continue;
+      locals.push({ i, name, cat, d: Math.hypot(x, z) });
+    }
+  }
+  // local names, nearest the plaza first, while the atlas has room; the rest by trade
+  locals.sort((a, b) => a.d - b.d);
+  for (const l of locals) {
+    if (houses[l.i + 7]) continue; // (several businesses in one building: the one nearest the plaza names it)
+    let text = l.name.toUpperCase().replace(/\s+/g, ' ');
+    if (text.length > 30) text = text.slice(0, 29).trim() + '…';
+    const [bg, fg] = LOCAL_COLOURS[hashS(text) % LOCAL_COLOURS.length];
+    let k = addSign(`name:${text}`, { text, bg, fg, border: fg });
+    if (k) named++;
+    else {
+      k = signIndex.get(`trade:${tradeOf(l.name, l.cat) || 'MISCELÁNEA'}`);
+      generic++;
+    }
+    houses[l.i + 7] = k;
+    houses[l.i + 6] |= 4;
+  }
+  // shops with no business on record: a trade by the house's hash
+  for (let i = 0; i < houses.length; i += HS) {
+    if (houses[i + 6] < 4 || houses[i + 7]) continue;
+    const t = STREET_TRADES[hashS(`${houses[i]},${houses[i + 1]}`) % STREET_TRADES.length];
+    houses[i + 7] = signIndex.get(`trade:${t}`);
+  }
+  log(`shop signs: ${chains} chain stores, ${named + generic} shops from ${locals.length} local businesses (${named} named, ${generic} by trade), ${signs.length} sign faces`);
 }
 
 // =====================================================================================================================
@@ -564,9 +715,13 @@ const GEO = {
   places,
   pois,
   teleports,
-  // Real buildings (Overture Maps), 7 integers each: centre x, z (dm), width, depth (dm, local x / z), turn θ
-  // (mrad, world = c + R_y(θ)·local), storeys, front side (0 w, 1 e, 2 n, 3 s of the local frame) + 4 with a shop
-  houses
+  // Real buildings (Overture Maps), 8 integers each: centre x, z (dm), width, depth (dm, local x / z), turn θ
+  // (mrad, world = c + R_y(θ)·local), storeys, front side (0 w, 1 e, 2 n, 3 s of the local frame) + 4 with a shop, sign
+  // (1-based index into `signs`, 0 none)
+  houseStride: HS,
+  houses,
+  // Shop sign faces: { text, bg, fg, border, chain?, big? } (chains carry parody names)
+  signs
 };
 
 const json = JSON.stringify(GEO);

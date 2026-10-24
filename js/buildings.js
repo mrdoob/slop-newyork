@@ -19,7 +19,9 @@ import {
   mix,
   length,
   mx_noise_float,
-  mx_worley_noise_float
+  mx_worley_noise_float,
+  attribute,
+  texture
 } from 'three/tsl';
 import {
   blockAt,
@@ -2011,11 +2013,13 @@ function buildCityBlocks(scene) {
   }
   // Blocks the real buildings stand on (city-geodata.js `houses`, Overture Maps): built house by house (A2) instead
   const HOUSES = GEO.houses || [];
+  const HS = GEO.houseStride || 7; // integers per house
+  const SIGNS = GEO.signs || []; // shop sign faces (chains under parody names, local businesses, trades)
   const houseBlocks = new Set();
-  const houseBlock = new Array(HOUSES.length / 7); // the block each house stands on (A2 groups them by it)
-  for (let i = 0; i < HOUSES.length; i += 7) {
+  const houseBlock = new Array(HOUSES.length / HS); // the block each house stands on (A2 groups them by it)
+  for (let i = 0; i < HOUSES.length; i += HS) {
     const b = blockAt(HOUSES[i] / 10, HOUSES[i + 1] / 10);
-    houseBlock[i / 7] = b;
+    houseBlock[i / HS] = b;
     if (b) houseBlocks.add(b);
   }
   for (const b of BLOCKS) {
@@ -2042,14 +2046,16 @@ function buildCityBlocks(scene) {
   {
     const TEPIC_MATS = materials.length > 6 ? [6, 6, 6, 7, 7, 8, 8, 9] : [0, 1, 2];
     const byBlock = new Map();
-    for (let i = 0; i < HOUSES.length; i += 7) {
+    for (let i = 0; i < HOUSES.length; i += HS) {
       const cx = HOUSES[i] / 10, cz = HOUSES[i + 1] / 10;
       const w = HOUSES[i + 2] / 10, d = HOUSES[i + 3] / 10;
       const th = HOUSES[i + 4] / 1000;
       const floors = HOUSES[i + 5];
       const front = HOUSES[i + 6] & 3;
       const shop = HOUSES[i + 6] >= 4;
-      const b = houseBlock[i / 7];
+      const signNo = HS > 7 ? HOUSES[i + 7] : 0; // 1-based into SIGNS
+      const sign = signNo ? SIGNS[signNo - 1] : null;
+      const b = houseBlock[i / HS];
       const key = b ? b.id : -1;
       let blk = byBlock.get(key);
       if (!blk) {
@@ -2081,16 +2087,29 @@ function buildCityBlocks(scene) {
       if (h > blk.maxH) blk.maxH = h;
       // a low parapet round some flat roofs
       if (chance(0.45)) blk.cornices.push({ x: cx, y: h, z: cz, w: w + 0.24, h: 0.32, d: d + 0.24, ry: th });
-      // shop awnings over the street front
-      if (shop && chance(0.55)) {
+      // The street front: a chain's fascia band across its top, or a shop's awning with its sign above it
+      if (shop && (sign || chance(0.55))) {
         const along = front < 2 ? d : w;
         const ou = front === 0 ? -1 : front === 1 ? 1 : 0;
         const ov = front === 2 ? -1 : front === 3 ? 1 : 0;
-        const reach = (ou ? hx : hz) + 0.9;
-        const ax = cx + (ou * reach) * cs + (ov * reach) * sn;
-        const az = cz - (ou * reach) * sn + (ov * reach) * cs;
+        const toFront = (out) => {
+          const r = (ou ? hx : hz) + out;
+          return [cx + (ou * r) * cs + (ov * r) * sn, cz - (ou * r) * sn + (ov * r) * cs];
+        };
         // awnings are laid out along local z facing ±x: a front on a local n / s side turns a quarter more
-        blk.awnings.push({ x: ax, y: Math.min(3.2, storeys[mat] * 0.95) - 0.4, z: az, w: 1.8, d: Math.min(8.5, along - 1.2), sideDir: ou || 1, colorIdx: irange(0, 4), ry: th + (ov ? (ov > 0 ? -Math.PI / 2 : Math.PI / 2) : 0), noSign: floors < 2, signY: storeys[mat] + 0.9 });
+        const ry = th + (ov ? (ov > 0 ? -Math.PI / 2 : Math.PI / 2) : 0);
+        if (sign && sign.chain) {
+          const [sx, sz] = toFront(0.18);
+          const bandH = sign.big ? 1.6 : 1.0;
+          blk.awnings.push({ x: sx, y: 0, z: sz, w: 0, d: Math.min(along - 0.6, sign.big ? 30 : 12), sideDir: ou || 1, colorIdx: 0, ry,
+            noAwning: true, sign: signNo - 1, signY: h - bandH * 0.5 - 0.15, signH: bandH, signW: 0.3 });
+        } else {
+          const [ax, az] = toFront(0.9);
+          const [sx, sz] = toFront(0.16); // the sign flat on the wall above the awning
+          const signY = floors < 2 ? h - 0.45 : storeys[mat] + 0.9;
+          blk.awnings.push({ x: ax, y: Math.min(3.2, storeys[mat] * 0.95) - 0.4, z: az, w: 1.8, d: Math.min(8.5, along - 1.2), sideDir: ou || 1,
+            colorIdx: irange(0, 4), ry, sign: sign ? signNo - 1 : undefined, signY, signPX: sx, signPZ: sz, signW: 0.12, noSign: !sign && floors < 2 });
+        }
       }
     }
     for (const blk of byBlock.values()) {
@@ -2422,6 +2441,57 @@ function buildCityBlocks(scene) {
     return sInst;
   });
 
+  // 5B. Shop sign atlas (city-geodata.js `signs`: chains under parody names, local businesses, trades): every sign face
+  //     drawn once into one canvas, each sign box picking its slot per instance
+  const ATLAS_COLS = 8;
+  const ATLAS_ROWS = 102;
+  const SLOT_W = 256;
+  const SLOT_H = 40;
+  let atlasInst = null;
+  let atlasSlots = null;
+  if (SIGNS.length) {
+    const c = document.createElement('canvas');
+    c.width = ATLAS_COLS * SLOT_W;
+    c.height = ATLAS_ROWS * SLOT_H;
+    const ctx = c.getContext('2d');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    SIGNS.forEach((sg, k) => {
+      if (k >= ATLAS_COLS * ATLAS_ROWS) return;
+      const x0 = (k % ATLAS_COLS) * SLOT_W;
+      const y0 = Math.floor(k / ATLAS_COLS) * SLOT_H;
+      ctx.fillStyle = sg.bg;
+      ctx.fillRect(x0, y0, SLOT_W, SLOT_H);
+      ctx.strokeStyle = sg.border;
+      ctx.lineWidth = sg.chain ? 4 : 2;
+      ctx.strokeRect(x0 + 3, y0 + 3, SLOT_W - 6, SLOT_H - 6);
+      ctx.fillStyle = sg.fg;
+      let px = sg.chain ? 26 : 22;
+      const weight = sg.chain ? '900' : '800';
+      do {
+        ctx.font = `${weight} ${px}px Inter, Arial, sans-serif`;
+        px--;
+      } while (px > 9 && ctx.measureText(sg.text).width > SLOT_W - 18);
+      ctx.fillText(sg.text, x0 + SLOT_W / 2, y0 + SLOT_H / 2 + 1);
+    });
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const geo = unitBox.clone();
+    atlasSlots = new THREE.InstancedBufferAttribute(new Float32Array(MAX_AWNINGS), 1);
+    geo.setAttribute('signSlot', atlasSlots);
+    const slot = attribute('signSlot', 'float');
+    const col = slot.mod(ATLAS_COLS);
+    const row = slot.sub(col).div(ATLAS_COLS);
+    const atlasUV = vec2(col.add(uv().x).div(ATLAS_COLS), float(1.0).sub(row.add(float(1.0).sub(uv().y)).div(ATLAS_ROWS)));
+    const mat = new THREE.MeshBasicNodeMaterial();
+    mat.colorNode = texture(tex, atlasUV);
+    atlasInst = new THREE.InstancedMesh(geo, mat, MAX_AWNINGS);
+    atlasInst.frustumCulled = false;
+    atlasInst.count = 0;
+    group.add(atlasInst);
+  }
+
   // 6. Sidewalk construction scaffolding sheds
   const shedMat = new THREE.MeshStandardNodeMaterial({ color: 0x214f37, roughness: 0.6, metalness: 0.25 });
   const shedInst = new THREE.InstancedMesh(unitBox, shedMat, MAX_SHEDS);
@@ -2498,6 +2568,7 @@ function buildCityBlocks(scene) {
     let awningCount = 0;
     let shedCount = 0;
     const signCounts = signInsts.map(() => 0);
+    let atlasCount = 0;
 
     for (let bIdx = 0; bIdx < nearbyBlocks.length; bIdx++) {
       const blk = nearbyBlocks[bIdx];
@@ -2552,13 +2623,20 @@ function buildCityBlocks(scene) {
         const a = blk.awnings[i];
         dummy.rotation.set(0, a.ry ?? blk.ry ?? 0, 0);
         dummy.position.set(a.x, a.y, a.z);
-        dummy.scale.set(a.w, 0.75, a.d);
+        dummy.scale.set(a.noAwning ? 0 : a.w, a.noAwning ? 0 : 0.75, a.noAwning ? 0 : a.d);
         dummy.updateMatrix();
         awningInst.setMatrixAt(awningCount, dummy.matrix);
         awningInst.setColorAt(awningCount, awningPalette[a.colorIdx % awningPalette.length]);
 
-        const themeIdx = awningCount % signInsts.length;
-        if (!a.noSign && signCounts[themeIdx] < MAX_SIGNS_PER_THEME) {
+        const themeIdx = a.sign !== undefined ? a.sign % storeThemeColors.length : awningCount % signInsts.length;
+        if (a.sign !== undefined && atlasInst) {
+          // the shop's own sign (atlas slot), flat on its facade above the awning (or the chain's fascia band)
+          dummy.position.set(a.signPX ?? a.x, a.signY ?? 4.68, a.signPZ ?? a.z);
+          dummy.scale.set(a.signW ?? 0.28, a.signH ?? 0.86, a.d * 0.92);
+          dummy.updateMatrix();
+          atlasInst.setMatrixAt(atlasCount, dummy.matrix);
+          atlasSlots.setX(atlasCount++, a.sign);
+        } else if (!a.noSign && a.sign === undefined && signCounts[themeIdx] < MAX_SIGNS_PER_THEME) {
           dummy.position.set(a.x, a.signY ?? 4.68, a.z);
           dummy.scale.set(0.28, 0.86, a.d * 0.92);
           dummy.updateMatrix();
@@ -2604,6 +2682,11 @@ function buildCityBlocks(scene) {
       sInst.count = signCounts[idx];
       flagRange(sInst.instanceMatrix, signCounts[idx]);
     });
+    if (atlasInst) {
+      atlasInst.count = atlasCount;
+      flagRange(atlasInst.instanceMatrix, atlasCount);
+      flagRange(atlasSlots, atlasCount);
+    }
 
     shedInst.count = shedCount;
     flagRange(shedInst.instanceMatrix, shedCount);
