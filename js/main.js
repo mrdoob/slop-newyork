@@ -16,6 +16,7 @@ import { TouchControls } from './touch-controls.js';
 import { GamepadControls } from './gamepad-controls.js';
 import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
 import { LightingSystem } from './lighting.js';
+import { WEATHER_SAMPLES, weatherLabel } from './weather.js';
 import { NYCMapSystem } from './nyc-map.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
@@ -228,6 +229,32 @@ async function initApp() {
   const elAltitude = document.getElementById('hud-altitude');
   const elLocation = document.getElementById('hud-location');
   const elControlsHint = document.getElementById('hud-controls-hint');
+  const liveButton = document.getElementById('time-live');
+  const liveLabel = liveButton && liveButton.querySelector('.seg-label');
+
+  // Live time of day: the real sun & weather over the weather location (js/weather.js). ?live-time=<ISO date> starts the
+  // clock elsewhere & ?live-weather=<clear|cloudy|overcast|rain|storm|fog> pins the conditions, to preview them
+  const liveParams = new URLSearchParams(location.search);
+  const liveStart = Date.parse(liveParams.get('live-time') || '');
+  if (Number.isFinite(liveStart)) {
+    const t0 = performance.now();
+    lightingSystem.liveClock = () => new Date(liveStart + performance.now() - t0);
+  }
+  const heldWeather = WEATHER_SAMPLES[liveParams.get('live-weather')];
+  if (heldWeather) lightingSystem.weather.hold(heldWeather);
+  lightingSystem.onLiveChange = (state) => {
+    colorGrade.applyMix(state.blend.a, state.blend.b, state.blend.t, state.block);
+    if (!liveButton) return;
+    const w = state.weather;
+    const temp = state.live && Number.isFinite(w.temperature) ? ` ${Math.round(w.temperature)}°` : '';
+    if (liveLabel) liveLabel.textContent = `${state.location.name}${temp}`;
+    let clock = '';
+    try {
+      clock = lightingSystem.liveClock().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: state.location.timeZone });
+    } catch { /* unknown time zone */ }
+    const sky = state.live ? weatherLabel(w) : state.loading ? 'Loading weather…' : 'Weather unavailable, clear sky';
+    liveButton.title = `Live · ${state.location.name} ${clock} · ${sky} · Weather data by Open-Meteo.com`;
+  };
   const gamepadControls = new GamepadControls(controllerManager, cameraSystem, {
     onCycleMode: (step) => {
       const modes = ['person', 'car', 'cyclist', 'helicopter'];
@@ -313,7 +340,11 @@ async function initApp() {
 
   function selectTime(timeId) {
     lightingSystem.applyPreset(timeId);
-    colorGrade.applyPreset(lightingSystem.activePresetId);
+    // Live grades itself through onLiveChange as the sun moves
+    if (lightingSystem.activePresetId !== 'live') colorGrade.applyPreset(lightingSystem.activePresetId);
+    try {
+      localStorage.setItem('time-of-day', lightingSystem.activePresetId);
+    } catch { /* Storage may be disabled. */ }
     timeButtons.forEach((btn) => {
       btn.classList.toggle('active', btn.getAttribute('data-time') === timeId);
     });
@@ -550,7 +581,11 @@ async function initApp() {
   // Initialize the UI and chase camera around the restored player, or the default taxi on a first visit.
   selectMode(controllerManager.activeMode);
   selectCamera('chase', true);
-  selectTime('golden');
+  let savedTime = null;
+  try {
+    savedTime = localStorage.getItem('time-of-day');
+  } catch { /* Storage may be disabled. */ }
+  selectTime([...timeButtons].some((btn) => btn.getAttribute('data-time') === savedTime) ? savedTime : 'live');
   // the web fonts change the buttons' widths once they arrive
   if (document.fonts) document.fonts.ready.then(placeModeIndicator);
   markInit('ui');
@@ -682,7 +717,7 @@ async function initApp() {
     if (streetDetails.update) streetDetails.update(cameraSystem.camera);
     lightingSystem.update(cameraSystem.currentPos);
     mapSystem.update();
-    audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
+    audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.isNight);
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk
 
     // Render frame via TSL RenderPipeline (SSR + Bloom)

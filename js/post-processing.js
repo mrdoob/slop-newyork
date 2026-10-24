@@ -82,8 +82,21 @@ function createPostProcessing(renderer, sceneColor, reflections) {
     bloomPass.threshold.value = look.threshold;
   }
 
+  // Live time of day: the looks of the two presets either side of the real sun, flattened under cloud cover
+  function applyMix(a, b, t, overcast = 0) {
+    const la = LOOKS[a] || LOOKS.golden;
+    const lb = LOOKS[b] || la;
+    const mix = (key) => la[key] + (lb[key] - la[key]) * t;
+    exposure.value = mix('exposure');
+    contrast.value = mix('contrast') * (1 - 0.06 * overcast);
+    saturation.value = mix('saturation') * (1 - 0.14 * overcast);
+    balance.value.set(...la.balance.map((v, i) => v + (lb.balance[i] - v) * t));
+    bloomPass.strength.value = mix('bloom');
+    bloomPass.threshold.value = mix('threshold');
+  }
+
   applyPreset('golden');
-  return { outputNode, applyPreset };
+  return { outputNode, applyPreset, applyMix };
 }
 
 export { createPostProcessing };

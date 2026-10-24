@@ -12,4 +12,4 @@ Fork it, remix it, improve it, break it. Make games, animations, films, experime
 
 The project code is available under the [MIT License](LICENSE).
 
-Geographic data: NYC Open Data and © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Third-party data and dependencies retain their respective licenses.
+Geographic data: NYC Open Data and © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Live weather: [Weather data by Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Third-party data and dependencies retain their respective licenses.

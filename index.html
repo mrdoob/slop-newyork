@@ -26,6 +26,7 @@
   <link rel="modulepreload" href="./js/actor-models.js" />
   <link rel="modulepreload" href="./js/vehicle-lights.js" />
   <link rel="modulepreload" href="./js/pedestrians.js" />
+  <link rel="modulepreload" href="./js/weather.js" />
   <link rel="modulepreload" href="./js/lighting.js" />
   <link rel="modulepreload" href="./js/city-grid.js" />
   <link rel="modulepreload" href="./js/boroughs.js" />
@@ -55,7 +56,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&amp;family=Overpass:wght@600;700&amp;display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261022-repo-link" />
+  <link rel="stylesheet" href="./css/style.css?v=20261024-live-weather" />
 </head>
 <body>
   <!-- Icon sprite (24 × 24 stroke icons, drawn in currentColor) -->
@@ -68,6 +69,7 @@
       <symbol id="i-golden" viewBox="0 0 24 24"><path d="M3 17.5h18M7 17.5a5 5 0 0 1 10 0M12 5v3M5.6 9.6l2 1.6M18.4 9.6l-2 1.6M7.5 21h9"/></symbol>
       <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M5.5 18.5 7 17M17 7l1.5-1.5"/></symbol>
       <symbol id="i-twilight" viewBox="0 0 24 24"><path d="M3 15.5h18M7.5 19h9M8 15.5a4 4 0 0 1 8 0M17.5 4v3.2M15.9 5.6h3.2M7 7.4v1.8M6.1 8.3h1.8"/></symbol>
+      <symbol id="i-live" viewBox="0 0 24 24"><path d="M8.2 6.4a3.6 3.6 0 0 1 6.6 1.2M5.2 9.4l1.3.7M11.6 2.8v1.6M17.6 4.9l-1.1 1.1"/><path d="M7.4 20.5h9.4a3.6 3.6 0 0 0 .4-7.2 5 5 0 0 0-9.6.9 3.2 3.2 0 0 0-.2 6.3z"/></symbol>
       <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.6A7.8 7.8 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1z"/></symbol>
       <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21.2s-6.6-5.7-6.6-11.2a6.6 6.6 0 0 1 13.2 0c0 5.5-6.6 11.2-6.6 11.2z"/><circle cx="12" cy="10" r="2.4"/></symbol>
       <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4.5 3.5 6.6v13l5.5-2.1 6 2.1 5.5-2.1v-13L15 6.6 9 4.5zM9 4.5v13M15 6.6v13"/></symbol>
@@ -119,7 +121,10 @@
   <div class="hud hud-top-right">
     <div id="hud-toolbar" class="panel toolbar">
       <div class="time-switch" role="group" aria-label="Atmosphere &amp; time of day">
-        <button id="time-golden" class="time-btn active" data-time="golden" type="button" title="Golden Hour">
+        <button id="time-live" class="time-btn" data-time="live" type="button" title="Live · real sun &amp; weather in Tepic · Weather data by Open-Meteo.com">
+          <svg class="icon" aria-hidden="true"><use href="#i-live"/></svg><span class="seg-label">Live</span>
+        </button>
+        <button id="time-golden" class="time-btn" data-time="golden" type="button" title="Golden Hour">
           <svg class="icon" aria-hidden="true"><use href="#i-golden"/></svg><span class="seg-label">Golden Hour</span>
         </button>
         <button id="time-midday" class="time-btn" data-time="midday" type="button" title="Sunny Midday">

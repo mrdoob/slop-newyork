@@ -1429,6 +1429,12 @@ body.touch-enabled .fullmap-header { top: max(var(--edge), env(safe-area-inset-t
 body.touch-enabled .map-controls .icon-btn { width: 44px; height: 44px; }
 body.touch-enabled .pop-item { min-height: 44px; }
 
+/* Phones: the toolbar keeps Live, Midday & Night (plus whichever preset is active) so it fits the screen width */
+@media (max-width: 440px) {
+  .time-btn:not(.active):is([data-time="golden"], [data-time="twilight"]) { display: none; }
+  #btn-teleport .icon-sm { display: none; }
+}
+
 @media (max-width: 360px) {
   body.touch-enabled .toolbar { width: 194px; height: auto; flex-wrap: wrap; justify-content: center; }
   body.touch-enabled .hud-bottom-right { top: calc(max(var(--edge), env(safe-area-inset-top)) + 114px); }
