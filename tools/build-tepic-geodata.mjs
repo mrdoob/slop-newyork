@@ -16,8 +16,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { log, ringArea, bbox, centroid, rdp, rdpRing, extractBlocks, ringCells, clearCapsule, minAreaRect } from './tepic-lib.mjs';
+import { log, ringArea, bbox, centroid, rdp, rdpRing, extractBlocks, ringCells, clearCapsule, minAreaRect, decodePNG } from './tepic-lib.mjs';
 import { STOREFRONTS } from '../js/storefronts/index.js';
 
 const DATA = process.env.GEO_DATA || fileURLToPath(new URL('data/tepic/', import.meta.url));
@@ -605,6 +606,162 @@ const signs = [];
 }
 
 // =====================================================================================================================
+// 5D. TERRAIN: the hills around the valley (Cerro de San Juan, Cerro de la Cruz, the lomas) from the Terrarium elevation
+//     tiles (tools/data/tepic/fetch-terrain.sh). The city itself stays flat: the valley floor's slow tilt (a wide blur
+//     of the elevation under the streets & blocks) is taken off, and what rises above it fades in away from them
+// =====================================================================================================================
+const terrain = (() => {
+  const dir = path.join(DATA, 'terrain');
+  if (!fs.existsSync(dir)) return null;
+  const Z = 12, N = 2 ** Z;
+  const tiles = new Map();
+  for (const f of fs.readdirSync(dir)) {
+    const m = /^12_(\d+)_(\d+)\.png$/.exec(f);
+    if (m) tiles.set(`${m[1]}_${m[2]}`, decodePNG(fs.readFileSync(path.join(dir, f)), zlib.inflateSync));
+  }
+  if (!tiles.size) return null;
+  const pixel = (gx, gy) => {
+    const t = tiles.get(`${Math.floor(gx / 256)}_${Math.floor(gy / 256)}`);
+    if (!t) return NaN;
+    const o = ((gy & 255) * 256 + (gx & 255)) * t.channels;
+    return t.data[o] * 256 + t.data[o + 1] + t.data[o + 2] / 256 - 32768;
+  };
+  const elevation = (lon, lat) => {
+    const r = (lat * Math.PI) / 180;
+    const fx = ((lon + 180) / 360) * N * 256 - 0.5;
+    const fy = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * N * 256 - 0.5;
+    const x = Math.floor(fx), y = Math.floor(fy), tx = fx - x, ty = fy - y;
+    return (pixel(x, y) * (1 - tx) + pixel(x + 1, y) * tx) * (1 - ty) + (pixel(x, y + 1) * (1 - tx) + pixel(x + 1, y + 1) * tx) * ty;
+  };
+  const CELL = 75;
+  const TX0 = -17000, TZ0 = -16000, TX1 = 21000, TZ1 = 21000;
+  const TW = Math.round((TX1 - TX0) / CELL) + 1, TH = Math.round((TZ1 - TZ0) / CELL) + 1;
+  const E = new Float32Array(TW * TH), U = new Float32Array(TW * TH);
+  // the built-up city: cells with houses, a cell around them, and the streets within three cells of them (roads &
+  // tracks up the hills alone don't flatten them)
+  const houseCount = new Uint16Array(TW * TH);
+  for (let k = 0; k < houses.length; k += HS) {
+    const i = Math.round((houses[k] / 10 - TX0) / CELL), j = Math.round((houses[k + 1] / 10 - TZ0) / CELL);
+    if (i >= 0 && j >= 0 && i < TW && j < TH) houseCount[j * TW + i]++;
+  }
+  // (a chapel or antennas on a summit don't make it town: four buildings to a cell do)
+  const built = houseCount.map((n) => (n >= 4 ? 1 : 0));
+  const dilate = (src, r) => {
+    const dst = new Uint8Array(src.length);
+    for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
+      if (!src[j * TW + i]) continue;
+      for (let b = Math.max(0, j - r); b <= Math.min(TH - 1, j + r); b++) for (let a = Math.max(0, i - r); a <= Math.min(TW - 1, i + r); a++) dst[b * TW + a] = 1;
+    }
+    return dst;
+  };
+  const builtNear = dilate(built, 1), builtArea = dilate(built, 3);
+  const labAt = (x, z) => {
+    const i = Math.floor((x - X0) / RES), j = Math.floor((z - Z0) / RES);
+    return i >= 0 && j >= 0 && i < W && j < H ? lab[j * W + i] : -1;
+  };
+  let missing = 0;
+  for (let j = 0; j < TH; j++) {
+    for (let i = 0; i < TW; i++) {
+      const x = TX0 + i * CELL, z = TZ0 + j * CELL;
+      const [lon, lat] = toLonLat(x, z);
+      let e = elevation(lon, lat);
+      if (!Number.isFinite(e)) { e = NaN; missing++; }
+      E[j * TW + i] = e;
+      // the city: built-up cells, and streets near them (a 4 x 4 sample of the cell)
+      let road = 0;
+      if (builtArea[j * TW + i]) {
+        for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) if (labAt(x + (a - 1.5) * CELL / 4, z + (b - 1.5) * CELL / 4) === 0) road++;
+      }
+      U[j * TW + i] = builtNear[j * TW + i] || road >= 3 ? 1 : 0;
+    }
+  }
+  // fill tiles we don't have with the mean
+  let sum = 0, cnt = 0;
+  for (const e of E) if (Number.isFinite(e)) { sum += e; cnt++; }
+  for (let k = 0; k < E.length; k++) if (!Number.isFinite(E[k])) E[k] = sum / cnt;
+  // separable box blur (3 passes ~ a Gaussian of sigma ~ r)
+  const blur = (src, r) => {
+    let a = Float32Array.from(src), b = new Float32Array(src.length);
+    for (let pass = 0; pass < 3; pass++) {
+      for (let j = 0; j < TH; j++) {
+        let acc = 0;
+        for (let i = -r; i <= r; i++) acc += a[j * TW + Math.min(TW - 1, Math.max(0, i))];
+        for (let i = 0; i < TW; i++) {
+          b[j * TW + i] = acc / (2 * r + 1);
+          acc += a[j * TW + Math.min(TW - 1, i + r + 1)] - a[j * TW + Math.max(0, i - r)];
+        }
+      }
+      for (let i = 0; i < TW; i++) {
+        let acc = 0;
+        for (let j = -r; j <= r; j++) acc += b[Math.min(TH - 1, Math.max(0, j)) * TW + i];
+        for (let j = 0; j < TH; j++) {
+          a[j * TW + i] = acc / (2 * r + 1);
+          acc += b[Math.min(TH - 1, j + r + 1) * TW + i] - b[Math.max(0, j - r) * TW + i];
+        }
+      }
+    }
+    return a;
+  };
+  const EU = E.map((e, k) => e * U[k]);
+  const near = [blur(EU, 7), blur(U, 7)];
+  const far = [blur(EU, 30), blur(U, 30)];
+  let usum = 0, ucnt = 0;
+  for (let k = 0; k < E.length; k++) if (U[k]) { usum += E[k]; ucnt++; }
+  const floorMean = ucnt ? usum / ucnt : sum / cnt;
+  // distance (m) to the city: two-pass chamfer
+  const D = new Float32Array(TW * TH).fill(1e9);
+  for (let k = 0; k < D.length; k++) if (U[k]) D[k] = 0;
+  const DG = CELL * Math.SQRT2;
+  for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
+    const k = j * TW + i;
+    if (i > 0) D[k] = Math.min(D[k], D[k - 1] + CELL);
+    if (j > 0) {
+      D[k] = Math.min(D[k], D[k - TW] + CELL);
+      if (i > 0) D[k] = Math.min(D[k], D[k - TW - 1] + DG);
+      if (i < TW - 1) D[k] = Math.min(D[k], D[k - TW + 1] + DG);
+    }
+  }
+  for (let j = TH - 1; j >= 0; j--) for (let i = TW - 1; i >= 0; i--) {
+    const k = j * TW + i;
+    if (i < TW - 1) D[k] = Math.min(D[k], D[k + 1] + CELL);
+    if (j < TH - 1) {
+      D[k] = Math.min(D[k], D[k + TW] + CELL);
+      if (i < TW - 1) D[k] = Math.min(D[k], D[k + TW + 1] + DG);
+      if (i > 0) D[k] = Math.min(D[k], D[k + TW - 1] + DG);
+    }
+  }
+  const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+  const out = new Int16Array(TW * TH);
+  let peak = 0;
+  for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
+    const k = j * TW + i;
+    // the valley floor here: the city's elevation nearby, else further out, else its mean
+    const wN = near[1][k], wF = far[1][k];
+    const base = wN > 0.05 ? near[0][k] / wN : wF > 0.01 ? far[0][k] / wF : floorMean;
+    let h = Math.max(0, E[k] - base);
+    h *= smooth(15, 150, D[k]);
+    // fade out at the edge of the grid
+    const edge = Math.min(i, j, TW - 1 - i, TH - 1 - j) * CELL;
+    h *= smooth(0, 2500, edge);
+    out[k] = Math.round(Math.min(3200, h) * 10);
+    if (h > peak) peak = h;
+  }
+  // the cross on Cerro de la Cruz
+  const crossPoi = (poisOSM.elements || []).find((e) => e.tags && /cerro de la cruz/i.test(e.tags.name || ''));
+  const cross = crossPoi ? toWorld(crossPoi.lon, crossPoi.lat).map(q) : null;
+  if (process.env.TERRAIN_DEBUG) {
+    for (const [name, x, z] of [['cross', ...(cross || [0, 0])], ['san juan', -3900, 1400], ['plaza', 0, 0]]) {
+      const i = Math.round((x - TX0) / CELL), j = Math.round((z - TZ0) / CELL), k = j * TW + i;
+      const wN = near[1][k], wF = far[1][k];
+      const base = wN > 0.05 ? near[0][k] / wN : wF > 0.01 ? far[0][k] / wF : floorMean;
+      log(`  ${name}: elevation ${E[k].toFixed(0)}, floor ${base.toFixed(0)}, urban ${U[k]}, ${D[k].toFixed(0)} m from the city, height ${out[k] / 10}`);
+    }
+  }
+  log(`terrain: ${TW} x ${TH} cells of ${CELL} m, highest ${Math.round(peak)} m over the valley floor (${Math.round(floorMean)} m a.s.l.), ${missing} cells off the tiles`);
+  return { x0: TX0, z0: TZ0, cell: CELL, w: TW, h: TH, floor: Math.round(floorMean), data: Buffer.from(out.buffer).toString('base64'), cross };
+})();
+
+// =====================================================================================================================
 // 6. TELEPORTS & START: named spots snapped onto the nearest drivable street
 // =====================================================================================================================
 const SPOTS = [
@@ -697,7 +854,10 @@ const GEO = {
   houseStride: HS,
   houses,
   // Shop sign faces: { text, bg, fg, border, chain?, big? } (chains carry parody names)
-  signs
+  signs,
+  // The hills around the valley: heights (dm, Int16 little-endian, base64) over the flat city on a w x h grid of
+  // `cell` m from (x0, z0), row by row; `cross`: the Cerro de la Cruz summit
+  terrain
 };
 
 const json = JSON.stringify(GEO);

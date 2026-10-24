@@ -18,12 +18,16 @@ import { LightingSystem } from './lighting.js';
 import { NYCMapSystem } from './nyc-map.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
+import { buildTerrain, terrainHeight } from './terrain.js';
+import { buildTepicLandmarks } from './tepic-landmarks.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit; the Manhattan layers stay available behind CITY.grid / waterfront) in
 // Three.js WebGPURenderer & TSL (three.js dev, see index.html)
 
 async function initApp() {
+  // ?debug: node creation stack traces for shader build errors
+  if (new URLSearchParams(location.search).has('debug') && THREE.Node) THREE.Node.captureStackTrace = true;
   const container = document.getElementById('canvas-container');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingStatus = document.getElementById('loading-status');
@@ -76,11 +80,14 @@ async function initApp() {
   // 3. Build Manhattan Geography, Iconic Landmarks, Blocks, Street Details & Traffic
   const cityGrid = buildCityGrid(scene);
   markInit('cityGrid');
+  // The hills around the valley (Tepic: Cerro de San Juan, Cerro de la Cruz...), over the flat city
+  buildTerrain(scene);
+  markInit('terrain');
   // The boroughs around Manhattan and its modelled landmarks only exist on the New York data (boroughs.js runs heavy
   // rasters of the real shorelines at import, so it is only loaded there)
   const boroughs = HAS_WATER ? (await import('./boroughs.js')).buildBoroughs(scene, { sidewalks: cityGrid.sidewalks }) : { colliders: [], update: null };
   markInit('boroughs');
-  const { colliders: landmarkColliders } = HAS_GRID ? buildLandmarks(scene) : { colliders: [] };
+  const { colliders: landmarkColliders } = HAS_GRID ? buildLandmarks(scene) : buildTepicLandmarks(scene);
   markInit('landmarks');
   const cityBlocks = buildCityBlocks(scene);
   markInit('blocks');
@@ -105,6 +112,7 @@ async function initApp() {
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
+  controllerManager.setTerrain(terrainHeight);
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
   const solidAt = (x, z) => controllerManager.isSolidAt(x, z);
   trafficSystem.setSolidQuery(solidAt);

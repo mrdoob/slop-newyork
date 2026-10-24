@@ -630,3 +630,53 @@ export function minAreaRect(ring) {
   while (th <= -Math.PI / 4) { th += Math.PI / 2; [w, d] = [d, w]; }
   return { cx: cu * ux - cv * uz, cz: cu * uz + cv * ux, w, d, th, area: best.area };
 }
+
+/**
+ * Minimal PNG decoder for 8-bit RGB / RGBA, non-interlaced images (the Terrarium elevation tiles): returns
+ * { width, height, channels, data: Uint8Array }. `inflate` is node:zlib's inflateSync.
+ */
+export function decodePNG(buf, inflate) {
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  for (let i = 0; i < 8; i++) if (buf[i] !== sig[i]) throw new Error('not a PNG');
+  let pos = 8, width = 0, height = 0, depth = 0, type = 0, interlace = 0;
+  const idat = [];
+  while (pos < buf.length) {
+    const len = buf.readUInt32BE(pos);
+    const kind = buf.toString('latin1', pos + 4, pos + 8);
+    const body = buf.subarray(pos + 8, pos + 8 + len);
+    if (kind === 'IHDR') {
+      width = body.readUInt32BE(0);
+      height = body.readUInt32BE(4);
+      depth = body[8];
+      type = body[9];
+      interlace = body[12];
+    } else if (kind === 'IDAT') idat.push(body);
+    else if (kind === 'IEND') break;
+    pos += 12 + len;
+  }
+  if (depth !== 8 || (type !== 2 && type !== 6) || interlace) throw new Error(`unsupported PNG (depth ${depth}, type ${type}, interlace ${interlace})`);
+  const channels = type === 6 ? 4 : 3;
+  const raw = inflate(Buffer.concat(idat));
+  const stride = width * channels;
+  const data = new Uint8Array(width * height * channels);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)];
+    const src = y * (stride + 1) + 1;
+    const out = y * stride;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= channels ? data[out + x - channels] : 0;
+      const b = y > 0 ? data[out - stride + x] : 0;
+      const c = x >= channels && y > 0 ? data[out - stride + x - channels] : 0;
+      let v = raw[src + x];
+      if (filter === 1) v += a;
+      else if (filter === 2) v += b;
+      else if (filter === 3) v += (a + b) >> 1;
+      else if (filter === 4) {
+        const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      data[out + x] = v & 255;
+    }
+  }
+  return { width, height, channels, data };
+}

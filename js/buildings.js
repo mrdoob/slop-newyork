@@ -46,6 +46,7 @@ import {
 } from './tsl-materials.js';
 import { GEO } from './city-geodata.js';
 import { STOREFRONTS } from './storefronts/index.js';
+import { LANDMARK_RESERVES as TEPIC_RESERVES } from './tepic-landmarks.js';
 import { fdrViaduct, pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
 
 // js/buildings.js
@@ -2062,6 +2063,7 @@ function buildCityBlocks(scene) {
     };
     for (let i = 0; i < HOUSES.length; i += HS) {
       const cx0 = HOUSES[i] / 10, cz0 = HOUSES[i + 1] / 10;
+      if (TEPIC_RESERVES.some((r) => r.contains(cx0, cz0))) continue; // a landmark stands there (tepic-landmarks.js)
       const w0 = HOUSES[i + 2] / 10, d0 = HOUSES[i + 3] / 10;
       const th = HOUSES[i + 4] / 1000;
       const floors0 = HOUSES[i + 5];

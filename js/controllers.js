@@ -1027,10 +1027,40 @@ class ThirdPersonControllerManager {
     b.helmet.position.set(0, 0.175, -0.012).applyQuaternion(b.helmet.quaternion).add(b.riderRig.headPosition);
   }
 
+  // Height of the hills over the flat city at (x, z) (terrain.js), for the slopes the player can't drive up
+  setTerrain(fn) {
+    this.terrainAt = typeof fn === 'function' ? fn : null;
+  }
+
+  // Keeps the active player off the hillsides: on the ground a step onto a slope (over SLOPE_STEP m) is undone and
+  // the speed bounces back; the helicopter can't sink into a hill
+  keepOffHills(entity, prevX, prevZ) {
+    const hill = this.terrainAt;
+    if (!hill || !entity) return;
+    const h = hill(entity.position.x, entity.position.z);
+    if (this.activeMode === 'helicopter') {
+      if (entity.position.y < h + 1.5) {
+        entity.position.y = h + 1.5;
+        if (entity.verticalSpeed < 0) entity.verticalSpeed = 0;
+      }
+      return;
+    }
+    if (h > 0.7 && h > hill(prevX, prevZ)) {
+      entity.position.x = prevX;
+      entity.position.z = prevZ;
+      if (typeof entity.speed === 'number') entity.speed *= -0.25;
+      if (entity.vx) entity.vx = 0;
+      if (entity.vz) entity.vz = 0;
+    }
+  }
+
   update(dt, elapsed) {
     const heli = this.entities.helicopter;
     heli.mainRotorPivot.rotation.y += dt * 24.0;
     heli.tailRotorPivot.rotation.x += dt * 32.0;
+    const active = this.getActiveEntity();
+    const prevX = active ? active.position.x : 0;
+    const prevZ = active ? active.position.z : 0;
 
     if (this.activeMode === 'person') {
       this.updatePerson(dt, elapsed);
@@ -1052,6 +1082,7 @@ class ThirdPersonControllerManager {
     } else if (this.activeMode === 'helicopter') {
       this.updateHelicopter(dt, elapsed);
     }
+    this.keepOffHills(active, prevX, prevZ);
 
     for (const key of Object.keys(this.entities)) {
       const e = this.entities[key];
