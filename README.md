@@ -57,6 +57,14 @@ the player. At night, which windows are lit and which shops are open is random, 
 hold buttons drive the player, and the viewer lowers its resolution, shadows and traffic to keep the frame rate up.
 Every panel can be minimized (the map-data credit always stays visible).
 
+**Signals** follow Taiwan's rules (道路交通標誌標線號誌設置規則 arts. 203–204, 220): horizontal heads over the road
+(red, amber, green from the left) with a red countdown beside the red lamp, and pedestrian signals with Taipei's
+animated walking figure (小綠人) and a countdown. Their timing is a plausible fixed cycle, not the city's signal plans.
+**MRT**: track above ground and stations from OSM (`osm_transit.json`, `tools/geo-transit.mjs`). The elevated Wenhu
+line through Da'an stands on piers; OSM maps no heights for it, so its deck height (~10 m, ramping down at its portals)
+is an **estimate**, as are the heights of elevated station buildings OSM doesn't raise itself. Underground lines show as
+their street entrances; every station is named on the map.
+
 **Terrain** (Xinyi, Xinyi + Da'an): ground heights from the open AWS Terrain Tiles (Mapzen, from NASA's SRTM, ~30 m),
 kept only on real hills (connected areas more than 40 m above the basin floor, with a 200 m fade around their feet); the
 basin is flat at 0, since in the city that surface model measures roofs and tree canopy, not the street;

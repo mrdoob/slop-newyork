@@ -5,7 +5,8 @@
 // clicked. City-agnostic: colours and labels come in through `options`.
 // Drawing: the whole area once into a bitmap (≤ BASE_PX across) for the zoomed-out full map; the minimap and a zoomed-in
 // full map draw the shapes in view straight from a grid index, so they stay sharp however big the area is. Stand-ins
-// (GEO.infill) show only while they show in 3D (setInfill; options.showInfill, default true).
+// (GEO.infill) show only while they show in 3D (setInfill; options.showInfill, default true). Metro track above ground
+// and stations (GEO.rail) draw over the roads; station names label the full map.
 //
 // new FootprintMap(geo, { mini, full, fullCanvas, hoverInfo, getPlayer, onTeleport, onToggle, colours, showInfill })
 //   mini        <canvas> for the minimap (clicking it opens the full map)
@@ -16,7 +17,7 @@
 
 const DEFAULT_COLOURS = {
   ground: '#d9d6cf', green: '#a9c79a', road: '#fbfaf7', roadEdge: '#bdb8ae', building: '#8f8a83', infill: '#b3a9c9',
-  player: '#d8322a', boxEdge: 'rgba(40, 44, 52, 0.45)', label: '#2a2d33'
+  player: '#d8322a', boxEdge: 'rgba(40, 44, 52, 0.45)', label: '#2a2d33', rail: '#9a968e', station: '#0b5aa2'
 };
 const PAD_M = 40; // m of ground drawn around the box
 const BASE_PX = 2400; // the zoomed-out bitmap's longest side
@@ -50,7 +51,7 @@ class FootprintMap {
     const { geo } = this;
     const RG = geo.roadGraph;
     const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
-    this.layers = { green: [], roads: [], buildings: [], infill: [] };
+    this.layers = { green: [], roads: [], rail: [], buildings: [], infill: [] };
     this.cells = new Map();
     const add = (layer, flat, extra) => {
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -60,13 +61,14 @@ class FootprintMap {
       for (let i = Math.floor(x0 / CELL_M); i <= Math.floor(x1 / CELL_M); i++) {
         for (let j = Math.floor(z0 / CELL_M); j <= Math.floor(z1 / CELL_M); j++) {
           const k = `${i},${j}`;
-          if (!this.cells.has(k)) this.cells.set(k, { green: [], roads: [], buildings: [], infill: [] });
+          if (!this.cells.has(k)) this.cells.set(k, { green: [], roads: [], rail: [], buildings: [], infill: [] });
           this.cells.get(k)[layer].push(item);
         }
       }
     };
     for (const [, ring] of geo.green || []) add('green', ring);
     for (const [a, b, , w, , , inner] of RG.links) add('roads', [...node(a), ...inner, ...node(b)], w);
+    for (const [, w, flat] of geo.rail?.lines || []) add('rail', flat, w);
     for (const b of geo.buildings) if (b[4] < 1) add('buildings', b[1]);
     for (const b of geo.infill || []) add('infill', b[1]);
   }
@@ -75,7 +77,7 @@ class FootprintMap {
   // has one colour, so their order doesn't matter)
   _inView(rect) {
     if (!rect) return this.layers;
-    const [x0, z0, x1, z1] = rect, out = { green: new Set(), roads: new Set(), buildings: new Set(), infill: new Set() };
+    const [x0, z0, x1, z1] = rect, out = { green: new Set(), roads: new Set(), rail: new Set(), buildings: new Set(), infill: new Set() };
     for (let i = Math.floor(x0 / CELL_M); i <= Math.floor(x1 / CELL_M); i++) {
       for (let j = Math.floor(z0 / CELL_M); j <= Math.floor(z1 / CELL_M); j++) {
         const c = this.cells.get(`${i},${j}`);
@@ -110,6 +112,13 @@ class FootprintMap {
     };
     strokeRoads(c.roadEdge, 2);
     strokeRoads(c.road, 0);
+    g.strokeStyle = c.rail;
+    for (const { flat, extra: w } of L.rail) {
+      g.lineWidth = Math.max(1.5, w * ppm);
+      g.beginPath();
+      for (let i = 0; i < flat.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, X(flat[i]), Z(flat[i + 1]));
+      g.stroke();
+    }
     for (const { flat } of L.buildings) poly(flat, c.building);
     if (this.showInfill) for (const { flat } of L.infill) poly(flat, c.infill);
     // The area's edge: the district outline(s) when there is one (GEO.frame.boundary), else the box; beyond it, no data
@@ -179,6 +188,30 @@ class FootprintMap {
     return best;
   }
 
+  // Stations (GEO.rail.stations): a blue disc each, with its name when `labels` (screen-space, drawn over the map)
+  _stations(g, X, Z, w, h, size, labels) {
+    for (const [name, en, x, z] of this.geo.rail?.stations || []) {
+      const px = X(x), py = Z(z);
+      if (px < -60 || py < -20 || px > w + 60 || py > h + 20) continue;
+      g.beginPath();
+      g.arc(px, py, size, 0, Math.PI * 2);
+      g.fillStyle = this.c.station;
+      g.fill();
+      g.lineWidth = Math.max(1, size * 0.3);
+      g.strokeStyle = '#fff';
+      g.stroke();
+      if (!labels) continue;
+      g.font = '600 12px system-ui, sans-serif';
+      g.textBaseline = 'middle';
+      g.lineWidth = 3;
+      g.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      const text = en ? `${name} ${en}` : name;
+      g.strokeText(text, px + size + 4, py);
+      g.fillStyle = this.c.station;
+      g.fillText(text, px + size + 4, py);
+    }
+  }
+
   _arrow(g, px, py, heading, size) {
     g.save();
     g.translate(px, py);
@@ -209,6 +242,7 @@ class FootprintMap {
     g.fillStyle = this.c.ground;
     g.fillRect(0, 0, size, size);
     this._paint(g, (x) => (x - p.x) * k + size / 2, (z) => (z - p.z) * k + size / 2, k, [p.x - span / 2, p.z - span / 2, p.x + span / 2, p.z + span / 2]);
+    this._stations(g, (x) => (x - p.x) * k + size / 2, (z) => (z - p.z) * k + size / 2, size, size, size * 0.035, false);
     this._arrow(g, size / 2, size / 2, p.heading, size * 0.055);
   }
 
@@ -253,6 +287,7 @@ class FootprintMap {
       this._paint(g, (x) => (x - v.cx) * v.ppm + r.width / 2, (z) => (z - v.cz) * v.ppm + r.height / 2, v.ppm, [v.cx - hw, v.cz - hh, v.cx + hw, v.cz + hh]);
     }
     const p = this.o.getPlayer();
+    this._stations(g, (x) => (x - v.cx) * v.ppm + r.width / 2, (z) => (z - v.cz) * v.ppm + r.height / 2, r.width, r.height, 5, true);
     this._arrow(g, r.width / 2 + (p.x - v.cx) * v.ppm, r.height / 2 + (p.z - v.cz) * v.ppm, p.heading, 11);
   }
 

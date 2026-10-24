@@ -246,6 +246,17 @@ extract-permits parses digits after the 4-digit serial, caps at 101 floors.
 Map (`js/footprint-map.js`): minimap + zoomed full map draw vectors from a 100 m grid index (bitmap only zoomed out; was
 blurry at 0.33 px/m for big areas); stand-ins on the map follow I (were always drawn). Phones: mode buttons one
 sideways-scrolling row.
+Signals (`js/signal-control.js`, generic; Taiwan look via options.style from taipei-main): owner said "traffic light is
+different in Taipei". Per 道路交通標誌標線號誌設置規則 arts. 203/204/220: arm heads horizontal, red-amber-green from
+drivers' left (no arrow lamps: no turn phases simulated), square red countdown beside red; pole heads vertical;
+pedestrian signals = 2 lenses (red standing over green walking 小綠人, animated, quicker < 10 s, flashing last 5 s) +
+green countdown, on poles at both ends of each `crossing` path near a signalised cluster, facing across.
+MRT (owner: "did you miss MRT station?"): `tools/geo-transit.mjs` (optional `osm_transit.json` per area, q_transit) →
+GEO.rail { lines [elevated, width, pts, deck heights], stations [name, en, x, z] }. OSM has no guideway heights: deck
+10 m (layer ≥ 3: 13 m) ESTIMATE, ramps 5% to 0 at portals (graph distance from tunnel / at-grade nodes). Elevated
+`building=train_station` (layer ≥ 1, no min height) raised: base deck − 4, top ≥ deck + 8 (estimate); Daan &
+Technology Building are already raised by OSM parts. Renderer `js/rail-viaduct.js` (deck + parapets + piers every 32 m);
+map draws track + named stations. Underground lines: entrances only.
 Renderer: `js/terrain.js` (heightAt / drape / resample / buildTerrainMesh): roads & sidewalks resampled 8 m + lifted,
 green areas draped, buildings at lowest ground under outline (`ground` attribute for facades), trees / furniture /
 signals / cars / people / player / UFO / rocket pad on it; collision index absolute (solidAbove for ground modes);

@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, load, log } from './geo-taipei-base.mjs';
+import { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, load, has, log } from './geo-taipei-base.mjs';
 import { buildingHeight, estimateHeight, LEVEL_M } from './geo-height.mjs';
 import { roofOf, facadeOf, ROOF_SHAPES, FACADES } from './geo-building-style.mjs';
 import { buildOsmRoadGraph, PATH_KINDS, WIDTH_SOURCES } from './geo-osm-roadgraph.mjs';
@@ -18,6 +18,7 @@ import { buildFurniture, expandDocks, FURNITURE_KINDS, FURNITURE_SOURCES } from 
 import { infillBuildings, INFILL } from './geo-infill.mjs';
 import { kerbClear } from './geo-kerb.mjs';
 import { buildTerrain } from './geo-terrain.mjs';
+import { buildTransit, STATION_DECK_M } from './geo-transit.mjs';
 
 const OUT = process.argv[2] || fileURLToPath(new URL(`../js/${AREA.out}`, import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
@@ -179,12 +180,21 @@ const SOURCES = ['height', 'levels', 'estimate', 'permit'];
 const kinds = [];
 const kindId = (k) => (kinds.includes(k) ? kinds.indexOf(k) : kinds.push(k) - 1);
 const buildings = [];
+let elevatedStations = 0;
 function emit(b, outline) {
   // Parts lacking a height of their own take the outline's tags before falling back to an estimate
   let h = buildingHeight(b.tags, b.area, b.kind);
   if (h.source === 'estimate' && outline) {
     const inherited = buildingHeight({ ...outline.tags, min_height: b.tags.min_height, 'building:min_level': b.tags['building:min_level'] }, b.area, b.kind);
     if (inherited.source !== 'estimate') h = inherited;
+  }
+  // An elevated station (building=train_station on layer >= 1, no min height mapped) spans the street under its
+  // guideway: raised to clear it, its roof above the deck. Both heights are estimates (OSM maps neither).
+  const layer = parseFloat(b.tags.layer) || 0;
+  if (b.tags.building === 'train_station' && layer >= 1 && !b.tags.min_height && !b.tags['building:min_level']) {
+    const deck = STATION_DECK_M(layer);
+    h = { top: Math.max(h.top, deck + 8), base: deck - 4, source: 'estimate' };
+    elevatedStations++;
   }
   const colour = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|[a-z]+)$/i.test(b.tags['building:colour'] || '') ? b.tags['building:colour'].toLowerCase() : 0;
   // Parts take the outline's material (a mirror-glass tower's parts are glass too)
@@ -275,6 +285,7 @@ for (const [name, ref] of Object.entries(LANDMARKS)) {
 const count = Object.fromEntries(SOURCES.map((s) => [s, buildings.filter((x) => x.h.source === s).length]));
 const est = buildings.filter((x) => x.h.source === 'estimate').map((x) => x.h.top);
 log(`${buildings.length} extruded: ${SOURCES.map((s) => `${count[s]} ${s}`).join(', ')}`);
+if (elevatedStations) log(`${elevatedStations} elevated station building(s) raised over the street (estimated heights)`);
 log(`roofs: ${ROOF_SHAPES.map((r) => `${buildings.filter((x) => x.roof.shape === r).length} ${r}`).join(', ')}; facades: ${FACADES.map((f) => `${buildings.filter((x) => x.facade === f).length} ${f}`).join(', ')}`);
 log(`estimated tops: ${new Set(est).size} distinct values, ${Math.min(...est).toFixed(1)}–${Math.max(...est).toFixed(1)} m`);
 
@@ -436,6 +447,14 @@ log(`street furniture: ${FURNITURE_KINDS.map((k, i) => [k, furniture.filter((f) 
   .map(([k, l]) => `${l.length} ${k}${l.some((f) => f[4] === 1) ? ` (${l.filter((f) => f[4] === 1).length} inferred)` : ''}`).join(', ')}`);
 
 // --- Assemble --------------------------------------------------------------------------------------------------------
+// --- Metro above ground (optional osm_transit.json; tools/geo-transit.mjs): elevated guideways & track at grade ---------
+let rail = null;
+if (has('osm_transit.json')) {
+  const t = buildTransit(load('osm_transit.json').elements, toWorld);
+  rail = { lines: t.lines, stations: t.stations, note: 'track from OSM; guideway deck heights are estimates (OSM maps layer only)' };
+  log(`metro: ${t.stats.elevated} elevated ways (${t.stats.elevatedM} m), ${t.stats.grade} at grade, ${t.stats.tunnel} in tunnels (left out); ${t.stations.length} stations`);
+}
+
 const GEO = {
   version: 1,
   city: 'taipei',
@@ -489,7 +508,11 @@ const GEO = {
   // parking areas (tools/geo-furniture.mjs).
   furnitureKinds: FURNITURE_KINDS,
   furnitureSources: FURNITURE_SOURCES,
-  furniture: furniture.map(([k, x, z, yaw, src, extra]) => [k, q(x), q(z), Math.round(yaw * 1000) / 1000, src, extra])
+  furniture: furniture.map(([k, x, z, yaw, src, extra]) => [k, q(x), q(z), Math.round(yaw * 1000) / 1000, src, extra]),
+  // Metro above ground (absent without osm_transit.json): lines [elevated 0|1, deck width m, [x, z, ...], [deck top
+  // height m per point]]; deck heights are ESTIMATES (OSM has layer only), ramping to 0 at portals. stations:
+  // [name, name:en, x, z] (underground ones too)
+  ...(rail ? { rail } : {})
 };
 
 const json = JSON.stringify(GEO);

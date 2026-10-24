@@ -30,6 +30,7 @@
 //   osm_furniture.json   lamps, bus stops, MRT entrances, YouBike, hydrants… © OpenStreetMap contributors (ODbL)
 //   osm_open.json        open ground (parking, schools, plazas, water…)     © OpenStreetMap contributors (ODbL)
 //   osm_boundary.json    the area's administrative boundary (when it is a district) © OpenStreetMap contributors (ODbL)
+//   osm_transit.json     (optional) metro track, stations, platforms, entrances © OpenStreetMap contributors (ODbL)
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -68,6 +69,7 @@ if (!AREA) throw new Error(`unknown GEO_AREA ${AREA_NAME} (${Object.keys(AREAS).
 
 const DATA = process.env.GEO_DATA || fileURLToPath(new URL(AREA.data, import.meta.url));
 const load = (f) => JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8'));
+const has = (f) => fs.existsSync(path.join(DATA, f)); // optional inputs (osm_transit.json)
 const log = (...a) => console.log(`[taipei-geodata:${AREA_NAME}]`, ...a);
 
 const frame = makeFrame({ lat0: AREA.lat0, lon0: AREA.lon0, theta: 0, origin: [0, 0] });
@@ -90,4 +92,4 @@ const ALL_LANDMARKS = {
 };
 const LANDMARKS = Object.fromEntries((AREA.landmarks || []).map((n) => [n, ALL_LANDMARKS[n]]));
 
-export { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, AREAS, load, log };
+export { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, AREAS, load, has, log };

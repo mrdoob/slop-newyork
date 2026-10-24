@@ -1,0 +1,5830 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-24T15:28:04Z",
+    "timestamp_areas_base": "2026-10-24T12:29:05Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 1336186433,
+  "lat": 25.0417587,
+  "lon": 121.5583674,
+  "tags": {
+    "access": "no",
+    "name": "捷運國父紀念館站5號出口",
+    "name:en": "MRT Sun Yat-Sen Memorial Hall Station Exit 5",
+    "name:zh": "捷運國父紀念館站5號出口",
+    "name:zh-Hans": "捷运国父纪念馆站5号出口",
+    "name:zh-Hant": "捷運國父紀念館站5號出口",
+    "railway": "subway_entrance",
+    "ref": "5",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 1336186434,
+  "lat": 25.0411393,
+  "lon": 121.5579355,
+  "tags": {
+    "name": "捷運國父紀念館站3號出口",
+    "name:en": "MRT Sun Yat-Sen Memorial Hall Station Exit 3",
+    "name:zh": "捷運國父紀念館站3號出口",
+    "railway": "subway_entrance",
+    "ref": "3",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 1336186435,
+  "lat": 25.0411120,
+  "lon": 121.5584193,
+  "tags": {
+    "name": "捷運國父紀念館站4號出口",
+    "name:en": "MRT Sun Yat-Sen Memorial Hall Station Exit 4",
+    "name:zh": "捷運國父紀念館站4號出口",
+    "name:zh-Hans": "捷运国父纪念馆站4号出口",
+    "name:zh-Hant": "捷運國父紀念館站4號出口",
+    "railway": "subway_entrance",
+    "ref": "4",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 1501340092,
+  "lat": 25.0408029,
+  "lon": 121.5651356,
+  "tags": {
+    "name": "捷運市政府站2號出口",
+    "name:en": "MRT Taipei City Hall Station Exit 2",
+    "name:zh": "捷運市政府站2號出口",
+    "name:zh-Hans": "捷运市政府站2号出口",
+    "name:zh-Hant": "捷運市政府站2號出口",
+    "railway": "subway_entrance",
+    "ref": "2",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 1666865098,
+  "lat": 25.0491542,
+  "lon": 121.5781643,
+  "tags": {
+    "addr:city": "臺北市",
+    "addr:country": "TW",
+    "addr:district": "信義區",
+    "addr:full": "110臺北市信義區松山路11號",
+    "addr:housenumber": "11",
+    "addr:postcode": "110",
+    "addr:street": "松山路",
+    "alt_name": "松山火車站",
+    "name": "松山",
+    "name:en": "Songshan",
+    "name:hak": "qiungˇ sanˊ",
+    "name:hak-Hant": "松山",
+    "name:ja": "松山",
+    "name:ko": "쑹산",
+    "name:nan": "Siông-san",
+    "name:nan-Hant": "松山",
+    "name:nan-Latn-pehoeji": "Siông-san",
+    "name:nan-Latn-tailo": "Siông-san",
+    "name:zh": "松山",
+    "name:zh-Hans": "松山",
+    "name:zh-Hant": "松山",
+    "name:zh-Latn-pinyin": "sōng shān",
+    "network": "臺鐵",
+    "network:en": "TRA",
+    "network:nan": "Tâi-thih",
+    "network:nan-Hant": "臺鐵",
+    "network:nan-Latn-pehoeji": "Tâi-thih",
+    "network:nan-Latn-tailo": "Tâi-thih",
+    "network:wikidata": "Q30941702",
+    "network:zh": "臺鐵",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "public_transport": "station",
+    "railway": "station",
+    "ref": "990",
+    "station": "train",
+    "train": "yes",
+    "wheelchair": "yes",
+    "wikidata": "Q7561635",
+    "wikipedia": "zh:松山車站 (台灣)"
+  }
+},
+{
+  "type": "node",
+  "id": 2132228052,
+  "lat": 25.0412567,
+  "lon": 121.5671911,
+  "tags": {
+    "bicycle": "no",
+    "name": "捷運市政府站4號出口",
+    "name:en": "MRT Taipei City Hall Station Exit 4",
+    "name:zh": "捷運市政府站4號出口",
+    "railway": "subway_entrance",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 2718780534,
+  "lat": 25.0333408,
+  "lon": 121.5644215,
+  "tags": {
+    "level": "-1",
+    "name": "捷運台北101/世貿站4號出口",
+    "name:en": "MRT Taipei 101/World Trade Center Station Exit 4",
+    "name:zh": "捷運台北101/世貿站4號出口",
+    "railway": "subway_entrance",
+    "ref": "4"
+  }
+},
+{
+  "type": "node",
+  "id": 3019870848,
+  "lat": 25.0407446,
+  "lon": 121.5670270,
+  "tags": {
+    "name": "捷運市政府站3號出口",
+    "name:en": "MRT Taipei City Hall Station Exit 3",
+    "name:zh": "捷運市政府站3號出口",
+    "name:zh-Hant": "捷運市政府站3號出口",
+    "railway": "subway_entrance",
+    "ref": "3"
+  }
+},
+{
+  "type": "node",
+  "id": 3019870850,
+  "lat": 25.0413122,
+  "lon": 121.5654820,
+  "tags": {
+    "name": "捷運市政府站1號出口",
+    "name:en": "MRT Taipei City Hall Station Exit 1",
+    "name:zh": "捷運市政府站1號出口",
+    "name:zh-Hans": "捷运市政府站1号出口",
+    "name:zh-Hant": "捷運市政府站1號出口",
+    "railway": "subway_entrance",
+    "ref": "1",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3159240174,
+  "lat": 25.0439152,
+  "lon": 121.5819986,
+  "tags": {
+    "name": "出口 2 (玉成公園)",
+    "name:en": "EXIT 2 (Yucheng Park)",
+    "name:zh": "出口 2 (玉成公園)",
+    "railway": "subway_entrance",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3164097071,
+  "lat": 25.0331260,
+  "lon": 121.5617423,
+  "tags": {
+    "name": "捷運台北101/世貿站1號出口",
+    "name:en": "MRT Taipei 101/World Trade Center Station Exit 1",
+    "name:zh": "捷運台北101/世貿站1號出口",
+    "name:zh-Hans": "捷运台北101/世贸站1号出口",
+    "name:zh-Hant": "捷運台北101/世貿站1號出口",
+    "railway": "subway_entrance",
+    "ref": "1",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3164097072,
+  "lat": 25.0332177,
+  "lon": 121.5632809,
+  "tags": {
+    "name": "捷運台北101/世貿站5號出口",
+    "name:en": "MRT Taipei 101/World Trade Center Station Exit 5",
+    "name:zh": "捷運台北101/世貿站5號出口",
+    "name:zh-Hans": "捷运台北101/世贸站5号出口",
+    "name:zh-Hant": "捷運台北101/世貿站5號出口",
+    "railway": "subway_entrance",
+    "ref": "5",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3494960745,
+  "lat": 25.0328676,
+  "lon": 121.5697576,
+  "tags": {
+    "addr:city": "臺北市",
+    "addr:country": "TW",
+    "addr:district": "信義區",
+    "addr:floor": "-1",
+    "addr:full": "11080臺北市信義區信義路五段152號B1",
+    "addr:housenumber": "152",
+    "addr:postcode": "11080",
+    "addr:street": "信義路五段",
+    "air_conditioning": "yes",
+    "name": "象山",
+    "name:en": "Xiangshan",
+    "name:hak": "xiong sanˊ",
+    "name:ko": "샹산",
+    "name:nan": "Chhiūⁿ-soaⁿ",
+    "name:nan-Hant": "象山",
+    "name:nan-Latn-pehoeji": "Chhiūⁿ-soaⁿ",
+    "name:nan-Latn-tailo": "Tshiūnn-suann",
+    "name:zh": "象山",
+    "name:zh-Hans": "象山",
+    "name:zh-Hant": "象山",
+    "name:zh-Latn-pinyin": "xiàng shān",
+    "network": "臺北捷運",
+    "old_ref": "R5",
+    "operator": "臺北大眾捷運股份有限公司",
+    "public_transport": "station",
+    "railway": "station",
+    "ref": "R02",
+    "station": "subway",
+    "subway": "yes",
+    "wheelchair": "yes",
+    "wikidata": "Q4276721",
+    "wikipedia": "zh:象山站"
+  }
+},
+{
+  "type": "node",
+  "id": 3512275767,
+  "lat": 25.0411283,
+  "lon": 121.5660998,
+  "tags": {
+    "addr:city": "臺北市",
+    "addr:country": "TW",
+    "addr:district": "信義區",
+    "addr:full": "110臺北市信義區忠孝東路五段2號",
+    "addr:housenumber": "2",
+    "addr:postcode": "110",
+    "addr:street": "忠孝東路五段",
+    "air_conditioning": "yes",
+    "baby_feeding": "room",
+    "name": "市政府",
+    "name:en": "Taipei City Hall",
+    "name:hak": "sii ziin fuˋ",
+    "name:nan": "Chhī-chèng-hú",
+    "name:nan-Hant": "市政府",
+    "name:nan-Latn-pehoeji": "Chhī-chèng-hú",
+    "name:nan-Latn-tailo": "Tshī-tsìng-hú",
+    "name:zh": "市政府",
+    "name:zh-Hans": "市政府",
+    "name:zh-Hant": "市政府",
+    "name:zh-Latn-pinyin": "shì zhèng fǔ",
+    "network": "臺北捷運",
+    "old_ref": "BL13",
+    "operator": "臺北大眾捷運股份有限公司",
+    "postal_code": "11071",
+    "public_transport": "station",
+    "railway": "station",
+    "ref": "BL18",
+    "start_date": "1999-12-24",
+    "station": "subway",
+    "subway": "yes",
+    "wheelchair": "yes",
+    "wikidata": "Q697995",
+    "wikipedia": "zh:市政府站 (臺北市)"
+  }
+},
+{
+  "type": "node",
+  "id": 3550277944,
+  "lat": 25.0327981,
+  "lon": 121.5631663,
+  "tags": {
+    "name": "捷運台北101/世貿站3號出口",
+    "name:en": "MRT Taipei 101/World Trade Center Station Exit 3",
+    "name:zh": "捷運台北101/世貿站3號出口",
+    "railway": "subway_entrance",
+    "ref": "3"
+  }
+},
+{
+  "type": "node",
+  "id": 3550280123,
+  "lat": 25.0328385,
+  "lon": 121.5617454,
+  "tags": {
+    "name": "捷運台北101/世貿站2號出口",
+    "name:en": "MRT Taipei 101/World Trade Center Station Exit 2",
+    "name:zh": "捷運台北101/世貿站2號出口",
+    "name:zh-Hans": "捷运台北101/世贸站2号出口",
+    "name:zh-Hant": "捷運台北101/世貿站2號出口",
+    "railway": "subway_entrance",
+    "ref": "2"
+  }
+},
+{
+  "type": "node",
+  "id": 3639530949,
+  "lat": 25.0408761,
+  "lon": 121.5757045,
+  "tags": {
+    "addr:city": "臺北市",
+    "addr:country": "TW",
+    "addr:district": "信義區",
+    "addr:full": "11061臺北市信義區忠孝東路五段455號",
+    "addr:housenumber": "455",
+    "addr:postcode": "11061",
+    "addr:street": "忠孝東路五段",
+    "air_conditioning": "yes",
+    "alt_name": "捷運永春站",
+    "alt_name:en": "MRT Yongchun Station",
+    "alt_name:nan": "Chia̍t-ūn Éng-chhun chām",
+    "alt_name:nan-Hant": "捷運永春站",
+    "alt_name:nan-Latn-pehoeji": "Chia̍t-ūn Éng-chhun chām",
+    "alt_name:nan-Latn-tailo": "Tsia̍t-ūn Íng-tshun tsām",
+    "alt_name:zh": "捷運永春站",
+    "name": "永春",
+    "name:en": "Yongchun",
+    "name:hak": "iunˋ cunˊ",
+    "name:nan": "Éng-chhun",
+    "name:nan-Hant": "永春",
+    "name:nan-Latn-pehoeji": "Éng-chhun",
+    "name:nan-Latn-tailo": "Íng-tshun",
+    "name:ru": "Юнчунь",
+    "name:uk": "Юнчунь",
+    "name:zh": "永春",
+    "name:zh-Hans": "永春",
+    "name:zh-Hant": "永春",
+    "name:zh-Latn-pinyin": "yǒng chūn",
+    "network": "臺北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "public_transport": "station",
+    "railway": "station",
+    "ref": "BL19",
+    "station": "subway",
+    "subway": "yes",
+    "wikidata": "Q698799",
+    "wikipedia": "zh:永春站 (臺北市)"
+  }
+},
+{
+  "type": "node",
+  "id": 3689300568,
+  "lat": 25.0410065,
+  "lon": 121.5745438,
+  "tags": {
+    "name": "出口1（松信路）",
+    "railway": "subway_entrance",
+    "ref": "1"
+  }
+},
+{
+  "type": "node",
+  "id": 3689309410,
+  "lat": 25.0407778,
+  "lon": 121.5751821,
+  "tags": {
+    "name": "出口2（松山工農）",
+    "railway": "subway_entrance",
+    "ref": "2"
+  }
+},
+{
+  "type": "node",
+  "id": 3689309411,
+  "lat": 25.0409662,
+  "lon": 121.5767264,
+  "tags": {
+    "name": "出口5（富台國宅）",
+    "railway": "subway_entrance",
+    "ref": "5",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3689309412,
+  "lat": 25.0407580,
+  "lon": 121.5766784,
+  "tags": {
+    "name": "出口4（虎林街）",
+    "railway": "subway_entrance",
+    "ref": "4",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3689309413,
+  "lat": 25.0407686,
+  "lon": 121.5764047,
+  "tags": {
+    "name": "出口3（忠孝東路五段）",
+    "railway": "subway_entrance",
+    "ref": "3",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 4213191342,
+  "lat": 25.0322713,
+  "lon": 121.5699504,
+  "tags": {
+    "entrance": "yes",
+    "level": "0",
+    "name": "捷運象山站2號出口",
+    "name:en": "MRT Xiangshan Station Exit 2",
+    "name:zh": "捷運象山站2號出口",
+    "railway": "subway_entrance",
+    "ref": "2",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 4325694147,
+  "lat": 25.0329607,
+  "lon": 121.5706739,
+  "tags": {
+    "entrance": "yes",
+    "level": "0",
+    "name": "捷運象山站3號出口",
+    "name:en": "MRT Xiangshan Station Exit 3",
+    "name:zh": "捷運象山站1號出口",
+    "railway": "subway_entrance",
+    "ref": "3",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 4325694148,
+  "lat": 25.0329988,
+  "lon": 121.5693029,
+  "tags": {
+    "entrance": "yes",
+    "level": "0",
+    "name": "捷運象山站1號出口",
+    "name:en": "MRT Xiangshan Station Exit 1",
+    "name:zh": "捷運象山站1號出口",
+    "railway": "subway_entrance",
+    "ref": "1",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 4325694211,
+  "lat": 25.0329675,
+  "lon": 121.5698120,
+  "tags": {
+    "highway": "elevator",
+    "level": "-1;0",
+    "name": "電梯",
+    "railway": "subway_entrance",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 4498833449,
+  "lat": 25.0374683,
+  "lon": 121.5823111,
+  "tags": {
+    "air_conditioning": "yes",
+    "name": "廣慈/奉天宮",
+    "name:en": "Guangci/Fengtian Temple Station (Under construction)",
+    "name:hak": "gongˋ ciiˇ /fung tienˊ giungˊ",
+    "name:nan": "Kóng-chû/Hōng-thian-kiong",
+    "name:nan-Hant": "廣慈/奉天宮",
+    "name:nan-Latn-pehoeji": "Kóng-chû/Hōng-thian-kiong",
+    "name:nan-Latn-tailo": "Kóng-tsû/ Hōng-thian-kiong",
+    "name:zh": "廣慈/奉天宮",
+    "name:zh-Hans": "广慈/奉天宫",
+    "name:zh-Hant": "廣慈/奉天宮",
+    "name:zh-Latn-pinyin": "guǎng cí /fèng tiān gōng",
+    "old_name": "中坡",
+    "operator": "台北捷運",
+    "platforms": "2",
+    "public_transport": "station",
+    "railway": "station",
+    "ref": "R01",
+    "station": "subway",
+    "subway": "yes",
+    "wikidata": "Q8070949",
+    "wikipedia": "zh:廣慈/奉天宮站"
+  }
+},
+{
+  "type": "node",
+  "id": 9974435156,
+  "lat": 25.0329794,
+  "lon": 121.5624453,
+  "tags": {
+    "addr:city": "臺北市",
+    "addr:country": "TW",
+    "addr:district": "信義區",
+    "addr:floor": "-1",
+    "addr:full": "11049臺北市信義區信義路五段20號B1",
+    "addr:housenumber": "20",
+    "addr:postcode": "11049",
+    "addr:street": "信義路五段",
+    "air_conditioning": "yes",
+    "name": "台北101/世貿",
+    "name:en": "Taipei 101/World Trade Center",
+    "name:hak": "toiˇ bedˋ idˋ langˇ idˋ/sii meuˋ",
+    "name:ja": "台北101/世界貿易センター",
+    "name:ko": "타이베이 101/세계무역센터",
+    "name:nan": "Tâi-pak It-khòng-it/Sè-bō͘",
+    "name:nan-Hant": "臺北101/世貿",
+    "name:nan-Latn-pehoeji": "Tâi-pak It-khòng-it/Sè-bō͘",
+    "name:nan-Latn-tailo": "Tâi-pak It-khòng-it/ Sè-bōo",
+    "name:zh": "台北101/世貿",
+    "name:zh-Hans": "台北101/世贸",
+    "name:zh-Hant": "臺北101/世貿",
+    "name:zh-Latn-pinyin": "tái běi 101/shì mào",
+    "network": "臺北捷運",
+    "old_ref": "R6",
+    "operator": "臺北大眾捷運股份有限公司",
+    "public_transport": "station",
+    "railway": "station",
+    "ref": "R03",
+    "station": "subway",
+    "subway": "yes",
+    "train": "yes",
+    "wheelchair": "no",
+    "wikidata": "Q7676267",
+    "wikipedia": "zh:台北101/世貿站"
+  }
+},
+{
+  "type": "node",
+  "id": 12404378724,
+  "lat": 25.0331342,
+  "lon": 121.5632426,
+  "tags": {
+    "highway": "elevator",
+    "name": "捷運台北101/世貿站5號出口 (電梯)",
+    "name:en": "MRT Taipei 101/World Trade Center Station Exit 5 (Elevator)",
+    "name:zh": "捷運台北101/世貿站5號出口 (電梯)",
+    "name:zh-Hans": "捷运台北101/世贸站5号出口 (电梯)",
+    "name:zh-Hant": "捷運台北101/世貿站5號出口 (電梯)",
+    "railway": "subway_entrance",
+    "ref": "5",
+    "wheelchair": "designated"
+  }
+},
+{
+  "type": "node",
+  "id": 13174943585,
+  "lat": 25.0495010,
+  "lon": 121.5779361,
+  "tags": {
+    "level": "-1",
+    "railway": "subway_entrance",
+    "ref": "4A"
+  }
+},
+{
+  "type": "node",
+  "id": 14134499628,
+  "lat": 25.0374598,
+  "lon": 121.5818261,
+  "tags": {
+    "railway": "subway_entrance",
+    "ref": "1"
+  }
+},
+{
+  "type": "node",
+  "id": 14134499629,
+  "lat": 25.0382848,
+  "lon": 121.5833586,
+  "tags": {
+    "railway": "subway_entrance",
+    "ref": "2"
+  }
+},
+{
+  "type": "way",
+  "id": 23403470,
+  "bounds": {
+    "minlat": 25.0493464,
+    "minlon": 121.5712010,
+    "maxlat": 25.0494283,
+    "maxlon": 121.5806643
+  },
+  "nodes": [
+    253385500,
+    8164766150,
+    289132138,
+    656401600,
+    8164766177,
+    8164766178,
+    656401601,
+    660877871,
+    8164766225,
+    656401602,
+    656401603,
+    5514562778,
+    1720054543,
+    5514562795,
+    8164766214,
+    1720054578
+  ],
+  "geometry": [
+    { "lat": 25.0494091, "lon": 121.5712010 },
+    { "lat": 25.0494256, "lon": 121.5717063 },
+    { "lat": 25.0494283, "lon": 121.5721899 },
+    { "lat": 25.0494045, "lon": 121.5743944 },
+    { "lat": 25.0494037, "lon": 121.5744669 },
+    { "lat": 25.0493990, "lon": 121.5749041 },
+    { "lat": 25.0493922, "lon": 121.5756391 },
+    { "lat": 25.0493872, "lon": 121.5760468 },
+    { "lat": 25.0493862, "lon": 121.5761534 },
+    { "lat": 25.0493834, "lon": 121.5764377 },
+    { "lat": 25.0493734, "lon": 121.5773866 },
+    { "lat": 25.0493729, "lon": 121.5775963 },
+    { "lat": 25.0493486, "lon": 121.5794754 },
+    { "lat": 25.0493495, "lon": 121.5797709 },
+    { "lat": 25.0493464, "lon": 121.5802193 },
+    { "lat": 25.0493516, "lon": 121.5806643 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "frequency": "60",
+    "gauge": "1067",
+    "layer": "-3",
+    "maxspeed": "130",
+    "name": "縱貫線西正線",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "railway": "rail",
+    "ref": "縱貫線",
+    "start_date": "2008-09-21",
+    "tunnel": "yes",
+    "usage": "main",
+    "voltage": "25000"
+  }
+},
+{
+  "type": "way",
+  "id": 194118011,
+  "bounds": {
+    "minlat": 25.0444416,
+    "minlon": 121.5239638,
+    "maxlat": 25.0463460,
+    "maxlon": 121.5579505
+  },
+  "nodes": [
+    2046348463,
+    5310664997,
+    8114350595,
+    8114350594,
+    8114350593,
+    8114350592,
+    6252193583,
+    6252193550,
+    6252193529,
+    5244929969,
+    6252193521,
+    2046348470,
+    6252193515,
+    6252193516,
+    6252193506,
+    6252193591,
+    6252193507,
+    6252193508,
+    2046348474,
+    6252193502,
+    2046348503,
+    3208478123,
+    6252193488,
+    2046348506,
+    2046348512,
+    2046348514,
+    8164766434,
+    8164766433,
+    2046348520,
+    8164766429,
+    8420400105,
+    2046348524,
+    2046348536,
+    8164766427,
+    8164766425,
+    2046348243,
+    8164766236,
+    2046348306,
+    2046348340,
+    8164766407,
+    8164766270,
+    8164766269,
+    8164766268,
+    8164766267,
+    8164766266,
+    2046348385,
+    2046348408,
+    8421027755,
+    8164766161,
+    8164766162,
+    2046348441
+  ],
+  "geometry": [
+    { "lat": 25.0463460, "lon": 121.5239638 },
+    { "lat": 25.0459174, "lon": 121.5258611 },
+    { "lat": 25.0458596, "lon": 121.5262352 },
+    { "lat": 25.0458278, "lon": 121.5265410 },
+    { "lat": 25.0458055, "lon": 121.5268924 },
+    { "lat": 25.0457986, "lon": 121.5273248 },
+    { "lat": 25.0458153, "lon": 121.5287930 },
+    { "lat": 25.0458269, "lon": 121.5298732 },
+    { "lat": 25.0458336, "lon": 121.5304197 },
+    { "lat": 25.0458277, "lon": 121.5309780 },
+    { "lat": 25.0458147, "lon": 121.5312532 },
+    { "lat": 25.0457850, "lon": 121.5315789 },
+    { "lat": 25.0457658, "lon": 121.5317404 },
+    { "lat": 25.0457236, "lon": 121.5320250 },
+    { "lat": 25.0456464, "lon": 121.5324113 },
+    { "lat": 25.0455614, "lon": 121.5327519 },
+    { "lat": 25.0454700, "lon": 121.5330728 },
+    { "lat": 25.0453372, "lon": 121.5335207 },
+    { "lat": 25.0451380, "lon": 121.5341948 },
+    { "lat": 25.0449976, "lon": 121.5347743 },
+    { "lat": 25.0449158, "lon": 121.5352306 },
+    { "lat": 25.0448635, "lon": 121.5356362 },
+    { "lat": 25.0448273, "lon": 121.5360477 },
+    { "lat": 25.0447464, "lon": 121.5375017 },
+    { "lat": 25.0446236, "lon": 121.5397604 },
+    { "lat": 25.0445981, "lon": 121.5404528 },
+    { "lat": 25.0446168, "lon": 121.5412796 },
+    { "lat": 25.0446737, "lon": 121.5420755 },
+    { "lat": 25.0448220, "lon": 121.5432737 },
+    { "lat": 25.0450342, "lon": 121.5449801 },
+    { "lat": 25.0450760, "lon": 121.5454411 },
+    { "lat": 25.0451066, "lon": 121.5458828 },
+    { "lat": 25.0451067, "lon": 121.5462571 },
+    { "lat": 25.0450915, "lon": 121.5467512 },
+    { "lat": 25.0450570, "lon": 121.5472280 },
+    { "lat": 25.0449935, "lon": 121.5478065 },
+    { "lat": 25.0447841, "lon": 121.5497625 },
+    { "lat": 25.0447735, "lon": 121.5498616 },
+    { "lat": 25.0444593, "lon": 121.5528394 },
+    { "lat": 25.0444430, "lon": 121.5532382 },
+    { "lat": 25.0444416, "lon": 121.5533747 },
+    { "lat": 25.0444472, "lon": 121.5536790 },
+    { "lat": 25.0444688, "lon": 121.5539749 },
+    { "lat": 25.0444999, "lon": 121.5543055 },
+    { "lat": 25.0445397, "lon": 121.5546122 },
+    { "lat": 25.0445767, "lon": 121.5548053 },
+    { "lat": 25.0448338, "lon": 121.5561774 },
+    { "lat": 25.0449030, "lon": 121.5565411 },
+    { "lat": 25.0450263, "lon": 121.5571566 },
+    { "lat": 25.0451100, "lon": 121.5575297 },
+    { "lat": 25.0452195, "lon": 121.5579505 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "frequency": "60",
+    "gauge": "1067",
+    "layer": "-1",
+    "maxspeed": "130",
+    "name": "縱貫線東正線",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "railway": "rail",
+    "ref": "縱貫線",
+    "tunnel": "yes",
+    "usage": "main",
+    "voltage": "25000"
+  }
+},
+{
+  "type": "way",
+  "id": 194118012,
+  "bounds": {
+    "minlat": 25.0452195,
+    "minlon": 121.5579505,
+    "maxlat": 25.0493704,
+    "maxlon": 121.5712496
+  },
+  "nodes": [
+    2046348441,
+    8164766163,
+    8164766164,
+    2046348468,
+    2046348500,
+    5981539702,
+    2046348230,
+    5244808404,
+    8164766153,
+    2046348516,
+    8164766182,
+    2046348527,
+    2046348539,
+    2046348545,
+    2046348563
+  ],
+  "geometry": [
+    { "lat": 25.0452195, "lon": 121.5579505 },
+    { "lat": 25.0453311, "lon": 121.5583123 },
+    { "lat": 25.0454084, "lon": 121.5585416 },
+    { "lat": 25.0455533, "lon": 121.5589373 },
+    { "lat": 25.0468834, "lon": 121.5619915 },
+    { "lat": 25.0473713, "lon": 121.5631216 },
+    { "lat": 25.0477972, "lon": 121.5642870 },
+    { "lat": 25.0480955, "lon": 121.5651486 },
+    { "lat": 25.0482745, "lon": 121.5656727 },
+    { "lat": 25.0484713, "lon": 121.5663135 },
+    { "lat": 25.0489753, "lon": 121.5684383 },
+    { "lat": 25.0491794, "lon": 121.5694523 },
+    { "lat": 25.0492774, "lon": 121.5701203 },
+    { "lat": 25.0493334, "lon": 121.5706768 },
+    { "lat": 25.0493704, "lon": 121.5712496 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "frequency": "60",
+    "gauge": "1067",
+    "layer": "-2",
+    "maxspeed": "130",
+    "name": "縱貫線東正線",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "railway": "rail",
+    "ref": "縱貫線",
+    "tunnel": "yes",
+    "usage": "main",
+    "voltage": "25000"
+  }
+},
+{
+  "type": "way",
+  "id": 194118022,
+  "bounds": {
+    "minlat": 25.0455915,
+    "minlon": 121.5589068,
+    "maxlat": 25.0494091,
+    "maxlon": 121.5712010
+  },
+  "nodes": [
+    253385498,
+    656401984,
+    8164766235,
+    2046348461,
+    8164766154,
+    253385499,
+    8164766183,
+    656401595,
+    656401988,
+    656402002,
+    656402005,
+    253385500
+  ],
+  "geometry": [
+    { "lat": 25.0455915, "lon": 121.5589068 },
+    { "lat": 25.0469189, "lon": 121.5619693 },
+    { "lat": 25.0474094, "lon": 121.5631021 },
+    { "lat": 25.0478400, "lon": 121.5642780 },
+    { "lat": 25.0483200, "lon": 121.5656633 },
+    { "lat": 25.0485094, "lon": 121.5662986 },
+    { "lat": 25.0490160, "lon": 121.5684332 },
+    { "lat": 25.0491441, "lon": 121.5690695 },
+    { "lat": 25.0492207, "lon": 121.5694499 },
+    { "lat": 25.0493137, "lon": 121.5701097 },
+    { "lat": 25.0493733, "lon": 121.5706670 },
+    { "lat": 25.0494091, "lon": 121.5712010 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "frequency": "60",
+    "gauge": "1067",
+    "layer": "-2",
+    "maxspeed": "130",
+    "name": "縱貫線西正線",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "railway": "rail",
+    "ref": "縱貫線",
+    "tunnel": "yes",
+    "usage": "main",
+    "voltage": "25000"
+  }
+},
+{
+  "type": "way",
+  "id": 194118031,
+  "bounds": {
+    "minlat": 25.0493086,
+    "minlon": 121.5712496,
+    "maxlat": 25.0493865,
+    "maxlon": 121.5806677
+  },
+  "nodes": [
+    2046348563,
+    8164766149,
+    2046348584,
+    8164766176,
+    2046348594,
+    8164766179,
+    2046348600,
+    2046348603,
+    8164766224,
+    2046348606,
+    2046348609,
+    5514562784,
+    2046348265,
+    2046348334,
+    5514562797,
+    8164766215,
+    2046348396
+  ],
+  "geometry": [
+    { "lat": 25.0493704, "lon": 121.5712496 },
+    { "lat": 25.0493843, "lon": 121.5717264 },
+    { "lat": 25.0493865, "lon": 121.5721757 },
+    { "lat": 25.0493688, "lon": 121.5738135 },
+    { "lat": 25.0493627, "lon": 121.5743800 },
+    { "lat": 25.0493511, "lon": 121.5755585 },
+    { "lat": 25.0493504, "lon": 121.5756245 },
+    { "lat": 25.0493497, "lon": 121.5760005 },
+    { "lat": 25.0493449, "lon": 121.5761641 },
+    { "lat": 25.0493416, "lon": 121.5764222 },
+    { "lat": 25.0493317, "lon": 121.5773700 },
+    { "lat": 25.0493310, "lon": 121.5775913 },
+    { "lat": 25.0493222, "lon": 121.5782613 },
+    { "lat": 25.0493115, "lon": 121.5794626 },
+    { "lat": 25.0493124, "lon": 121.5797736 },
+    { "lat": 25.0493086, "lon": 121.5802212 },
+    { "lat": 25.0493113, "lon": 121.5806677 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "frequency": "60",
+    "gauge": "1067",
+    "layer": "-3",
+    "maxspeed": "130",
+    "name": "縱貫線東正線",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "railway": "rail",
+    "ref": "縱貫線",
+    "start_date": "2008-09-21",
+    "tunnel": "yes",
+    "usage": "main",
+    "voltage": "25000"
+  }
+},
+{
+  "type": "way",
+  "id": 194237488,
+  "bounds": {
+    "minlat": 25.0235060,
+    "minlon": 121.5526640,
+    "maxlat": 25.0241466,
+    "maxlon": 121.5534933
+  },
+  "nodes": [
+    2047607951,
+    2047607930,
+    2047607948,
+    2047607907,
+    2047607926,
+    2047607902,
+    2047607914,
+    2047607919,
+    2047607932,
+    2047607954,
+    2047607921,
+    2047607912,
+    2047607934,
+    2047607944,
+    2047607915,
+    2047607946,
+    2047607951
+  ],
+  "geometry": [
+    { "lat": 25.0238472, "lon": 121.5526640 },
+    { "lat": 25.0235554, "lon": 121.5529888 },
+    { "lat": 25.0237151, "lon": 121.5531635 },
+    { "lat": 25.0235060, "lon": 121.5533961 },
+    { "lat": 25.0235464, "lon": 121.5534412 },
+    { "lat": 25.0235949, "lon": 121.5534933 },
+    { "lat": 25.0237670, "lon": 121.5533018 },
+    { "lat": 25.0238083, "lon": 121.5533470 },
+    { "lat": 25.0239323, "lon": 121.5532089 },
+    { "lat": 25.0241466, "lon": 121.5529704 },
+    { "lat": 25.0239984, "lon": 121.5528083 },
+    { "lat": 25.0239759, "lon": 121.5528334 },
+    { "lat": 25.0239369, "lon": 121.5527907 },
+    { "lat": 25.0237572, "lon": 121.5529908 },
+    { "lat": 25.0237163, "lon": 121.5529461 },
+    { "lat": 25.0239090, "lon": 121.5527316 },
+    { "lat": 25.0238472, "lon": 121.5526640 }
+  ],
+  "tags": {
+    "building": "train_station",
+    "building:levels": "3",
+    "colour": "brown",
+    "layer": "3",
+    "name": "捷運六張犁站"
+  }
+},
+{
+  "type": "way",
+  "id": 194237489,
+  "bounds": {
+    "minlat": 25.0179985,
+    "minlon": 121.5533229,
+    "maxlat": 25.0236067,
+    "maxlon": 121.5593580
+  },
+  "nodes": [
+    2047607953,
+    2047607950,
+    2051349816,
+    631995792,
+    8164890546,
+    7388001738,
+    638299776,
+    2051349841
+  ],
+  "geometry": [
+    { "lat": 25.0236067, "lon": 121.5533229 },
+    { "lat": 25.0234186, "lon": 121.5535205 },
+    { "lat": 25.0221525, "lon": 121.5548724 },
+    { "lat": 25.0191862, "lon": 121.5580237 },
+    { "lat": 25.0187622, "lon": 121.5584830 },
+    { "lat": 25.0184157, "lon": 121.5588844 },
+    { "lat": 25.0180238, "lon": 121.5593326 },
+    { "lat": 25.0179985, "lon": 121.5593580 }
+  ],
+  "tags": {
+    "bridge": "viaduct",
+    "colour": "brown",
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1880",
+    "layer": "1",
+    "maxspeed": "80",
+    "name": "捷運文湖線",
+    "name:en": "MRT Wenhu Line",
+    "name:ko": "첩운 원후선",
+    "name:nan": "Chia̍p-ūn-bûn-ô͘-sòaⁿ",
+    "name:nan-Hant": "捷運文湖線",
+    "name:nan-Latn-pehoeji": "Chia̍p-ūn-bûn-ô͘-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍p-ūn-bûn-ôo-suànn",
+    "name:zh": "捷運文湖線",
+    "network": "台北捷運",
+    "old_ref": "1",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BR",
+    "start_date": "1996-03-28",
+    "voltage": "750",
+    "wikidata": "Q707644",
+    "wikipedia": "zh:文湖線"
+  }
+},
+{
+  "type": "way",
+  "id": 194237493,
+  "bounds": {
+    "minlat": 25.0235378,
+    "minlon": 121.5529337,
+    "maxlat": 25.0240651,
+    "maxlon": 121.5535071
+  },
+  "nodes": [
+    2047607904,
+    2047607924,
+    7388001729,
+    7388001730,
+    2047607904
+  ],
+  "geometry": [
+    { "lat": 25.0240651, "lon": 121.5529513 },
+    { "lat": 25.0235534, "lon": 121.5535071 },
+    { "lat": 25.0235378, "lon": 121.5534895 },
+    { "lat": 25.0240495, "lon": 121.5529337 },
+    { "lat": 25.0240651, "lon": 121.5529513 }
+  ],
+  "tags": {
+    "area": "yes",
+    "bench": "yes",
+    "layer": "1",
+    "level": "2",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "1",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 194634012,
+  "bounds": {
+    "minlat": 25.0159700,
+    "minlon": 121.5593580,
+    "maxlat": 25.0179985,
+    "maxlon": 121.5603253
+  },
+  "nodes": [
+    2051349841,
+    2051349906,
+    2051349893,
+    2051349840,
+    2051349837,
+    2051349836,
+    2051349831,
+    2051349827
+  ],
+  "geometry": [
+    { "lat": 25.0179985, "lon": 121.5593580 },
+    { "lat": 25.0176438, "lon": 121.5596989 },
+    { "lat": 25.0173636, "lon": 121.5599653 },
+    { "lat": 25.0171442, "lon": 121.5601232 },
+    { "lat": 25.0169354, "lon": 121.5602280 },
+    { "lat": 25.0166871, "lon": 121.5603017 },
+    { "lat": 25.0164581, "lon": 121.5603253 },
+    { "lat": 25.0159700, "lon": 121.5603216 }
+  ],
+  "tags": {
+    "bridge": "viaduct",
+    "colour": "brown",
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1880",
+    "layer": "1",
+    "maxspeed": "80",
+    "name": "捷運文湖線",
+    "name:en": "MRT Wenhu Line",
+    "name:ko": "첩운 원후선",
+    "name:nan": "Chia̍p-ūn-bûn-ô͘-sòaⁿ",
+    "name:nan-Hant": "捷運文湖線",
+    "name:nan-Latn-pehoeji": "Chia̍p-ūn-bûn-ô͘-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍p-ūn-bûn-ôo-suànn",
+    "name:zh": "捷運文湖線",
+    "network": "台北捷運",
+    "old_ref": "1",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BR",
+    "start_date": "1996-03-28",
+    "voltage": "750",
+    "wikidata": "Q707644",
+    "wikipedia": "zh:文湖線"
+  }
+},
+{
+  "type": "way",
+  "id": 194634017,
+  "bounds": {
+    "minlat": 25.0159705,
+    "minlon": 121.5593872,
+    "maxlat": 25.0180216,
+    "maxlon": 121.5603651
+  },
+  "nodes": [
+    2051350013,
+    638299779,
+    638299781,
+    638299783,
+    638299786,
+    638299788,
+    638299791,
+    638299277
+  ],
+  "geometry": [
+    { "lat": 25.0180216, "lon": 121.5593872 },
+    { "lat": 25.0176668, "lon": 121.5597282 },
+    { "lat": 25.0173848, "lon": 121.5599964 },
+    { "lat": 25.0171612, "lon": 121.5601573 },
+    { "lat": 25.0169473, "lon": 121.5602646 },
+    { "lat": 25.0166945, "lon": 121.5603397 },
+    { "lat": 25.0164544, "lon": 121.5603651 },
+    { "lat": 25.0159705, "lon": 121.5603618 }
+  ],
+  "tags": {
+    "bridge": "viaduct",
+    "colour": "brown",
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1880",
+    "layer": "1",
+    "maxspeed": "80",
+    "name": "捷運文湖線",
+    "name:en": "MRT Wenhu Line",
+    "name:ko": "첩운 원후선",
+    "name:nan": "Chia̍p-ūn-bûn-ô͘-sòaⁿ",
+    "name:nan-Hant": "捷運文湖線",
+    "name:nan-Latn-pehoeji": "Chia̍p-ūn-bûn-ô͘-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍p-ūn-bûn-ôo-suànn",
+    "name:zh": "捷運文湖線",
+    "network": "台北捷運",
+    "old_ref": "1",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BR",
+    "start_date": "1996-03-28",
+    "voltage": "750",
+    "wikidata": "Q707644",
+    "wikipedia": "zh:文湖線"
+  }
+},
+{
+  "type": "way",
+  "id": 194634034,
+  "bounds": {
+    "minlat": 25.0180216,
+    "minlon": 121.5534833,
+    "maxlat": 25.0235103,
+    "maxlon": 121.5593872
+  },
+  "nodes": [
+    2051349820,
+    2051349978,
+    2051349979,
+    2051349891,
+    8164890545,
+    7388001737,
+    2051349984,
+    2051349973,
+    2051350013
+  ],
+  "geometry": [
+    { "lat": 25.0235103, "lon": 121.5534833 },
+    { "lat": 25.0234464, "lon": 121.5535506 },
+    { "lat": 25.0222290, "lon": 121.5548479 },
+    { "lat": 25.0192631, "lon": 121.5579989 },
+    { "lat": 25.0187914, "lon": 121.5585092 },
+    { "lat": 25.0184431, "lon": 121.5589123 },
+    { "lat": 25.0181002, "lon": 121.5593083 },
+    { "lat": 25.0180741, "lon": 121.5593346 },
+    { "lat": 25.0180216, "lon": 121.5593872 }
+  ],
+  "tags": {
+    "bridge": "viaduct",
+    "colour": "brown",
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1880",
+    "layer": "1",
+    "maxspeed": "80",
+    "name": "捷運文湖線",
+    "name:en": "MRT Wenhu Line",
+    "name:ko": "첩운 원후선",
+    "name:nan": "Chia̍p-ūn-bûn-ô͘-sòaⁿ",
+    "name:nan-Hant": "捷運文湖線",
+    "name:nan-Latn-pehoeji": "Chia̍p-ūn-bûn-ô͘-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍p-ūn-bûn-ôo-suànn",
+    "name:zh": "捷運文湖線",
+    "network": "台北捷運",
+    "old_ref": "1",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BR",
+    "start_date": "1996-03-28",
+    "voltage": "750",
+    "wikidata": "Q707644",
+    "wikipedia": "zh:文湖線"
+  }
+},
+{
+  "type": "way",
+  "id": 197881274,
+  "bounds": {
+    "minlat": 25.0327606,
+    "minlon": 121.5330805,
+    "maxlat": 25.0335038,
+    "maxlon": 121.5714549
+  },
+  "nodes": [
+    2080769946,
+    2051219288,
+    2080769941,
+    2051219289,
+    2051219291,
+    2051219292,
+    6124632062,
+    6124632040,
+    2051349922,
+    6428854542,
+    6124632039,
+    2051219294,
+    6428854538,
+    6124632037,
+    6124977975,
+    2480211039,
+    7478389983,
+    2051219297,
+    6124808868,
+    2051219299,
+    2480211043,
+    6428668886,
+    6428668887,
+    6220685188,
+    6220685187,
+    2051219301,
+    2051219307
+  ],
+  "geometry": [
+    { "lat": 25.0335038, "lon": 121.5330805 },
+    { "lat": 25.0334753, "lon": 121.5343807 },
+    { "lat": 25.0334551, "lon": 121.5352759 },
+    { "lat": 25.0334276, "lon": 121.5367533 },
+    { "lat": 25.0334022, "lon": 121.5381512 },
+    { "lat": 25.0333588, "lon": 121.5395498 },
+    { "lat": 25.0333070, "lon": 121.5418604 },
+    { "lat": 25.0332797, "lon": 121.5433048 },
+    { "lat": 25.0332708, "lon": 121.5436390 },
+    { "lat": 25.0332585, "lon": 121.5443438 },
+    { "lat": 25.0332368, "lon": 121.5452854 },
+    { "lat": 25.0332099, "lon": 121.5463812 },
+    { "lat": 25.0331747, "lon": 121.5480040 },
+    { "lat": 25.0331533, "lon": 121.5489843 },
+    { "lat": 25.0331253, "lon": 121.5503134 },
+    { "lat": 25.0330971, "lon": 121.5516060 },
+    { "lat": 25.0330739, "lon": 121.5526672 },
+    { "lat": 25.0329967, "lon": 121.5561907 },
+    { "lat": 25.0329394, "lon": 121.5589206 },
+    { "lat": 25.0329071, "lon": 121.5602995 },
+    { "lat": 25.0328618, "lon": 121.5624431 },
+    { "lat": 25.0328293, "lon": 121.5637978 },
+    { "lat": 25.0328015, "lon": 121.5649431 },
+    { "lat": 25.0327863, "lon": 121.5656663 },
+    { "lat": 25.0327754, "lon": 121.5672931 },
+    { "lat": 25.0327606, "lon": 121.5697491 },
+    { "lat": 25.0327686, "lon": 121.5714549 }
+  ],
+  "tags": {
+    "colour": "red",
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "捷運淡水信義線",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:ko": "첩운 단수이신이선",
+    "name:nan": "Chia̍t-ūn Tām-chúi Sìn-gī-sòaⁿ",
+    "name:nan-Hant": "捷運淡水信義線",
+    "name:nan-Latn-pehoeji": "Chia̍t-ūn Tām-chúi Sìn-gī-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍t-ūn Tām-tsuí Sìn-gī-suànn",
+    "name:zh": "捷運淡水信義線",
+    "name:zh-Hans": "捷运淡水信义线",
+    "name:zh-Hant": "捷運淡水信義線",
+    "network": "台北捷運",
+    "old_ref": "2",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "R",
+    "start_date": "2013-11-24",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線",
+    "wikipedia:en": "Tamsui–Xinyi line"
+  }
+},
+{
+  "type": "way",
+  "id": 197881275,
+  "bounds": {
+    "minlat": 25.0329205,
+    "minlon": 121.5299394,
+    "maxlat": 25.0336630,
+    "maxlon": 121.5714581
+  },
+  "nodes": [
+    631990205,
+    373399681,
+    8164766455,
+    6428668885,
+    6428668888,
+    3494960746,
+    6124808867,
+    373399668,
+    373399664,
+    6124808865,
+    2480211041,
+    373399659,
+    6124632036,
+    6428854537,
+    373399654,
+    6124632038,
+    6428854540,
+    5698897048,
+    5698897049,
+    5698897050,
+    5698897047,
+    373399637,
+    373399629,
+    373399625,
+    2080769944,
+    4373621834,
+    6124632061,
+    6124632060,
+    373399600,
+    6124632042,
+    6124632043,
+    6124632045,
+    2080769963
+  ],
+  "geometry": [
+    { "lat": 25.0329230, "lon": 121.5714581 },
+    { "lat": 25.0329205, "lon": 121.5697687 },
+    { "lat": 25.0329307, "lon": 121.5673406 },
+    { "lat": 25.0329795, "lon": 121.5649280 },
+    { "lat": 25.0330046, "lon": 121.5637888 },
+    { "lat": 25.0330359, "lon": 121.5624455 },
+    { "lat": 25.0330632, "lon": 121.5612008 },
+    { "lat": 25.0330998, "lon": 121.5595720 },
+    { "lat": 25.0331675, "lon": 121.5562062 },
+    { "lat": 25.0332406, "lon": 121.5526713 },
+    { "lat": 25.0332656, "lon": 121.5515034 },
+    { "lat": 25.0333176, "lon": 121.5492447 },
+    { "lat": 25.0333306, "lon": 121.5484603 },
+    { "lat": 25.0333382, "lon": 121.5480977 },
+    { "lat": 25.0333807, "lon": 121.5463896 },
+    { "lat": 25.0334059, "lon": 121.5456372 },
+    { "lat": 25.0334329, "lon": 121.5443557 },
+    { "lat": 25.0334383, "lon": 121.5442157 },
+    { "lat": 25.0334434, "lon": 121.5437731 },
+    { "lat": 25.0334528, "lon": 121.5433080 },
+    { "lat": 25.0334831, "lon": 121.5418793 },
+    { "lat": 25.0335296, "lon": 121.5395309 },
+    { "lat": 25.0335499, "lon": 121.5381766 },
+    { "lat": 25.0335814, "lon": 121.5367630 },
+    { "lat": 25.0336059, "lon": 121.5352971 },
+    { "lat": 25.0336316, "lon": 121.5341978 },
+    { "lat": 25.0336550, "lon": 121.5330221 },
+    { "lat": 25.0336392, "lon": 121.5324562 },
+    { "lat": 25.0335978, "lon": 121.5316240 },
+    { "lat": 25.0335797, "lon": 121.5312090 },
+    { "lat": 25.0335833, "lon": 121.5309059 },
+    { "lat": 25.0336094, "lon": 121.5303755 },
+    { "lat": 25.0336630, "lon": 121.5299394 }
+  ],
+  "tags": {
+    "colour": "red",
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "捷運淡水信義線",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:ko": "첩운 단수이신이선",
+    "name:nan": "Chia̍t-ūn Tām-chúi Sìn-gī-sòaⁿ",
+    "name:nan-Hant": "捷運淡水信義線",
+    "name:nan-Latn-pehoeji": "Chia̍t-ūn Tām-chúi Sìn-gī-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍t-ūn Tām-tsuí Sìn-gī-suànn",
+    "name:zh": "捷運淡水信義線",
+    "name:zh-Hans": "捷运淡水信义线",
+    "name:zh-Hant": "捷運淡水信義線",
+    "network": "台北捷運",
+    "old_ref": "2",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "R",
+    "start_date": "2013-11-24",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線",
+    "wikipedia:en": "Tamsui–Xinyi line"
+  }
+},
+{
+  "type": "way",
+  "id": 198199156,
+  "bounds": {
+    "minlat": 25.0407671,
+    "minlon": 121.5683614,
+    "maxlat": 25.0455413,
+    "maxlon": 121.5829689
+  },
+  "nodes": [
+    7538747712,
+    8164766555,
+    8164766556,
+    2083636099,
+    2083636002,
+    2083636095,
+    8164766548,
+    2083636093,
+    8164766547,
+    2083636094,
+    2083636096,
+    8164766546,
+    8164766544,
+    8164766545,
+    2083636100,
+    8164766543,
+    8164766542,
+    2083636119,
+    8164766541,
+    2083636121,
+    2083636123,
+    8164766540,
+    8164766539,
+    2083636134,
+    2083636136,
+    2083636138
+  ],
+  "geometry": [
+    { "lat": 25.0409796, "lon": 121.5683614 },
+    { "lat": 25.0409579, "lon": 121.5692821 },
+    { "lat": 25.0409334, "lon": 121.5703270 },
+    { "lat": 25.0408944, "lon": 121.5719353 },
+    { "lat": 25.0407944, "lon": 121.5757194 },
+    { "lat": 25.0407671, "lon": 121.5768932 },
+    { "lat": 25.0407692, "lon": 121.5771772 },
+    { "lat": 25.0407717, "lon": 121.5773498 },
+    { "lat": 25.0407958, "lon": 121.5775423 },
+    { "lat": 25.0408224, "lon": 121.5777006 },
+    { "lat": 25.0408766, "lon": 121.5779339 },
+    { "lat": 25.0409522, "lon": 121.5781719 },
+    { "lat": 25.0410175, "lon": 121.5783483 },
+    { "lat": 25.0410888, "lon": 121.5785067 },
+    { "lat": 25.0412537, "lon": 121.5788291 },
+    { "lat": 25.0415184, "lon": 121.5792985 },
+    { "lat": 25.0418526, "lon": 121.5797926 },
+    { "lat": 25.0420210, "lon": 121.5800097 },
+    { "lat": 25.0424480, "lon": 121.5805209 },
+    { "lat": 25.0425356, "lon": 121.5806186 },
+    { "lat": 25.0429763, "lon": 121.5810567 },
+    { "lat": 25.0433827, "lon": 121.5814028 },
+    { "lat": 25.0436791, "lon": 121.5816332 },
+    { "lat": 25.0447111, "lon": 121.5823736 },
+    { "lat": 25.0448700, "lon": 121.5824867 },
+    { "lat": 25.0455413, "lon": 121.5829689 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "捷運板南線",
+    "name:en": "MRT Bannan Line",
+    "name:nan": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Hant": "捷運板南線",
+    "name:nan-Latn-pehoeji": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍t-ūn Pang-lâm-suànn",
+    "name:zh": "捷運板南線",
+    "network": "台北捷運",
+    "old_ref": "5",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BL",
+    "start_date": "2000-12-30",
+    "tunnel": "yes",
+    "voltage": "750"
+  }
+},
+{
+  "type": "way",
+  "id": 198199157,
+  "bounds": {
+    "minlat": 25.0408873,
+    "minlon": 121.5683503,
+    "maxlat": 25.0456138,
+    "maxlon": 121.5828567
+  },
+  "nodes": [
+    7538747711,
+    8164766552,
+    8164766557,
+    253385558,
+    253385574,
+    253385585,
+    2083636097,
+    8164766467,
+    2083636098,
+    253385590,
+    8164766466,
+    8164766465,
+    253385595,
+    8164766464,
+    8164766463,
+    253385610,
+    8164766462,
+    2083636122,
+    8164766461,
+    8164766460,
+    253385620,
+    1969448745,
+    253385661,
+    253385672
+  ],
+  "geometry": [
+    { "lat": 25.0411467, "lon": 121.5683503 },
+    { "lat": 25.0411218, "lon": 121.5692272 },
+    { "lat": 25.0410962, "lon": 121.5701285 },
+    { "lat": 25.0410336, "lon": 121.5711453 },
+    { "lat": 25.0409179, "lon": 121.5757383 },
+    { "lat": 25.0408873, "lon": 121.5768735 },
+    { "lat": 25.0408890, "lon": 121.5772920 },
+    { "lat": 25.0409085, "lon": 121.5774529 },
+    { "lat": 25.0409437, "lon": 121.5776836 },
+    { "lat": 25.0409935, "lon": 121.5779156 },
+    { "lat": 25.0410846, "lon": 121.5782060 },
+    { "lat": 25.0411995, "lon": 121.5784809 },
+    { "lat": 25.0413222, "lon": 121.5787230 },
+    { "lat": 25.0414805, "lon": 121.5790093 },
+    { "lat": 25.0418972, "lon": 121.5796636 },
+    { "lat": 25.0420802, "lon": 121.5798960 },
+    { "lat": 25.0424016, "lon": 121.5802999 },
+    { "lat": 25.0425270, "lon": 121.5804384 },
+    { "lat": 25.0428612, "lon": 121.5807798 },
+    { "lat": 25.0435331, "lon": 121.5813630 },
+    { "lat": 25.0440373, "lon": 121.5817265 },
+    { "lat": 25.0447727, "lon": 121.5822613 },
+    { "lat": 25.0449445, "lon": 121.5823817 },
+    { "lat": 25.0456138, "lon": 121.5828567 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "捷運板南線",
+    "name:en": "MRT Bannan Line",
+    "name:nan": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Hant": "捷運板南線",
+    "name:nan-Latn-pehoeji": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍t-ūn Pang-lâm-suànn",
+    "name:zh": "捷運板南線",
+    "network": "台北捷運",
+    "old_ref": "5",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BL",
+    "start_date": "2000-12-30",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q708378",
+    "wikipedia": "zh:板南線"
+  }
+},
+{
+  "type": "way",
+  "id": 198199175,
+  "bounds": {
+    "minlat": 25.0413826,
+    "minlon": 121.5529185,
+    "maxlat": 25.0415017,
+    "maxlon": 121.5587076
+  },
+  "nodes": [
+    549623520,
+    1336186432,
+    2083636103
+  ],
+  "geometry": [
+    { "lat": 25.0415017, "lon": 121.5529185 },
+    { "lat": 25.0414108, "lon": 121.5573807 },
+    { "lat": 25.0413826, "lon": 121.5587076 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "捷運板南線",
+    "name:en": "MRT Bannan Line",
+    "name:nan": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Hant": "捷運板南線",
+    "name:nan-Latn-pehoeji": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍t-ūn Pang-lâm-suànn",
+    "name:zh": "捷運板南線",
+    "network": "台北捷運",
+    "old_ref": "5",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BL",
+    "start_date": "1999-12-24",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q708378",
+    "wikipedia": "zh:板南線"
+  }
+},
+{
+  "type": "way",
+  "id": 198199176,
+  "bounds": {
+    "minlat": 25.0412606,
+    "minlon": 121.5529268,
+    "maxlat": 25.0413766,
+    "maxlon": 121.5587072
+  },
+  "nodes": [
+    2083636104,
+    2083635999,
+    2083636102
+  ],
+  "geometry": [
+    { "lat": 25.0413766, "lon": 121.5529268 },
+    { "lat": 25.0412904, "lon": 121.5573719 },
+    { "lat": 25.0412606, "lon": 121.5587072 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "捷運板南線",
+    "name:en": "MRT Bannan Line",
+    "name:nan": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Hant": "捷運板南線",
+    "name:nan-Latn-pehoeji": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍t-ūn Pang-lâm-suànn",
+    "name:zh": "捷運板南線",
+    "network": "台北捷運",
+    "old_ref": "5",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BL",
+    "start_date": "1999-12-24",
+    "tunnel": "yes",
+    "voltage": "750"
+  }
+},
+{
+  "type": "way",
+  "id": 198199186,
+  "bounds": {
+    "minlat": 25.0409796,
+    "minlon": 121.5587072,
+    "maxlat": 25.0412606,
+    "maxlon": 121.5683614
+  },
+  "nodes": [
+    2083636102,
+    2083636101,
+    8164766549,
+    8164766550,
+    8164766551,
+    2083636000,
+    8164766553,
+    7538747712
+  ],
+  "geometry": [
+    { "lat": 25.0412606, "lon": 121.5587072 },
+    { "lat": 25.0412305, "lon": 121.5601542 },
+    { "lat": 25.0411940, "lon": 121.5615702 },
+    { "lat": 25.0411584, "lon": 121.5623514 },
+    { "lat": 25.0410863, "lon": 121.5643192 },
+    { "lat": 25.0410440, "lon": 121.5661026 },
+    { "lat": 25.0410037, "lon": 121.5675147 },
+    { "lat": 25.0409796, "lon": 121.5683614 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-3",
+    "maxspeed": "80",
+    "name": "捷運板南線",
+    "name:en": "MRT Bannan Line",
+    "name:nan": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Hant": "捷運板南線",
+    "name:nan-Latn-pehoeji": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍t-ūn Pang-lâm-suànn",
+    "name:zh": "捷運板南線",
+    "name:zh-Hans": "捷运板南线",
+    "name:zh-Hant": "捷運板南線",
+    "network": "台北捷運",
+    "old_ref": "5",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BL",
+    "start_date": "1999-12-24",
+    "tunnel": "yes",
+    "voltage": "750"
+  }
+},
+{
+  "type": "way",
+  "id": 198199188,
+  "bounds": {
+    "minlat": 25.0411467,
+    "minlon": 121.5587076,
+    "maxlat": 25.0413826,
+    "maxlon": 121.5683503
+  },
+  "nodes": [
+    2083636103,
+    253385528,
+    253385544,
+    8164766554,
+    7538747711
+  ],
+  "geometry": [
+    { "lat": 25.0413826, "lon": 121.5587076 },
+    { "lat": 25.0413540, "lon": 121.5601569 },
+    { "lat": 25.0412081, "lon": 121.5661055 },
+    { "lat": 25.0411698, "lon": 121.5675053 },
+    { "lat": 25.0411467, "lon": 121.5683503 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-3",
+    "maxspeed": "80",
+    "name": "捷運板南線",
+    "name:en": "MRT Bannan Line",
+    "name:nan": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Hant": "捷運板南線",
+    "name:nan-Latn-pehoeji": "Chia̍t-ūn Pang-lâm-sòaⁿ",
+    "name:nan-Latn-tailo": "Tsia̍t-ūn Pang-lâm-suànn",
+    "name:zh": "捷運板南線",
+    "name:zh-Hans": "捷运板南线",
+    "name:zh-Hant": "捷運板南線",
+    "network": "台北捷運",
+    "old_ref": "5",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "ref": "BL",
+    "start_date": "1999-12-24",
+    "tunnel": "yes",
+    "voltage": "750"
+  }
+},
+{
+  "type": "way",
+  "id": 294015487,
+  "bounds": {
+    "minlat": 25.0181522,
+    "minlon": 121.5584666,
+    "maxlat": 25.0187840,
+    "maxlon": 121.5592079
+  },
+  "nodes": [
+    2975835132,
+    2975836033,
+    2975836034,
+    2975836035,
+    2975836036,
+    2975836039,
+    2975836040,
+    2975836041,
+    2975836042,
+    2975836043,
+    13059048610,
+    13059048609,
+    2975835132
+  ],
+  "geometry": [
+    { "lat": 25.0187840, "lon": 121.5585974 },
+    { "lat": 25.0186944, "lon": 121.5585065 },
+    { "lat": 25.0186406, "lon": 121.5585658 },
+    { "lat": 25.0186075, "lon": 121.5585418 },
+    { "lat": 25.0185699, "lon": 121.5585811 },
+    { "lat": 25.0184598, "lon": 121.5584666 },
+    { "lat": 25.0182135, "lon": 121.5587501 },
+    { "lat": 25.0183187, "lon": 121.5588652 },
+    { "lat": 25.0181522, "lon": 121.5590583 },
+    { "lat": 25.0183004, "lon": 121.5592079 },
+    { "lat": 25.0186717, "lon": 121.5587600 },
+    { "lat": 25.0186504, "lon": 121.5587358 },
+    { "lat": 25.0187840, "lon": 121.5585974 }
+  ],
+  "tags": {
+    "building": "train_station",
+    "layer": "1",
+    "name": "捷運麟光站",
+    "name:en": "Taipei Metro Linguang Station",
+    "name:zh": "捷運麟光站"
+  }
+},
+{
+  "type": "way",
+  "id": 312729918,
+  "bounds": {
+    "minlat": 25.0401518,
+    "minlon": 121.5643092,
+    "maxlat": 25.0409242,
+    "maxlon": 121.5658975
+  },
+  "nodes": [
+    5296916564,
+    3186194994,
+    6194898835,
+    6194898834,
+    6194898833,
+    3186194993,
+    6194897859,
+    6194897856,
+    2793299854,
+    6194898831,
+    6194898830,
+    6194898829,
+    6194898832,
+    3186194986,
+    3186194983,
+    6194898843,
+    6194897884,
+    6194898844,
+    3186194982,
+    6194898845,
+    6194898847,
+    3186194981,
+    6194898846,
+    3186194980,
+    6194898849,
+    6194898848,
+    3186194985,
+    6194898592,
+    6194898591,
+    6194898590,
+    3186194987,
+    6194898857,
+    3184833867,
+    6194898595,
+    6194898596,
+    6194898594,
+    6194898593,
+    3186194989,
+    3184833871,
+    6194898856,
+    3186194990,
+    6194898855,
+    6194898852,
+    6194898853,
+    6194898851,
+    6194898850,
+    6194898854,
+    3186194992,
+    6194898837,
+    6194898836,
+    6194898842,
+    3186194996,
+    6194897849,
+    6194898841,
+    6194898840,
+    6194898839,
+    6194898838,
+    5296916564
+  ],
+  "geometry": [
+    { "lat": 25.0409242, "lon": 121.5648241 },
+    { "lat": 25.0408981, "lon": 121.5657582 },
+    { "lat": 25.0408463, "lon": 121.5657573 },
+    { "lat": 25.0408421, "lon": 121.5658975 },
+    { "lat": 25.0406534, "lon": 121.5658927 },
+    { "lat": 25.0406534, "lon": 121.5658883 },
+    { "lat": 25.0406419, "lon": 121.5658879 },
+    { "lat": 25.0404967, "lon": 121.5658836 },
+    { "lat": 25.0402823, "lon": 121.5658773 },
+    { "lat": 25.0402878, "lon": 121.5656514 },
+    { "lat": 25.0401845, "lon": 121.5656487 },
+    { "lat": 25.0401842, "lon": 121.5656633 },
+    { "lat": 25.0401518, "lon": 121.5656624 },
+    { "lat": 25.0401710, "lon": 121.5648545 },
+    { "lat": 25.0402009, "lon": 121.5648554 },
+    { "lat": 25.0402026, "lon": 121.5647959 },
+    { "lat": 25.0402039, "lon": 121.5647664 },
+    { "lat": 25.0402062, "lon": 121.5647392 },
+    { "lat": 25.0402102, "lon": 121.5647085 },
+    { "lat": 25.0402165, "lon": 121.5646013 },
+    { "lat": 25.0401976, "lon": 121.5646005 },
+    { "lat": 25.0402012, "lon": 121.5645076 },
+    { "lat": 25.0402441, "lon": 121.5645116 },
+    { "lat": 25.0402532, "lon": 121.5643254 },
+    { "lat": 25.0402833, "lon": 121.5643247 },
+    { "lat": 25.0402921, "lon": 121.5643314 },
+    { "lat": 25.0403278, "lon": 121.5643092 },
+    { "lat": 25.0403386, "lon": 121.5643416 },
+    { "lat": 25.0403471, "lon": 121.5643732 },
+    { "lat": 25.0403523, "lon": 121.5644010 },
+    { "lat": 25.0403535, "lon": 121.5644327 },
+    { "lat": 25.0403772, "lon": 121.5644172 },
+    { "lat": 25.0404058, "lon": 121.5644044 },
+    { "lat": 25.0404309, "lon": 121.5643946 },
+    { "lat": 25.0404607, "lon": 121.5643906 },
+    { "lat": 25.0404920, "lon": 121.5643892 },
+    { "lat": 25.0405139, "lon": 121.5643916 },
+    { "lat": 25.0405309, "lon": 121.5643945 },
+    { "lat": 25.0405516, "lon": 121.5644016 },
+    { "lat": 25.0405786, "lon": 121.5644125 },
+    { "lat": 25.0405716, "lon": 121.5644243 },
+    { "lat": 25.0405965, "lon": 121.5644296 },
+    { "lat": 25.0406143, "lon": 121.5644360 },
+    { "lat": 25.0406364, "lon": 121.5644472 },
+    { "lat": 25.0406598, "lon": 121.5644650 },
+    { "lat": 25.0406759, "lon": 121.5644814 },
+    { "lat": 25.0406888, "lon": 121.5644967 },
+    { "lat": 25.0407257, "lon": 121.5645237 },
+    { "lat": 25.0407516, "lon": 121.5645456 },
+    { "lat": 25.0407727, "lon": 121.5645700 },
+    { "lat": 25.0407926, "lon": 121.5645959 },
+    { "lat": 25.0408001, "lon": 121.5647015 },
+    { "lat": 25.0408207, "lon": 121.5647024 },
+    { "lat": 25.0408431, "lon": 121.5647057 },
+    { "lat": 25.0408457, "lon": 121.5647200 },
+    { "lat": 25.0408582, "lon": 121.5647203 },
+    { "lat": 25.0408661, "lon": 121.5648207 },
+    { "lat": 25.0409242, "lon": 121.5648241 }
+  ],
+  "tags": {
+    "addr:city": "臺北市",
+    "addr:country": "TW",
+    "addr:district": "信義區",
+    "addr:full": "11065臺北市信義區忠孝東路五段6號",
+    "addr:housenumber": "6",
+    "addr:postcode": "11065",
+    "addr:street": "忠孝東路五段",
+    "alt_name:ja": "市政府前高速バスターミナル",
+    "amenity": "bus_station",
+    "building": "transportation",
+    "building:colour": "gray",
+    "building:levels": "32",
+    "bus": "yes",
+    "height": "145.4",
+    "name": "市府轉運站",
+    "name:en": "Taipei City Hall Bus Station",
+    "name:ja": "市府バスターミナル",
+    "name:ko": "타이베이 시청 버스정류장",
+    "name:nan": "Chhī-hú Choán-ūn-chām",
+    "name:nan-Hant": "市府轉運站",
+    "name:nan-Latn-pehoeji": "Chhī-hú Choán-ūn-chām",
+    "name:nan-Latn-tailo": "Tshī-hú Tsuán-ūn-tsām",
+    "name:zh": "市府轉運站",
+    "note": "服務範圍：基隆、宜蘭、桃竹苗、臺中、臺南",
+    "opening_hours": "05:00-01:00",
+    "operator": "臺北市公共運輸處",
+    "phone": "+886-2-87806252",
+    "public_transport": "station",
+    "start_date": "2010-08-05",
+    "website": "http://www.estation.com.tw",
+    "wheelchair": "yes",
+    "wikidata": "Q7676283",
+    "wikipedia": "zh:市府轉運站"
+  }
+},
+{
+  "type": "way",
+  "id": 381111230,
+  "bounds": {
+    "minlat": 25.0443525,
+    "minlon": 121.5201149,
+    "maxlat": 25.0522643,
+    "maxlon": 121.6011388
+  },
+  "nodes": [
+    5664388569,
+    5244829096,
+    5244829099,
+    5664388574,
+    8114350609,
+    8114350610,
+    8114382422,
+    5664388577,
+    5307778637,
+    5244929974,
+    5244929975,
+    8114350599,
+    8114350598,
+    8114350597,
+    8114350596,
+    6252193582,
+    6252193549,
+    6252193530,
+    5244829100,
+    6252193587,
+    3298971470,
+    6252193513,
+    6252193512,
+    6252193514,
+    6252193590,
+    6252193500,
+    6252193498,
+    6252193499,
+    6252193494,
+    3298971464,
+    6252193491,
+    3298971462,
+    8164766432,
+    8164766431,
+    8164766410,
+    8164766424,
+    8164766423,
+    8164766422,
+    8164766421,
+    8164766420,
+    8164766419,
+    8164766418,
+    3298971466,
+    3298970159,
+    8164766405,
+    8164766265,
+    8164766264,
+    8164766263,
+    8164766262,
+    8164766261,
+    8164766260,
+    8164766259,
+    8164766258,
+    8164766257,
+    8164766256,
+    8164766255,
+    8164766254,
+    8164766253,
+    8164766252,
+    8164766251,
+    3298970160,
+    8164766159,
+    8164766156,
+    8164766157,
+    5244808394,
+    8164766148,
+    5244808396,
+    5244808398,
+    3298971473,
+    5244808401,
+    8164766181,
+    3298971479,
+    3949466814,
+    3949466816,
+    3298971483,
+    8164766152,
+    3298971482,
+    3953678531,
+    3953678533,
+    3298971476,
+    8164766231,
+    8164766203,
+    8164766201,
+    8164766200,
+    8164766199,
+    8164766198,
+    8164766197,
+    8164766196,
+    8164766195,
+    8164766194,
+    8164766193,
+    3298971477,
+    3298971485,
+    3298971487,
+    5664370430
+  ],
+  "geometry": [
+    { "lat": 25.0471420, "lon": 121.5201149 },
+    { "lat": 25.0470931, "lon": 121.5203768 },
+    { "lat": 25.0470545, "lon": 121.5205715 },
+    { "lat": 25.0470295, "lon": 121.5206908 },
+    { "lat": 25.0469386, "lon": 121.5211712 },
+    { "lat": 25.0468271, "lon": 121.5217596 },
+    { "lat": 25.0468226, "lon": 121.5217837 },
+    { "lat": 25.0467304, "lon": 121.5221413 },
+    { "lat": 25.0463153, "lon": 121.5238285 },
+    { "lat": 25.0460279, "lon": 121.5251054 },
+    { "lat": 25.0458457, "lon": 121.5259914 },
+    { "lat": 25.0457862, "lon": 121.5263870 },
+    { "lat": 25.0457607, "lon": 121.5267156 },
+    { "lat": 25.0457461, "lon": 121.5268698 },
+    { "lat": 25.0457436, "lon": 121.5274076 },
+    { "lat": 25.0457515, "lon": 121.5288047 },
+    { "lat": 25.0457619, "lon": 121.5298102 },
+    { "lat": 25.0457676, "lon": 121.5303054 },
+    { "lat": 25.0457599, "lon": 121.5307680 },
+    { "lat": 25.0457339, "lon": 121.5312351 },
+    { "lat": 25.0457037, "lon": 121.5315251 },
+    { "lat": 25.0456604, "lon": 121.5318312 },
+    { "lat": 25.0456191, "lon": 121.5320733 },
+    { "lat": 25.0455711, "lon": 121.5323094 },
+    { "lat": 25.0454537, "lon": 121.5328144 },
+    { "lat": 25.0450942, "lon": 121.5340468 },
+    { "lat": 25.0450110, "lon": 121.5343539 },
+    { "lat": 25.0449338, "lon": 121.5346643 },
+    { "lat": 25.0448804, "lon": 121.5349413 },
+    { "lat": 25.0448170, "lon": 121.5353088 },
+    { "lat": 25.0447734, "lon": 121.5356795 },
+    { "lat": 25.0445130, "lon": 121.5406278 },
+    { "lat": 25.0445210, "lon": 121.5411890 },
+    { "lat": 25.0445607, "lon": 121.5417758 },
+    { "lat": 25.0447814, "lon": 121.5436045 },
+    { "lat": 25.0448233, "lon": 121.5439133 },
+    { "lat": 25.0449733, "lon": 121.5451591 },
+    { "lat": 25.0450048, "lon": 121.5455673 },
+    { "lat": 25.0450215, "lon": 121.5459310 },
+    { "lat": 25.0450231, "lon": 121.5462857 },
+    { "lat": 25.0450048, "lon": 121.5468599 },
+    { "lat": 25.0449593, "lon": 121.5473786 },
+    { "lat": 25.0445783, "lon": 121.5508870 },
+    { "lat": 25.0443906, "lon": 121.5525691 },
+    { "lat": 25.0443821, "lon": 121.5526779 },
+    { "lat": 25.0443725, "lon": 121.5527873 },
+    { "lat": 25.0443591, "lon": 121.5530173 },
+    { "lat": 25.0443531, "lon": 121.5532755 },
+    { "lat": 25.0443525, "lon": 121.5535095 },
+    { "lat": 25.0443634, "lon": 121.5537516 },
+    { "lat": 25.0443804, "lon": 121.5540252 },
+    { "lat": 25.0444059, "lon": 121.5542438 },
+    { "lat": 25.0444405, "lon": 121.5545127 },
+    { "lat": 25.0444904, "lon": 121.5548205 },
+    { "lat": 25.0445414, "lon": 121.5550954 },
+    { "lat": 25.0446185, "lon": 121.5554903 },
+    { "lat": 25.0447224, "lon": 121.5560704 },
+    { "lat": 25.0448530, "lon": 121.5567423 },
+    { "lat": 25.0449539, "lon": 121.5572626 },
+    { "lat": 25.0450219, "lon": 121.5575577 },
+    { "lat": 25.0451610, "lon": 121.5580721 },
+    { "lat": 25.0452874, "lon": 121.5584649 },
+    { "lat": 25.0455035, "lon": 121.5590571 },
+    { "lat": 25.0462256, "lon": 121.5607089 },
+    { "lat": 25.0472744, "lon": 121.5631042 },
+    { "lat": 25.0475115, "lon": 121.5637294 },
+    { "lat": 25.0477431, "lon": 121.5643944 },
+    { "lat": 25.0482177, "lon": 121.5657489 },
+    { "lat": 25.0483925, "lon": 121.5663044 },
+    { "lat": 25.0485834, "lon": 121.5670384 },
+    { "lat": 25.0489129, "lon": 121.5684527 },
+    { "lat": 25.0491062, "lon": 121.5694618 },
+    { "lat": 25.0492050, "lon": 121.5701527 },
+    { "lat": 25.0492449, "lon": 121.5705342 },
+    { "lat": 25.0492940, "lon": 121.5712325 },
+    { "lat": 25.0493017, "lon": 121.5721167 },
+    { "lat": 25.0492883, "lon": 121.5731331 },
+    { "lat": 25.0492680, "lon": 121.5751560 },
+    { "lat": 25.0492588, "lon": 121.5757447 },
+    { "lat": 25.0492290, "lon": 121.5765521 },
+    { "lat": 25.0491784, "lon": 121.5774175 },
+    { "lat": 25.0491701, "lon": 121.5775579 },
+    { "lat": 25.0491681, "lon": 121.5776584 },
+    { "lat": 25.0491395, "lon": 121.5798810 },
+    { "lat": 25.0491395, "lon": 121.5806803 },
+    { "lat": 25.0491553, "lon": 121.5811282 },
+    { "lat": 25.0492027, "lon": 121.5816794 },
+    { "lat": 25.0492586, "lon": 121.5821166 },
+    { "lat": 25.0493606, "lon": 121.5826718 },
+    { "lat": 25.0495708, "lon": 121.5836804 },
+    { "lat": 25.0497191, "lon": 121.5845279 },
+    { "lat": 25.0498971, "lon": 121.5857266 },
+    { "lat": 25.0506062, "lon": 121.5901638 },
+    { "lat": 25.0520500, "lon": 121.5994245 },
+    { "lat": 25.0522643, "lon": 121.6011388 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "frequency": "60",
+    "gauge": "1435",
+    "highspeed": "yes",
+    "layer": "-1",
+    "maxspeed": "130",
+    "name": "台灣高速鐵路",
+    "name:en": "Taiwan High Speed Rail",
+    "name:ja": "台湾高速鉄道",
+    "name:nan": "Tâi-oân-ko-sok-thih-lō͘",
+    "name:nan-Latn-pehoeji": "Tâi-oân-ko-sok-thih-lō͘",
+    "name:nan-Latn-tailo": "Tâi-uân-ko-sok-thih-lōo",
+    "name:ru": "Тайваньская высокоскоростная железная дорога",
+    "name:zh": "台灣高速鐵路",
+    "network": "台灣高鐵",
+    "network:en": "THSR",
+    "network:zh": "台灣高鐵",
+    "operator": "台灣高速鐵路股份有限公司",
+    "railway": "rail",
+    "ref": "台灣高鐵",
+    "start_date": "2016-07-01",
+    "tunnel": "yes",
+    "usage": "main",
+    "voltage": "25000",
+    "wikidata": "Q706198",
+    "wikipedia": "zh:台灣高鐵"
+  }
+},
+{
+  "type": "way",
+  "id": 453081584,
+  "bounds": {
+    "minlat": 25.0340797,
+    "minlon": 121.5751360,
+    "maxlat": 25.0374489,
+    "maxlon": 121.5821744
+  },
+  "nodes": [
+    12244967782,
+    13622990155,
+    13622990156,
+    4498833440,
+    13622990153,
+    4498833441,
+    13622990143,
+    13622990152,
+    4498833442,
+    13622990142,
+    4498833443,
+    13622990151,
+    13622990144,
+    4498833444
+  ],
+  "geometry": [
+    { "lat": 25.0374489, "lon": 121.5821744 },
+    { "lat": 25.0370843, "lon": 121.5812364 },
+    { "lat": 25.0367182, "lon": 121.5802947 },
+    { "lat": 25.0364779, "lon": 121.5796765 },
+    { "lat": 25.0364218, "lon": 121.5794858 },
+    { "lat": 25.0363809, "lon": 121.5792804 },
+    { "lat": 25.0363330, "lon": 121.5788184 },
+    { "lat": 25.0362912, "lon": 121.5785184 },
+    { "lat": 25.0362426, "lon": 121.5782864 },
+    { "lat": 25.0361711, "lon": 121.5780554 },
+    { "lat": 25.0360490, "lon": 121.5778178 },
+    { "lat": 25.0359391, "lon": 121.5776289 },
+    { "lat": 25.0357860, "lon": 121.5774230 },
+    { "lat": 25.0340797, "lon": 121.5751360 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "信義線東延段",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:zh": "信義線東延段",
+    "network": "台北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線"
+  }
+},
+{
+  "type": "way",
+  "id": 453081585,
+  "bounds": {
+    "minlat": 25.0340010,
+    "minlon": 121.5751909,
+    "maxlat": 25.0373520,
+    "maxlon": 121.5822145
+  },
+  "nodes": [
+    4498833459,
+    13622990145,
+    13622990149,
+    4498833458,
+    5617368833,
+    5617368825,
+    4498833457,
+    13622990148,
+    4498833456,
+    13622990150,
+    4498833455,
+    13622990154,
+    13622990157,
+    12244967781
+  ],
+  "geometry": [
+    { "lat": 25.0340010, "lon": 121.5751909 },
+    { "lat": 25.0357325, "lon": 121.5774657 },
+    { "lat": 25.0358693, "lon": 121.5776560 },
+    { "lat": 25.0359881, "lon": 121.5778423 },
+    { "lat": 25.0361087, "lon": 121.5780797 },
+    { "lat": 25.0361816, "lon": 121.5782909 },
+    { "lat": 25.0362265, "lon": 121.5785001 },
+    { "lat": 25.0362581, "lon": 121.5787219 },
+    { "lat": 25.0363144, "lon": 121.5794021 },
+    { "lat": 25.0363708, "lon": 121.5796655 },
+    { "lat": 25.0364474, "lon": 121.5799008 },
+    { "lat": 25.0366330, "lon": 121.5803361 },
+    { "lat": 25.0369887, "lon": 121.5812852 },
+    { "lat": 25.0373520, "lon": 121.5822145 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "信義線東延段",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:zh": "信義線東延段",
+    "network": "台北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線"
+  }
+},
+{
+  "type": "way",
+  "id": 574543348,
+  "bounds": {
+    "minlat": 25.0493862,
+    "minlon": 121.5761534,
+    "maxlat": 25.0495795,
+    "maxlon": 121.5828401
+  },
+  "nodes": [
+    8164766225,
+    8164766226,
+    8164766227,
+    8164766229,
+    5514562779,
+    5514562780,
+    5514562781,
+    8164766175,
+    8164766174,
+    8164766173,
+    8164766172,
+    5514562796
+  ],
+  "geometry": [
+    { "lat": 25.0493862, "lon": 121.5761534 },
+    { "lat": 25.0494244, "lon": 121.5767133 },
+    { "lat": 25.0494518, "lon": 121.5771063 },
+    { "lat": 25.0494744, "lon": 121.5776147 },
+    { "lat": 25.0494772, "lon": 121.5781037 },
+    { "lat": 25.0494633, "lon": 121.5795296 },
+    { "lat": 25.0494483, "lon": 121.5806339 },
+    { "lat": 25.0494487, "lon": 121.5811510 },
+    { "lat": 25.0494433, "lon": 121.5813616 },
+    { "lat": 25.0494554, "lon": 121.5815299 },
+    { "lat": 25.0495049, "lon": 121.5820823 },
+    { "lat": 25.0495795, "lon": 121.5828401 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "gauge": "1067",
+    "layer": "-3",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "railway": "rail",
+    "service": "siding",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 574543350,
+  "bounds": {
+    "minlat": 25.0492003,
+    "minlon": 121.5761641,
+    "maxlat": 25.0495384,
+    "maxlon": 121.5828422
+  },
+  "nodes": [
+    5514562782,
+    8164766210,
+    8164766211,
+    8164766212,
+    8164766213,
+    5514562798,
+    5514562799,
+    8164766222,
+    5514562785,
+    5514562783,
+    8164766228,
+    8164766223,
+    8164766224
+  ],
+  "geometry": [
+    { "lat": 25.0495384, "lon": 121.5828422 },
+    { "lat": 25.0494813, "lon": 121.5826119 },
+    { "lat": 25.0494052, "lon": 121.5822383 },
+    { "lat": 25.0493382, "lon": 121.5818732 },
+    { "lat": 25.0492918, "lon": 121.5815678 },
+    { "lat": 25.0492414, "lon": 121.5811026 },
+    { "lat": 25.0492179, "lon": 121.5807745 },
+    { "lat": 25.0492003, "lon": 121.5803075 },
+    { "lat": 25.0492070, "lon": 121.5794138 },
+    { "lat": 25.0492191, "lon": 121.5780862 },
+    { "lat": 25.0492290, "lon": 121.5776084 },
+    { "lat": 25.0492908, "lon": 121.5767971 },
+    { "lat": 25.0493449, "lon": 121.5761641 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "gauge": "1067",
+    "layer": "-3",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "railway": "rail",
+    "service": "siding",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 574543351,
+  "bounds": {
+    "minlat": 25.0493693,
+    "minlon": 121.5773219,
+    "maxlat": 25.0494609,
+    "maxlon": 121.5805813
+  },
+  "nodes": [
+    5514562786,
+    5514562787,
+    8164766216,
+    5514562788,
+    5514562789,
+    8164766217,
+    3024921080,
+    8164766218,
+    8164766219,
+    5514562786
+  ],
+  "geometry": [
+    { "lat": 25.0494477, "lon": 121.5773232 },
+    { "lat": 25.0493924, "lon": 121.5773219 },
+    { "lat": 25.0493709, "lon": 121.5794763 },
+    { "lat": 25.0493693, "lon": 121.5805813 },
+    { "lat": 25.0494357, "lon": 121.5805812 },
+    { "lat": 25.0494439, "lon": 121.5794986 },
+    { "lat": 25.0494609, "lon": 121.5784152 },
+    { "lat": 25.0494591, "lon": 121.5782281 },
+    { "lat": 25.0494603, "lon": 121.5776715 },
+    { "lat": 25.0494477, "lon": 121.5773232 }
+  ],
+  "tags": {
+    "area": "yes",
+    "layer": "-3",
+    "level": "-2",
+    "local_ref": "2",
+    "name": "2月台",
+    "public_transport": "platform",
+    "railway": "platform",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 574543353,
+  "bounds": {
+    "minlat": 25.0492130,
+    "minlon": 121.5773142,
+    "maxlat": 25.0493226,
+    "maxlon": 121.5805940
+  },
+  "nodes": [
+    5514562790,
+    5514562791,
+    8164766220,
+    5514562792,
+    8164766221,
+    5514562802,
+    5514562793,
+    5514562801,
+    5514562800,
+    5514562790
+  ],
+  "geometry": [
+    { "lat": 25.0493226, "lon": 121.5773142 },
+    { "lat": 25.0492612, "lon": 121.5773142 },
+    { "lat": 25.0492422, "lon": 121.5776481 },
+    { "lat": 25.0492244, "lon": 121.5791670 },
+    { "lat": 25.0492130, "lon": 121.5802337 },
+    { "lat": 25.0492220, "lon": 121.5805940 },
+    { "lat": 25.0492904, "lon": 121.5805910 },
+    { "lat": 25.0492826, "lon": 121.5800998 },
+    { "lat": 25.0492941, "lon": 121.5795982 },
+    { "lat": 25.0493226, "lon": 121.5773142 }
+  ],
+  "tags": {
+    "area": "yes",
+    "bench": "yes",
+    "layer": "-3",
+    "level": "-2",
+    "name": "1月台",
+    "public_transport": "platform",
+    "railway": "platform",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 593866771,
+  "bounds": {
+    "minlat": 25.0443071,
+    "minlon": 121.5195923,
+    "maxlat": 25.0492610,
+    "maxlon": 121.5775551
+  },
+  "nodes": [
+    8164766202,
+    8164766230,
+    3298971474,
+    8164766232,
+    3298971480,
+    7578490034,
+    8164766151,
+    3298971481,
+    3949466815,
+    3949466813,
+    8164766180,
+    5244808400,
+    3298971472,
+    5244808399,
+    5244808397,
+    8164766147,
+    5244808395,
+    8164766158,
+    8164766155,
+    3298971468,
+    3298971467,
+    3298970158,
+    8164766237,
+    8164766238,
+    8164766239,
+    8164766240,
+    8164766241,
+    8164766242,
+    8164766243,
+    8164766244,
+    8164766245,
+    8164766246,
+    8164766247,
+    8164766248,
+    8164766249,
+    8164766250,
+    8164766406,
+    3298970157,
+    3298971465,
+    8164766411,
+    8164766412,
+    8164766413,
+    8164766414,
+    8164766415,
+    8164766416,
+    8164766417,
+    8164766409,
+    8164766437,
+    8164766438,
+    3298971461,
+    6252193493,
+    6252193492,
+    3298971463,
+    6252193495,
+    6252193497,
+    6252193496,
+    6252193501,
+    6252193589,
+    6252193511,
+    6252193510,
+    6252193588,
+    6252193509,
+    3298971469,
+    8372514816,
+    5244829101,
+    6252193585,
+    6252193522,
+    6252193586,
+    6252193571,
+    8114350600,
+    8114350601,
+    8114350602,
+    8114350603,
+    8114350604,
+    8114350605,
+    5244929977,
+    5244929976,
+    5664388576,
+    8114350608,
+    5664388573,
+    5664388575,
+    5244829098,
+    8114350606,
+    5244829097,
+    5664388578
+  ],
+  "geometry": [
+    { "lat": 25.0491293, "lon": 121.5775551 },
+    { "lat": 25.0491363, "lon": 121.5774137 },
+    { "lat": 25.0491841, "lon": 121.5765511 },
+    { "lat": 25.0492201, "lon": 121.5757445 },
+    { "lat": 25.0492506, "lon": 121.5731301 },
+    { "lat": 25.0492575, "lon": 121.5723490 },
+    { "lat": 25.0492610, "lon": 121.5721127 },
+    { "lat": 25.0492487, "lon": 121.5711800 },
+    { "lat": 25.0492120, "lon": 121.5706391 },
+    { "lat": 25.0491638, "lon": 121.5701446 },
+    { "lat": 25.0488714, "lon": 121.5684642 },
+    { "lat": 25.0485424, "lon": 121.5670609 },
+    { "lat": 25.0483561, "lon": 121.5663240 },
+    { "lat": 25.0481726, "lon": 121.5657653 },
+    { "lat": 25.0476953, "lon": 121.5643999 },
+    { "lat": 25.0474616, "lon": 121.5637334 },
+    { "lat": 25.0472293, "lon": 121.5631198 },
+    { "lat": 25.0461883, "lon": 121.5607246 },
+    { "lat": 25.0454661, "lon": 121.5590749 },
+    { "lat": 25.0452471, "lon": 121.5584764 },
+    { "lat": 25.0451212, "lon": 121.5580840 },
+    { "lat": 25.0449780, "lon": 121.5575700 },
+    { "lat": 25.0449097, "lon": 121.5572740 },
+    { "lat": 25.0448087, "lon": 121.5567527 },
+    { "lat": 25.0446780, "lon": 121.5560805 },
+    { "lat": 25.0445741, "lon": 121.5555005 },
+    { "lat": 25.0444970, "lon": 121.5551057 },
+    { "lat": 25.0444458, "lon": 121.5548299 },
+    { "lat": 25.0443957, "lon": 121.5545206 },
+    { "lat": 25.0443609, "lon": 121.5542505 },
+    { "lat": 25.0443352, "lon": 121.5540301 },
+    { "lat": 25.0443181, "lon": 121.5537546 },
+    { "lat": 25.0443071, "lon": 121.5535107 },
+    { "lat": 25.0443077, "lon": 121.5532748 },
+    { "lat": 25.0443177, "lon": 121.5530113 },
+    { "lat": 25.0443307, "lon": 121.5527898 },
+    { "lat": 25.0443403, "lon": 121.5526723 },
+    { "lat": 25.0443456, "lon": 121.5525671 },
+    { "lat": 25.0445346, "lon": 121.5508816 },
+    { "lat": 25.0449160, "lon": 121.5473734 },
+    { "lat": 25.0449614, "lon": 121.5468567 },
+    { "lat": 25.0449797, "lon": 121.5462849 },
+    { "lat": 25.0449781, "lon": 121.5459324 },
+    { "lat": 25.0449614, "lon": 121.5455706 },
+    { "lat": 25.0449301, "lon": 121.5451643 },
+    { "lat": 25.0447802, "lon": 121.5439196 },
+    { "lat": 25.0447430, "lon": 121.5436120 },
+    { "lat": 25.0445159, "lon": 121.5417800 },
+    { "lat": 25.0444759, "lon": 121.5411893 },
+    { "lat": 25.0444680, "lon": 121.5406296 },
+    { "lat": 25.0446817, "lon": 121.5363160 },
+    { "lat": 25.0447206, "lon": 121.5357902 },
+    { "lat": 25.0447735, "lon": 121.5352999 },
+    { "lat": 25.0448287, "lon": 121.5349775 },
+    { "lat": 25.0448913, "lon": 121.5346556 },
+    { "lat": 25.0449685, "lon": 121.5343445 },
+    { "lat": 25.0450505, "lon": 121.5340407 },
+    { "lat": 25.0454085, "lon": 121.5328091 },
+    { "lat": 25.0454915, "lon": 121.5324750 },
+    { "lat": 25.0455298, "lon": 121.5323100 },
+    { "lat": 25.0455608, "lon": 121.5321571 },
+    { "lat": 25.0456149, "lon": 121.5318440 },
+    { "lat": 25.0456607, "lon": 121.5315235 },
+    { "lat": 25.0456640, "lon": 121.5314863 },
+    { "lat": 25.0457039, "lon": 121.5310431 },
+    { "lat": 25.0457230, "lon": 121.5306142 },
+    { "lat": 25.0457260, "lon": 121.5302300 },
+    { "lat": 25.0457226, "lon": 121.5298819 },
+    { "lat": 25.0457066, "lon": 121.5282646 },
+    { "lat": 25.0457011, "lon": 121.5276048 },
+    { "lat": 25.0457048, "lon": 121.5273741 },
+    { "lat": 25.0457060, "lon": 121.5270509 },
+    { "lat": 25.0457169, "lon": 121.5267102 },
+    { "lat": 25.0457508, "lon": 121.5263552 },
+    { "lat": 25.0457959, "lon": 121.5260464 },
+    { "lat": 25.0458305, "lon": 121.5258553 },
+    { "lat": 25.0459850, "lon": 121.5250977 },
+    { "lat": 25.0467861, "lon": 121.5217631 },
+    { "lat": 25.0467992, "lon": 121.5216966 },
+    { "lat": 25.0469089, "lon": 121.5211394 },
+    { "lat": 25.0469516, "lon": 121.5209384 },
+    { "lat": 25.0470262, "lon": 121.5205250 },
+    { "lat": 25.0470881, "lon": 121.5201601 },
+    { "lat": 25.0470989, "lon": 121.5200962 },
+    { "lat": 25.0471512, "lon": 121.5195923 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "frequency": "60",
+    "gauge": "1435",
+    "highspeed": "yes",
+    "layer": "-1",
+    "level": "-2",
+    "maxspeed": "130",
+    "name": "台灣高速鐵路",
+    "name:en": "Taiwan High Speed Rail",
+    "name:ja": "台湾高速鉄道",
+    "name:nan": "Tâi-oân-ko-sok-thih-lō͘",
+    "name:nan-Latn-pehoeji": "Tâi-oân-ko-sok-thih-lō͘",
+    "name:nan-Latn-tailo": "Tâi-uân-ko-sok-thih-lōo",
+    "name:ru": "Тайваньская высокоскоростная железная дорога",
+    "name:zh": "台灣高速鐵路",
+    "network": "台灣高鐵",
+    "network:en": "THSR",
+    "network:zh": "台灣高鐵",
+    "operator": "台灣高速鐵路股份有限公司",
+    "railway": "rail",
+    "ref": "台灣高鐵",
+    "start_date": "2016-07-01",
+    "tunnel": "yes",
+    "usage": "main",
+    "voltage": "25000",
+    "wikidata": "Q706198",
+    "wikipedia": "zh:台灣高鐵"
+  }
+},
+{
+  "type": "way",
+  "id": 665025772,
+  "bounds": {
+    "minlat": 25.0377227,
+    "minlon": 121.5831627,
+    "maxlat": 25.0416682,
+    "maxlon": 121.5855907
+  },
+  "nodes": [
+    4498833450,
+    6224661008,
+    11347795381,
+    11347795382,
+    6224661006,
+    6224661005,
+    6224661004,
+    11347795385,
+    11347795388,
+    11347795389,
+    6224661002,
+    11347795390,
+    6224661001,
+    11347795391,
+    11347795386,
+    11347795374,
+    1304689147
+  ],
+  "geometry": [
+    { "lat": 25.0377227, "lon": 121.5831627 },
+    { "lat": 25.0378217, "lon": 121.5834025 },
+    { "lat": 25.0379343, "lon": 121.5836081 },
+    { "lat": 25.0380521, "lon": 121.5837705 },
+    { "lat": 25.0381894, "lon": 121.5839280 },
+    { "lat": 25.0383572, "lon": 121.5840518 },
+    { "lat": 25.0385377, "lon": 121.5841522 },
+    { "lat": 25.0387261, "lon": 121.5842382 },
+    { "lat": 25.0389177, "lon": 121.5843124 },
+    { "lat": 25.0391559, "lon": 121.5843965 },
+    { "lat": 25.0393174, "lon": 121.5844368 },
+    { "lat": 25.0394762, "lon": 121.5844780 },
+    { "lat": 25.0396624, "lon": 121.5845144 },
+    { "lat": 25.0397895, "lon": 121.5845596 },
+    { "lat": 25.0399154, "lon": 121.5846090 },
+    { "lat": 25.0407366, "lon": 121.5850901 },
+    { "lat": 25.0416682, "lon": 121.5855907 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "信義線東延段",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:zh": "信義線東延段",
+    "network": "台北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "service": "yard",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線"
+  }
+},
+{
+  "type": "way",
+  "id": 665025773,
+  "bounds": {
+    "minlat": 25.0378189,
+    "minlon": 121.5831262,
+    "maxlat": 25.0416986,
+    "maxlon": 121.5855180
+  },
+  "nodes": [
+    4498833448,
+    6224661017,
+    11347795376,
+    6224661016,
+    6224661015,
+    6224661014,
+    11347795379,
+    6224661013,
+    11347795392,
+    6224661012,
+    6224661011,
+    11347795393,
+    6224661010,
+    11347795394,
+    11347795387,
+    11347795375,
+    6224661009
+  ],
+  "geometry": [
+    { "lat": 25.0378189, "lon": 121.5831262 },
+    { "lat": 25.0379176, "lon": 121.5833371 },
+    { "lat": 25.0380065, "lon": 121.5835074 },
+    { "lat": 25.0381175, "lon": 121.5836794 },
+    { "lat": 25.0382616, "lon": 121.5838304 },
+    { "lat": 25.0384218, "lon": 121.5839540 },
+    { "lat": 25.0385923, "lon": 121.5840578 },
+    { "lat": 25.0387584, "lon": 121.5841323 },
+    { "lat": 25.0388998, "lon": 121.5841915 },
+    { "lat": 25.0391300, "lon": 121.5842801 },
+    { "lat": 25.0393149, "lon": 121.5843361 },
+    { "lat": 25.0394901, "lon": 121.5843878 },
+    { "lat": 25.0396722, "lon": 121.5844354 },
+    { "lat": 25.0397975, "lon": 121.5844739 },
+    { "lat": 25.0399558, "lon": 121.5845360 },
+    { "lat": 25.0407817, "lon": 121.5850116 },
+    { "lat": 25.0416986, "lon": 121.5855180 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "信義線東延段",
+    "name:en": "Xinyi Line Eastern Extension",
+    "name:zh": "信義線東延段尾軌",
+    "network": "台北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "service": "yard",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線"
+  }
+},
+{
+  "type": "way",
+  "id": 665148048,
+  "bounds": {
+    "minlat": 25.0370675,
+    "minlon": 121.5815182,
+    "maxlat": 25.0379950,
+    "maxlon": 121.5832004
+  },
+  "nodes": [
+    6225739086,
+    6225739087,
+    8164502678,
+    12244967780,
+    8164502679,
+    8164502677,
+    6292910047,
+    12244968201,
+    6225739086
+  ],
+  "geometry": [
+    { "lat": 25.0376589, "lon": 121.5832004 },
+    { "lat": 25.0370675, "lon": 121.5816143 },
+    { "lat": 25.0372791, "lon": 121.5815182 },
+    { "lat": 25.0373906, "lon": 121.5818172 },
+    { "lat": 25.0374731, "lon": 121.5817797 },
+    { "lat": 25.0377117, "lon": 121.5824198 },
+    { "lat": 25.0377537, "lon": 121.5824007 },
+    { "lat": 25.0379950, "lon": 121.5830477 },
+    { "lat": 25.0376589, "lon": 121.5832004 }
+  ],
+  "tags": {
+    "building": "train_station",
+    "layer": "-1",
+    "name": "捷運廣慈/奉天宮站"
+  }
+},
+{
+  "type": "way",
+  "id": 685911181,
+  "bounds": {
+    "minlat": 25.0328293,
+    "minlon": 121.5637978,
+    "maxlat": 25.0329795,
+    "maxlon": 121.5649280
+  },
+  "nodes": [
+    6428668886,
+    8164766459,
+    6612004666,
+    8164766456,
+    6428668885
+  ],
+  "geometry": [
+    { "lat": 25.0328293, "lon": 121.5637978 },
+    { "lat": 25.0328895, "lon": 121.5640602 },
+    { "lat": 25.0329256, "lon": 121.5643564 },
+    { "lat": 25.0329654, "lon": 121.5646534 },
+    { "lat": 25.0329795, "lon": 121.5649280 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "railway": "subway",
+    "service": "crossover",
+    "tunnel": "yes",
+    "voltage": "750"
+  }
+},
+{
+  "type": "way",
+  "id": 685911182,
+  "bounds": {
+    "minlat": 25.0328015,
+    "minlon": 121.5637888,
+    "maxlat": 25.0330046,
+    "maxlon": 121.5649431
+  },
+  "nodes": [
+    6428668888,
+    8164766458,
+    6612004666,
+    8164766457,
+    6428668887
+  ],
+  "geometry": [
+    { "lat": 25.0330046, "lon": 121.5637888 },
+    { "lat": 25.0329810, "lon": 121.5640294 },
+    { "lat": 25.0329256, "lon": 121.5643564 },
+    { "lat": 25.0328737, "lon": 121.5646548 },
+    { "lat": 25.0328015, "lon": 121.5649431 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "railway": "subway",
+    "service": "crossover",
+    "tunnel": "yes",
+    "voltage": "750"
+  }
+},
+{
+  "type": "way",
+  "id": 806179561,
+  "bounds": {
+    "minlat": 25.0329230,
+    "minlon": 121.5714581,
+    "maxlat": 25.0340797,
+    "maxlon": 121.5751360
+  },
+  "nodes": [
+    4498833444,
+    8164766439,
+    4498833445,
+    8164766448,
+    8164766449,
+    8164766450,
+    4498833446,
+    8164766451,
+    8164766452,
+    8164766453,
+    8164766454,
+    4498833447,
+    631990205
+  ],
+  "geometry": [
+    { "lat": 25.0340797, "lon": 121.5751360 },
+    { "lat": 25.0337762, "lon": 121.5746547 },
+    { "lat": 25.0334837, "lon": 121.5741672 },
+    { "lat": 25.0333527, "lon": 121.5739054 },
+    { "lat": 25.0332996, "lon": 121.5737746 },
+    { "lat": 25.0332331, "lon": 121.5736137 },
+    { "lat": 25.0331427, "lon": 121.5733478 },
+    { "lat": 25.0330351, "lon": 121.5729193 },
+    { "lat": 25.0329913, "lon": 121.5726950 },
+    { "lat": 25.0329625, "lon": 121.5725414 },
+    { "lat": 25.0329402, "lon": 121.5723906 },
+    { "lat": 25.0329307, "lon": 121.5722794 },
+    { "lat": 25.0329230, "lon": 121.5714581 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "信義線東延段",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:zh": "信義線東延段",
+    "network": "台北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "service": "yard",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線"
+  }
+},
+{
+  "type": "way",
+  "id": 806179562,
+  "bounds": {
+    "minlat": 25.0327686,
+    "minlon": 121.5714549,
+    "maxlat": 25.0340010,
+    "maxlon": 121.5751909
+  },
+  "nodes": [
+    2051219307,
+    4498833462,
+    8164766447,
+    8164766446,
+    8164766445,
+    8164766444,
+    4498833461,
+    8164766443,
+    8164766442,
+    8164766441,
+    4498833460,
+    8164766440,
+    4498833459
+  ],
+  "geometry": [
+    { "lat": 25.0327686, "lon": 121.5714549 },
+    { "lat": 25.0328369, "lon": 121.5722757 },
+    { "lat": 25.0328469, "lon": 121.5724117 },
+    { "lat": 25.0328706, "lon": 121.5725666 },
+    { "lat": 25.0328962, "lon": 121.5727175 },
+    { "lat": 25.0329381, "lon": 121.5729488 },
+    { "lat": 25.0330468, "lon": 121.5733713 },
+    { "lat": 25.0331532, "lon": 121.5736476 },
+    { "lat": 25.0332168, "lon": 121.5738069 },
+    { "lat": 25.0332718, "lon": 121.5739359 },
+    { "lat": 25.0334033, "lon": 121.5742118 },
+    { "lat": 25.0336988, "lon": 121.5747078 },
+    { "lat": 25.0340010, "lon": 121.5751909 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "信義線東延段",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:zh": "信義線東延段",
+    "network": "台北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "service": "yard",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線"
+  }
+},
+{
+  "type": "way",
+  "id": 810653312,
+  "bounds": {
+    "minlat": 25.0323402,
+    "minlon": 121.5693057,
+    "maxlat": 25.0330418,
+    "maxlon": 121.5707367
+  },
+  "nodes": [
+    7579469028,
+    7579469034,
+    7579469033,
+    7579469032,
+    7579469031,
+    7579469021,
+    7579469030,
+    7579469019,
+    7579469020,
+    7579469029,
+    7579469036,
+    7579469035,
+    7579469027,
+    7642941536,
+    2641343821,
+    7579469028
+  ],
+  "geometry": [
+    { "lat": 25.0323728, "lon": 121.5699684 },
+    { "lat": 25.0323819, "lon": 121.5699706 },
+    { "lat": 25.0327684, "lon": 121.5698642 },
+    { "lat": 25.0327558, "lon": 121.5707340 },
+    { "lat": 25.0329800, "lon": 121.5707367 },
+    { "lat": 25.0329827, "lon": 121.5706740 },
+    { "lat": 25.0330418, "lon": 121.5693087 },
+    { "lat": 25.0330181, "lon": 121.5693085 },
+    { "lat": 25.0329677, "lon": 121.5693079 },
+    { "lat": 25.0327765, "lon": 121.5693057 },
+    { "lat": 25.0327712, "lon": 121.5696680 },
+    { "lat": 25.0323402, "lon": 121.5697936 },
+    { "lat": 25.0323450, "lon": 121.5698191 },
+    { "lat": 25.0325039, "lon": 121.5697741 },
+    { "lat": 25.0325336, "lon": 121.5698763 },
+    { "lat": 25.0323728, "lon": 121.5699684 }
+  ],
+  "tags": {
+    "building": "train_station",
+    "building:levels": "1",
+    "building:levels:underground": "2",
+    "layer": "-1",
+    "location": "underground",
+    "name": "捷運象山站",
+    "name:en": "MRT Xiangshan Station",
+    "name:zh": "捷運象山站"
+  }
+},
+{
+  "type": "way",
+  "id": 810653337,
+  "bounds": {
+    "minlat": 25.0328207,
+    "minlon": 121.5691608,
+    "maxlat": 25.0328992,
+    "maxlon": 121.5706728
+  },
+  "nodes": [
+    7579469094,
+    7579469093,
+    7579468663,
+    7579468665,
+    7579468661,
+    7579468659,
+    7579469092,
+    7579469091,
+    13154926409,
+    13154926408,
+    13154926407,
+    13154926406,
+    13154926405,
+    7579469094
+  ],
+  "geometry": [
+    { "lat": 25.0328992, "lon": 121.5691610 },
+    { "lat": 25.0328253, "lon": 121.5691608 },
+    { "lat": 25.0328233, "lon": 121.5698368 },
+    { "lat": 25.0328228, "lon": 121.5700075 },
+    { "lat": 25.0328219, "lon": 121.5702737 },
+    { "lat": 25.0328214, "lon": 121.5704400 },
+    { "lat": 25.0328207, "lon": 121.5706725 },
+    { "lat": 25.0328946, "lon": 121.5706728 },
+    { "lat": 25.0328953, "lon": 121.5704390 },
+    { "lat": 25.0328959, "lon": 121.5702723 },
+    { "lat": 25.0328963, "lon": 121.5701386 },
+    { "lat": 25.0328967, "lon": 121.5700071 },
+    { "lat": 25.0328960, "lon": 121.5698369 },
+    { "lat": 25.0328992, "lon": 121.5691610 }
+  ],
+  "tags": {
+    "area": "yes",
+    "layer": "-2",
+    "level": "-2",
+    "location": "underground",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "1;2"
+  }
+},
+{
+  "type": "way",
+  "id": 877532226,
+  "bounds": {
+    "minlat": 25.0407987,
+    "minlon": 121.5750477,
+    "maxlat": 25.0409132,
+    "maxlon": 121.5765054
+  },
+  "nodes": [
+    8164766056,
+    8164766055,
+    8164766054,
+    8164766053,
+    8164766056
+  ],
+  "geometry": [
+    { "lat": 25.0409132, "lon": 121.5750501 },
+    { "lat": 25.0408789, "lon": 121.5765054 },
+    { "lat": 25.0407987, "lon": 121.5765029 },
+    { "lat": 25.0408330, "lon": 121.5750477 },
+    { "lat": 25.0409132, "lon": 121.5750501 }
+  ],
+  "tags": {
+    "area": "yes",
+    "level": "-2",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "1;2"
+  }
+},
+{
+  "type": "way",
+  "id": 877532228,
+  "bounds": {
+    "minlat": 25.0437739,
+    "minlon": 121.5815934,
+    "maxlat": 25.0449859,
+    "maxlon": 121.5825069
+  },
+  "nodes": [
+    8164766064,
+    8164766063,
+    8164766062,
+    8164766061,
+    8164766064
+  ],
+  "geometry": [
+    { "lat": 25.0438123, "lon": 121.5815934 },
+    { "lat": 25.0449859, "lon": 121.5824421 },
+    { "lat": 25.0449475, "lon": 121.5825069 },
+    { "lat": 25.0437739, "lon": 121.5816581 },
+    { "lat": 25.0438123, "lon": 121.5815934 }
+  ],
+  "tags": {
+    "area": "yes",
+    "level": "-2",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "1;2"
+  }
+},
+{
+  "type": "way",
+  "id": 877532237,
+  "bounds": {
+    "minlat": 25.0412832,
+    "minlon": 121.5571348,
+    "maxlat": 25.0413927,
+    "maxlon": 121.5586464
+  },
+  "nodes": [
+    8164766088,
+    8164766087,
+    8164766086,
+    8164766085,
+    8164766088
+  ],
+  "geometry": [
+    { "lat": 25.0413603, "lon": 121.5586464 },
+    { "lat": 25.0412832, "lon": 121.5586443 },
+    { "lat": 25.0413156, "lon": 121.5571348 },
+    { "lat": 25.0413927, "lon": 121.5571368 },
+    { "lat": 25.0413603, "lon": 121.5586464 }
+  ],
+  "tags": {
+    "area": "yes",
+    "bench": "no",
+    "layer": "-2",
+    "level": "-2",
+    "network": "台北捷運藍線",
+    "operator": "台北捷運公司",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "國父紀念館",
+    "subway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 877532238,
+  "bounds": {
+    "minlat": 25.0410699,
+    "minlon": 121.5648558,
+    "maxlat": 25.0412124,
+    "maxlon": 121.5663992
+  },
+  "nodes": [
+    8164766092,
+    8164766089,
+    8164766090,
+    8164766091,
+    8164766092
+  ],
+  "geometry": [
+    { "lat": 25.0411102, "lon": 121.5648558 },
+    { "lat": 25.0412124, "lon": 121.5648591 },
+    { "lat": 25.0411720, "lon": 121.5663992 },
+    { "lat": 25.0410699, "lon": 121.5663959 },
+    { "lat": 25.0411102, "lon": 121.5648558 }
+  ],
+  "tags": {
+    "area": "yes",
+    "layer": "-2",
+    "level": "-2",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "1;2"
+  }
+},
+{
+  "type": "way",
+  "id": 877532241,
+  "bounds": {
+    "minlat": 25.0493511,
+    "minlon": 121.5749041,
+    "maxlat": 25.0493990,
+    "maxlon": 121.5755585
+  },
+  "nodes": [
+    8164766179,
+    8164766178
+  ],
+  "geometry": [
+    { "lat": 25.0493511, "lon": 121.5755585 },
+    { "lat": 25.0493990, "lon": 121.5749041 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "gauge": "1067",
+    "layer": "-3",
+    "old_operator": "臺灣鐵路管理局",
+    "old_operator:en": "Taiwan Railways Administration",
+    "old_operator:hak": "Thòi-vân Thiet-lu Kón-lî-khiu̍k",
+    "old_operator:nan": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Hant": "臺灣鐵路管理局",
+    "old_operator:nan-Latn-pehoeji": "Tâi-oân Thih-lō͘ Koán-lí-kio̍k",
+    "old_operator:nan-Latn-tailo": "Tâi-uân Thih-lōo Kuán-lí-kio̍k",
+    "old_operator:short:en": "TRA",
+    "old_operator:wikidata": "Q697926",
+    "old_operator:wikipedia": "zh:臺灣鐵路管理局",
+    "old_operator:zh": "臺灣鐵路管理局",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "operator:en": "Taiwan Railway Corporation",
+    "operator:nan": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Hant": "國營臺灣鐵路股份有限公司",
+    "operator:nan-Latn-pehoeji": "Kok-êng Tâi-oân Thih-lō͘ Iú-hān Kong-si",
+    "operator:nan-Latn-tailo": "Kok-îng Tâi-uân Thih-lōo Kóo-hūn Iú-hān Kong-si",
+    "operator:short": "台鐵",
+    "operator:short:en": "TRC",
+    "operator:short:nan": "Tâi-thih",
+    "operator:short:nan-Hant": "台鐵",
+    "operator:short:nan-Latn-pehoeji": "Tâi-thih",
+    "operator:short:nan-Latn-tailo": "Tâi-thih",
+    "operator:short:zh": "台鐵",
+    "operator:wikidata": "Q112151129",
+    "operator:wikipedia": "zh:臺灣鐵路公司",
+    "operator:zh": "國營臺灣鐵路股份有限公司",
+    "railway": "rail",
+    "service": "crossover",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 877532242,
+  "bounds": {
+    "minlat": 25.0490959,
+    "minlon": 121.5775551,
+    "maxlat": 25.0522708,
+    "maxlon": 121.6018843
+  },
+  "nodes": [
+    5664370431,
+    3298971486,
+    9420009260,
+    3298971484,
+    3298971475,
+    8164766184,
+    8164766185,
+    8164766186,
+    8164766187,
+    8164766188,
+    8164766189,
+    8164766190,
+    8164766191,
+    8164766192,
+    8164766202
+  ],
+  "geometry": [
+    { "lat": 25.0522708, "lon": 121.6018843 },
+    { "lat": 25.0520014, "lon": 121.5994264 },
+    { "lat": 25.0517287, "lon": 121.5976445 },
+    { "lat": 25.0505834, "lon": 121.5901596 },
+    { "lat": 25.0498557, "lon": 121.5857238 },
+    { "lat": 25.0496762, "lon": 121.5845364 },
+    { "lat": 25.0495282, "lon": 121.5836903 },
+    { "lat": 25.0493181, "lon": 121.5826820 },
+    { "lat": 25.0492156, "lon": 121.5821248 },
+    { "lat": 25.0491594, "lon": 121.5816851 },
+    { "lat": 25.0491118, "lon": 121.5811314 },
+    { "lat": 25.0490959, "lon": 121.5806812 },
+    { "lat": 25.0490959, "lon": 121.5798807 },
+    { "lat": 25.0491245, "lon": 121.5776577 },
+    { "lat": 25.0491293, "lon": 121.5775551 }
+  ],
+  "tags": {
+    "electrified": "contact_line",
+    "frequency": "60",
+    "gauge": "1435",
+    "highspeed": "yes",
+    "layer": "-1",
+    "level": "-2",
+    "maxspeed": "130",
+    "name": "台灣高速鐵路",
+    "name:en": "Taiwan High Speed Rail",
+    "name:ja": "台湾高速鉄道",
+    "name:nan": "Tâi-oân-ko-sok-thih-lō͘",
+    "name:nan-Latn-pehoeji": "Tâi-oân-ko-sok-thih-lō͘",
+    "name:nan-Latn-tailo": "Tâi-uân-ko-sok-thih-lōo",
+    "name:ru": "Тайваньская высокоскоростная железная дорога",
+    "name:zh": "台灣高速鐵路",
+    "network": "台灣高鐵",
+    "network:en": "THSR",
+    "network:zh": "台灣高鐵",
+    "operator": "台灣高速鐵路股份有限公司",
+    "railway": "rail",
+    "ref": "台灣高鐵",
+    "start_date": "2016-07-01",
+    "tunnel": "yes",
+    "usage": "main",
+    "voltage": "25000",
+    "wikidata": "Q706198",
+    "wikipedia": "zh:台灣高鐵"
+  }
+},
+{
+  "type": "way",
+  "id": 877532246,
+  "bounds": {
+    "minlat": 25.0448648,
+    "minlon": 121.5640763,
+    "maxlat": 25.0450128,
+    "maxlon": 121.5646289
+  },
+  "nodes": [
+    14093960653,
+    8164766283,
+    8164766282,
+    8164766281,
+    8164766280
+  ],
+  "geometry": [
+    { "lat": 25.0450128, "lon": 121.5646289 },
+    { "lat": 25.0449868, "lon": 121.5645552 },
+    { "lat": 25.0449335, "lon": 121.5644045 },
+    { "lat": 25.0448751, "lon": 121.5641920 },
+    { "lat": 25.0448648, "lon": 121.5640763 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532247,
+  "bounds": {
+    "minlat": 25.0448648,
+    "minlon": 121.5640147,
+    "maxlat": 25.0451432,
+    "maxlon": 121.5648282
+  },
+  "nodes": [
+    8164766288,
+    8164766287,
+    8164766286,
+    8164766285
+  ],
+  "geometry": [
+    { "lat": 25.0451432, "lon": 121.5648282 },
+    { "lat": 25.0449378, "lon": 121.5642812 },
+    { "lat": 25.0448888, "lon": 121.5641257 },
+    { "lat": 25.0448648, "lon": 121.5640147 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532248,
+  "bounds": {
+    "minlat": 25.0449546,
+    "minlon": 121.5642007,
+    "maxlat": 25.0451903,
+    "maxlon": 121.5648061
+  },
+  "nodes": [
+    14093960652,
+    8164766289
+  ],
+  "geometry": [
+    { "lat": 25.0449546, "lon": 121.5642007 },
+    { "lat": 25.0451903, "lon": 121.5648061 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532249,
+  "bounds": {
+    "minlat": 25.0449197,
+    "minlon": 121.5636866,
+    "maxlat": 25.0452400,
+    "maxlon": 121.5647828
+  },
+  "nodes": [
+    8164766296,
+    8164766295,
+    8164766294,
+    8164766293,
+    8164766292
+  ],
+  "geometry": [
+    { "lat": 25.0452400, "lon": 121.5647828 },
+    { "lat": 25.0450624, "lon": 121.5643305 },
+    { "lat": 25.0449696, "lon": 121.5640735 },
+    { "lat": 25.0449343, "lon": 121.5638905 },
+    { "lat": 25.0449197, "lon": 121.5636866 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532250,
+  "bounds": {
+    "minlat": 25.0450073,
+    "minlon": 121.5631550,
+    "maxlat": 25.0451592,
+    "maxlon": 121.5641048
+  },
+  "nodes": [
+    8164766300,
+    14087304650,
+    14087304655,
+    8164766299,
+    14087304649,
+    8164766298,
+    8164766297
+  ],
+  "geometry": [
+    { "lat": 25.0450132, "lon": 121.5631550 },
+    { "lat": 25.0450073, "lon": 121.5634272 },
+    { "lat": 25.0450100, "lon": 121.5634571 },
+    { "lat": 25.0450300, "lon": 121.5636861 },
+    { "lat": 25.0450664, "lon": 121.5638350 },
+    { "lat": 25.0450910, "lon": 121.5639190 },
+    { "lat": 25.0451592, "lon": 121.5641048 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532252,
+  "bounds": {
+    "minlat": 25.0450821,
+    "minlon": 121.5627592,
+    "maxlat": 25.0453075,
+    "maxlon": 121.5640435
+  },
+  "nodes": [
+    8164766310,
+    8164766309,
+    8164766308,
+    8164766307,
+    8164766306,
+    14087304648,
+    8164766305,
+    8164766304
+  ],
+  "geometry": [
+    { "lat": 25.0453075, "lon": 121.5640435 },
+    { "lat": 25.0452256, "lon": 121.5638127 },
+    { "lat": 25.0451612, "lon": 121.5636202 },
+    { "lat": 25.0451182, "lon": 121.5634182 },
+    { "lat": 25.0450907, "lon": 121.5632324 },
+    { "lat": 25.0450850, "lon": 121.5630594 },
+    { "lat": 25.0450821, "lon": 121.5629697 },
+    { "lat": 25.0450821, "lon": 121.5627592 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532253,
+  "bounds": {
+    "minlat": 25.0451213,
+    "minlon": 121.5628598,
+    "maxlat": 25.0453660,
+    "maxlon": 121.5640160
+  },
+  "nodes": [
+    8164766317,
+    8164766315,
+    8164766314,
+    8164766313,
+    8164766312,
+    8164766311
+  ],
+  "geometry": [
+    { "lat": 25.0451213, "lon": 121.5628598 },
+    { "lat": 25.0451259, "lon": 121.5631783 },
+    { "lat": 25.0451491, "lon": 121.5633585 },
+    { "lat": 25.0451955, "lon": 121.5635538 },
+    { "lat": 25.0452574, "lon": 121.5637435 },
+    { "lat": 25.0453660, "lon": 121.5640160 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532254,
+  "bounds": {
+    "minlat": 25.0451118,
+    "minlon": 121.5627277,
+    "maxlat": 25.0454027,
+    "maxlon": 121.5639988
+  },
+  "nodes": [
+    8164766321,
+    8164766320,
+    8164766319,
+    8164766318,
+    8164766317,
+    8164766316
+  ],
+  "geometry": [
+    { "lat": 25.0454027, "lon": 121.5639988 },
+    { "lat": 25.0452840, "lon": 121.5636856 },
+    { "lat": 25.0452058, "lon": 121.5634296 },
+    { "lat": 25.0451629, "lon": 121.5631802 },
+    { "lat": 25.0451213, "lon": 121.5628598 },
+    { "lat": 25.0451118, "lon": 121.5627277 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532255,
+  "bounds": {
+    "minlat": 25.0451744,
+    "minlon": 121.5629735,
+    "maxlat": 25.0457170,
+    "maxlon": 121.5644822
+  },
+  "nodes": [
+    8164766326,
+    8164766325,
+    8164766324,
+    8164766323,
+    8164766322
+  ],
+  "geometry": [
+    { "lat": 25.0457170, "lon": 121.5644822 },
+    { "lat": 25.0453888, "lon": 121.5636401 },
+    { "lat": 25.0452703, "lon": 121.5633224 },
+    { "lat": 25.0452127, "lon": 121.5631186 },
+    { "lat": 25.0451744, "lon": 121.5629735 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532256,
+  "bounds": {
+    "minlat": 25.0451285,
+    "minlon": 121.5624639,
+    "maxlat": 25.0454622,
+    "maxlon": 121.5639709
+  },
+  "nodes": [
+    14086941503,
+    14086941504,
+    8164766322,
+    8164766330,
+    8164766329,
+    8164766328,
+    8164766327
+  ],
+  "geometry": [
+    { "lat": 25.0451285, "lon": 121.5624639 },
+    { "lat": 25.0451350, "lon": 121.5626581 },
+    { "lat": 25.0451744, "lon": 121.5629735 },
+    { "lat": 25.0451809, "lon": 121.5630436 },
+    { "lat": 25.0452342, "lon": 121.5633443 },
+    { "lat": 25.0453192, "lon": 121.5635823 },
+    { "lat": 25.0454622, "lon": 121.5639709 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532258,
+  "bounds": {
+    "minlat": 25.0453266,
+    "minlon": 121.5608854,
+    "maxlat": 25.0455287,
+    "maxlon": 121.5616917
+  },
+  "nodes": [
+    8164766369,
+    8164766337,
+    13984124252,
+    8164766336,
+    8164766335
+  ],
+  "geometry": [
+    { "lat": 25.0453266, "lon": 121.5608854 },
+    { "lat": 25.0453773, "lon": 121.5611807 },
+    { "lat": 25.0454083, "lon": 121.5613151 },
+    { "lat": 25.0454435, "lon": 121.5614408 },
+    { "lat": 25.0455287, "lon": 121.5616917 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532259,
+  "bounds": {
+    "minlat": 25.0453743,
+    "minlon": 121.5615165,
+    "maxlat": 25.0454927,
+    "maxlon": 121.5619385
+  },
+  "nodes": [
+    8164766367,
+    8164766339,
+    13984124248,
+    13984124247,
+    8164766338
+  ],
+  "geometry": [
+    { "lat": 25.0453743, "lon": 121.5615165 },
+    { "lat": 25.0453991, "lon": 121.5616329 },
+    { "lat": 25.0454263, "lon": 121.5617360 },
+    { "lat": 25.0454582, "lon": 121.5618402 },
+    { "lat": 25.0454927, "lon": 121.5619385 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532260,
+  "bounds": {
+    "minlat": 25.0453497,
+    "minlon": 121.5612093,
+    "maxlat": 25.0456432,
+    "maxlon": 121.5621421
+  },
+  "nodes": [
+    8164766368,
+    8164766342,
+    13984124250,
+    8164766341,
+    8164766340
+  ],
+  "geometry": [
+    { "lat": 25.0453497, "lon": 121.5612093 },
+    { "lat": 25.0453760, "lon": 121.5613393 },
+    { "lat": 25.0454112, "lon": 121.5614891 },
+    { "lat": 25.0454540, "lon": 121.5616321 },
+    { "lat": 25.0456432, "lon": 121.5621421 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532261,
+  "bounds": {
+    "minlat": 25.0461048,
+    "minlon": 121.5615320,
+    "maxlat": 25.0463936,
+    "maxlon": 121.5622869
+  },
+  "nodes": [
+    8164766343,
+    13978479398
+  ],
+  "geometry": [
+    { "lat": 25.0461048, "lon": 121.5615320 },
+    { "lat": 25.0463936, "lon": 121.5622869 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532262,
+  "bounds": {
+    "minlat": 25.0452341,
+    "minlon": 121.5605213,
+    "maxlat": 25.0452680,
+    "maxlon": 121.5614321
+  },
+  "nodes": [
+    8164766348,
+    8164766352,
+    8164766347
+  ],
+  "geometry": [
+    { "lat": 25.0452680, "lon": 121.5605213 },
+    { "lat": 25.0452556, "lon": 121.5609829 },
+    { "lat": 25.0452341, "lon": 121.5614321 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532264,
+  "bounds": {
+    "minlat": 25.0452556,
+    "minlon": 121.5609829,
+    "maxlat": 25.0454473,
+    "maxlon": 121.5622498
+  },
+  "nodes": [
+    8164766365,
+    13984124244,
+    8164766355,
+    8164766354,
+    8164766353,
+    8164766352
+  ],
+  "geometry": [
+    { "lat": 25.0454473, "lon": 121.5622498 },
+    { "lat": 25.0453734, "lon": 121.5618901 },
+    { "lat": 25.0453360, "lon": 121.5617077 },
+    { "lat": 25.0452978, "lon": 121.5614752 },
+    { "lat": 25.0452676, "lon": 121.5612072 },
+    { "lat": 25.0452556, "lon": 121.5609829 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532265,
+  "bounds": {
+    "minlat": 25.0454185,
+    "minlon": 121.5619417,
+    "maxlat": 25.0466707,
+    "maxlon": 121.5655292
+  },
+  "nodes": [
+    8164766360,
+    13925433899,
+    8164766359,
+    8164766358,
+    8164766356,
+    8164766366
+  ],
+  "geometry": [
+    { "lat": 25.0466707, "lon": 121.5655292 },
+    { "lat": 25.0462677, "lon": 121.5644928 },
+    { "lat": 25.0456240, "lon": 121.5627929 },
+    { "lat": 25.0455683, "lon": 121.5626124 },
+    { "lat": 25.0455176, "lon": 121.5624078 },
+    { "lat": 25.0454185, "lon": 121.5619417 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "name": "中央運轉線",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532266,
+  "bounds": {
+    "minlat": 25.0452462,
+    "minlon": 121.5595312,
+    "maxlat": 25.0466251,
+    "maxlon": 121.5655500
+  },
+  "nodes": [
+    13984124259,
+    8164766371,
+    13984124267,
+    13984124268,
+    8164766372,
+    8164766369,
+    8164766368,
+    8164766367,
+    8164766366,
+    8164766365,
+    8164766364,
+    8164766363,
+    8164766362,
+    13925433900,
+    8164766361
+  ],
+  "geometry": [
+    { "lat": 25.0452462, "lon": 121.5595312 },
+    { "lat": 25.0452743, "lon": 121.5598727 },
+    { "lat": 25.0452978, "lon": 121.5602102 },
+    { "lat": 25.0453001, "lon": 121.5603424 },
+    { "lat": 25.0453066, "lon": 121.5605322 },
+    { "lat": 25.0453266, "lon": 121.5608854 },
+    { "lat": 25.0453497, "lon": 121.5612093 },
+    { "lat": 25.0453743, "lon": 121.5615165 },
+    { "lat": 25.0454185, "lon": 121.5619417 },
+    { "lat": 25.0454473, "lon": 121.5622498 },
+    { "lat": 25.0454831, "lon": 121.5624274 },
+    { "lat": 25.0455339, "lon": 121.5626332 },
+    { "lat": 25.0455895, "lon": 121.5628134 },
+    { "lat": 25.0462231, "lon": 121.5645134 },
+    { "lat": 25.0466251, "lon": 121.5655500 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "name": "中央運轉線",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532267,
+  "bounds": {
+    "minlat": 25.0453818,
+    "minlon": 121.5609639,
+    "maxlat": 25.0459973,
+    "maxlon": 121.5625492
+  },
+  "nodes": [
+    13978479378,
+    8164766374,
+    8164766373
+  ],
+  "geometry": [
+    { "lat": 25.0459973, "lon": 121.5625492 },
+    { "lat": 25.0456072, "lon": 121.5615204 },
+    { "lat": 25.0453818, "lon": 121.5609639 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532268,
+  "bounds": {
+    "minlat": 25.0453039,
+    "minlon": 121.5596996,
+    "maxlat": 25.0460575,
+    "maxlon": 121.5625209
+  },
+  "nodes": [
+    8164766383,
+    13978503712,
+    13978503713,
+    8164766379,
+    8164766378,
+    13978479383,
+    13978479384,
+    13978479385,
+    8164766377,
+    13978479377
+  ],
+  "geometry": [
+    { "lat": 25.0453039, "lon": 121.5596996 },
+    { "lat": 25.0453368, "lon": 121.5601712 },
+    { "lat": 25.0453483, "lon": 121.5602916 },
+    { "lat": 25.0453723, "lon": 121.5604649 },
+    { "lat": 25.0453779, "lon": 121.5605325 },
+    { "lat": 25.0453952, "lon": 121.5606540 },
+    { "lat": 25.0454345, "lon": 121.5608270 },
+    { "lat": 25.0454808, "lon": 121.5609957 },
+    { "lat": 25.0455412, "lon": 121.5611845 },
+    { "lat": 25.0460575, "lon": 121.5625209 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532270,
+  "bounds": {
+    "minlat": 25.0451233,
+    "minlon": 121.5583422,
+    "maxlat": 25.0458228,
+    "maxlon": 121.5613844
+  },
+  "nodes": [
+    13978479399,
+    8164766389,
+    13978479393,
+    13978479394,
+    13978479392,
+    13978479391,
+    8164766388,
+    8164766387,
+    8164766385,
+    13978503711,
+    13978503710,
+    14086941509,
+    14087491172,
+    8164766383,
+    13984124258,
+    13984124257,
+    13984124256,
+    13984124243,
+    13984124242,
+    13984124241,
+    13981910691,
+    13981910688
+  ],
+  "geometry": [
+    { "lat": 25.0458228, "lon": 121.5613844 },
+    { "lat": 25.0457622, "lon": 121.5612259 },
+    { "lat": 25.0457248, "lon": 121.5611411 },
+    { "lat": 25.0456876, "lon": 121.5610680 },
+    { "lat": 25.0456427, "lon": 121.5609960 },
+    { "lat": 25.0456047, "lon": 121.5609274 },
+    { "lat": 25.0455692, "lon": 121.5608451 },
+    { "lat": 25.0455175, "lon": 121.5606845 },
+    { "lat": 25.0454610, "lon": 121.5604276 },
+    { "lat": 25.0454174, "lon": 121.5602142 },
+    { "lat": 25.0453971, "lon": 121.5601107 },
+    { "lat": 25.0453265, "lon": 121.5597995 },
+    { "lat": 25.0453154, "lon": 121.5597506 },
+    { "lat": 25.0453039, "lon": 121.5596996 },
+    { "lat": 25.0452179, "lon": 121.5592192 },
+    { "lat": 25.0452014, "lon": 121.5590715 },
+    { "lat": 25.0451904, "lon": 121.5589021 },
+    { "lat": 25.0451853, "lon": 121.5587645 },
+    { "lat": 25.0451764, "lon": 121.5586437 },
+    { "lat": 25.0451640, "lon": 121.5585500 },
+    { "lat": 25.0451319, "lon": 121.5583839 },
+    { "lat": 25.0451233, "lon": 121.5583422 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532272,
+  "bounds": {
+    "minlat": 25.0458725,
+    "minlon": 121.5613611,
+    "maxlat": 25.0462568,
+    "maxlon": 121.5623516
+  },
+  "nodes": [
+    13978479395,
+    8164766392
+  ],
+  "geometry": [
+    { "lat": 25.0462568, "lon": 121.5623516 },
+    { "lat": 25.0458725, "lon": 121.5613611 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532273,
+  "bounds": {
+    "minlat": 25.0460148,
+    "minlon": 121.5615742,
+    "maxlat": 25.0463025,
+    "maxlon": 121.5623284
+  },
+  "nodes": [
+    8164766393,
+    13978479396
+  ],
+  "geometry": [
+    { "lat": 25.0460148, "lon": 121.5615742 },
+    { "lat": 25.0463025, "lon": 121.5623284 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532274,
+  "bounds": {
+    "minlat": 25.0454610,
+    "minlon": 121.5604276,
+    "maxlat": 25.0460593,
+    "maxlon": 121.5615534
+  },
+  "nodes": [
+    8164766385,
+    8164766398,
+    13978503705,
+    8164766402,
+    13978503706,
+    8164766346,
+    8164766401,
+    13978503708,
+    8164766400,
+    8164766399
+  ],
+  "geometry": [
+    { "lat": 25.0454610, "lon": 121.5604276 },
+    { "lat": 25.0455313, "lon": 121.5606233 },
+    { "lat": 25.0455989, "lon": 121.5607621 },
+    { "lat": 25.0456629, "lon": 121.5608703 },
+    { "lat": 25.0457319, "lon": 121.5609692 },
+    { "lat": 25.0458074, "lon": 121.5610639 },
+    { "lat": 25.0458668, "lon": 121.5611331 },
+    { "lat": 25.0459192, "lon": 121.5612178 },
+    { "lat": 25.0459616, "lon": 121.5613035 },
+    { "lat": 25.0460593, "lon": 121.5615534 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 877532283,
+  "bounds": {
+    "minlat": 25.0410037,
+    "minlon": 121.5675147,
+    "maxlat": 25.0411218,
+    "maxlon": 121.5692272
+  },
+  "nodes": [
+    8164766553,
+    8164766552
+  ],
+  "geometry": [
+    { "lat": 25.0410037, "lon": 121.5675147 },
+    { "lat": 25.0411218, "lon": 121.5692272 }
+  ],
+  "tags": {
+    "gauge": "1435",
+    "network": "台北捷運",
+    "railway": "subway",
+    "service": "crossover",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 877532284,
+  "bounds": {
+    "minlat": 25.0409579,
+    "minlon": 121.5675053,
+    "maxlat": 25.0411698,
+    "maxlon": 121.5692821
+  },
+  "nodes": [
+    8164766555,
+    8164766554
+  ],
+  "geometry": [
+    { "lat": 25.0409579, "lon": 121.5692821 },
+    { "lat": 25.0411698, "lon": 121.5675053 }
+  ],
+  "tags": {
+    "gauge": "1435",
+    "network": "台北捷運",
+    "railway": "subway",
+    "service": "crossover",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 877544937,
+  "bounds": {
+    "minlat": 25.0182611,
+    "minlon": 121.5585723,
+    "maxlat": 25.0187771,
+    "maxlon": 121.5591676
+  },
+  "nodes": [
+    8164890540,
+    8164890539,
+    8164890538,
+    8164890537,
+    8164890540
+  ],
+  "geometry": [
+    { "lat": 25.0187555, "lon": 121.5585723 },
+    { "lat": 25.0187771, "lon": 121.5585951 },
+    { "lat": 25.0182827, "lon": 121.5591676 },
+    { "lat": 25.0182611, "lon": 121.5591448 },
+    { "lat": 25.0187555, "lon": 121.5585723 }
+  ],
+  "tags": {
+    "area": "yes",
+    "bench": "yes",
+    "level": "2",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "1",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1054529716,
+  "bounds": {
+    "minlat": 25.0328736,
+    "minlon": 121.5619337,
+    "maxlat": 25.0330152,
+    "maxlon": 121.5634436
+  },
+  "nodes": [
+    9690577293,
+    9690577292,
+    9690577291,
+    9690577290,
+    9690577293
+  ],
+  "geometry": [
+    { "lat": 25.0330152, "lon": 121.5619367 },
+    { "lat": 25.0329798, "lon": 121.5634436 },
+    { "lat": 25.0328736, "lon": 121.5634405 },
+    { "lat": 25.0329091, "lon": 121.5619337 },
+    { "lat": 25.0330152, "lon": 121.5619367 }
+  ],
+  "tags": {
+    "area": "yes",
+    "level": "-2",
+    "public_transport": "platform",
+    "railway": "platform",
+    "ref": "1;2"
+  }
+},
+{
+  "type": "way",
+  "id": 1058580200,
+  "bounds": {
+    "minlat": 25.0331064,
+    "minlon": 121.5577053,
+    "maxlat": 25.0331217,
+    "maxlon": 121.5582155
+  },
+  "nodes": [
+    9727098842,
+    9727098841
+  ],
+  "geometry": [
+    { "lat": 25.0331217, "lon": 121.5577053 },
+    { "lat": 25.0331064, "lon": 121.5582155 }
+  ],
+  "tags": {
+    "highway": "platform",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "way",
+  "id": 1061707661,
+  "bounds": {
+    "minlat": 25.0375040,
+    "minlon": 121.5606434,
+    "maxlat": 25.0375241,
+    "maxlon": 121.5612615
+  },
+  "nodes": [
+    9754399432,
+    7578371070
+  ],
+  "geometry": [
+    { "lat": 25.0375241, "lon": 121.5606434 },
+    { "lat": 25.0375040, "lon": 121.5612615 }
+  ],
+  "tags": {
+    "bus": "yes",
+    "highway": "platform",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "way",
+  "id": 1061707662,
+  "bounds": {
+    "minlat": 25.0376527,
+    "minlon": 121.5606515,
+    "maxlat": 25.0376712,
+    "maxlon": 121.5612646
+  },
+  "nodes": [
+    9754399434,
+    9754399433
+  ],
+  "geometry": [
+    { "lat": 25.0376527, "lon": 121.5612646 },
+    { "lat": 25.0376712, "lon": 121.5606515 }
+  ],
+  "tags": {
+    "bus": "yes",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1061707663,
+  "bounds": {
+    "minlat": 25.0377414,
+    "minlon": 121.5577473,
+    "maxlat": 25.0377559,
+    "maxlon": 121.5582463
+  },
+  "nodes": [
+    9754399436,
+    9754399435
+  ],
+  "geometry": [
+    { "lat": 25.0377414, "lon": 121.5582463 },
+    { "lat": 25.0377559, "lon": 121.5577473 }
+  ],
+  "tags": {
+    "bus": "yes",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "way",
+  "id": 1342694875,
+  "bounds": {
+    "minlat": 25.0458228,
+    "minlon": 121.5613844,
+    "maxlat": 25.0462142,
+    "maxlon": 121.5624109
+  },
+  "nodes": [
+    13978479399,
+    13978479400
+  ],
+  "geometry": [
+    { "lat": 25.0458228, "lon": 121.5613844 },
+    { "lat": 25.0462142, "lon": 121.5624109 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1486056442,
+  "bounds": {
+    "minlat": 25.0366330,
+    "minlon": 121.5803361,
+    "maxlat": 25.0370843,
+    "maxlon": 121.5812364
+  },
+  "nodes": [
+    13622990154,
+    13622990155
+  ],
+  "geometry": [
+    { "lat": 25.0366330, "lon": 121.5803361 },
+    { "lat": 25.0370843, "lon": 121.5812364 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "gauge": "1435",
+    "layer": "-1",
+    "name": "MRT Tamsui-Xinyi Line Scissors Crossover",
+    "name:zh": "信義線東延段剪式橫渡線",
+    "railway": "subway",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1486056443,
+  "bounds": {
+    "minlat": 25.0367182,
+    "minlon": 121.5802947,
+    "maxlat": 25.0369887,
+    "maxlon": 121.5812852
+  },
+  "nodes": [
+    13622990157,
+    13622990156
+  ],
+  "geometry": [
+    { "lat": 25.0369887, "lon": 121.5812852 },
+    { "lat": 25.0367182, "lon": 121.5802947 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "gauge": "1435",
+    "layer": "-1",
+    "name": "MRT Tamsui-Xinyi Line Scissors Crossover",
+    "name:zh": "信義線東延段剪式橫渡線",
+    "railway": "subway",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1495986280,
+  "bounds": {
+    "minlat": 25.0457596,
+    "minlon": 121.5615786,
+    "maxlat": 25.0471426,
+    "maxlon": 121.5652270
+  },
+  "nodes": [
+    13978479380,
+    13704818314,
+    13925433891,
+    13925433893,
+    13925433894,
+    13925433892,
+    13925433896,
+    13925433895,
+    13704818310,
+    13925433888,
+    12422878665,
+    13704818312,
+    13925433897,
+    13925433889,
+    13925433898,
+    13925433890,
+    13925509505,
+    13978479366,
+    13925433887,
+    12422878668
+  ],
+  "geometry": [
+    { "lat": 25.0457596, "lon": 121.5615786 },
+    { "lat": 25.0459928, "lon": 121.5621809 },
+    { "lat": 25.0460854, "lon": 121.5624251 },
+    { "lat": 25.0461252, "lon": 121.5625169 },
+    { "lat": 25.0461767, "lon": 121.5626200 },
+    { "lat": 25.0462200, "lon": 121.5627005 },
+    { "lat": 25.0462574, "lon": 121.5627708 },
+    { "lat": 25.0462997, "lon": 121.5628589 },
+    { "lat": 25.0463408, "lon": 121.5629537 },
+    { "lat": 25.0464206, "lon": 121.5631793 },
+    { "lat": 25.0466840, "lon": 121.5638870 },
+    { "lat": 25.0467136, "lon": 121.5639818 },
+    { "lat": 25.0467350, "lon": 121.5640674 },
+    { "lat": 25.0467500, "lon": 121.5641377 },
+    { "lat": 25.0467652, "lon": 121.5642111 },
+    { "lat": 25.0467876, "lon": 121.5642932 },
+    { "lat": 25.0468128, "lon": 121.5643692 },
+    { "lat": 25.0468550, "lon": 121.5644789 },
+    { "lat": 25.0469635, "lon": 121.5647576 },
+    { "lat": 25.0471426, "lon": 121.5652270 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1504680871,
+  "bounds": {
+    "minlat": 25.0489512,
+    "minlon": 121.5782147,
+    "maxlat": 25.0494446,
+    "maxlon": 121.5811555
+  },
+  "nodes": [
+    13768441997,
+    13768442050,
+    13768442019,
+    13768442008,
+    13768441997
+  ],
+  "geometry": [
+    { "lat": 25.0489512, "lon": 121.5782180 },
+    { "lat": 25.0494275, "lon": 121.5782147 },
+    { "lat": 25.0494446, "lon": 121.5811521 },
+    { "lat": 25.0489683, "lon": 121.5811555 },
+    { "lat": 25.0489512, "lon": 121.5782180 }
+  ],
+  "tags": {
+    "building": "train_station",
+    "location": "underground",
+    "name": "松山車站",
+    "operator": "國營臺灣鐵路股份有限公司",
+    "start_date": "2008-09-21"
+  }
+},
+{
+  "type": "way",
+  "id": 1528064127,
+  "bounds": {
+    "minlat": 25.0462142,
+    "minlon": 121.5624109,
+    "maxlat": 25.0464206,
+    "maxlon": 121.5631793
+  },
+  "nodes": [
+    13978479400,
+    12422878662,
+    13978479373,
+    13978479374,
+    13978479376,
+    13978479375,
+    12422878663,
+    13925433888
+  ],
+  "geometry": [
+    { "lat": 25.0462142, "lon": 121.5624109 },
+    { "lat": 25.0463290, "lon": 121.5627075 },
+    { "lat": 25.0463524, "lon": 121.5627821 },
+    { "lat": 25.0463717, "lon": 121.5628634 },
+    { "lat": 25.0463818, "lon": 121.5629313 },
+    { "lat": 25.0463893, "lon": 121.5630039 },
+    { "lat": 25.0463986, "lon": 121.5630748 },
+    { "lat": 25.0464206, "lon": 121.5631793 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019049,
+  "bounds": {
+    "minlat": 25.0460575,
+    "minlon": 121.5625209,
+    "maxlat": 25.0466523,
+    "maxlon": 121.5640655
+  },
+  "nodes": [
+    13978479377,
+    13978479365
+  ],
+  "geometry": [
+    { "lat": 25.0460575, "lon": 121.5625209 },
+    { "lat": 25.0466523, "lon": 121.5640655 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019051,
+  "bounds": {
+    "minlat": 25.0466523,
+    "minlon": 121.5640655,
+    "maxlat": 25.0468550,
+    "maxlon": 121.5644789
+  },
+  "nodes": [
+    13978479365,
+    13978479368,
+    13978479367,
+    13978479371,
+    13978479369,
+    13978479370,
+    13978479366
+  ],
+  "geometry": [
+    { "lat": 25.0466523, "lon": 121.5640655 },
+    { "lat": 25.0466903, "lon": 121.5641485 },
+    { "lat": 25.0467195, "lon": 121.5642097 },
+    { "lat": 25.0467473, "lon": 121.5642647 },
+    { "lat": 25.0467792, "lon": 121.5643254 },
+    { "lat": 25.0468043, "lon": 121.5643732 },
+    { "lat": 25.0468550, "lon": 121.5644789 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019052,
+  "bounds": {
+    "minlat": 25.0453066,
+    "minlon": 121.5605322,
+    "maxlat": 25.0455519,
+    "maxlon": 121.5615487
+  },
+  "nodes": [
+    13978479379,
+    8164766333,
+    13984124254,
+    8164766334,
+    8164766373,
+    8164766372
+  ],
+  "geometry": [
+    { "lat": 25.0455519, "lon": 121.5615487 },
+    { "lat": 25.0454846, "lon": 121.5613585 },
+    { "lat": 25.0454415, "lon": 121.5612246 },
+    { "lat": 25.0454067, "lon": 121.5610837 },
+    { "lat": 25.0453818, "lon": 121.5609639 },
+    { "lat": 25.0453066, "lon": 121.5605322 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019053,
+  "bounds": {
+    "minlat": 25.0453723,
+    "minlon": 121.5604649,
+    "maxlat": 25.0455944,
+    "maxlon": 121.5611525
+  },
+  "nodes": [
+    8164766379,
+    8164766382,
+    8164766381,
+    13978479386,
+    13978479381
+  ],
+  "geometry": [
+    { "lat": 25.0453723, "lon": 121.5604649 },
+    { "lat": 25.0453948, "lon": 121.5605695 },
+    { "lat": 25.0454231, "lon": 121.5606723 },
+    { "lat": 25.0454547, "lon": 121.5607722 },
+    { "lat": 25.0455944, "lon": 121.5611525 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019054,
+  "bounds": {
+    "minlat": 25.0455944,
+    "minlon": 121.5611525,
+    "maxlat": 25.0457596,
+    "maxlon": 121.5615786
+  },
+  "nodes": [
+    13978479381,
+    13978479380
+  ],
+  "geometry": [
+    { "lat": 25.0455944, "lon": 121.5611525 },
+    { "lat": 25.0457596, "lon": 121.5615786 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019055,
+  "bounds": {
+    "minlat": 25.0456320,
+    "minlon": 121.5610990,
+    "maxlat": 25.0458042,
+    "maxlon": 121.5615391
+  },
+  "nodes": [
+    13978479382,
+    8164766386
+  ],
+  "geometry": [
+    { "lat": 25.0458042, "lon": 121.5615391 },
+    { "lat": 25.0456320, "lon": 121.5610990 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019056,
+  "bounds": {
+    "minlat": 25.0455175,
+    "minlon": 121.5606845,
+    "maxlat": 25.0456320,
+    "maxlon": 121.5610990
+  },
+  "nodes": [
+    8164766386,
+    13978479389,
+    13978479390,
+    13978479388,
+    8164766387
+  ],
+  "geometry": [
+    { "lat": 25.0456320, "lon": 121.5610990 },
+    { "lat": 25.0455933, "lon": 121.5609955 },
+    { "lat": 25.0455809, "lon": 121.5609575 },
+    { "lat": 25.0455701, "lon": 121.5609131 },
+    { "lat": 25.0455175, "lon": 121.5606845 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019057,
+  "bounds": {
+    "minlat": 25.0460593,
+    "minlon": 121.5615534,
+    "maxlat": 25.0463489,
+    "maxlon": 121.5623067
+  },
+  "nodes": [
+    8164766399,
+    13978479397
+  ],
+  "geometry": [
+    { "lat": 25.0460593, "lon": 121.5615534 },
+    { "lat": 25.0463489, "lon": 121.5623067 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019058,
+  "bounds": {
+    "minlat": 25.0457355,
+    "minlon": 121.5610834,
+    "maxlat": 25.0460148,
+    "maxlon": 121.5615742
+  },
+  "nodes": [
+    8164766391,
+    8164766395,
+    13978503703,
+    8164766394,
+    8164766393
+  ],
+  "geometry": [
+    { "lat": 25.0457355, "lon": 121.5610834 },
+    { "lat": 25.0458252, "lon": 121.5611839 },
+    { "lat": 25.0458770, "lon": 121.5612617 },
+    { "lat": 25.0459150, "lon": 121.5613344 },
+    { "lat": 25.0460148, "lon": 121.5615742 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019059,
+  "bounds": {
+    "minlat": 25.0458074,
+    "minlon": 121.5610639,
+    "maxlat": 25.0461048,
+    "maxlon": 121.5615320
+  },
+  "nodes": [
+    8164766346,
+    8164766345,
+    13978503707,
+    8164766344,
+    8164766343
+  ],
+  "geometry": [
+    { "lat": 25.0458074, "lon": 121.5610639 },
+    { "lat": 25.0459003, "lon": 121.5611358 },
+    { "lat": 25.0459510, "lon": 121.5611890 },
+    { "lat": 25.0459999, "lon": 121.5612686 },
+    { "lat": 25.0461048, "lon": 121.5615320 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534019060,
+  "bounds": {
+    "minlat": 25.0455313,
+    "minlon": 121.5606233,
+    "maxlat": 25.0458725,
+    "maxlon": 121.5613611
+  },
+  "nodes": [
+    8164766392,
+    13978503704,
+    13978503702,
+    8164766391,
+    13978503701,
+    8164766396,
+    8164766397,
+    8164766398
+  ],
+  "geometry": [
+    { "lat": 25.0458725, "lon": 121.5613611 },
+    { "lat": 25.0458231, "lon": 121.5612393 },
+    { "lat": 25.0457902, "lon": 121.5611694 },
+    { "lat": 25.0457355, "lon": 121.5610834 },
+    { "lat": 25.0456924, "lon": 121.5610213 },
+    { "lat": 25.0456467, "lon": 121.5609366 },
+    { "lat": 25.0456084, "lon": 121.5608443 },
+    { "lat": 25.0455313, "lon": 121.5606233 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534444079,
+  "bounds": {
+    "minlat": 25.0451319,
+    "minlon": 121.5583839,
+    "maxlat": 25.0454003,
+    "maxlon": 121.5591111
+  },
+  "nodes": [
+    13981910690,
+    13984124234,
+    13984124235,
+    13984124236,
+    13984124233,
+    13981910691
+  ],
+  "geometry": [
+    { "lat": 25.0454003, "lon": 121.5591111 },
+    { "lat": 25.0452903, "lon": 121.5588996 },
+    { "lat": 25.0452511, "lon": 121.5588046 },
+    { "lat": 25.0452084, "lon": 121.5586730 },
+    { "lat": 25.0451721, "lon": 121.5585415 },
+    { "lat": 25.0451319, "lon": 121.5583839 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534699961,
+  "bounds": {
+    "minlat": 25.0450596,
+    "minlon": 121.5580586,
+    "maxlat": 25.0451233,
+    "maxlon": 121.5583422
+  },
+  "nodes": [
+    13981910688,
+    13981910689
+  ],
+  "geometry": [
+    { "lat": 25.0451233, "lon": 121.5583422 },
+    { "lat": 25.0450596, "lon": 121.5580586 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "layer": "-1",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "covered",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534699963,
+  "bounds": {
+    "minlat": 25.0452179,
+    "minlon": 121.5592192,
+    "maxlat": 25.0453734,
+    "maxlon": 121.5618901
+  },
+  "nodes": [
+    13984124244,
+    13984124255,
+    13984124253,
+    8164766348,
+    13984124272,
+    13984124271,
+    13984124245,
+    13984124259,
+    13984124258
+  ],
+  "geometry": [
+    { "lat": 25.0453734, "lon": 121.5618901 },
+    { "lat": 25.0453375, "lon": 121.5615212 },
+    { "lat": 25.0452943, "lon": 121.5608894 },
+    { "lat": 25.0452680, "lon": 121.5605213 },
+    { "lat": 25.0452691, "lon": 121.5603749 },
+    { "lat": 25.0452671, "lon": 121.5602410 },
+    { "lat": 25.0452531, "lon": 121.5598670 },
+    { "lat": 25.0452462, "lon": 121.5595312 },
+    { "lat": 25.0452179, "lon": 121.5592192 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534699964,
+  "bounds": {
+    "minlat": 25.0454927,
+    "minlon": 121.5619385,
+    "maxlat": 25.0455569,
+    "maxlon": 121.5621068
+  },
+  "nodes": [
+    8164766338,
+    13984124246
+  ],
+  "geometry": [
+    { "lat": 25.0454927, "lon": 121.5619385 },
+    { "lat": 25.0455569, "lon": 121.5621068 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534699965,
+  "bounds": {
+    "minlat": 25.0456432,
+    "minlon": 121.5621421,
+    "maxlat": 25.0458004,
+    "maxlon": 121.5625631
+  },
+  "nodes": [
+    8164766340,
+    13984124249
+  ],
+  "geometry": [
+    { "lat": 25.0456432, "lon": 121.5621421 },
+    { "lat": 25.0458004, "lon": 121.5625631 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1534699966,
+  "bounds": {
+    "minlat": 25.0455287,
+    "minlon": 121.5616917,
+    "maxlat": 25.0456868,
+    "maxlon": 121.5621043
+  },
+  "nodes": [
+    8164766335,
+    13984124251
+  ],
+  "geometry": [
+    { "lat": 25.0455287, "lon": 121.5616917 },
+    { "lat": 25.0456868, "lon": 121.5621043 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "operator": "國家鐵道博物館",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1548764242,
+  "bounds": {
+    "minlat": 25.0450357,
+    "minlon": 121.5614321,
+    "maxlat": 25.0452341,
+    "maxlon": 121.5630389
+  },
+  "nodes": [
+    14087304638,
+    8164766304,
+    14086941505,
+    14086941501,
+    14086941503,
+    14086941502,
+    8164766347
+  ],
+  "geometry": [
+    { "lat": 25.0450357, "lon": 121.5630389 },
+    { "lat": 25.0450821, "lon": 121.5627592 },
+    { "lat": 25.0451118, "lon": 121.5625759 },
+    { "lat": 25.0451196, "lon": 121.5625279 },
+    { "lat": 25.0451285, "lon": 121.5624639 },
+    { "lat": 25.0452036, "lon": 121.5619250 },
+    { "lat": 25.0452341, "lon": 121.5614321 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1548764243,
+  "bounds": {
+    "minlat": 25.0451118,
+    "minlon": 121.5625759,
+    "maxlat": 25.0451118,
+    "maxlon": 121.5627277
+  },
+  "nodes": [
+    8164766316,
+    14086941505
+  ],
+  "geometry": [
+    { "lat": 25.0451118, "lon": 121.5627277 },
+    { "lat": 25.0451118, "lon": 121.5625759 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1548764244,
+  "bounds": {
+    "minlat": 25.0448648,
+    "minlon": 121.5630389,
+    "maxlat": 25.0450357,
+    "maxlon": 121.5640763
+  },
+  "nodes": [
+    14087304638,
+    8164766300,
+    8164766292,
+    8164766291,
+    8164766285,
+    8164766280
+  ],
+  "geometry": [
+    { "lat": 25.0450357, "lon": 121.5630389 },
+    { "lat": 25.0450132, "lon": 121.5631550 },
+    { "lat": 25.0449197, "lon": 121.5636866 },
+    { "lat": 25.0448751, "lon": 121.5639038 },
+    { "lat": 25.0448648, "lon": 121.5640147 },
+    { "lat": 25.0448648, "lon": 121.5640763 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1548804074,
+  "bounds": {
+    "minlat": 25.0450604,
+    "minlon": 121.5630594,
+    "maxlat": 25.0452012,
+    "maxlon": 121.5640851
+  },
+  "nodes": [
+    14087304642,
+    14087304643,
+    14087304644,
+    14087304645,
+    14087304646,
+    14087304647,
+    14087304648
+  ],
+  "geometry": [
+    { "lat": 25.0452012, "lon": 121.5640851 },
+    { "lat": 25.0451292, "lon": 121.5638825 },
+    { "lat": 25.0450996, "lon": 121.5637541 },
+    { "lat": 25.0450731, "lon": 121.5635521 },
+    { "lat": 25.0450604, "lon": 121.5633782 },
+    { "lat": 25.0450678, "lon": 121.5632054 },
+    { "lat": 25.0450850, "lon": 121.5630594 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1548804075,
+  "bounds": {
+    "minlat": 25.0449905,
+    "minlon": 121.5634571,
+    "maxlat": 25.0451077,
+    "maxlon": 121.5641289
+  },
+  "nodes": [
+    14087304651,
+    14087304652,
+    14087304653,
+    14087304654,
+    14087304660,
+    14087304655
+  ],
+  "geometry": [
+    { "lat": 25.0451077, "lon": 121.5641289 },
+    { "lat": 25.0450435, "lon": 121.5639491 },
+    { "lat": 25.0450054, "lon": 121.5638066 },
+    { "lat": 25.0449917, "lon": 121.5636373 },
+    { "lat": 25.0449905, "lon": 121.5635970 },
+    { "lat": 25.0450100, "lon": 121.5634571 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1548804076,
+  "bounds": {
+    "minlat": 25.0449716,
+    "minlon": 121.5635970,
+    "maxlat": 25.0450645,
+    "maxlon": 121.5641491
+  },
+  "nodes": [
+    14087304656,
+    14087304657,
+    14087304658,
+    14087304659,
+    14087304660
+  ],
+  "geometry": [
+    { "lat": 25.0450645, "lon": 121.5641491 },
+    { "lat": 25.0450033, "lon": 121.5639853 },
+    { "lat": 25.0449800, "lon": 121.5638708 },
+    { "lat": 25.0449716, "lon": 121.5637237 },
+    { "lat": 25.0449905, "lon": 121.5635970 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1549568305,
+  "bounds": {
+    "minlat": 25.0448751,
+    "minlon": 121.5639038,
+    "maxlat": 25.0449546,
+    "maxlon": 121.5642007
+  },
+  "nodes": [
+    8164766291,
+    8164766290,
+    14093960652
+  ],
+  "geometry": [
+    { "lat": 25.0448751, "lon": 121.5639038 },
+    { "lat": 25.0449249, "lon": 121.5641048 },
+    { "lat": 25.0449546, "lon": 121.5642007 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1549568306,
+  "bounds": {
+    "minlat": 25.0450128,
+    "minlon": 121.5646289,
+    "maxlat": 25.0450972,
+    "maxlon": 121.5648497
+  },
+  "nodes": [
+    8164766284,
+    14093960653
+  ],
+  "geometry": [
+    { "lat": 25.0450972, "lon": 121.5648497 },
+    { "lat": 25.0450128, "lon": 121.5646289 }
+  ],
+  "tags": {
+    "electrified": "no",
+    "gauge": "1067",
+    "railway": "rail",
+    "service": "yard",
+    "tunnel": "building_passage",
+    "usage": "tourism"
+  }
+},
+{
+  "type": "way",
+  "id": 1555091759,
+  "bounds": {
+    "minlat": 25.0374489,
+    "minlon": 121.5821744,
+    "maxlat": 25.0378189,
+    "maxlon": 121.5831262
+  },
+  "nodes": [
+    4498833448,
+    12244967782
+  ],
+  "geometry": [
+    { "lat": 25.0378189, "lon": 121.5831262 },
+    { "lat": 25.0374489, "lon": 121.5821744 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "信義線東延段",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:zh": "信義線東延段",
+    "network": "台北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線"
+  }
+},
+{
+  "type": "way",
+  "id": 1555091760,
+  "bounds": {
+    "minlat": 25.0373520,
+    "minlon": 121.5822145,
+    "maxlat": 25.0377227,
+    "maxlon": 121.5831627
+  },
+  "nodes": [
+    12244967781,
+    4498833450
+  ],
+  "geometry": [
+    { "lat": 25.0373520, "lon": 121.5822145 },
+    { "lat": 25.0377227, "lon": 121.5831627 }
+  ],
+  "tags": {
+    "electrified": "rail",
+    "frequency": "0",
+    "gauge": "1435",
+    "layer": "-2",
+    "maxspeed": "80",
+    "name": "信義線東延段",
+    "name:en": "MRT Tamsui-Xinyi Line",
+    "name:zh": "信義線東延段",
+    "network": "台北捷運",
+    "operator": "臺北大眾捷運股份有限公司",
+    "railway": "subway",
+    "tunnel": "yes",
+    "voltage": "750",
+    "wikidata": "Q697140",
+    "wikipedia": "zh:淡水信義線"
+  }
+}
+
+  ]
+}

@@ -312,6 +312,19 @@ test('Xinyi + Da\'an (city) geodata builds as one world around Taipei 101', { ti
       assert.ok(GEO.roadGraph.names.some((n) => n.includes(name)), `${name} in the road graph`);
     }
     assert.ok(GEO.terrain && GEO.infillShown === false && GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'));
+    // The elevated Wenhu MRT line through Da'an (deck heights estimated, ramping to 0 at its portals) and the stations
+    const { lines, stations } = GEO.rail;
+    assert.ok(lines.filter(([up]) => up).length > 10, 'elevated guideway ways');
+    for (const [up, w, pts, hs] of lines) {
+      assert.ok([0, 1].includes(up) && w > 0 && pts.length >= 4 && hs.length === pts.length / 2 && hs.every((h) => h >= 0 && h <= 20));
+    }
+    assert.ok(lines.some(([up, , , hs]) => up && Math.min(...hs) === 0 && Math.max(...hs) >= 10), 'a ramp down to a portal');
+    for (const name of ['Technology Building', 'Daan Park', 'Taipei 101/World Trade Center', 'Liuzhangli']) {
+      assert.ok(stations.some(([, en]) => en === name), `${name} station`);
+    }
+    // Liuzhangli station (way 194237488, layer 3, no min height) is raised over the street
+    const liuzhangli = GEO.buildings.find((b) => b[0] === 'w194237488');
+    assert.ok(liuzhangli && liuzhangli[4] > 5 && liuzhangli[3] > 15 && GEO.heightSources[liuzhangli[5]] === 'estimate');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

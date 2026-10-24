@@ -7,6 +7,7 @@ import { SimpleVehicles } from './simple-vehicles.js';
 import { buildGreenAreas, treeSites } from './green-areas.js';
 import { createTreeField } from './trees.js';
 import { buildSignalControl } from './signal-control.js';
+import { buildRailViaduct } from './rail-viaduct.js';
 import { buildFootprintTraffic } from './footprint-traffic.js';
 import { buildStreetFurniture } from './street-furniture.js';
 import { buildBasemapOverlay } from './basemap-overlay.js';
@@ -163,6 +164,7 @@ async function init() {
   await loading.step(0.22, 'Paving roads & sidewalks');
   // Taiwan marks two-way centre lines in yellow (lane dividers stay white)
   buildGraphRoads(scene, GEO, { centreLineColour: 0xe8b420 });
+  buildRailViaduct(scene, GEO); // the elevated MRT (Wenhu line) where the area has it (GEO.rail; deck heights estimated)
   await loading.step(0.3, `Planting ${(GEO.trees || []).length} trees & street furniture`);
   buildGreenAreas(scene, GEO);
   scene.add(createTreeField(scene, treeSites(GEO)).group);
@@ -171,7 +173,11 @@ async function init() {
   await loading.step(0.38, 'Signals, cars & pedestrians');
 
   // Signals & traffic: Taiwan drives on the right; cars mostly white, silver, grey & black, taxis yellow
-  const signals = buildSignalControl(scene, GEO, { driveOnRight: true });
+  // Taiwan's signals (道路交通標誌標線號誌設置規則 arts. 203–204, 220): heads over the road are horizontal, red at the
+  // left, then amber, green, with a square red-digit countdown beside the red lamp; pedestrian signals are two lenses,
+  // a red standing figure over a green walking one (Taipei's animated 小綠人, quickening and flashing as time runs out)
+  // with a countdown. The timing stays a plausible fixed cycle, not the city's real signal plans.
+  const signals = buildSignalControl(scene, GEO, { driveOnRight: true, style: { armHead: 'horizontal', countdown: true, pedestrian: true } });
   const traffic = buildFootprintTraffic(scene, GEO, {
     signals,
     driveOnRight: true,
