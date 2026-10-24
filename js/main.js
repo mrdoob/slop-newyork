@@ -586,6 +586,20 @@ async function initApp() {
     savedTime = localStorage.getItem('time-of-day');
   } catch { /* Storage may be disabled. */ }
   selectTime([...timeButtons].some((btn) => btn.getAttribute('data-time') === savedTime) ? savedTime : 'live');
+  // Multiplayer (?multiplayer=1, see js/multiplayer.js) loads only when asked for, so single-player pays nothing
+  let multiplayer = null;
+  if (new URLSearchParams(location.search).has('multiplayer')) {
+    import('./multiplayer.js')
+      .then(({ Multiplayer, multiplayerOptions }) => {
+        const options = multiplayerOptions();
+        if (!options) {
+          console.info('[mp] no server to connect to: add &mp-server=wss://… (or serve from localhost)');
+          return;
+        }
+        multiplayer = new Multiplayer({ scene, controllers: controllerManager, camera: cameraSystem.camera, ...options });
+      })
+      .catch((err) => console.warn('[mp] could not start multiplayer:', err));
+  }
   // the web fonts change the buttons' widths once they arrive
   if (document.fonts) document.fonts.ready.then(placeModeIndicator);
   markInit('ui');
@@ -716,6 +730,7 @@ async function initApp() {
     if (cityBlocks.updateLights) cityBlocks.updateLights(cameraSystem.camera);
     if (streetDetails.update) streetDetails.update(cameraSystem.camera);
     lightingSystem.update(cameraSystem.currentPos);
+    if (multiplayer) multiplayer.update(dt, elapsed);
     mapSystem.update();
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.isNight);
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk

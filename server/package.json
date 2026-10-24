@@ -1,0 +1,16 @@
+{
+  "name": "slop-multiplayer-server",
+  "private": true,
+  "type": "module",
+  "description": "Region rooms with area-of-interest snapshots for the browser city",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "ws": "8.18.3"
+  }
+}
