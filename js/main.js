@@ -105,7 +105,7 @@ async function initApp() {
   ]);
   markInit('traffic');
   // Mast-arm traffic signals at the signalised junctions of a city off the grid (the grid's are built with the streets)
-  streetDetails.addJunctionSignals?.(trafficSystem.network);
+  streetDetails.addJunctionSignals?.(trafficSystem.network, allColliders); // (their poles stop the player)
   const highwayTraffic = createHighwayTraffic(scene, cityGrid.highwayLanes);
   buildRoadPaint(scene, trafficSystem.network);
   markInit('roadPaint');
@@ -115,7 +115,7 @@ async function initApp() {
   controllerManager.setTerrain(hillGround);
   trafficSystem.setHillQuery(hillGround);
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
-  const solidAt = (x, z) => controllerManager.isSolidAt(x, z);
+  const solidAt = (x, z) => controllerManager.isSolidAt(x, z, 1.5, hillGround(x, z));
   trafficSystem.setSolidQuery(solidAt);
   streetDetails.breaker?.setSolidQuery(solidAt);
   // Saved positions belong to one city's frame: the key carries the city's name

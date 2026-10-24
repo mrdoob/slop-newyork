@@ -872,9 +872,10 @@ class ThirdPersonControllerManager {
   // The colliders whose bounds come within `r` of (x, z), in their original order. They never move, so they are
   // bucketed once into 48 m cells (tens of thousands of buildings: testing them all every frame cost ~0.5 ms)
   // Is ground point (x, z) inside a building below `height`? (Things thrown about by knock-downs, mayhem.js)
-  isSolidAt(x, z, height = 1.5) {
+  isSolidAt(x, z, height = 1.5, ground = 0) {
     for (const c of this.nearColliders(x, z, 0)) {
-      if ((c.minY ?? 0) > height || x < c.minX || x > c.maxX || z < c.minZ || z > c.maxZ) continue;
+      // (only what stands between the ground there, a hill's or the street's, and `height` over it)
+      if ((c.minY ?? 0) > ground + height || (c.maxY ?? Infinity) <= ground || x < c.minX || x > c.maxX || z < c.minZ || z > c.maxZ) continue;
       if (!c.obb) return true;
       // the box's own frame: world = c + R_y(θ)·local, so local = R_y(−θ)·(p − c)
       const { cx, cz, hx, hz, cs, sn } = c.obb;
@@ -1052,8 +1053,11 @@ class ThirdPersonControllerManager {
     const rise = h - hill(prevX, prevZ);
     const grade = this.activeMode === 'person' ? 1.0 : this.activeMode === 'cyclist' ? 0.45 : 0.4;
     if (run > 1e-4 && rise > grade * run) {
+      // back where it was, and down on the ground there again (unless it is in the air, a jump)
+      const onGround = entity.position.y <= this.getGroundHeight(entity.position.x, entity.position.z, this.activeMode) + 0.02;
       entity.position.x = prevX;
       entity.position.z = prevZ;
+      if (onGround) entity.position.y = this.getGroundHeight(prevX, prevZ, this.activeMode);
       if (typeof entity.speed === 'number') entity.speed *= -0.25;
       if (entity.vx) entity.vx = 0;
       if (entity.vz) entity.vz = 0;

@@ -42,11 +42,13 @@ import {
   createMexicanHouseMaterial,
   createFacadeBoxes,
   createBillboardMaterial,
+  atlasSlotUV,
   WALL_KINDS
 } from './tsl-materials.js';
 import { GEO } from './city-geodata.js';
 import { STOREFRONTS } from './storefronts/index.js';
 import { LANDMARK_RESERVES as TEPIC_RESERVES } from './tepic-landmarks.js';
+import { hillGround } from './terrain.js';
 import { fdrViaduct, pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
 
 // js/buildings.js
@@ -2103,23 +2105,33 @@ function buildCityBlocks(scene) {
         const tone = rand();
         const faces = [WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear];
         faces[front] = chain ? WALL_KINDS.chainStore + sign.store : shop ? WALL_KINDS.shop : WALL_KINDS.entry;
-        buckets[MEX].push({ x: cx, y: h * 0.5, z: cz, w, h, d, faces, tone, ry: th });
         const hx = w * 0.5, hz = d * 0.5;
         const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;
         const ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
-        colliders.push({ minX: cx - ex, maxX: cx + ex, minZ: cz - ez, maxZ: cz + ez, minY: 0, maxY: h, obb: { cx, cz, hx, hz, cs, sn } });
         const pts = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]].map(([a, b]) => ({ x: cx + a * cs + b * sn, z: cz - a * sn + b * cs }));
-        blk.footprints.push({ x0: cx - ex, x1: cx + ex, z0: cz - ez, z1: cz + ez, h, tone, pts });
+        // on a hillside (terrain.js) the house stands on the slope: its floor at its lowest corner (a little into the
+        // ground), its roof a full height over its highest, the downhill side's foundation showing
+        let g0 = Infinity, g1 = 0;
+        for (const p of pts) {
+          const g = hillGround(p.x, p.z);
+          g0 = Math.min(g0, g);
+          g1 = Math.max(g1, g);
+        }
+        const base = g1 > 0 ? Math.max(0, g0 - 0.15) : 0;
+        const top = g1 + h;
+        buckets[MEX].push({ x: cx, y: (base + top) * 0.5, z: cz, w, h: top - base, d, faces, tone, ry: th });
+        colliders.push({ minX: cx - ex, maxX: cx + ex, minZ: cz - ez, maxZ: cz + ez, minY: base, maxY: top, obb: { cx, cz, hx, hz, cs, sn } });
+        blk.footprints.push({ x0: cx - ex, x1: cx + ex, z0: cz - ez, z1: cz + ez, h: top, tone, pts });
         blk.minX = Math.min(blk.minX, cx - ex);
         blk.maxX = Math.max(blk.maxX, cx + ex);
         blk.minZ = Math.min(blk.minZ, cz - ez);
         blk.maxZ = Math.max(blk.maxZ, cz + ez);
-        if (h > blk.maxH) blk.maxH = h;
+        if (top > blk.maxH) blk.maxH = top;
         // a black water tank on most roofs, back from the street
         if (!chain && chance(0.72) && w > 3.2 && d > 3.2) {
           const tu = (alongZ ? -ou : 0) * range(0.1, 0.35) * w + (alongZ ? 0 : range(-0.3, 0.3) * w);
           const tv = (alongZ ? range(-0.3, 0.3) * d : -ov * range(0.1, 0.35) * d);
-          blk.tinacos.push({ x: cx + tu * cs + tv * sn, y: h, z: cz - tu * sn + tv * cs, s: range(0.85, 1.15) });
+          blk.tinacos.push({ x: cx + tu * cs + tv * sn, y: top, z: cz - tu * sn + tv * cs, s: range(0.85, 1.15) });
         }
         // The street front: a chain's fascia, or a shop's awning with its sign above it
         if (!shop && !chain) return;
@@ -2129,19 +2141,20 @@ function buildCityBlocks(scene) {
         };
         // awnings are laid out along local z facing ±x: a front on a local n / s side turns a quarter more
         const ry = th + (ov ? (ov > 0 ? -Math.PI / 2 : Math.PI / 2) : 0);
+        const gf = g1 > 0 ? hillGround(...toFront(0.9)) : 0; // the ground at the street front
         if (chain) {
           // the logo box over the middle of the front (a supermarket's runs further along it)
           const [sx, sz] = toFront(0.25);
           const boxH = chain.big ? 1.8 : 1.3;
           blk.awnings.push({ x: sx, y: 0, z: sz, w: 0, d: Math.min(len - 1.0, chain.big ? 26 : 5.2), sideDir: ou || 1, colorIdx: 0, ry,
-            noAwning: true, sign: signNo - 1, signY: h - boxH * 0.5 + 0.35, signH: boxH, signW: 0.5 });
-          if (chain.pylon) pylons.push({ front: toFront(1.4), ry, along: len, slot: signNo - 1, ou, ov, cs, sn, pylon: chain.pylon });
+            noAwning: true, sign: signNo - 1, signY: top - boxH * 0.5 + 0.35, signH: boxH, signW: 0.5 });
+          if (chain.pylon) pylons.push({ front: toFront(1.4), y: g1 > 0 ? hillGround(...toFront(1.4)) : 0, ry, along: len, slot: signNo - 1, ou, ov, cs, sn, pylon: chain.pylon });
         } else if (hasSign || chance(0.55)) {
           const [ax, az] = toFront(0.9);
           const [sx, sz] = toFront(0.16); // the sign flat on the wall above the awning
-          const signY = floors < 2 ? h - 0.45 : storeys[MEX] + 0.6;
+          const signY = Math.max(gf, base) + (floors < 2 ? h - 0.45 : storeys[MEX] + 0.6);
           const sg = hasSign ? signNo - 1 : undefined;
-          blk.awnings.push({ x: ax, y: Math.min(2.7, storeys[MEX] * 0.9) - 0.15, z: az, w: 1.5, d: Math.min(7, len - 1.2), sideDir: ou || 1,
+          blk.awnings.push({ x: ax, y: Math.max(gf, base) + Math.min(2.7, storeys[MEX] * 0.9) - 0.15, z: az, w: 1.5, d: Math.min(7, len - 1.2), sideDir: ou || 1,
             colorIdx: irange(0, 4), ry, sign: sg, signY, signPX: sx, signPZ: sz, signW: 0.12, signH: 0.62, noSign: sg === undefined && floors < 2 });
         }
       });
@@ -2535,12 +2548,8 @@ function buildCityBlocks(scene) {
     const geo = unitBox.clone();
     atlasSlots = new THREE.InstancedBufferAttribute(new Float32Array(MAX_AWNINGS), 1);
     geo.setAttribute('signSlot', atlasSlots);
-    const slot = attribute('signSlot', 'float');
-    const col = slot.mod(ATLAS_COLS);
-    const row = slot.sub(col).div(ATLAS_COLS);
-    const atlasUV = vec2(col.add(uv().x).div(ATLAS_COLS), float(1.0).sub(row.add(float(1.0).sub(uv().y)).div(ATLAS_ROWS)));
     const mat = new THREE.MeshBasicNodeMaterial();
-    mat.colorNode = texture(tex, atlasUV);
+    mat.colorNode = texture(tex, atlasSlotUV(attribute('signSlot', 'float'), ATLAS_COLS, ATLAS_ROWS));
     atlasInst = new THREE.InstancedMesh(geo, mat, MAX_AWNINGS);
     atlasInst.frustumCulled = false;
     atlasInst.count = 0;
@@ -2559,18 +2568,18 @@ function buildCityBlocks(scene) {
         const x = p.front[0] + endU * p.cs + endV * p.sn, z = p.front[1] - endU * p.sn + endV * p.cs;
         const H = p.pylon.height;
         dummy.rotation.set(0, 0, 0);
-        dummy.position.set(x, 0, z);
+        dummy.position.set(x, p.y, z);
         dummy.scale.set(1, H, 1);
         dummy.updateMatrix();
         poleInst.setMatrixAt(k, dummy.matrix);
         poleInst.setColorAt(k, new THREE.Color(p.pylon.pole));
         dummy.rotation.set(0, p.ry + Math.PI / 2, 0); // its faces towards the street both ways
-        dummy.position.set(x, H + 0.55, z);
+        dummy.position.set(x, p.y + H + 0.55, z);
         dummy.scale.set(0.35, 1.1, 2.6);
         dummy.updateMatrix();
         signInst.setMatrixAt(k, dummy.matrix);
         pylonSlots.setX(k, p.slot);
-        colliders.push({ minX: x - 0.25, maxX: x + 0.25, minZ: z - 0.25, maxZ: z + 0.25, minY: 0, maxY: H });
+        colliders.push({ minX: x - 0.25, maxX: x + 0.25, minZ: z - 0.25, maxZ: z + 0.25, minY: p.y, maxY: p.y + H });
       });
       poleInst.castShadow = signInst.castShadow = true;
       group.add(poleInst, signInst);

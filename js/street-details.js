@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, float, color, positionWorld, uniform, mod, fract, step, smoothstep, mix, attribute, texture, uv, vec2 } from 'three/tsl';
+import { Fn, float, color, positionWorld, uniform, mod, fract, step, smoothstep, mix, attribute, texture } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   HAS_GRID,
@@ -14,7 +14,7 @@ import {
   LANDMARK_SITES,
   nearestRoads
 } from './city-config.js';
-import { cityUniforms, createSteamMaterial, createTreeGrateMaterial, createGodRayMaterial } from './tsl-materials.js';
+import { cityUniforms, createSteamMaterial, createTreeGrateMaterial, createGodRayMaterial, atlasSlotUV } from './tsl-materials.js';
 import { PropBreaker } from './mayhem.js';
 import { createTreeField } from './trees.js';
 import { pavedPlazaRects, centralParkClearings, parkTreeSites, sidewalkBlocks, parkLampSites } from './city-grid.js';
@@ -1298,9 +1298,9 @@ function buildStreetDetails(scene) {
    * Mexican mast-arm traffic signals at the road network's signalised junctions (built once the network exists, see
    * main.js): on each approach a black pole at the right-hand curb, an arm over the lanes, a black three-light head
    * over them facing the traffic (lit with that road's phase, like the grid's heads at the same height) and a green
-   * blade with the name of the street crossing it.
+   * blade with the name of the street crossing it. Each pole's collider goes into `colliders` (the player's).
    */
-  function addJunctionSignals(network) {
+  function addJunctionSignals(network, colliders = null) {
     if (HAS_GRID || !network) return 0;
     const housingMat = new THREE.MeshStandardNodeMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide });
     const mastMat = new THREE.MeshStandardNodeMaterial({ color: 0x2e3236, roughness: 0.45, metalness: 0.6 });
@@ -1332,6 +1332,7 @@ function buildStreetDetails(scene) {
         const reach = off - mid;
         if (reach < 1.5) continue;
         placedPoles.push({ x: px, z: pz });
+        colliders?.push({ minX: px - 0.2, maxX: px + 0.2, minZ: pz - 0.2, maxZ: pz + 0.2, minY: 0, maxY: 6.6 });
         const yaw = Math.atan2(e.dx, e.dz);
         const armYaw = Math.atan2(e.rz, -e.rx); // the arm runs from the pole to the left (−r)
         dummy.rotation.set(0, 0, 0);
@@ -1412,11 +1413,8 @@ function buildStreetDetails(scene) {
       const geo = unitBox.clone();
       const slots = new THREE.InstancedBufferAttribute(new Float32Array(blades.map((b) => b.slot)), 1);
       geo.setAttribute('bladeSlot', slots);
-      const slot = attribute('bladeSlot', 'float');
-      const col = slot.mod(COLS);
-      const row = slot.sub(col).div(COLS);
       const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.35 });
-      mat.colorNode = texture(tex, vec2(col.add(uv().x).div(COLS), float(1.0).sub(row.add(float(1.0).sub(uv().y)).div(rows))));
+      mat.colorNode = texture(tex, atlasSlotUV(attribute('bladeSlot', 'float'), COLS, rows));
       add(geo, mat, blades.map((b) => b.m));
     }
     console.info(`[signals] ${heads.length} mast-arm signal heads, ${blades.length} street name blades at the signalised junctions`);

@@ -2028,7 +2028,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     p.fallBase = p.fallBase || new Float32Array(BONES * 8);
     p.fallBase.set(p.rig.pose.subarray(0, BONES * 8));
     p.fallen = startTumble(p.x, ground, p.z, player.vx, player.vz, hit.nx, hit.nz);
-    p.fallen.ground = ground;
+    p.fallen.lift = ground - hillAt(p.x, p.z); // the sidewalk or crosswalk over the hill it lands on
     if (p.conversation) endConversation(p.conversation);
     p.node = null; // off any crosswalk queue (gatherCurbs)
     p.waiting = false;
@@ -2040,7 +2040,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // A knocked-over pedestrian flies, lands and lies still, then gets up out of sight (respawned like any other)
   function tumblePed(p, dt) {
     const f = p.fallen;
-    if (stepTumble(f, dt, f.ground, solidAt) > DOWN_TIME) {
+    // it lands on the hill where it comes down, not where it was hit
+    if (stepTumble(f, dt, f.lift + hillAt(f.px, f.pz), solidAt) > DOWN_TIME) {
       p.fallen = null;
       p.placed = false;
       p.rig.placed = false;
@@ -2062,7 +2063,6 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const f = startTumble(v.x, g, v.z, player.vx, player.vz, hit.nx, hit.nz);
     // the rider's pivot as it sat (the hips over the saddle)
     f.y0 = f.py = g + 1.05;
-    f.ground = g;
     // the bicycle skids on, falling on its side
     v.wreck = {
       rider: f,
@@ -2104,7 +2104,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // The fallen cyclist and the bicycle on its side; both cleared once they've lain still a while
   function renderWreck(v, dt, slot) {
     const w = v.wreck;
-    const restR = stepTumble(w.rider, dt, hillAt(w.px, w.pz), solidAt);
+    const restR = stepTumble(w.rider, dt, hillAt(w.rider.px, w.rider.pz), solidAt);
     const k = Math.exp(-2.5 * dt);
     w.vx *= k;
     w.vz *= k;

@@ -485,6 +485,16 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
 }
 
 /**
+ * UV into a sign atlas of `cols` x `rows` equal slots (slot 0 at the top left, row by row), for the face's own uv: the
+ * slot is a per-instance float node (the shop signs in buildings.js, the street name blades in street-details.js)
+ */
+function atlasSlotUV(slot, cols, rows) {
+  const col = slot.mod(cols);
+  const row = slot.sub(col).div(cols);
+  return vec2(col.add(uv().x).div(cols), float(1.0).sub(row.add(float(1.0).sub(uv().y)).div(rows)));
+}
+
+/**
  * Mexican house TSL material (box-local, for createFacadeBoxes): rendered & painted walls, each house in its own colour
  * (the instance's tone), a darker plinth ("guardapolvo") and a pale coping on the parapet; a few windows per floor
  * with aluminium frames behind iron bars (rejas); on the street front's ground floor a door and a garage gate, or a
@@ -3144,6 +3154,7 @@ function createCarFlareMaterial() {
 export {
   cityUniforms,
   WALL_KINDS,
+  atlasSlotUV,
   createMexicanHouseMaterial,
   createCurtainWallMaterial,
   createPreWarBuildingMaterial,

@@ -170,6 +170,7 @@ function buildTerrain(scene) {
 function buildHillPaths(group) {
   const paths = T.paths || [];
   const STEP = 2.5;
+  const PATH_LIFT = 0.04;
   const ribbons = [[], [], []]; // positions per surface
   const walls = [];
   const lamps = [];
@@ -200,7 +201,7 @@ function buildHillPaths(group) {
       if (Math.max(ha, hb) < 0.3) continue; // in town: the streets are there already
       const corner = (s, side) => {
         const x = s[0] - s[3] * side * hw, z = s[1] + s[2] * side * hw;
-        return [x, terrainHeight(x, z) + 0.12, z];
+        return [x, terrainHeight(x, z) - SINK + PATH_LIFT, z]; // just over the hill's mesh, where walkers stand
       };
       const a0 = corner(a, -1), a1 = corner(a, 1), b0 = corner(b, -1), b1 = corner(b, 1);
       out.push(...a0, ...a1, ...b0, ...a1, ...b1, ...b0); // counter-clockwise from above
@@ -228,6 +229,12 @@ function buildHillPaths(group) {
     new THREE.MeshStandardNodeMaterial({ color: 0xb3ada2, roughness: 0.85 }),
     new THREE.MeshStandardNodeMaterial({ color: 0x8a6448, roughness: 0.97 })
   ];
+  for (const mat of surfaces) {
+    // (drawn over the hillside a few centimetres under them without fighting it)
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = -1;
+    mat.polygonOffsetUnits = -2;
+  }
   ribbons.forEach((list, k) => {
     if (!list.length) return;
     const geo = new THREE.BufferGeometry();
@@ -273,7 +280,7 @@ function buildHillPaths(group) {
     const globes = new THREE.InstancedMesh(globeGeo, globeMat, lamps.length);
     const m = new THREE.Matrix4();
     lamps.forEach(([x, y, z], i) => {
-      m.makeTranslation(x, y - 0.12, z);
+      m.makeTranslation(x, y - PATH_LIFT, z);
       poles.setMatrixAt(i, m);
       globes.setMatrixAt(i, m);
     });
