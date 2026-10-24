@@ -490,6 +490,12 @@ async function initApp() {
     });
   });
 
+  // No browser context menu in the game (text fields keep theirs): right-click or macOS Ctrl+click opened it, and
+  // opened mid-drag it swallowed the pointerup so the camera kept orbiting with the bare mouse
+  document.addEventListener('contextmenu', (e) => {
+    if (!isTypingInField(e)) e.preventDefault();
+  });
+
   // A mouse click mustn't leave the focus on a HUD button, or Space (jump / ascend) and Enter would press it again
   document.addEventListener('click', (e) => {
     const btn = e.target instanceof Element ? e.target.closest('button') : null;

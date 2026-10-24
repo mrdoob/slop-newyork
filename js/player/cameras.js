@@ -49,6 +49,14 @@ class CameraSystem {
     this.followOffset = new THREE.Vector3();
     this.followLookOffset = new THREE.Vector3();
     this.followBaseY = 0;
+    // The chase camera's eased orbit around orbitEntity (see orbitChase)
+    this.orbitEntity = null;
+    this.orbitYaw = 0;
+    this.orbitHoriz = 0;
+    this.orbitHeight = 0;
+    this.orbitBaseY = 0;
+    this.orbitLookFrom = new THREE.Vector3();
+    this.orbitLookBlend = 1;
     this.smoothedSpeed = 0;
     this._desiredPos = new THREE.Vector3();
     this._desiredLook = new THREE.Vector3();
@@ -105,6 +113,12 @@ class CameraSystem {
     canvas.addEventListener('pointermove', (e) => {
       const pointer = pointers.get(e.pointerId);
       if (!pointer) return;
+      // A mouse drag whose button came up without a pointerup reaching us (a menu, a system gesture, a click outside
+      // the window) ends here instead of turning the camera on hover
+      if (e.pointerType === 'mouse' && (e.buttons & 1) === 0) {
+        releasePointer(e.pointerId);
+        return;
+      }
       e.preventDefault();
       const dx = e.clientX - pointer.x;
       const dy = e.clientY - pointer.y;
@@ -185,6 +199,7 @@ class CameraSystem {
     this.resetOrbit();
     this.smoothedSpeed = 0;
     this.followEntity = null;
+    this.orbitEntity = null;
     this.followOffset.set(0, 0, 0);
     this.followLookOffset.set(0, 0, 0);
     this.followBaseY = 0;
@@ -226,19 +241,12 @@ class CameraSystem {
         const dist = entity.chaseDistance * this.zoomMultiplier * (1 + Math.min(0.25, this.smoothedSpeed * 0.01));
         const height = entity.chaseHeight * this.zoomMultiplier + Math.sin(this.orbitPitchOffset) * dist * 0.85;
         const horizDist = Math.cos(this.orbitPitchOffset) * dist + speedLag;
-
-        desiredPos.set(
-          entity.position.x - Math.sin(totalYaw) * horizDist,
-          Math.max(0.65, entity.position.y + height),
-          entity.position.z - Math.cos(totalYaw) * horizDist
-        );
-
+        // The chase camera is placed by orbitChase() below from these, eased as angles around the entity
         const lookUpBias = entity.type === 'helicopter' ? 0.2 : (entity.type === 'car' ? 0.52 : 1.55);
-        desiredLook.set(
-          entity.position.x + Math.sin(entity.heading) * 5.2,
-          entity.position.y + entity.cameraTargetOffset.y + lookUpBias,
-          entity.position.z + Math.cos(entity.heading) * 5.2
-        );
+        this._chaseYaw = totalYaw;
+        this._chaseHoriz = horizDist;
+        this._chaseHeight = height;
+        this._chaseLookY = entity.cameraTargetOffset.y + lookUpBias;
         break;
       }
 
@@ -293,17 +301,22 @@ class CameraSystem {
         break;
     }
 
-    if (!this.initialized || this.activePresetId === 'pov') {
+    if (this.activePresetId === 'chase') {
+      this.followEntity = null; // action re-anchors from wherever the chase left the camera
+      this.orbitChase(entity, dt);
+    } else if (!this.initialized || this.activePresetId === 'pov') {
+      this.orbitEntity = null;
       this.currentPos.copy(desiredPos);
       this.currentLookAt.copy(desiredLook);
       this.initialized = true;
       this.followEntity = null; // the follow cameras re-anchor from here
-    } else if (this.activePresetId === 'chase' || this.activePresetId === 'action') {
+    } else if (this.activePresetId === 'action') {
+      this.orbitEntity = null;
       // Smoothed in the followed entity's frame rather than in world space. A world-space follower trails a moving
       // target by a distance that depends on the frame time (about speed x dt), so with uneven frame times the camera
       // surged back and forth behind an accelerating or fast car. Relative to the entity a steady drive keeps the
-      // camera steady, while turns, orbit drags, zoom & the speed pull-back are still eased. The entity's height is
-      // eased in world space (curbs, park lawns, jumps, the helicopter climbing).
+      // camera steady, while turns & the speed pull-back are still eased. The entity's height is eased in world space
+      // (curbs, park lawns, jumps, the helicopter climbing).
       if (this.followEntity !== entity) {
         // preset or mode switch: start from where the camera is and glide over to the new framing
         this.followEntity = entity;
@@ -319,6 +332,7 @@ class CameraSystem {
       this.currentLookAt.set(entity.position.x, this.followBaseY, entity.position.z).add(this.followLookOffset);
       this.currentPos.y = Math.max(0.55, this.currentPos.y);
     } else {
+      this.orbitEntity = null;
       this.followEntity = null;
       const k = 1 - Math.exp(-dt * 8.5);
       this.currentPos.lerp(desiredPos, k);
@@ -334,6 +348,58 @@ class CameraSystem {
     }
     this.camera.position.copy(this.currentPos);
     this.camera.lookAt(this.currentLookAt);
+  }
+
+  // The chase camera on a sphere around the entity. Its yaw, distance and height are eased as orbit parameters, not
+  // as a position: easing the position cut straight across the circle, so a drag or a sharp turn pulled the camera in
+  // towards the player and swung the view sideways. It is placed from the entity's current position every frame, so
+  // a steady drive keeps it steady whatever the frame time, and it always looks over the entity along its own yaw.
+  orbitChase(entity, dt) {
+    const p = entity.position;
+    if (!this.initialized || this.orbitEntity !== entity) {
+      this.orbitEntity = entity;
+      this.orbitBaseY = p.y;
+      if (this.initialized) {
+        // preset or mode switch: start from where the camera is and swing round to the chase framing
+        const dx = this.currentPos.x - p.x, dz = this.currentPos.z - p.z;
+        this.orbitYaw = Math.atan2(-dx, -dz);
+        this.orbitHoriz = Math.hypot(dx, dz);
+        this.orbitHeight = this.currentPos.y - p.y;
+        this.orbitLookFrom.subVectors(this.currentLookAt, p);
+        this.orbitLookBlend = 0;
+      } else {
+        this.orbitYaw = this._chaseYaw;
+        this.orbitHoriz = this._chaseHoriz;
+        this.orbitHeight = this._chaseHeight;
+        this.orbitLookBlend = 1;
+        this.initialized = true;
+      }
+    }
+    const k = 1 - Math.exp(-dt * 8.5);
+    // a drag follows the hand closely; turns of the entity and the recentring swing round more gently
+    const kYaw = 1 - Math.exp(-dt * (this.isDragging ? 22 : 8.5));
+    let dYaw = (this._chaseYaw - this.orbitYaw) % (Math.PI * 2);
+    if (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    else if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    this.orbitYaw += dYaw * kYaw;
+    this.orbitHoriz += (this._chaseHoriz - this.orbitHoriz) * k;
+    this.orbitHeight += (this._chaseHeight - this.orbitHeight) * k;
+    this.orbitBaseY += (p.y - this.orbitBaseY) * k;
+    this.orbitLookBlend += (1 - this.orbitLookBlend) * k;
+
+    const sin = Math.sin(this.orbitYaw), cos = Math.cos(this.orbitYaw);
+    this.currentPos.set(
+      p.x - sin * this.orbitHoriz,
+      Math.max(0.65, this.orbitBaseY + this.orbitHeight),
+      p.z - cos * this.orbitHoriz
+    );
+    // after a switch the view eases from where it was looking over to the entity
+    const b = this.orbitLookBlend;
+    this.currentLookAt.set(
+      p.x + this.orbitLookFrom.x * (1 - b) + sin * 5.2 * b,
+      this.orbitBaseY + this.orbitLookFrom.y * (1 - b) + this._chaseLookY * b,
+      p.z + this.orbitLookFrom.z * (1 - b) + cos * 5.2 * b
+    );
   }
 
   // Height of the ground (the hills over the flat city) at (x, z): the cameras keep above it
