@@ -41,8 +41,6 @@
   <link rel="modulepreload" href="./js/storefronts/bodega-aurrera.js" />
   <link rel="modulepreload" href="./js/storefronts/farmacias.js" />
   <link rel="modulepreload" href="./js/storefronts/tiendas.js" />
-  <link rel="modulepreload" href="./js/fire-escapes.js" />
-  <link rel="modulepreload" href="./js/landmarks.js" />
   <link rel="modulepreload" href="./js/street-details.js" />
   <link rel="modulepreload" href="./js/road-network.js" />
   <link rel="modulepreload" href="./js/road-paint.js" />
@@ -52,7 +50,7 @@
   <link rel="modulepreload" href="./js/touch-controls.js" />
   <link rel="modulepreload" href="./js/gamepad-controls.js" />
   <link rel="modulepreload" href="./js/cameras.js" />
-  <link rel="modulepreload" href="./js/nyc-map.js" />
+  <link rel="modulepreload" href="./js/city-map.js" />
   <link rel="modulepreload" href="./js/scene-culling.js" />
   <link rel="modulepreload" href="./js/post-processing.js" />
   <link rel="modulepreload" href="./js/audio-synthesis.js" />
@@ -120,7 +118,6 @@
       <div class="brand-titles">
         <div class="brand-heading">
           <h1>Slop Tepic</h1>
-          <a class="repo-link" href="https://github.com/mrdoob/slop-newyork/" target="_blank" rel="noopener noreferrer" aria-label="Basado en Slop New York (GitHub, nueva pestaña)">GitHub <span aria-hidden="true">↗</span></a>
         </div>
         <div class="brand-subtitle">three.js · WebGPU · TSL · <span id="hud-fps" class="fps-ok">60</span> fps</div>
       </div>
@@ -179,7 +176,7 @@
     <button id="tp-bonaterra" class="pop-item tp-btn" data-teleport="bonaterra" type="button"><span class="pop-name">Bonaterra</span><span class="pop-sub">Libramiento · Bonaterra</span></button>
   </div>
 
-  <!-- Bottom-Left: Street-Name Signs & Live GPS Radar Minimap -->
+  <!-- Bottom-Left: Street-Name Signs & Live Radar Minimap -->
   <div class="hud hud-bottom-left">
     <div id="hud-location" class="location" aria-live="off"></div>
     <aside id="minimap-card" class="panel radar" aria-label="Radar de calles de Tepic" title="Abrir el mapa completo de Tepic [M]">
@@ -189,24 +186,10 @@
     </aside>
   </div>
 
-  <!-- Bottom-Center: Third-Person Mode Switcher & Controls Guide -->
+  <!-- Bottom-Center: What F would do here (get in, take a car or bicycle, get out) & Controls Guide -->
   <footer class="hud hud-bottom-center">
+    <div id="hud-prompt" class="panel action-prompt" aria-live="polite" hidden></div>
     <div id="hud-controls-hint" class="controls-hint"></div>
-    <nav id="mode-switch" class="panel mode-switch" aria-label="Third-Person Navigation Mode">
-      <span class="mode-indicator" aria-hidden="true"></span>
-      <button id="mode-person" class="mode-btn" data-mode="person" type="button" title="Person [1]">
-        <svg class="icon" aria-hidden="true"><use href="#i-walk"/></svg><span class="mode-label">Walk</span><kbd>1</kbd>
-      </button>
-      <button id="mode-car" class="mode-btn active" data-mode="car" type="button" title="Car · Yellow Cab [2]">
-        <svg class="icon" aria-hidden="true"><use href="#i-car"/></svg><span class="mode-label">Drive</span><kbd>2</kbd>
-      </button>
-      <button id="mode-cyclist" class="mode-btn" data-mode="cyclist" type="button" title="Cyclist [3]">
-        <svg class="icon" aria-hidden="true"><use href="#i-bike"/></svg><span class="mode-label">Cycle</span><kbd>3</kbd>
-      </button>
-      <button id="mode-helicopter" class="mode-btn" data-mode="helicopter" type="button" title="Helicopter [4]">
-        <svg class="icon" aria-hidden="true"><use href="#i-heli"/></svg><span class="mode-label">Fly</span><kbd>4</kbd>
-      </button>
-    </nav>
   </footer>
 
   <!-- Bottom-Right: Speed Cluster & Camera Switcher -->
@@ -254,6 +237,9 @@
       <button class="touch-action touch-boost" data-touch-action="boost" type="button" aria-label="Boost" aria-pressed="false">
         <span aria-hidden="true">↟</span><span data-touch-label="boost">Boost</span>
       </button>
+      <button id="touch-board" class="touch-action touch-board" type="button" aria-label="Subir, robar o bajar" hidden>
+        <span aria-hidden="true">⇄</span><span data-board-label>Subir</span>
+      </button>
     </div>
   </section>
 
@@ -285,12 +271,12 @@
         <span class="mta-bullet" aria-hidden="true">TP</span>
         <div>
           <h2>Atlas de Tepic</h2>
-          <p id="fullmap-player-info" class="fullmap-subtitle">You are at 5th Ave &amp; 35th St</p>
+          <p id="fullmap-player-info" class="fullmap-subtitle">You are at the Plaza Principal</p>
         </div>
       </div>
       <label class="panel fullmap-search-wrap">
         <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
-        <input id="fullmap-search" class="fullmap-search" type="text" placeholder="Search streets &amp; landmarks — Broadway, Canal, Wall St…" aria-label="Search street or landmark" autocomplete="off" spellcheck="false" />
+        <input id="fullmap-search" class="fullmap-search" type="text" placeholder="Search streets &amp; landmarks — Insurgentes, Juárez, Allende…" aria-label="Search street or landmark" autocomplete="off" spellcheck="false" />
       </label>
       <button id="close-fullmap-btn" class="panel tool-btn fullmap-close" type="button" title="Close map [M / Esc]">
         <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg><span class="tool-label">Close</span><kbd>Esc</kbd>
@@ -319,15 +305,14 @@
 
     <div class="fullmap-footer">
       <div class="panel fullmap-status">
-        <span id="fullmap-hover-info">Click anywhere to teleport &amp; set your GPS route · Drag to pan · Scroll to zoom</span>
+        <span id="fullmap-hover-info">Click anywhere to teleport · Drag to pan · Scroll to zoom</span>
       </div>
     </div>
 
     <div class="panel fullmap-legend">
       <span class="legend-item"><span class="legend-swatch player-swatch"></span>You</span>
       <span class="legend-item"><span class="legend-swatch landmark-swatch"></span>Landmark</span>
-      <span class="legend-item"><span class="legend-swatch gps-swatch"></span>GPS route</span>
-      <span class="legend-item"><span class="legend-swatch bridge-swatch"></span>Bridge / Hwy</span>
+      <span class="legend-item"><span class="legend-swatch bridge-swatch"></span>Highway</span>
       <span id="fullmap-counts" class="legend-counts"></span>
     </div>
   </section>

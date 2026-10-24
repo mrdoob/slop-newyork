@@ -36,7 +36,7 @@ test('the city starts at the Plaza Principal, on a street, facing the Catedral',
   assert.ok(Math.hypot(catedral.x - start.x, catedral.z - start.z) < 260, 'the Catedral is next to the plaza');
 });
 
-test('preset and map teleports share arrival resets and mark the resolved landing point', () => {
+test('preset and map teleports share arrival resets and leave no GPS waypoint', () => {
   const main = read('js/main.js');
   const start = main.indexOf('  function teleportTo(');
   const end = main.indexOf('  const openMapBtn', start);
@@ -56,7 +56,7 @@ test('preset and map teleports share arrival resets and mark the resolved landin
     getLocationLabel: (x, z) => `${x}, ${z}`,
     cityBlocks: { allBlocks: [] },
     trafficSystem: {},
-    NYCMapSystem: class {
+    CityMapSystem: class {
       constructor(options) { this.onTeleport = options.onTeleport; map = this; }
     },
     teleportButtons: Object.keys(TELEPORT_LOCATIONS).map((key) => ({
@@ -72,12 +72,10 @@ test('preset and map teleports share arrival resets and mark the resolved landin
     assert.deepEqual(calls, [
       ['teleport', point.x, point.z, point.heading], ['touch'], ['gamepad'], ['camera'], ['selectCamera', 'chase', true]
     ]);
-    assert.equal(map.waypoint.x, landed.x);
-    assert.equal(map.waypoint.z, landed.z);
+    assert.equal(map.waypoint, undefined, 'teleports set no GPS waypoint');
   }
-  map.waypoint = { x: 100, z: 200, name: 'inside a building' };
-  map.onTeleport(100, 200);
-  assert.equal(map.waypoint.x, landed.x, 'map marker follows the safe position returned by the controller');
-  assert.equal(map.waypoint.z, landed.z);
-  assert.equal(map.waypoint.name, `${landed.x}, ${landed.z}`);
+  calls.length = 0;
+  assert.deepEqual(map.onTeleport(100, 200), landed, 'map teleports return the safe position from the controller');
+  assert.deepEqual(calls, [['teleport', 100, 200, Math.PI], ['touch'], ['gamepad'], ['camera'], ['selectCamera', 'chase', true]]);
+  assert.equal(map.waypoint, undefined);
 });

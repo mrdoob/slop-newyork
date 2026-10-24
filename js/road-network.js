@@ -1,8 +1,6 @@
 import {
   ALL_AVENUES,
   ALL_STREETS,
-  AVENUES,
-  STREETS,
   ISLAND_BOUNDS,
   getIslandBoundsAtZ,
   BLOCKS
@@ -1070,15 +1068,8 @@ function buildRoadNetwork(sidewalks, obstacles) {
   nodes = nodes.filter((n) => n.in && n.out);
   nodes.forEach((n, i) => (n.id = i));
 
-  // 8. Signalized intersections are exactly the ones with signal heads (street-details.js)
-  for (const a of AVENUES) {
-    for (const s of STREETS) {
-      const n = nodes.find((m) => Math.abs(m.x - a.x) < 4 && Math.abs(m.z - s.z) < 4);
-      if (n) n.signal = true;
-    }
-  }
-  // Off the grid, the real traffic signals (OpenStreetMap highway=traffic_signals) mark their junction: the nearest
-  // real junction within 22 m. Only junctions of two roads are signalised: the phases know an avenue and a street
+  // 8. Signalized intersections: the real traffic signals (OpenStreetMap highway=traffic_signals) mark their junction:
+  // the nearest real junction within 22 m. Only junctions of two roads are signalised: the phases know an avenue and a street
   const signalPts = (GEO.roadGraph && GEO.roadGraph.signals) || [];
   const signalled = new Set();
   for (let i = 0; i < signalPts.length; i += 2) {

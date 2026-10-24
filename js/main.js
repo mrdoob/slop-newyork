@@ -3,9 +3,8 @@ import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { createPostProcessing } from './post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
-import { CITY, HAS_GRID, HAS_WATER, getLocationLabel, isTypingInField, ROADS, NYC_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
+import { CITY, getLocationLabel, isTypingInField, ROADS, CITY_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
 import { buildCityGrid } from './city-grid.js';
-import { buildLandmarks } from './landmarks.js';
 import { buildCityBlocks } from './buildings.js';
 import { buildStreetDetails } from './street-details.js';
 import { createTrafficSystem, createHighwayTraffic } from './traffic.js';
@@ -16,15 +15,14 @@ import { GamepadControls } from './gamepad-controls.js';
 import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
 import { LightingSystem } from './lighting.js';
 import { WEATHER_SAMPLES, weatherLabel } from './weather.js';
-import { NYCMapSystem } from './nyc-map.js';
+import { CityMapSystem } from './city-map.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
 import { buildTerrain, hillGround } from './terrain.js';
 import { buildTepicLandmarks } from './tepic-landmarks.js';
 
 // js/main.js
-// Main entry point for the city (Tepic, Nayarit; the Manhattan layers stay available behind CITY.grid / waterfront) in
-// Three.js WebGPURenderer & TSL (three.js dev, see index.html)
+// Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
 
 async function initApp() {
   // ?debug: node creation stack traces for shader build errors
@@ -75,24 +73,20 @@ async function initApp() {
   markInit('lighting');
 
   if (loadingStatus) {
-    loadingStatus.textContent = HAS_GRID ? 'Constructing Manhattan Grid, Landmarks & Streetscape...' : `Construyendo ${CITY.city || 'la ciudad'}: calles, manzanas y colonias...`;
+    loadingStatus.textContent = `Construyendo ${CITY.city || 'la ciudad'}: calles, manzanas y colonias...`;
   }
 
-  // 3. Build Manhattan Geography, Iconic Landmarks, Blocks, Street Details & Traffic
+  // 3. Build the city: streets, hills, landmarks, blocks, street details & traffic
   const cityGrid = buildCityGrid(scene);
   markInit('cityGrid');
   // The hills around the valley (Tepic: Cerro de San Juan, Cerro de la Cruz...), over the flat city
   buildTerrain(scene);
   markInit('terrain');
-  // The boroughs around Manhattan and its modelled landmarks only exist on the New York data (boroughs.js runs heavy
-  // rasters of the real shorelines at import, so it is only loaded there)
-  const boroughs = HAS_WATER ? (await import('./boroughs.js')).buildBoroughs(scene, { sidewalks: cityGrid.sidewalks }) : { colliders: [], update: null };
-  markInit('boroughs');
-  const { colliders: landmarkColliders } = HAS_GRID ? buildLandmarks(scene) : buildTepicLandmarks(scene);
+  const { colliders: landmarkColliders } = buildTepicLandmarks(scene);
   markInit('landmarks');
   const cityBlocks = buildCityBlocks(scene);
   markInit('blocks');
-  const allColliders = [...landmarkColliders, ...cityBlocks.colliders, ...boroughs.colliders, ...(cityGrid.colliders || [])];
+  const allColliders = [...landmarkColliders, ...cityBlocks.colliders, ...(cityGrid.colliders || [])];
 
   const streetDetails = buildStreetDetails(scene);
   markInit('streetDetails');
@@ -120,8 +114,10 @@ async function initApp() {
   trafficSystem.setSolidQuery(solidAt);
   streetDetails.breaker?.setSolidQuery(solidAt);
   // Saved positions belong to one city's frame: the key carries the city's name
-  const PLAYER_STATE_KEY = `${(CITY.city || 'nyc').toLowerCase()}-player-state`;
-  // Reuse teleport placement so saved players return at rest, close to their last positions.
+  const PLAYER_STATE_KEY = `${(CITY.city || 'city').toLowerCase()}-player-state`;
+  // Reuse teleport placement so saved players return at rest, close to their last positions. The game always starts
+  // on foot: someone who left driving steps out of that vehicle where it was.
+  let savedMode = null;
   try {
     const saved = JSON.parse(localStorage.getItem(PLAYER_STATE_KEY));
     if (saved?.version === 1) {
@@ -131,29 +127,37 @@ async function initApp() {
         controllerManager.setMode(mode);
         controllerManager.teleportActiveTo(p.x, p.z, p.heading, p.y);
       }
-      controllerManager.setMode(Object.hasOwn(controllerManager.entities, saved.activeMode) ? saved.activeMode : 'car');
+      const car = saved.looks?.car;
+      if (car && Number.isFinite(car.paint)) controllerManager.setCarLook(car.bodyType, car.paint, car.police);
+      if (Number.isFinite(saved.looks?.cyclist?.color)) controllerManager.setBikeColor(saved.looks.cyclist.color);
+      savedMode = saved.activeMode;
     }
   } catch { /* Missing or unavailable storage does not prevent playing. */ }
+  controllerManager.setMode('person');
+  controllerManager.landHelicopter(true);
+  if (savedMode === 'car' || savedMode === 'cyclist') {
+    controllerManager.setMode(savedMode);
+    controllerManager.exitVehicle();
+  }
 
   function savePlayerState() {
     try {
       const entities = Object.fromEntries(Object.entries(controllerManager.entities).map(([mode, entity]) => [mode, {
         x: entity.position.x, y: entity.position.y, z: entity.position.z, heading: entity.heading
       }]));
-      localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities }));
+      const looks = { car: controllerManager.entities.car.look, cyclist: controllerManager.entities.cyclist.look };
+      localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities, looks }));
     } catch { /* Storage may be disabled or full. */ }
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
   cameraSystem.setGroundQuery(hillGround); // the chase cameras stay over the hills
-  // Off the Manhattan grid the scenic cameras frame the city's own spots (see cameras.js)
-  if (!HAS_GRID) {
-    const T = TELEPORT_LOCATIONS;
-    cameraSystem.setScenicAnchors({
-      fifthAve: T.plaza, timesSquare: T.alameda, chryslerGCT: T.uan, centralPark: T.loma, bryantPark: T.mercado,
-      waterfront: T.estacion, observatory: T.plaza, drone: T.plaza
-    });
-  }
+  // The scenic cameras frame the city's own spots (see cameras.js)
+  const T = TELEPORT_LOCATIONS;
+  cameraSystem.setScenicAnchors({
+    fifthAve: T.plaza, timesSquare: T.alameda, chryslerGCT: T.uan, centralPark: T.loma, bryantPark: T.mercado,
+    waterfront: T.estacion, observatory: T.plaza, drone: T.plaza
+  });
   const touchControls = new TouchControls(controllerManager);
   const soundButton = document.getElementById('btn-sound');
   const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, highwayTraffic, streetDetails, propBreaker: streetDetails.breaker }, {
@@ -177,9 +181,9 @@ async function initApp() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) savePlayerState(); });
   markInit('controllers');
 
-  // Island-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
+  // City-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
   // (scene-culling.js)
-  const cullingRoots = ['ManhattanCityGrid', 'ManhattanCityBlocks', 'ManhattanStreetDetails', 'ManhattanLandmarks', 'Boroughs']
+  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails']
     .map((name) => scene.getObjectByName(name))
     .filter(Boolean);
   setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);
@@ -241,13 +245,11 @@ async function initApp() {
   const renderPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
 
   // 6. Wire UI Controls (Strictly using safe DOM APIs: textContent, classList, addEventListener)
-  const modeButtons = document.querySelectorAll('[data-mode]');
   const cameraButtons = document.querySelectorAll('[data-camera]');
   const timeButtons = document.querySelectorAll('[data-time]');
   const teleportButtons = document.querySelectorAll('[data-teleport]');
   const hudToggleBtn = document.getElementById('btn-toggle-hud');
-  const modeSwitch = document.getElementById('mode-switch');
-  touchControls.onAvailabilityChange = placeModeIndicator;
+  const boardButton = document.getElementById('touch-board');
 
   const elFps = document.getElementById('hud-fps');
   const elMode = document.getElementById('hud-active-mode');
@@ -257,6 +259,7 @@ async function initApp() {
   const elAltitude = document.getElementById('hud-altitude');
   const elLocation = document.getElementById('hud-location');
   const elControlsHint = document.getElementById('hud-controls-hint');
+  const elPrompt = document.getElementById('hud-prompt');
   const liveButton = document.getElementById('time-live');
   const liveLabel = liveButton && liveButton.querySelector('.seg-label');
 
@@ -284,10 +287,7 @@ async function initApp() {
     liveButton.title = `Live · ${state.location.name} ${clock} · ${sky} · Weather data by Open-Meteo.com`;
   };
   const gamepadControls = new GamepadControls(controllerManager, cameraSystem, {
-    onCycleMode: (step) => {
-      const modes = ['person', 'car', 'cyclist', 'helicopter'];
-      selectMode(modes[(modes.indexOf(controllerManager.activeMode) + step + modes.length) % modes.length]);
-    },
+    onBoard: board,
     onCycleCamera: cycleCamera,
     onToggleMap: () => mapSystem.toggleFullMap(!mapSystem.isFullMapOpen),
     onCloseMap: () => mapSystem.toggleFullMap(false)
@@ -295,10 +295,10 @@ async function initApp() {
 
   // Keyboard guide for each mode: [keys, action]
   const controlHints = {
-    person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['Drag'], 'Orbit']],
-    car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['B'], 'Horn'], [['Drag'], 'Orbit']],
-    cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['Drag'], 'Orbit']],
-    helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['Shift'], 'Boost']]
+    person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['F'], 'Robar / Subir']],
+    car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['B'], 'Horn'], [['F'], 'Bajar']],
+    cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['F'], 'Bajar']],
+    helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['F'], 'Bajar']]
   };
   // Boosted top speeds in mph (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
   const topSpeedMph = { person: 18, car: 81, cyclist: 43, helicopter: 116 };
@@ -322,23 +322,12 @@ async function initApp() {
     elControlsHint.replaceChildren(...items);
   }
 
-  // The taxi-yellow pill under the selected mode glides from button to button
-  function placeModeIndicator() {
-    const active = modeSwitch ? modeSwitch.querySelector('.mode-btn.active') : null;
-    if (!active) return;
-    modeSwitch.style.setProperty('--ind-x', `${active.offsetLeft}px`);
-    modeSwitch.style.setProperty('--ind-w', `${active.offsetWidth}px`);
-  }
-
-  function selectMode(mode) {
-    controllerManager.setMode(mode);
-    touchControls.setMode(controllerManager.activeMode);
+  // The HUD follows whatever the player is in now (on foot, or the vehicle it got into)
+  function syncMode() {
+    const mode = controllerManager.activeMode;
+    touchControls.setMode(mode);
     gamepadControls.reset();
-    modeButtons.forEach((btn) => {
-      btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
-    });
     document.body.dataset.mode = mode;
-    placeModeIndicator();
     const ent = controllerManager.getActiveEntity();
     if (elMode) elMode.textContent = ent.label;
     renderControlHints(mode);
@@ -349,6 +338,73 @@ async function initApp() {
       selectCamera('chase', false);
     }
   }
+
+  // GTA-style boarding (F, the gamepad's Y, the touch button): on foot, get into the nearest of the player's own
+  // vehicles or take the nearest car or bicycle from the traffic, whose driver is left in the street; in a vehicle, get
+  // out (a helicopter once it has landed)
+  const BOARD_REACH = 1.6; // m from the vehicle's body
+  function boardTarget() {
+    if (controllerManager.activeMode !== 'person') return null;
+    const p = controllerManager.entities.person.position;
+    const own = controllerManager.ownVehicleNear(BOARD_REACH);
+    const taken = trafficSystem.vehicleNear(p.x, p.z, own ? Math.min(BOARD_REACH, own.distance) : BOARD_REACH);
+    if (taken) return { taken };
+    return own ? { mode: own.mode } : null;
+  }
+  function board() {
+    if (mapSystem.isFullMapOpen) return;
+    if (controllerManager.activeMode !== 'person') {
+      if (controllerManager.exitVehicle()) syncMode();
+      return;
+    }
+    const target = boardTarget();
+    if (!target) return;
+    if (target.taken) {
+      const taken = trafficSystem.hijack(target.taken);
+      controllerManager.enterVehicle(taken.kind, taken);
+    } else {
+      controllerManager.enterVehicle(target.mode);
+    }
+    syncMode();
+  }
+  // What F would do here, shown over the controls guide
+  const promptNames = { car: 'Subir al coche', cyclist: 'Subir a la bici', helicopter: 'Subir al helicóptero' };
+  let promptText = '';
+  function updatePrompt() {
+    let text = '';
+    if (controllerManager.activeMode === 'person') {
+      const target = boardTarget();
+      if (target?.taken) text = target.taken.bike ? 'Robar la bici' : target.taken.isPolice ? 'Robar la patrulla' : 'Robar el coche';
+      else if (target) text = promptNames[target.mode];
+    } else if (controllerManager.activeMode === 'helicopter') {
+      const h = controllerManager.entities.helicopter;
+      const air = h.position.y - controllerManager.getGroundHeight(h.position.x, h.position.z, 'helicopter');
+      text = air > 3 ? 'Aterriza para bajar' : 'Bajar del helicóptero';
+    }
+    const onFoot = controllerManager.activeMode === 'person';
+    const state = `${onFoot}:${text}`;
+    if (state === promptText) return;
+    promptText = state;
+    if (boardButton) {
+      // the touch button: get in or take what is at hand, or get out
+      boardButton.hidden = onFoot && !text;
+      const label = boardButton.querySelector('[data-board-label]');
+      if (label) label.textContent = !onFoot ? 'Bajar' : text.startsWith('Robar') ? 'Robar' : 'Subir';
+    }
+    if (!elPrompt) return;
+    elPrompt.hidden = !text;
+    if (!text) return;
+    const key = document.createElement('kbd');
+    key.textContent = 'F';
+    const label = document.createElement('span');
+    label.textContent = text;
+    elPrompt.replaceChildren(key, label);
+  }
+  boardButton?.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    board();
+  });
 
   function selectCamera(camId, snap = false) {
     cameraSystem.setCameraPreset(camId, snap);
@@ -416,12 +472,6 @@ async function initApp() {
     });
   });
 
-  modeButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      selectMode(btn.getAttribute('data-mode'));
-    });
-  });
-
   cameraButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       selectCamera(btn.getAttribute('data-camera'), true);
@@ -446,9 +496,9 @@ async function initApp() {
     if (btn && e.detail > 0) btn.blur();
   });
 
-  // Where you are: the place's name over its street corner, drawn as a pair of NYC street-name signs
+  // Where you are: the place's name over its street corner, drawn as a pair of street-name signs
   const roadNames = new Set(ROADS.map((r) => r.name));
-  const placeNames = new Set(NYC_LANDMARKS.map((l) => l.name));
+  const placeNames = new Set(CITY_LANDMARKS.map((l) => l.name));
   let locationText = '';
   function renderLocation(label) {
     if (!elLocation || label === locationText) return;
@@ -497,15 +547,10 @@ async function initApp() {
     gamepadControls.reset();
     cameraSystem.resetForTeleport();
     selectCamera('chase', true);
-    mapSystem.waypoint = {
-      x: destination.x,
-      z: destination.z,
-      name: getLocationLabel(destination.x, destination.z)
-    };
     return destination;
   }
 
-  const mapSystem = new NYCMapSystem({
+  const mapSystem = new CityMapSystem({
     controllerManager,
     cameraSystem,
     trafficSystem,
@@ -547,21 +592,12 @@ async function initApp() {
     });
   }
 
-  // Global keyboard shortcuts for modes (1-4), cameras (V / 5-0), and HUD (H)
+  // Global keyboard shortcuts for getting in & out (F), cameras (V / 5-0), and HUD (H)
   window.addEventListener('keydown', (e) => {
     if (isTypingInField(e)) return;
     switch (e.code) {
-      case 'Digit1':
-        selectMode('person');
-        break;
-      case 'Digit2':
-        selectMode('car');
-        break;
-      case 'Digit3':
-        selectMode('cyclist');
-        break;
-      case 'Digit4':
-        selectMode('helicopter');
+      case 'KeyF':
+        if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) board();
         break;
       case 'Digit5':
         selectCamera('chase', true);
@@ -599,23 +635,20 @@ async function initApp() {
   window.addEventListener('resize', () => {
     cameraSystem.onResize(window.innerWidth, window.innerHeight);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    placeModeIndicator();
     if (mapSystem.isFullMapOpen) {
       mapSystem.resizeFullCanvas();
       mapSystem.renderFullMap();
     }
   });
 
-  // Initialize the UI and chase camera around the restored player, or the default taxi on a first visit.
-  selectMode(controllerManager.activeMode);
+  // Initialize the UI and chase camera around the player, on foot.
+  syncMode();
   selectCamera('chase', true);
   let savedTime = null;
   try {
     savedTime = localStorage.getItem('time-of-day');
   } catch { /* Storage may be disabled. */ }
   selectTime([...timeButtons].some((btn) => btn.getAttribute('data-time') === savedTime) ? savedTime : 'live');
-  // the web fonts change the buttons' widths once they arrive
-  if (document.fonts) document.fonts.ready.then(placeModeIndicator);
   markInit('ui');
   // Debugging handle for the console, only with ?debug in the URL
   if (new URLSearchParams(location.search).has('debug')) {
@@ -730,6 +763,7 @@ async function initApp() {
     controllerManager.update(dt, elapsed);
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
+    trafficSystem.setParked(controllerManager.parkedVehicles());
     trafficSystem.update(
       dt,
       elapsed,
@@ -745,7 +779,6 @@ async function initApp() {
       savePlayerState();
       nextPlayerSave = now + 5000;
     }
-    if (boroughs.update) boroughs.update(elapsed); // Roosevelt Island Tramway cabins
     cityBlocks.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z);
     if (cityBlocks.updateLights) cityBlocks.updateLights(cameraSystem.camera);
     if (streetDetails.update) streetDetails.update(cameraSystem.camera);
@@ -816,6 +849,7 @@ async function initApp() {
       // The street corner of the player on the follow cameras, of the camera itself on the scenic ones
       const where = cameraSystem.getActivePreset().category === 'follow' ? activeEnt.position : cameraSystem.currentPos;
       renderLocation(getLocationLabel(where.x, where.z));
+      updatePrompt();
     }
   });
 }

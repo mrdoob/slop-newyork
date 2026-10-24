@@ -90,7 +90,7 @@ const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
 function createTrafficSystem(scene, sidewalks, obstacles) {
   const group = new THREE.Group();
-  group.name = 'ManhattanTrafficAndPedestrians';
+  group.name = 'TrafficAndPedestrians';
   let collisionListener = null;
   const collisionEvent = { a: null, b: null, kind: 'vehicle', x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, speed: 0 };
 
@@ -148,7 +148,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   };
 
   // =========================================================================
-  // 1. 3D LOFTED NYC YELLOW TAXIS, SEDANS, SUVS & NYPD CRUISERS (200 VEHICLES)
+  // 1. 3D LOFTED YELLOW TAXIS, SEDANS, SUVS & POLICE CRUISERS (200 VEHICLES)
   // =========================================================================
   function createVehicle(bus, half, halfWidth, axle, driver, v0) {
     return {
@@ -159,7 +159,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       dl: 0, dlv: 0, blink: 0, blinkPhase: Math.random() * 0.8,
       x: 0, z: 0, prevX: 0, prevZ: 0, tx: 0, tz: 1, nose: 0, yaw: 0, yawRate: 0, steer: 0,
       pitch: 0, roll: 0, pitchVel: 0, rollVel: 0, vx: 0, vz: 0, yawOffset: 0, yawVel: 0,
-      pAhead: Infinity, pRight: 0, pSpeed: 0, wheelSpin: Math.random() * Math.PI * 2
+      pAhead: Infinity, pRight: 0, pSpeed: 0, pHalfW: 0.86, pHalfL: 2.18, wheelSpin: Math.random() * Math.PI * 2
     };
   }
 
@@ -473,6 +473,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   let focusX = 0;
   let focusZ = 140;
   const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0, halfW: 0.86, halfL: 2.18, push: 0.5 };
+  // The player's own vehicles left standing (main.js): { x, z, halfW, halfL }, which drivers stop behind
+  let parked = [];
+  function setParked(list) {
+    parked = Array.isArray(list) ? list : [];
+  }
 
   // Lane lists hold pooled { v, s } entries sorted by position s along the lane, rebuilt every frame
   const pool = [];
@@ -629,25 +634,45 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     }
   }
 
-  // Where the player is relative to v: metres ahead, metres to the right, and how fast it moves v's way
+  // Where the player is relative to v: metres ahead, metres to the right, how fast it moves v's way and how big it
+  // is. A vehicle the player left standing in the road (main.js: setParked) counts instead when it is nearer ahead
+  // in v's own lane
   function relateToPlayer(v) {
     v.pAhead = Infinity;
-    if (!player.active) return;
-    const dx = player.x - v.x;
-    const dz = player.z - v.z;
-    if (Math.abs(dx) > LOOKAHEAD + 10 || Math.abs(dz) > LOOKAHEAD + 10) return;
     const fx = Math.sin(v.yaw);
     const fz = Math.cos(v.yaw);
-    v.pAhead = dx * fx + dz * fz;
-    v.pRight = dz * fx - dx * fz;
-    v.pSpeed = Math.max(0, player.vx * fx + player.vz * fz);
+    if (player.active) {
+      const dx = player.x - v.x;
+      const dz = player.z - v.z;
+      if (Math.abs(dx) <= LOOKAHEAD + 10 && Math.abs(dz) <= LOOKAHEAD + 10) {
+        v.pAhead = dx * fx + dz * fz;
+        v.pRight = dz * fx - dx * fz;
+        v.pSpeed = Math.max(0, player.vx * fx + player.vz * fz);
+        v.pHalfW = player.halfW;
+        v.pHalfL = player.halfL;
+      }
+    }
+    for (const o of parked) {
+      const dx = o.x - v.x;
+      const dz = o.z - v.z;
+      if (Math.abs(dx) > LOOKAHEAD + 10 || Math.abs(dz) > LOOKAHEAD + 10) continue;
+      const ahead = dx * fx + dz * fz;
+      const right = dz * fx - dx * fz;
+      if (ahead < 0 || Math.abs(right) > v.halfWidth + o.halfW + 0.4) continue;
+      if (v.pAhead >= 0 && v.pAhead < ahead && Math.abs(v.pRight) <= v.halfWidth + v.pHalfW + 0.4) continue;
+      v.pAhead = ahead;
+      v.pRight = right;
+      v.pSpeed = 0;
+      v.pHalfW = o.halfW;
+      v.pHalfL = o.halfL;
+    }
   }
 
   // Gap to the player if it is ahead in the lane whose centre is `off` metres to the right of v
   function playerGap(v, off) {
     if (v.pAhead < 0 || v.pAhead > LOOKAHEAD) return Infinity;
-    if (Math.abs(v.pRight - off) > v.halfWidth + player.halfW + 0.4) return Infinity;
-    return v.pAhead - v.half - player.halfL;
+    if (Math.abs(v.pRight - off) > v.halfWidth + v.pHalfW + 0.4) return Infinity;
+    return v.pAhead - v.half - v.pHalfL;
   }
 
   // =========================================================================
@@ -997,9 +1022,17 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const gap = v.s - v.half - back.s - f.half;
       if (gap < 1.5 || freeAcc(f) + brake(f, gap, v.speed) < bSafe) return false;
     }
+    // ...and neither the player nor any vehicle the player left standing is alongside or close by in lane t
     const off = v.edge.lanes[t] - v.edge.lanes[v.lane] - v.dl;
-    const reach = v.half + player.halfL + 6;
-    return !(Math.abs(v.pRight - off) < v.halfWidth + player.halfW + 0.4 && v.pAhead > -reach && v.pAhead < reach);
+    const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
+    const near = (x, z, halfW, halfL) => {
+      const dx = x - v.x, dz = z - v.z;
+      const ahead = dx * fx + dz * fz;
+      const reach = v.half + halfL + 6;
+      return Math.abs(dz * fx - dx * fz - off) < v.halfWidth + halfW + 0.4 && ahead > -reach && ahead < reach;
+    };
+    if (player.active && near(player.x, player.z, player.halfW, player.halfL)) return false;
+    return !parked.some((o) => near(o.x, o.z, o.halfW, o.halfL));
   }
 
   // Acceleration v would have in lane t behind the vehicle (or player) ahead there
@@ -1892,9 +1925,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         const spec = v.bus ? BUS_SPEC : BODY_SPECS[v.bodyType];
         const fullReach = HEADLIGHTS.distance;
         let maxReach = fullReach;
-        if (player.active && v.pAhead > 0 && v.pAhead < 30) {
+        if (v.pAhead > 0 && v.pAhead < 30) {
           const latWeight = smoothDistFade(Math.abs(v.pRight), 2.2, 5.5);
-          const clampedReach = Math.max(4.5, v.pAhead - player.halfL - 1.5);
+          const clampedReach = Math.max(4.5, v.pAhead - v.pHalfL - 1.5);
           maxReach = fullReach + (clampedReach - fullReach) * latWeight;
         }
 
@@ -1948,6 +1981,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const CROSSWALK_Y = 0.012;
   function pedGround(p, x, z) {
     const hill = hillAt(x, z);
+    if (p.bail) {
+      // off its tracks (an ejected driver): in the road, or up on the curb island it walks onto
+      const b = blockAt(x, z);
+      return (b && !(b.park > 0.6 && !b.median) ? SIDEWALK_Y : 0) + hill;
+    }
     if (!p.node) return SIDEWALK_Y + hill;
     const t = (x - p.ax) * p.ux + (z - p.az) * p.uz;
     return (t > 2 && t < p.len - 2 ? CROSSWALK_Y : SIDEWALK_Y) + hill;
@@ -2022,7 +2060,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function knockPed(p, hit) {
     // a fresh solved pose to fall from (hidden pedestrians only advance their gait)
     const partner = p.conversation && (p.conversation.a === p ? p.conversation.b : p.conversation.a);
-    const facing = partner ? Math.atan2(partner.x - p.x, partner.z - p.z) : Math.atan2(p.ux * p.dir, p.uz * p.dir);
+    const facing = p.bail ? p.bail.heading : partner ? Math.atan2(partner.x - p.x, partner.z - p.z) : Math.atan2(p.ux * p.dir, p.uz * p.dir);
     p.rig.update(1 / 60, p.x, p.z, facing, pedGround, p, 0, true);
     const ground = pedGround(p, p.x, p.z);
     p.fallBase = p.fallBase || new Float32Array(BONES * 8);
@@ -2033,6 +2071,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     p.node = null; // off any crosswalk queue (gatherCurbs)
     p.waiting = false;
     p.v = 0;
+    p.bail = null;
     reportCollision(player.entity, p, p.x, 1.0, p.z, -hit.nx, -hit.nz, player.speed);
     if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mode === 'car' ? 0.9 : 0.55;
   }
@@ -2137,6 +2176,196 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   let lastFocusZ = Infinity;
   let vehicleCursor = 0;
   let pedCursor = 0;
+
+  // =========================================================================
+  // 8C. CARJACKING: the player on foot takes a car or a bicycle (F, main.js), and its driver is left in the street
+  // =========================================================================
+  const BAIL_STUN = 0.9; // s the driver stands there, facing whoever took the car
+  const FLEE_SPEED = 4.6; // m/s running away
+  const BAIL_TURN = 7; // rad/s
+
+  // The car or bicycle the player on foot could take: the nearest whose body is within `reach` metres of (x, z),
+  // going slowly enough to be stopped (no buses)
+  function vehicleNear(x, z, reach) {
+    let best = null;
+    let bestDistance = reach;
+    for (const v of vehicles) {
+      if (v.bus || v.wreck || !v.edge || v.speed > 7) continue;
+      const dx = x - v.x;
+      const dz = z - v.z;
+      if (Math.abs(dx) > 10 || Math.abs(dz) > 10) continue;
+      const yaw = v.yaw + v.yawOffset;
+      const fx = Math.sin(yaw), fz = Math.cos(yaw);
+      const along = Math.max(0, Math.abs(dx * fx + dz * fz) - v.half);
+      const across = Math.max(0, Math.abs(dz * fx - dx * fz) - v.halfWidth);
+      const distance = Math.hypot(along, across);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = v;
+      }
+    }
+    return best;
+  }
+
+  // Take v out of the traffic (it comes back elsewhere, out of sight, like any vehicle left behind) and put its
+  // driver out on the street: what the player's own car or bicycle needs to take its place
+  function hijack(v) {
+    const yaw = v.yaw + v.yawOffset;
+    const taken = v.bike
+      ? { kind: 'cyclist', x: v.x, z: v.z, heading: yaw, speed: v.speed, color: v.color.getHex() }
+      : {
+          kind: 'car', x: v.x, z: v.z, heading: yaw, speed: v.speed, bodyType: v.bodyType, police: v.isPolice,
+          paint: new THREE.Color().setRGB(v.paint[0], v.paint[1], v.paint[2]).getHex()
+        };
+    // out of the driver's door (on the left: heading 0 faces +z, left is +x), or off the bicycle
+    const side = v.halfWidth + (v.bike ? 0.4 : 0.55);
+    const ahead = v.bike ? 0 : 0.35;
+    bail(v.x + Math.cos(yaw) * side + Math.sin(yaw) * ahead, v.z - Math.sin(yaw) * side + Math.cos(yaw) * ahead, yaw, v.bike ? v : null);
+    v.edge = null;
+    v.conn = null;
+    v.trail = null;
+    v.commit = null;
+    v.speed = 0;
+    return taken;
+  }
+
+  // A pedestrian out of sight (or not yet placed) becomes the driver, standing at (x, z); a cyclist keeps its own
+  // looks (its rig swaps places with the pedestrian's, who rides the bicycle when it comes back)
+  function bail(x, z, heading, bike) {
+    let p = null;
+    let far = -1;
+    for (const q of peds) {
+      if (q.fallen || q.bail) continue;
+      if (q.placed && hasView && visible(q.x, q.z, 3)) continue;
+      const d = q.placed ? Math.hypot(q.x - focusX, q.z - focusZ) : Infinity;
+      if (d > far) {
+        far = d;
+        p = q;
+      }
+    }
+    if (!p) return;
+    if (p.conversation) endConversation(p.conversation);
+    if (bike) {
+      const rig = p.rig;
+      p.rig = bike.rider;
+      bike.rider = rig;
+      rig.placed = false;
+    }
+    Object.assign(p, { placed: true, x, z, node: null, route: null, nextRoute: null, nextLeg: 0, waiting: false, v: 0, pause: 0 });
+    p.rig.placed = false;
+    // stranded a moment, then either runs off or walks back to the sidewalk and carries on along it
+    p.bail = { time: 0, heading, flee: Math.random() < 0.6, runFor: 5 + Math.random() * 4, goal: null, nextSearch: 0, best: Infinity, since: 0 };
+  }
+
+  // Can someone walk straight from (x0, z0) to (x1, z1) without going through a wall?
+  function clearPath(x0, z0, x1, z1) {
+    if (!solidAt) return true;
+    const steps = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.5);
+    for (let i = 1; i <= steps; i++) {
+      if (solidAt(x0 + (x1 - x0) * i / steps, z0 + (z1 - z0) * i / steps)) return false;
+    }
+    return true;
+  }
+
+  // The nearest point on a sidewalk track to (x, z) that can be walked to straight, among the roads around the focus
+  function nearestSidewalk(x, z) {
+    let best = null;
+    let bestDistance = 45;
+    for (const e of nearEdges) {
+      const s = clamp((x - e.sx) * e.dx + (z - e.sz) * e.dz, 0, e.len);
+      if (Math.hypot(e.sx + e.dx * s - x, e.sz + e.dz * s - z) > bestDistance + 15) continue;
+      for (const route of pedRoutes.along(e)) {
+        const t = clamp((x - route.ax) * route.ux + (z - route.az) * route.uz, 0, route.len);
+        const px = route.ax + route.ux * t;
+        const pz = route.az + route.uz * t;
+        const distance = Math.hypot(px - x, pz - z);
+        if (distance < bestDistance && clearPath(x, z, px, pz)) {
+          bestDistance = distance;
+          best = { route, t, x: px, z: pz };
+        }
+      }
+    }
+    return best;
+  }
+
+  function bailWalk(p, dt) {
+    const b = p.bail;
+    b.time += dt;
+    let target = b.heading;
+    let speed = 0;
+    if (b.time < BAIL_STUN) {
+      target = Math.atan2(player.x - p.x, player.z - p.z); // what just happened?
+    } else if (b.flee && b.time < BAIL_STUN + b.runFor) {
+      target = Math.atan2(p.x - player.x, p.z - player.z);
+      speed = FLEE_SPEED;
+    } else {
+      if (!b.goal && b.time >= b.nextSearch) {
+        b.goal = nearestSidewalk(p.x, p.z);
+        b.nextSearch = b.time + 1.5;
+        b.best = Infinity;
+        b.since = b.time;
+      }
+      if (!b.goal) {
+        // no sidewalk within reach: wander on, and once out of sight turn up somewhere else like anyone left behind
+        speed = p.speed;
+        if (hasView && !visible(p.x, p.z, 4)) {
+          p.bail = null;
+          p.placed = false;
+          return;
+        }
+      } else {
+        const dx = b.goal.x - p.x;
+        const dz = b.goal.z - p.z;
+        const distance = Math.hypot(dx, dz);
+        // no closer for a while (something in the way): look for another way back
+        if (distance < b.best - 0.3) {
+          b.best = distance;
+          b.since = b.time;
+        } else if (b.time - b.since > 2.5) {
+          b.goal = null;
+          return;
+        }
+        if (distance < 0.25) {
+          // on the sidewalk: walk on along it the way it was going, like everyone else
+          const { route, t } = b.goal;
+          Object.assign(p, route, { route });
+          p.t = t;
+          p.dir = Math.sin(b.heading) * route.ux + Math.cos(b.heading) * route.uz >= 0 ? 1 : -1;
+          p.v = p.speed * 0.8;
+          p.goalTime = 0;
+          p.restTime = clock + 25 + Math.random() * 45;
+          p.socialTime = clock + 20 + Math.random() * 30;
+          p.bail = null;
+          return;
+        }
+        target = Math.atan2(dx, dz);
+        speed = Math.min(p.speed, distance / Math.max(dt, 1e-3));
+      }
+    }
+    let turn = Math.atan2(Math.sin(target - b.heading), Math.cos(target - b.heading));
+    turn = clamp(turn, -BAIL_TURN * dt, BAIL_TURN * dt);
+    b.heading += turn;
+    if (speed <= 0) return;
+    // around walls: the first heading either side of the wanted one that is clear
+    const step = speed * dt;
+    for (const veer of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6]) {
+      const h = b.heading + veer;
+      const nx = p.x + Math.sin(h) * step;
+      const nz = p.z + Math.cos(h) * step;
+      if (solidAt && solidAt(nx + Math.sin(h) * 0.4, nz + Math.cos(h) * 0.4)) continue;
+      p.x = nx;
+      p.z = nz;
+      if (veer) b.heading += veer * Math.min(1, dt * 4);
+      return;
+    }
+  }
+
+  function renderBailed(p, dt) {
+    const draw = !hasView || visible(p.x, p.z, 7);
+    p.rig.update(dt, p.x, p.z, p.bail ? p.bail.heading : Math.atan2(p.ux * p.dir, p.uz * p.dir), pedGround, p, 0, draw);
+    if (!draw) return;
+    pedCrowd.add(p.rig, Math.hypot(p.x - focusX, p.z - focusZ));
+  }
 
   function update(dt, elapsed, focusPos = null, playerEntity = null, activeMode = 'car', camera = null) {
     clock = elapsed;
@@ -2289,6 +2518,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       if (d <= (jump ? NEAR_RADIUS : PED_RADIUS)) continue;
       pedBudget--;
       p.fallen = null; // (a knocked-over pedestrian left far behind gets up elsewhere)
+      p.bail = null; // (and so does a driver left behind)
       spawnPed(p, jump ? 0 : 60, jump ? NEAR_RADIUS : 280, !jump);
     }
     meet(dt);
@@ -2301,14 +2531,16 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         tumblePed(p, dt);
         continue;
       }
-      walk(p, dt);
+      if (p.bail) bailWalk(p, dt);
+      else walk(p, dt);
       const hit = playerHits(p.x, p.z, 0.3);
       if (hit) {
         knockPed(p, hit);
         tumblePed(p, 0);
         continue;
       }
-      renderPed(p, dt);
+      if (p.bail) renderBailed(p, dt);
+      else renderPed(p, dt);
     }
     pedCrowd.end();
 
@@ -2327,6 +2559,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     setCollisionListener,
     setSolidQuery,
     setHillQuery,
+    setParked,
+    vehicleNear,
+    hijack,
     cars,
     buses,
     bikes,

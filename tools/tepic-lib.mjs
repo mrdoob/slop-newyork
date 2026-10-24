@@ -1,6 +1,5 @@
 // tools/tepic-lib.mjs — pure geometry helpers for the Tepic geodata builder (no data loaded at import).
-// Raster, polyline simplification and the curb-island extraction shared with the New York pipeline
-// (geo-base.mjs / geo-blocks.mjs), without their module-level data loading.
+// Raster, polyline simplification and the curb-island extraction.
 
 export const log = (...a) => console.log('[tepic]', ...a);
 
@@ -244,7 +243,7 @@ function enclosedRoad(lab, D, W, H) {
  * Curb islands of a city: `land` is a 0/1 raster (w x h cells of `res` metres from (x0, z0)) where 1 is buildable land
  * and the roadways have already been cleared. Returns the labelled components with their outline polygons, lot rects
  * inside the property line (eroded by `sidewalk` metres) and frontage frames for islands that don't front the axes.
- * Same output shape as tools/geo-blocks.mjs: { id, poly, area, bbox, rect, rects, frames, fill, _lab }.
+ * Output: [{ id, poly, area, bbox, rect, rects, frames, fill, _lab }].
  */
 export function extractBlocks({ land, w: W, h: H, x0, z0, res: RES, sidewalk, minArea = 40, lotArea = 300, classify = null }) {
   const D = land;
@@ -363,7 +362,7 @@ export function extractBlocks({ land, w: W, h: H, x0, z0, res: RES, sidewalk, mi
     };
   }
 
-  // Frontage frames of islands that don't front the axes (see tools/geo-blocks.mjs for the method)
+  // Frontage frames of islands that don't front the axes
   const DEG = Math.PI / 180;
   const wrap90 = (a) => ((((a + Math.PI / 4) % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2)) - Math.PI / 4;
   function blockFrames(c, poly) {

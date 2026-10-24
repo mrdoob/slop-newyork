@@ -1,23 +1,25 @@
 import * as THREE from 'three/webgpu';
-import { bryantParkLawn } from './landmarks.js';
 
 // js/cameras.js
 // Multi-camera system supporting Third-Person Chase (with mouse/touch orbit + zoom),
-// Low-Angle Action Cam, POV/Cockpit Cam, 7 Iconic NYC Architectural Cameras, and Auto-Director Drone.
+// Low-Angle Action Cam, POV/Cockpit Cam, the scenic cameras over Tepic's landmarks, and Auto-Director Drone.
+// (The scenic preset ids are the New York game's; main.js anchors each one on a spot of the city.)
 
 const CAMERA_PRESETS = [
   { id: 'chase',       name: '3rd-Person Chase',         short: 'Chase',       category: 'follow', fov: 56 },
   { id: 'action',      name: 'Low-Angle Action',         short: 'Action',      category: 'follow', fov: 60 },
   { id: 'pov',         name: 'First-Person / Cockpit',   short: 'POV / Dash',  category: 'follow', fov: 68 },
-  { id: 'centralPark', name: 'Central Park Oasis',       short: 'Central Pk',  category: 'scenic', fov: 52 },
-  { id: 'fifthAve',    name: '5th Ave & Empire State',   short: '5th Ave',     category: 'scenic', fov: 48 },
-  { id: 'timesSquare', name: 'Times Square Crossroads',  short: 'Times Sq',    category: 'scenic', fov: 58 },
-  { id: 'chryslerGCT', name: '42nd St · Chrysler & GCT', short: 'Chrysler',    category: 'scenic', fov: 50 },
-  { id: 'observatory', name: 'Empire State 86th Deck',   short: '86th Deck',   category: 'scenic', fov: 52 },
-  { id: 'bryantPark',  name: 'Bryant Park & NYPL',       short: 'Bryant Pk',   category: 'scenic', fov: 52 },
-  { id: 'waterfront',  name: 'East River & Skyline',     short: 'Skyline',     category: 'scenic', fov: 46 },
+  { id: 'centralPark', name: 'Parque La Loma',             short: 'La Loma',     category: 'scenic', fov: 52 },
+  { id: 'fifthAve',    name: 'Plaza Principal y Catedral', short: 'Plaza',       category: 'scenic', fov: 48 },
+  { id: 'timesSquare', name: 'La Alameda',                 short: 'Alameda',     category: 'scenic', fov: 58 },
+  { id: 'chryslerGCT', name: 'Estadio UAN',                short: 'UAN',         category: 'scenic', fov: 50 },
+  { id: 'observatory', name: 'Mirador sobre el centro',    short: 'Mirador',     category: 'scenic', fov: 52 },
+  { id: 'bryantPark',  name: 'Mercado Morelos',            short: 'Mercado',     category: 'scenic', fov: 52 },
+  { id: 'waterfront',  name: 'Antigua estación',           short: 'Estación',    category: 'scenic', fov: 46 },
   { id: 'drone',       name: 'Auto-Director Aerial',     short: 'Director',    category: 'scenic', fov: 50 }
 ];
+
+const SCENIC_ORIGIN = { x: 0, z: 0, heading: Math.PI };
 
 class CameraSystem {
   constructor(domElement, controllerManager) {
@@ -28,7 +30,7 @@ class CameraSystem {
       56,
       window.innerWidth / window.innerHeight,
       0.35,
-      60000 // at 1:1 the boroughs & harbor run out ~20-40 km to the fogged horizon (reversed float depth keeps precision)
+      60000 // at 1:1 the valley floor runs out ~20-40 km to the fogged horizon (reversed float depth keeps precision)
     );
 
     this.activePresetId = 'chase';
@@ -50,8 +52,7 @@ class CameraSystem {
     this.smoothedSpeed = 0;
     this._desiredPos = new THREE.Vector3();
     this._desiredLook = new THREE.Vector3();
-    // Scenic anchors { presetId: { x, z, heading } } replace the hardcoded Manhattan vantage points (main.js sets them
-    // for a city without the Manhattan grid)
+    // Scenic anchors { presetId: { x, z, heading } }: the spots the scenic cameras frame (main.js sets them)
     this.scenicAnchors = null;
 
     this.bindPointerControls();
@@ -62,10 +63,9 @@ class CameraSystem {
   }
 
   // A scenic shot framed on an anchor spot: `back` metres behind it along its heading, `side` to its right, `up` high,
-  // looking `ahead` metres past it (heading 0 faces +z; right is -x)
+  // looking `ahead` metres past it (heading 0 faces +z; right is -x). Without an anchor: the frame's origin (the plaza)
   scenicFromAnchor(id, elapsed, desiredPos, desiredLook) {
-    const a = this.scenicAnchors && this.scenicAnchors[id];
-    if (!a) return false;
+    const a = (this.scenicAnchors && this.scenicAnchors[id]) || SCENIC_ORIGIN;
     const sx = Math.sin(a.heading), cz = Math.cos(a.heading);
     const at = (ahead, right, y) => [a.x + sx * ahead - cz * right, y, a.z + cz * ahead + sx * right];
     if (id === 'observatory') {
@@ -84,7 +84,6 @@ class CameraSystem {
       desiredPos.set(...at(-28, 3.5 + sway, 6.5));
       desiredLook.set(...at(90, -4, 9));
     }
-    return true;
   }
 
   bindPointerControls() {
@@ -288,84 +287,10 @@ class CameraSystem {
         break;
       }
 
-      case 'centralPark': {
-        if (this.scenicFromAnchor('centralPark', elapsed, desiredPos, desiredLook)) break;
-        // Inside Central Park South looking across The Pond, Gapstow Bridge, The Mall, Sheep Meadow & UWS/UES Skylines
-        const sway = Math.sin(elapsed * 0.22) * 3.5;
-        desiredPos.set(-70.0 + sway, 14.0, -1425.0);
-        desiredLook.set(-250.0, 6.5, -1690.0);
+      default:
+        // the scenic cameras, framed on the city's spots
+        this.scenicFromAnchor(this.activePresetId, elapsed, desiredPos, desiredLook);
         break;
-      }
-
-      case 'fifthAve': {
-        if (this.scenicFromAnchor('fifthAve', elapsed, desiredPos, desiredLook)) break;
-        // 5th Avenue & 42nd St looking South down the 5th Ave canyon toward the Empire State Building
-        const sway = Math.sin(elapsed * 0.25) * 1.8;
-        desiredPos.set(0.0 + sway, 6.5, -20.0);
-        desiredLook.set(-60.0, 150.0, 686.0);
-        break;
-      }
-
-      case 'timesSquare': {
-        if (this.scenicFromAnchor('timesSquare', elapsed, desiredPos, desiredLook)) break;
-        // Times Square & Broadway looking across Duffy Square red steps and One Times Square billboards
-        const sway = Math.sin(elapsed * 0.3) * 3.0;
-        desiredPos.set(-603.0 + sway, 5.5, -290.0);
-        desiredLook.set(-566.0, 40.0, -40.0);
-        break;
-      }
-
-      case 'chryslerGCT': {
-        if (this.scenicFromAnchor('chryslerGCT', elapsed, desiredPos, desiredLook)) break;
-        // Park Ave & 42nd St intersection looking straight at Grand Central, MetLife, and Chrysler Building Crown
-        const sway = Math.cos(elapsed * 0.22) * 2.5;
-        desiredPos.set(300.0 + sway, 9.5, 95.0);
-        desiredLook.set(470.0, 120.0, -50.0);
-        break;
-      }
-
-      case 'observatory': {
-        if (this.scenicFromAnchor('observatory', elapsed, desiredPos, desiredLook)) break;
-        // Empire State Building 86th Floor Deck looking North-East across Midtown skyline
-        const pan = Math.sin(elapsed * 0.18) * 80.0;
-        desiredPos.set(-58.0, 322.0, 660.0);
-        desiredLook.set(420.0 + pan, 150.0, -200.0);
-        break;
-      }
-
-      case 'bryantPark': {
-        if (this.scenicFromAnchor('bryantPark', elapsed, desiredPos, desiredLook)) break;
-        // Inside Bryant Park Great Lawn looking East toward NYPL portico, One Vanderbilt & Chrysler Building
-        const sway = Math.sin(elapsed * 0.25) * 1.5;
-        const lawn = bryantParkLawn || { minX: -260, maxX: -150, minZ: 40, maxZ: 120, top: 1.3 };
-        const lz = (lawn.minZ + lawn.maxZ) * 0.5;
-        desiredPos.set(lawn.minX + 18.0, lawn.top + 1.7, lz + sway);
-        desiredLook.set(lawn.maxX + 260.0, 70.0, lz - 60.0);
-        break;
-      }
-
-      case 'waterfront': {
-        if (this.scenicFromAnchor('waterfront', elapsed, desiredPos, desiredLook)) break;
-        // Over the shimmering East River looking across the FDR Drive, Queensboro Bridge & Midtown Skyline
-        const drift = Math.sin(elapsed * 0.15) * 40.0;
-        desiredPos.set(1640.0, 60.0, 60.0 + drift);
-        desiredLook.set(150.0, 150.0, -150.0);
-        break;
-      }
-
-      case 'drone': {
-        if (this.scenicFromAnchor('drone', elapsed, desiredPos, desiredLook)) break;
-        const angle = elapsed * 0.07 + 0.65;
-        const radius = 720.0 + Math.sin(elapsed * 0.23) * 140.0;
-        const alt = 330.0 + Math.cos(elapsed * 0.19) * 90.0;
-        desiredPos.set(
-          Math.cos(angle) * radius + 60.0,
-          alt,
-          Math.sin(angle) * radius + 250.0
-        );
-        desiredLook.set(60.0, 160.0, 250.0);
-        break;
-      }
     }
 
     if (!this.initialized || this.activePresetId === 'pov') {

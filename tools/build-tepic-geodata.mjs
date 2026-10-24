@@ -1,7 +1,7 @@
 // tools/build-tepic-geodata.mjs — writes js/city-geodata.js for Tepic, Nayarit, from OpenStreetMap.
-// Same GEO schema as the New York pipeline (tools/build-geodata.mjs) so the runtime can stay shared: the generic
-// fields (roadGraph, blocks, parks, roads) carry the whole city, the Manhattan-only fields (streets, avenues,
-// centralPark, boroughs, piers, bridges...) are empty and `frame.grid` / `frame.waterfront` are false.
+// The generic fields (roadGraph, blocks, parks, roads) carry the whole city. The schema keeps a few empty fields from
+// the New York game this project was forked from (streets, avenues, centralPark, boroughs, piers, bridges...), with
+// `frame.grid` / `frame.waterfront` false, so the generated file keeps its shape; `manhattan` is the city's box.
 //
 // Frame: 1 unit = 1 m, x = east, z = south (north = -z), origin at the Plaza Principal (Plaza de Armas), axes turned
 // to the centro's street grid (a few degrees from true north, measured from the streets themselves).

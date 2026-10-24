@@ -2,11 +2,9 @@ import * as THREE from 'three/webgpu';
 import {
   CITY,
   ISLAND_BOUNDS,
-  CENTRAL_PARK_BOUNDS,
   getIslandBoundsAtZ,
   isTypingInField,
-  blockAt,
-  streetZ
+  blockAt
 } from './city-config.js';
 import { cityUniforms, createCarPaintMaterial, createContactShadowMaterial } from './tsl-materials.js';
 import {
@@ -22,20 +20,18 @@ import {
 } from './actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
-import { bryantParkLawn } from './landmarks.js';
 
 // js/controllers.js
 // Sculpted, non-blocky GTA 6-style 3D models, animations, and physics controllers
 // for Third-Person Navigation:
 // 1. Person (Skinned Pedestrian: planted-footstep IK walk/run/jump, see pedestrians.js)
-// 2. Car (Aerodynamic Sculpted NYC Medallion Yellow Taxi with Sloped Windshield & Clearcoat)
+// 2. Car (Aerodynamic Sculpted Yellow Taxi with Sloped Windshield & Clearcoat, or whatever car was taken)
 // 3. Cyclist (Sculpted Road Cyclist with Drop-Bar Frame & Aero Helmet)
-// 4. Helicopter (Manhattan Sightseeing Twin-Turbine Chopper)
+// 4. Helicopter (Sightseeing Twin-Turbine Chopper)
 
-// Spawn at the city's start (city-geodata.js frame.start: Tepic's Plaza Principal), or on 5th Ave at 37th St facing
-// south down the avenue toward the Empire State Building (34th St) on the Manhattan grid
+// Spawn at the city's start (city-geodata.js frame.start: Tepic's Plaza Principal)
 const START = CITY && CITY.start ? CITY.start : null;
-const SPAWN_Z = START ? START.z : streetZ(37);
+const SPAWN_Z = START ? START.z : 0;
 // A point `ahead` metres along the start heading and `right` metres to its right (heading 0 faces +z, right is -x)
 function spawnAt(ahead, right, fallbackX, fallbackZ) {
   if (!START) return { x: fallbackX, z: fallbackZ, heading: 0 };
@@ -49,9 +45,7 @@ const SPAWN = {
   helicopter: spawnAt(-60, -110, -110, SPAWN_Z - 60)
 };
 // HUD names of the player's characters & vehicles, in the city's language
-const LABELS = CITY && CITY.grid === false
-  ? { person: 'Peatón', car: 'Taxi de Tepic', cyclist: 'Ciclista', helicopter: 'Helicóptero turístico' }
-  : { person: 'Pedestrian', car: 'NYC Yellow Taxi', cyclist: 'NYC Bike Lane Cyclist', helicopter: 'Sightseeing Helicopter' };
+const LABELS = { person: 'Peatón', car: 'Taxi de Tepic', cyclist: 'Ciclista', helicopter: 'Helicóptero turístico' };
 const groundCollider = { type: 'ground' };
 
 const CAR_DRIVE = {
@@ -153,7 +147,7 @@ function createTaxiDoorDecalTexture() {
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#ffbe14';
   ctx.fillRect(0, 0, 256, 128);
-  // Black T&LC circle emblem
+  // Black taxi-rank emblem
   ctx.fillStyle = '#111317';
   ctx.beginPath();
   ctx.arc(58, 64, 42, 0, Math.PI * 2);
@@ -163,38 +157,39 @@ function createTaxiDoorDecalTexture() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('T', 58, 66);
-  // NYC TAXI typography & Fare Rate
+  // TAXI TEPIC typography, rank & unit number
   ctx.fillStyle = '#111317';
   ctx.textAlign = 'left';
   ctx.font = '900 26px Inter, Arial, sans-serif';
-  ctx.fillText('NYC TAXI', 112, 42);
+  ctx.fillText('TAXI TEPIC', 112, 42);
   ctx.font = '700 15px JetBrains Mono, monospace';
-  ctx.fillText('7Y48 · MEDALLION', 112, 68);
+  ctx.fillText('SITIO 7 · ECO 48', 112, 68);
   ctx.font = '600 13px Inter, Arial, sans-serif';
-  ctx.fillText('$3.00 INITIAL FARE', 112, 90);
+  ctx.fillText('SERVICIO PÚBLICO', 112, 90);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-function createNYLicensePlateTexture() {
+// Nayarit public-service plate: white, the state's name across the top, MÉXICO along the bottom
+function createLicensePlateTexture() {
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 128;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffb81c';
+  ctx.fillStyle = '#f4f4f0';
   ctx.fillRect(0, 0, 256, 128);
-  ctx.fillStyle = '#0d2244';
+  ctx.fillStyle = '#0f6b3a';
   ctx.fillRect(6, 6, 244, 24);
-  ctx.fillStyle = '#ffb81c';
+  ctx.fillStyle = '#f4f4f0';
   ctx.font = '800 15px Inter, Arial, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('NEW YORK', 128, 23);
-  ctx.fillStyle = '#0d2244';
+  ctx.fillText('NAYARIT', 128, 23);
+  ctx.fillStyle = '#16181c';
   ctx.font = '900 48px JetBrains Mono, monospace';
-  ctx.fillText('7Y48A', 128, 82);
+  ctx.fillText('A-748-T', 128, 82);
   ctx.font = '700 13px Inter, Arial, sans-serif';
-  ctx.fillText('NYC T&LC', 128, 114);
+  ctx.fillText('MÉXICO', 128, 114);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -205,7 +200,8 @@ class ThirdPersonControllerManager {
     this.scene = scene;
     this.colliders = colliders;
     this._colliderCells = null; // built on first use, see nearColliders()
-    this.activeMode = 'car'; // 'person' | 'car' | 'cyclist' | 'helicopter'
+    this.activeMode = 'person'; // 'person' | 'car' | 'cyclist' | 'helicopter': on foot until getting into something (F)
+    this.rotorSpin = 0; // rad/s of the helicopter's main rotor: winds up with the pilot aboard, down once parked
 
     this.keys = {
       forward: false,
@@ -240,6 +236,7 @@ class ThirdPersonControllerManager {
       }
     });
 
+    this.syncOccupants();
     this.bindKeyboard();
   }
 
@@ -337,6 +334,159 @@ class ThirdPersonControllerManager {
   setMode(mode) {
     if (!this.entities[mode]) return;
     this.activeMode = mode;
+    this.syncOccupants();
+  }
+
+  // On foot the pedestrian walks and the vehicles stand empty where they were left; in a vehicle the pedestrian rides
+  // along out of sight, and only a bicycle being ridden has its rider (and helmet) on it
+  syncOccupants() {
+    const onFoot = this.activeMode === 'person';
+    const p = this.entities.person;
+    p.mesh.visible = onFoot;
+    for (const m of p.crowd.meshes) m.visible = onFoot;
+    const b = this.entities.cyclist;
+    const riding = this.activeMode === 'cyclist';
+    for (const m of b.riderCrowd.meshes) m.visible = riding;
+    b.helmet.visible = riding;
+  }
+
+  // GTA-style boarding (F, main.js): the player's own vehicle the pedestrian could get into, the nearest whose body
+  // is within `reach` metres; { mode, distance } or null
+  ownVehicleNear(reach) {
+    const p = this.entities.person.position;
+    let best = null;
+    // [mode, half width, half length, centre ahead of the origin]: the helicopter runs from its nose (+2.5 m) back to
+    // the tail rotor (-6 m)
+    for (const [mode, halfW, halfL, mid] of [['car', 0.86, 2.18, 0], ['cyclist', 0.32, 0.95, 0], ['helicopter', 1.3, 4.3, -1.8]]) {
+      const e = this.entities[mode];
+      if (Math.abs(e.position.y - p.y) > 2.5) continue; // (a helicopter up in the air)
+      const dx = p.x - e.position.x, dz = p.z - e.position.z;
+      const fx = Math.sin(e.heading), fz = Math.cos(e.heading);
+      const distance = Math.hypot(Math.max(0, Math.abs(dx * fx + dz * fz - mid) - halfL), Math.max(0, Math.abs(dz * fx - dx * fz) - halfW));
+      if (distance <= reach && (!best || distance < best.distance)) best = { mode, distance };
+    }
+    return best;
+  }
+
+  // Get in: one of the player's own vehicles where it stands, or `taken`, a car or bicycle taken from the traffic
+  // (traffic.js hijack): the player's vehicle of that kind takes its place, looks and (slowed) speed
+  enterVehicle(mode, taken = null) {
+    if (this.activeMode !== 'person' || mode === 'person' || !this.entities[mode]) return false;
+    const ent = this.entities[mode];
+    if (taken) {
+      if (mode === 'car') this.setCarLook(taken.bodyType, taken.paint, taken.police);
+      else if (mode === 'cyclist') this.setBikeColor(taken.color);
+      ent.position.set(taken.x, this.getGroundHeight(taken.x, taken.z, mode), taken.z); // just where it was
+      ent.heading = taken.heading;
+      this.settle(ent);
+      ent.speed = Math.max(0, taken.speed) * 0.4;
+    }
+    this.setMode(mode);
+    return true;
+  }
+
+  // Get out: the pedestrian steps out on the driver's side (left), the vehicle stays where it stopped. A helicopter
+  // has to be (almost) on the ground first
+  exitVehicle() {
+    const mode = this.activeMode;
+    if (mode === 'person') return false;
+    const v = this.entities[mode];
+    const ground = this.getGroundHeight(v.position.x, v.position.z, mode);
+    if (mode === 'helicopter' && v.position.y - ground > 3) return false;
+    if (mode === 'helicopter') v.position.y = ground + 0.25;
+    this.settle(v);
+    if (v.carState) v.carState.value.x = 0; // (no brake lights on a parked car)
+    const side = mode === 'car' ? 1.5 : mode === 'cyclist' ? 0.75 : 2.4;
+    const end = mode === 'car' ? 3.0 : mode === 'cyclist' ? 1.6 : 6.6;
+    const lx = Math.cos(v.heading), lz = -Math.sin(v.heading); // left (heading 0 faces +z, left is +x)
+    const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
+    const spots = [[lx * side, lz * side], [-lx * side, -lz * side], [-fx * end, -fz * end], [fx * end, fz * end]];
+    const shape = collisionBody('person', 0.48, 0, 0.05);
+    const fits = (x, z) => {
+      const y = this.getGroundHeight(x, z, 'person');
+      return !this.nearColliders(x, z, 1).some((c) => buildingContact(c, x, y, z, shape));
+    };
+    const [ox, oz] = spots.find(([sx, sz]) => fits(v.position.x + sx, v.position.z + sz)) || spots[0];
+    const p = this.entities.person;
+    const x = v.position.x + ox, z = v.position.z + oz;
+    this.setMode('person');
+    this.resetInput();
+    p.position.set(x, this.getGroundHeight(x, z, 'person'), z);
+    p.heading = v.heading;
+    this.settle(p);
+    return true;
+  }
+
+  // The player's car takes the body and paint of the one it was taken from: taxi, sedan, SUV or police cruiser
+  setCarLook(bodyType = 'taxi', paint = 0xffbe14, police = false) {
+    const c = this.entities.car;
+    const spec = BODY_SPECS[bodyType] || BODY_SPECS.taxi;
+    const mat = createLoftedCarMaterial(spec, paint);
+    const geos = (this._carGeos ??= {});
+    const g = (geos[spec.name] ??= {
+      body: buildCarGeometry(spec, false),
+      wheels: [buildSteerableWheelGeo(spec, -1), buildSteerableWheelGeo(spec, 1)]
+    });
+    c.bodyMesh.geometry = g.body;
+    c.bodyMesh.material = mat;
+    for (const wheel of c.wheels) {
+      wheel.tire.geometry = g.wheels[wheel.side < 0 ? 0 : 1];
+      wheel.tire.material = mat;
+      wheel.steerPivot.position.set(wheel.side * spec.wheelX, spec.wheelRadius, wheel.isFront ? spec.wheelZ : -spec.wheelZ);
+    }
+    for (const decal of c.taxiDecals) decal.visible = spec.name === 'taxi';
+    c.plates[0].position.set(0, spec.plates[0], spec.zFront + 0.006);
+    c.plates[1].position.set(0, spec.plates[1], spec.zRear - 0.006);
+    c.headLights.forEach((spot, i) => placeVehicleHeadlight(spot, spec, i === 0 ? -1 : 1));
+    c.carState = mat.userData.carState;
+    if (c.carState) c.carState.value.set(0, 0, 0, police ? 1 : 0); // (livery: 1 = police)
+    c.label = spec.name === 'taxi' ? LABELS.car : police ? 'Patrulla' : spec.name === 'suv' ? 'SUV' : 'Sedán';
+    c.look = { bodyType: spec.name, paint, police: Boolean(police) };
+  }
+
+  // ...and the player's bicycle the frame colour of the one it was taken from
+  setBikeColor(hex = 0x0078e8) {
+    const b = this.entities.cyclist;
+    const mat = createCarPaintMaterial(hex);
+    for (const m of b.frameMeshes) m.material = mat;
+    b.look = { color: hex };
+  }
+
+  // The player's car & bicycle left standing, for the traffic to stop behind (traffic.js setParked)
+  parkedVehicles() {
+    const slots = (this._parkedSlots ??= { car: { x: 0, z: 0, halfW: 0.86, halfL: 2.18 }, cyclist: { x: 0, z: 0, halfW: 0.32, halfL: 0.95 } });
+    const out = (this._parked ??= []);
+    out.length = 0;
+    for (const mode of ['car', 'cyclist']) {
+      if (mode === this.activeMode) continue;
+      const e = this.entities[mode];
+      slots[mode].x = e.position.x;
+      slots[mode].z = e.position.z;
+      out.push(slots[mode]);
+    }
+    return out;
+  }
+
+  // The helicopter waits on the ground, clear of the buildings, for the player to walk up and get in (back at its
+  // spot near the start with `home`, so it is always found there when the game starts)
+  landHelicopter(home = false) {
+    const h = this.entities.helicopter;
+    if (home) {
+      h.position.x = SPAWN.helicopter.x;
+      h.position.z = SPAWN.helicopter.z;
+      h.heading = START ? START.heading + 0.62 : 0.62;
+    }
+    const mode = this.activeMode;
+    this.activeMode = 'helicopter';
+    const altitude = this.getGroundHeight(h.position.x, h.position.z, 'helicopter') + 0.25;
+    const spot = this.findTeleportPosition(h.position.x, h.position.z, h.heading, altitude);
+    this.activeMode = mode;
+    if (spot) {
+      h.position.x = spot.x;
+      h.position.z = spot.z;
+    }
+    h.position.y = this.getGroundHeight(h.position.x, h.position.z, 'helicopter') + 0.25;
+    this.settle(h);
   }
 
   getActiveEntity() {
@@ -356,14 +506,20 @@ class ThirdPersonControllerManager {
       ent.heading = heading;
       ent.position.y = heli ? altitude : this.getGroundHeight(destination.x, destination.z, this.activeMode);
     }
+    this.settle(ent);
+    return { x: ent.position.x, z: ent.position.z };
+  }
+
+  // At rest where it stands, with no motion or pose left over (teleports, getting in & out, parking)
+  settle(ent) {
     ent.speed = 0;
-    if (this.activeMode === 'person') {
+    if (ent.type === 'person') {
       ent.verticalVel = 0;
       ent.rig.reset(ent.position.x, ent.position.z, ent.heading, personGround, this);
       ent.crowd.begin();
       ent.crowd.add(ent.rig, 0);
       ent.crowd.end();
-    } else if (this.activeMode === 'car') {
+    } else if (ent.type === 'car') {
       ent.vx = ent.vz = ent.angularVel = ent.steerAngle = 0;
       ent.pitchVel = ent.rollVel = ent.heaveY = ent.heaveVel = 0;
       ent.chassisPivot.rotation.x = ent.chassisPivot.rotation.z = 0;
@@ -371,16 +527,15 @@ class ThirdPersonControllerManager {
       ent.lastCollisionSpark = null;
       for (const wheel of ent.wheels) if (wheel.isFront) wheel.steerPivot.rotation.y = 0;
       if (ent.carState) ent.carState.value.x = 1;
-    } else if (this.activeMode === 'cyclist') {
+    } else if (ent.type === 'cyclist') {
       ent.leanAngle = ent.leanPivot.rotation.z = 0;
-    } else if (heli) {
+    } else {
       ent.verticalSpeed = ent.pitchAngle = ent.rollAngle = 0;
       ent.tiltPivot.rotation.x = ent.tiltPivot.rotation.z = 0;
       ent.tiltPivot.position.y = 0;
     }
     ent.mesh.position.copy(ent.position);
     ent.mesh.rotation.y = ent.heading;
-    return { x: ent.position.x, z: ent.position.z };
   }
 
   // Find a fully clear arrival before moving the player. Sequential collision pushes can leave a player trapped
@@ -446,7 +601,7 @@ class ThirdPersonControllerManager {
   }
 
   // =========================================================================
-  // 1. PERSON (SKINNED NYC PEDESTRIAN WITH PLANTED-FOOTSTEP IK GAIT, see pedestrians.js)
+  // 1. PERSON (SKINNED PEDESTRIAN WITH PLANTED-FOOTSTEP IK GAIT, see pedestrians.js)
   // =========================================================================
   createPersonEntity() {
     const root = new THREE.Group();
@@ -484,7 +639,7 @@ class ThirdPersonControllerManager {
   }
 
   // =========================================================================
-  // 2. CAR (3D LOFTED SCULPTED NYC MEDALLION YELLOW TAXI SEDAN)
+  // 2. CAR (3D LOFTED SCULPTED YELLOW TAXI SEDAN)
   // =========================================================================
   createCarEntity() {
     const root = new THREE.Group();
@@ -503,7 +658,7 @@ class ThirdPersonControllerManager {
     carBodyMesh.receiveShadow = true;
     chassisPivot.add(carBodyMesh);
 
-    // 2. Authentic NYC Taxi Side Door T&LC Medallion & Fare Tariff Emblem Decals, hugging the curved front doors
+    // 2. Taxi side door emblem & unit number decals, hugging the curved front doors
     const doorDecalTex = createTaxiDoorDecalTexture();
     const doorDecalMat = new THREE.MeshStandardNodeMaterial({
       map: doorDecalTex,
@@ -514,19 +669,21 @@ class ThirdPersonControllerManager {
       polygonOffsetUnits: -2
     });
     const doorMid = (spec.doors[0] + spec.doors[1]) / 2;
+    const taxiDecals = [];
     for (const side of [-1, 1]) {
       const decal = new THREE.Mesh(buildCarSidePatch(spec, side, doorMid - 0.36, doorMid + 0.36, 0.53, 0.81, 0.003), doorDecalMat);
       chassisPivot.add(decal);
+      taxiDecals.push(decal);
     }
 
-    // 3. High-Detail NY Empire Gold License Plates on the bumpers
-    const nyPlateTex = createNYLicensePlateTexture();
-    const nyPlateMat = new THREE.MeshStandardNodeMaterial({ map: nyPlateTex, roughness: 0.28 });
-    const rearPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), nyPlateMat);
+    // 3. License plates on the bumpers
+    const plateTex = createLicensePlateTexture();
+    const plateMat = new THREE.MeshStandardNodeMaterial({ map: plateTex, roughness: 0.28 });
+    const rearPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), plateMat);
     rearPlate.position.set(0, spec.plates[1], spec.zRear - 0.006);
     chassisPivot.add(rearPlate);
 
-    const frontPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), nyPlateMat);
+    const frontPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), plateMat);
     frontPlate.position.set(0, spec.plates[0], spec.zFront + 0.006);
     chassisPivot.add(frontPlate);
 
@@ -536,6 +693,7 @@ class ThirdPersonControllerManager {
     // 4. Steerable & Spinning 3D LatheGeometry Tyres + Recessed 5-Spoke Alloy Wheels
     const leftWheelGeo = buildSteerableWheelGeo(spec, -1);
     const rightWheelGeo = buildSteerableWheelGeo(spec, 1);
+    this._carGeos = { taxi: { body: carBodyGeo, wheels: [leftWheelGeo, rightWheelGeo] } }; // (see setCarLook)
 
     const wheels = [];
     const wheelCoords = [
@@ -552,7 +710,7 @@ class ThirdPersonControllerManager {
       tire.receiveShadow = true;
       steerPivot.add(tire);
       root.add(steerPivot);
-      wheels.push({ steerPivot, tire, isFront: wc.isFront });
+      wheels.push({ steerPivot, tire, isFront: wc.isFront, side: wc.side });
     }
 
     // 5. Soft Under-Car Contact Shadow (AO) + Clustered Dual LED Headlight SpotLights & Rear Brake PointLight
@@ -578,6 +736,10 @@ class ThirdPersonControllerManager {
       label: LABELS.car,
       mesh: root,
       chassisPivot,
+      bodyMesh: carBodyMesh,
+      taxiDecals,
+      plates: [frontPlate, rearPlate],
+      look: { bodyType: 'taxi', paint: 0xffbe14, police: false },
       carState,
       headLights,
       wheels,
@@ -739,6 +901,8 @@ class ThirdPersonControllerManager {
       label: LABELS.cyclist,
       mesh: root,
       leanPivot,
+      frameMeshes: [topTube, downTube, seatTube],
+      look: { color: 0x0078e8 },
       frontWheel,
       rearWheel,
       crankPivot,
@@ -760,7 +924,7 @@ class ThirdPersonControllerManager {
   }
 
   // =========================================================================
-  // 4. HELICOPTER (3D LOFTED MANHATTAN SIGHTSEEING TWIN-TURBINE CHOPPER)
+  // 4. HELICOPTER (3D LOFTED SIGHTSEEING TWIN-TURBINE CHOPPER)
   // =========================================================================
   createHelicopterEntity() {
     const root = new THREE.Group();
@@ -851,16 +1015,6 @@ class ThirdPersonControllerManager {
   }
 
   getGroundHeight(x, z, mode = 'person') {
-    // Inside Central Park (5th Ave to Central Park West, 59th St to 110th St)
-    const cp = CENTRAL_PARK_BOUNDS;
-    if (cp && x > cp.minX && x < cp.maxX && z > cp.minZ && z < cp.maxZ) {
-      return 1.24;
-    }
-    // Inside Bryant Park's Great Lawn (west of the New York Public Library, 40th-42nd St)
-    const lawn = bryantParkLawn;
-    if (lawn && x > lawn.minX && x < lawn.maxX && z > lawn.minZ && z < lawn.maxZ) {
-      return lawn.top;
-    }
     // the hills over the flat city (terrain.js): everyone stands on them
     const hill = this.terrainAt ? this.terrainAt(x, z) : 0;
     if (mode === 'person') {
@@ -923,7 +1077,7 @@ class ThirdPersonControllerManager {
   }
 
   resolveHorizontalCollision(pos, radius, carEntity = null, entity = carEntity) {
-    // The detailed island (the helicopter may roam out over the harbour & the boroughs)
+    // The detailed city (the helicopter may roam out beyond it)
     const heli = this.activeMode === 'helicopter';
     const m = heli ? 6000 : 0;
     pos.x = Math.max(ISLAND_BOUNDS.minX - m, Math.min(ISLAND_BOUNDS.maxX + m, pos.x));
@@ -1015,13 +1169,16 @@ class ThirdPersonControllerManager {
   // pedals, helmet on its head
   poseCharacters(dt) {
     const p = this.entities.person;
-    const air = p.position.y - this.getGroundHeight(p.position.x, p.position.z, 'person');
-    p.rig.update(dt, p.position.x, p.position.z, p.heading, personGround, this, air > 0.02 ? air : 0);
-    p.crowd.begin();
-    p.crowd.add(p.rig, 0);
-    p.crowd.end();
+    if (this.activeMode === 'person') {
+      const air = p.position.y - this.getGroundHeight(p.position.x, p.position.z, 'person');
+      p.rig.update(dt, p.position.x, p.position.z, p.heading, personGround, this, air > 0.02 ? air : 0);
+      p.crowd.begin();
+      p.crowd.add(p.rig, 0);
+      p.crowd.end();
+    }
 
     const b = this.entities.cyclist;
+    if (this.activeMode !== 'cyclist') return;
     b.riderRig.ride(b.leanPivot, b.pedalPhase, b.bikeFrame);
     b.riderCrowd.begin();
     b.riderCrowd.add(b.riderRig, 0);
@@ -1066,8 +1223,11 @@ class ThirdPersonControllerManager {
 
   update(dt, elapsed) {
     const heli = this.entities.helicopter;
-    heli.mainRotorPivot.rotation.y += dt * 24.0;
-    heli.tailRotorPivot.rotation.x += dt * 32.0;
+    // the rotor winds up in a few seconds with the pilot aboard and runs down once parked
+    const flying = this.activeMode === 'helicopter';
+    this.rotorSpin += ((flying ? 24 : 0) - this.rotorSpin) * Math.min(1, dt * (flying ? 1.6 : 0.5));
+    heli.mainRotorPivot.rotation.y += dt * this.rotorSpin;
+    heli.tailRotorPivot.rotation.x += dt * this.rotorSpin * 1.33;
     const active = this.getActiveEntity();
     const prevX = active ? active.position.x : 0;
     const prevZ = active ? active.position.z : 0;
@@ -1075,15 +1235,15 @@ class ThirdPersonControllerManager {
     if (this.activeMode === 'person') {
       this.updatePerson(dt, elapsed);
     } else {
-      // Keep the sidewalk pedestrian walking naturally when not actively controlled
+      // The pedestrian rides along (out of sight) in the vehicle it got into
       const p = this.entities.person;
-      const walkSpeed = 1.48;
-      p.speed = walkSpeed;
-      p.position.x += Math.sin(p.heading) * walkSpeed * dt;
-      p.position.z += Math.cos(p.heading) * walkSpeed * dt;
-      if (p.position.z < -340) p.heading = 0;
-      else if (p.position.z > 340) p.heading = Math.PI;
+      p.position.copy(active.position);
+      p.heading = active.heading;
+      p.speed = 0;
     }
+    // A bicycle left standing leans on its kickstand
+    const bike = this.entities.cyclist;
+    if (this.activeMode !== 'cyclist') bike.leanPivot.rotation.z = bike.leanAngle = 0.12;
 
     if (this.activeMode === 'car') {
       this.updateCar(dt, elapsed);
@@ -1110,7 +1270,6 @@ class ThirdPersonControllerManager {
         spot.intensity = HEADLIGHTS.intensity * beamScale;
       }
     }
-    const bike = this.entities.cyclist;
     if (bike.headLight) {
       const bikeActive = this.activeMode === 'cyclist';
       bike.headLight.intensity = bikeActive ? 115 * beamScale : 0;
