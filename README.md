@@ -10,7 +10,7 @@ Fork it, remix it, improve it, break it. Make games, animations, films, experime
 
 ## Taipei port (in progress)
 
-This fork is being retargeted to Taipei. The first milestone is a 1 km box around Taipei 101 (Xinyi): open
+This fork is being retargeted to Taipei. It currently covers a 2 km box around Taipei 101 (Xinyi and around): open
 `taipei.html` over http in a WebGPU browser. Building footprints come from OpenStreetMap
 (`tools/build-taipei-geodata.mjs`).
 

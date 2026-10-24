@@ -12,7 +12,7 @@ import { buildFootprintTraffic } from './footprint-traffic.js';
 import { buildStreetFurniture } from './street-furniture.js';
 
 // js/taipei-main.js
-// Taipei milestone viewer (taipei.html): the 1 km box around Taipei 101 from OSM footprints, orbit camera, sun & sky.
+// Taipei viewer (taipei.html): the test box around Taipei 101 (GEO.frame.box, 2 km) from OSM, orbit camera, sun & sky.
 // The NYC app (index.html, js/main.js) is untouched and stays the comparison baseline.
 
 // Loading screen (taipei.html #loading): a sweeping bar while the modules download, then real progress through the
@@ -91,7 +91,7 @@ async function init() {
   const scene = new THREE.Scene();
   const sky = new THREE.Color(0xb9cddc);
   scene.background = sky;
-  scene.fog = new THREE.Fog(sky, 1500, 6000);
+  scene.fog = new THREE.Fog(sky, 2500, 9000);
 
   // Box extent in world metres, from the frame's [S, W, N, E] box
   const [s, w, n, e] = GEO.frame.box;
@@ -122,7 +122,8 @@ async function init() {
   sun.position.set(-700, 1100, 500); // afternoon sun from the south-west
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
-  Object.assign(sun.shadow.camera, { left: -900, right: 900, top: 900, bottom: -900, near: 10, far: 3500 });
+  const reachM = half * 1.15; // shadows over the whole box
+  Object.assign(sun.shadow.camera, { left: -reachM, right: reachM, top: reachM, bottom: -reachM, near: 10, far: 4500 });
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.6;
   scene.add(sun, sun.target);
@@ -144,22 +145,22 @@ async function init() {
   const traffic = buildFootprintTraffic(scene, GEO, {
     signals,
     driveOnRight: true,
-    carCount: 140,
-    pedCount: 220,
+    carCount: 320,
+    pedCount: 420,
     taxiShare: 0.14,
     taxiColour: 0xf3c316,
     palette: [0xf4f4f2, 0xf4f4f2, 0xf4f4f2, 0xc8cbcf, 0xc8cbcf, 0x8a8e93, 0x1c1e21, 0x1c1e21, 0x24395a, 0x7d1d22]
   });
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 20000);
-  camera.position.set(900, 520, 1100); // from the south-east, Taipei 101 in view
+  camera.position.set(1500, 820, 1800); // from the south-east, the whole box & Taipei 101 in view
   const controls = new OrbitControls(camera, renderer.domElement);
   const t101 = GEO.landmarks['Taipei 101'];
   controls.target.set(t101 ? t101.x : 0, 120, t101 ? t101.z : 0);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI * 0.495;
   controls.minDistance = 30;
-  controls.maxDistance = 6000;
+  controls.maxDistance = 8000;
   controls.update();
 
   // HUD: what is data and what is estimated

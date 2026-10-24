@@ -15,7 +15,10 @@ Smoke test for whole pipeline on city's best-mapped area (Xinyi). Bad here where
 data best → worse everywhere; good → expanding = bigger bbox. Don't widen area
 until 1 km render passes criteria below.
 
-1 km test box (S,W,N,E): `25.029, 121.559, 25.039, 121.570`. NOTE: box computed
+**Expanded (owner's call) to a 2 km box** (S,W,N,E) `25.0249, 121.5546, 25.0430, 121.5744` (±1 km of 101; `BOX` in
+`tools/geo-taipei-base.mjs`, same bounds in every `q_*.overpassql`). At 2 km, 52% of heights are estimates (17% in the
+1 km core); SE corner is the foot of Elephant Mountain — ground is flat (no terrain yet).
+Original 1 km test box (S,W,N,E): `25.029, 121.559, 25.039, 121.570`. NOTE: box computed
 by hand from origin, not verified — paste buildings query into overpass-turbo.eu,
 confirm on map it surrounds Taipei 101 + covers Xinyi core before committing;
 nudge bounds visually. (At 25°N, 1° lon ≈ 101 km vs 1° lat ≈ 111 km, so E/W and

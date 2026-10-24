@@ -29,9 +29,10 @@ const log = (...a) => console.log('[taipei-geodata]', ...a);
 const frame = makeFrame({ lat0: 25.033964, lon0: 121.564468, theta: 0, origin: [0, 0] });
 const { toWorld } = frame;
 
-// 1 km test box around Taipei 101, [S, W, N, E] degrees; must match the q_*.overpassql bounds. At 25° N it spans
-// x -552..558, z -558..550 m: about 1.11 km each way, centred on the origin.
-const BOX = [25.029, 121.559, 25.039, 121.570];
+// Test box around Taipei 101, [S, W, N, E] degrees; must match the q_*.overpassql bounds. 2 km: ±1 km of the origin
+// each way (at 25° N, 1 km ≈ 0.00902° of latitude and ≈ 0.00991° of longitude). The first milestone used the 1 km box
+// [25.029, 121.559, 25.039, 121.570].
+const BOX = [25.0249, 121.5546, 25.043, 121.5744];
 
 // Landmarks whose height is known from outside OSM, matched on `name:en` (OSM's primary `name` is Chinese). The build
 // fails if the rendered top (the outline, or its tallest building:part when parts model it) differs by more than

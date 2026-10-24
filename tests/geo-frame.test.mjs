@@ -11,12 +11,12 @@ test('Taipei frame puts Taipei 101 at the origin, north-up, in metres', () => {
   assert.ok(xn === 0 && Math.abs(zn + 110.8) < 0.5, `0.001° north -> (${xn}, ${zn})`); // north is -z
 });
 
-test('Taipei 1 km test box surrounds the origin', () => {
+test('Taipei 2 km test box is centred on the origin, ±1 km each way', () => {
   const [s, w, n, e] = BOX;
   const [x0, z1] = taipei.toWorld(w, s);
   const [x1, z0] = taipei.toWorld(e, n);
-  for (const v of [x0, z0]) assert.ok(v < -500 && v > -600, `west/north edge ${v}`);
-  for (const v of [x1, z1]) assert.ok(v > 500 && v < 600, `east/south edge ${v}`);
+  for (const v of [x0, z0]) assert.ok(v < -980 && v > -1020, `west/north edge ${v}`);
+  for (const v of [x1, z1]) assert.ok(v > 980 && v < 1020, `east/south edge ${v}`);
 });
 
 test('theta is the bearing of frame north and origin shifts the frame', () => {
