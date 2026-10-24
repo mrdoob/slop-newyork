@@ -30,4 +30,4 @@ node --max-old-space-size=12000 tools/build-tepic-geodata.mjs
 
 The project code is available under the [MIT License](LICENSE).
 
-Geographic data: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); building footprints from [Overture Maps](https://overturemaps.org/) (OpenStreetMap, Microsoft ML Buildings and Google Open Buildings; ODbL). Third-party data and dependencies retain their respective licenses.
+Geographic data: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); building footprints from [Overture Maps](https://overturemaps.org/) (OpenStreetMap, Microsoft ML Buildings and Google Open Buildings; ODbL). Live weather: [Weather data by Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Third-party data and dependencies retain their respective licenses.

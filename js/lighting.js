@@ -21,6 +21,8 @@ import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 import { SunLight } from 'three/addons/lights/SunLight.js';
 import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
 import { cityUniforms } from './tsl-materials.js';
+import { GEO } from './city-geodata.js';
+import { LiveWeather, sunDirection } from './weather.js';
 
 // js/lighting.js
 // Physically-Based Atmospheric Sky (Preetham SkyMesh + Beer-Powder Clouds),
@@ -135,11 +137,96 @@ const TIME_PRESETS = {
   }
 };
 
+// Live time of day: the presets are pinned at these real sun elevations (degrees) and blend in between; the weather then
+// dims, greys, fogs and wets the result
+const LIVE_KEYFRAMES = [
+  { elevation: -12, id: 'midnight' },
+  { elevation: -4, id: 'twilight' },
+  { elevation: 7, id: 'golden' },
+  { elevation: 32, id: 'midday' }
+];
+// Live checks every LIVE_TICK_MS but only re-applies (and re-bakes the sky IBL) once the sun has moved LIVE_SUN_STEP
+// degrees (~2 min) or the weather is still easing toward new conditions
+const LIVE_TICK_MS = 15000;
+const LIVE_SUN_STEP = 0.5;
+const LIVE_EASE = 0.35; // share of the way the shown weather moves toward newly fetched conditions per tick
+const EASED_WEATHER_KEYS = ['temperature', 'cloudCover', 'cloudLow', 'cloudMid', 'cloudHigh', 'rainRate', 'recentRain', 'visibility', 'windSpeed'];
+const COLOR_KEYS = ['sunColor', 'hemiSky', 'hemiGround', 'skyTop', 'skyHorizon', 'fogColor'];
+const MOON_DIR = TIME_PRESETS.midnight.sunDir;
+const { smoothstep } = THREE.MathUtils;
+
+// Presets either side of a sun elevation & the smoothstepped weight of the upper one
+function liveBlend(elevationDeg) {
+  const k = LIVE_KEYFRAMES;
+  if (elevationDeg <= k[0].elevation) return { a: k[0].id, b: k[0].id, t: 0 };
+  for (let i = 1; i < k.length; i++) {
+    if (elevationDeg < k[i].elevation) {
+      return { a: k[i - 1].id, b: k[i].id, t: smoothstep(elevationDeg, k[i - 1].elevation, k[i].elevation) };
+    }
+  }
+  const last = k[k.length - 1].id;
+  return { a: last, b: last, t: 0 };
+}
+
+function mixPresets(a, b, t) {
+  const pa = TIME_PRESETS[a];
+  const pb = TIME_PRESETS[b];
+  const p = {};
+  for (const key of Object.keys(pa)) {
+    if (typeof pa[key] === 'number' && !COLOR_KEYS.includes(key)) p[key] = pa[key] + (pb[key] - pa[key]) * t;
+  }
+  for (const key of COLOR_KEYS) p[key] = new THREE.Color(pa[key]).lerp(new THREE.Color(pb[key]), t);
+  return p;
+}
+
+// Overlays live conditions onto blended preset params; returns how much of the direct sun the clouds block (0..1)
+function applyWeather(p, w) {
+  const raining = w.rainRate > 0.05 || (w.code >= 51 && w.code <= 67) || (w.code >= 80 && w.code <= 82) || w.code >= 95;
+  const storm = w.code >= 95 ? 1 : 0;
+  const foggy = w.code === 45 || w.code === 48 ? 1 : 0;
+  // Low & mid decks shade the sun; thin high cirrus barely does
+  const block = Math.min(0.92, w.cloudLow * 0.9 + w.cloudMid * 0.6 + w.cloudHigh * 0.15 + foggy * 0.4 + storm * 0.2);
+
+  p.sunIntensity *= 1 - 0.85 * block;
+  p.hemiIntensity *= 1 + 0.12 * block - 0.25 * storm;
+  p.envIntensity *= 1 - 0.18 * block;
+  p.skyExposure *= 1 - 0.3 * block;
+  p.turbidity += 4 * block;
+  // Overcast light is flat & grey: pull the sky-driven colours toward their own luminance
+  const grey = new THREE.Color();
+  for (const key of ['hemiSky', 'skyTop', 'skyHorizon', 'fogColor']) {
+    const c = p[key];
+    const l = c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
+    c.lerp(grey.setRGB(l, l, l), block * 0.55);
+  }
+  // Dark storm afternoons switch the street & window lights on early
+  p.interiorGlow += 0.45 * block * block * (1 - p.nightFactor);
+
+  p.cloudCoverage = w.cloudCover < 0.03 ? 0 : Math.min(0.92, 0.1 + 0.75 * w.cloudCover);
+  p.cloudDensity = Math.min(1, 0.25 + 0.55 * Math.min(1, w.cloudLow + w.cloudMid) + 0.2 * storm);
+  p.cloudSpeed = 0.000015 * (0.5 + w.windSpeed / 15);
+
+  // FogExp2-style haze: 1.73 / visibility leaves ~5% contrast at the reported visibility distance
+  p.fogDensity = Math.min(0.004, Math.max(p.fogDensity, 1.73 / w.visibility) * (raining ? 1.3 : 1));
+
+  if (raining) p.roadWetness = Math.max(p.roadWetness, 0.6 + 0.12 * Math.min(w.rainRate, 3));
+  else if (w.recentRain > 0.2) p.roadWetness = Math.max(p.roadWetness, 0.45);
+  else p.roadWetness = Math.min(p.roadWetness, 0.25);
+  return block;
+}
+
 class LightingSystem {
   constructor(scene, renderer = null) {
     this.scene = scene;
     this.renderer = renderer;
     this.activePresetId = 'golden';
+    this.weather = new LiveWeather();
+    this.liveClock = () => new Date();
+    this.liveState = null;
+    this.liveWeather = null; // eased copy of this.weather.current that the scene shows
+    this.nextLiveTick = 0;
+    this.liveSunApplied = null; // sun position the scene was last lit for
+    this.onLiveChange = null;
 
     // Assign SunLight its node implementation for WebGPURenderer (Light.registerNode since r187; r186 used the library)
     if (SunLight.registerNode) {
@@ -263,23 +350,103 @@ class LightingSystem {
     this.scene.add(this.sky);
   }
 
+  get isNight() {
+    return this.activePresetId === 'midnight' || (this.activePresetId === 'live' && this.uNightFactor.value > 0.5);
+  }
+
   applyPreset(presetId, force = false) {
+    if (presetId === 'live') {
+      if (!force && this.activePresetId === 'live' && this.envRenderTarget !== null) return;
+      this.activePresetId = 'live';
+      this.liveWeather = null; // snap to the current conditions instead of easing in from another preset
+      this.liveState = null;
+      this.updateLive(true);
+      return;
+    }
     const p = TIME_PRESETS[presetId] || TIME_PRESETS.golden;
     if (!force && this.activePresetId === p.id && this.envRenderTarget !== null) {
       return;
     }
     this.activePresetId = p.id;
+    this.liveState = null;
+    this.sky.cloudSpeed.value = 0.000015;
+    this.applyParams(p, p.sunDir, p.sunDir);
+  }
 
-    this.sunLight.color.setHex(p.sunColor);
+  // Real sun over the weather location, blended presets & live conditions; re-fetches the weather when it is due
+  updateLive(force = false) {
+    const now = performance.now();
+    if (!force && now < this.nextLiveTick) return;
+    this.nextLiveTick = now + LIVE_TICK_MS;
+    const fetching = this.weather.refresh();
+    if (this.weather.pending) {
+      fetching.then(() => {
+        if (this.activePresetId === 'live') this.nextLiveTick = 0; // show the new conditions (or the failure) right away
+      });
+    }
+
+    const target = this.weather.current;
+    let easing = false;
+    // Snap rather than ease when entering Live or when the first real conditions replace the clear placeholder
+    if (!this.liveWeather || (this.weather.live && !(this.liveState && this.liveState.live))) {
+      this.liveWeather = { ...target };
+      force = true;
+    } else {
+      const eased = { ...target };
+      for (const key of EASED_WEATHER_KEYS) {
+        const from = this.liveWeather[key];
+        const to = target[key];
+        if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+        const next = from + (to - from) * LIVE_EASE;
+        // settle once within 1% (of the value, or of 1 for fractions near zero)
+        if (Math.abs(to - next) > 0.01 * Math.max(1, Math.abs(to))) {
+          eased[key] = next;
+          easing = true;
+        }
+      }
+      easing = easing || target.code !== this.liveWeather.code;
+      this.liveWeather = eased;
+    }
+
+    const sun = this.weather.sun(this.liveClock());
+    const last = this.liveSunApplied;
+    const sunMoved = !last || Math.abs(sun.elevationDeg - last.elevationDeg) > LIVE_SUN_STEP || Math.abs(sun.azimuthDeg - last.azimuthDeg) > LIVE_SUN_STEP;
+    const prev = this.liveState;
+    const statusChanged = !prev || prev.live !== this.weather.live || prev.loading !== !!this.weather.pending;
+    if (!force && !easing && !sunMoved && !statusChanged) return;
+    this.liveSunApplied = sun;
+    const blend = liveBlend(sun.elevationDeg);
+    const p = mixPresets(blend.a, blend.b, blend.t);
+    const block = applyWeather(p, this.liveWeather);
+
+    const bearing = GEO.frame.bearingDeg ?? 0;
+    const real = sunDirection(sun.elevationDeg, sun.azimuthDeg, bearing);
+    // Grazing light keeps every street in shadow, so the key light never drops below 8°; under the horizon it hands
+    // over to the presets' moonlight
+    const lightSun = sunDirection(Math.max(8, sun.elevationDeg), sun.azimuthDeg, bearing);
+    const dayWeight = smoothstep(sun.elevationDeg, -6, 3);
+    const lightDir = new THREE.Vector3().copy(MOON_DIR).lerp(new THREE.Vector3(lightSun.x, lightSun.y, lightSun.z), dayWeight).normalize();
+    const skyDir = sun.elevationDeg >= -5 ? new THREE.Vector3(real.x, real.y, real.z) : new THREE.Vector3().copy(sunDirection(-5, sun.azimuthDeg, bearing));
+    this.sky.cloudSpeed.value = p.cloudSpeed;
+    this.applyParams(p, lightDir, skyDir.normalize());
+
+    this.liveState = {
+      sun, blend, block, weather: this.liveWeather, live: this.weather.live, loading: !!this.weather.pending, location: this.weather.location
+    };
+    if (this.onLiveChange) this.onLiveChange(this.liveState);
+  }
+
+  applyParams(p, sunDir, skySunDir) {
+    this.sunLight.color.set(p.sunColor);
     this.sunLight.intensity = p.sunIntensity;
-    this.sunLight.position.copy(p.sunDir);
+    this.sunLight.position.copy(sunDir);
     this.sunLight.updateMatrixWorld();
 
-    this.hemiLight.color.setHex(p.hemiSky);
-    this.hemiLight.groundColor.setHex(p.hemiGround);
+    this.hemiLight.color.set(p.hemiSky);
+    this.hemiLight.groundColor.set(p.hemiGround);
     this.hemiLight.intensity = p.hemiIntensity;
 
-    this.scene.fog.color.setHex(p.fogColor);
+    this.scene.fog.color.set(p.fogColor);
     this.scene.fog.density = p.fogDensity;
     if (this.uFogDensity) this.uFogDensity.value = p.fogDensity;
 
@@ -290,14 +457,14 @@ class LightingSystem {
     this.sky.mieDirectionalG.value = p.mieDirectionalG;
     this.sky.cloudCoverage.value = p.cloudCoverage;
     this.sky.cloudDensity.value = p.cloudDensity;
-    this.sky.sunPosition.value.copy(p.sunDir);
+    this.sky.sunPosition.value.copy(skySunDir);
     this.uSkyExposure.value = p.skyExposure;
     this.uNightFactor.value = p.nightFactor;
 
-    cityUniforms.uSunColor.value.setHex(p.sunColor);
-    cityUniforms.uSkyTopColor.value.setHex(p.skyTop);
-    cityUniforms.uSkyHorizonColor.value.setHex(p.skyHorizon);
-    cityUniforms.uSkySunDir.value.copy(p.sunDir);
+    cityUniforms.uSunColor.value.set(p.sunColor);
+    cityUniforms.uSkyTopColor.value.set(p.skyTop);
+    cityUniforms.uSkyHorizonColor.value.set(p.skyHorizon);
+    cityUniforms.uSkySunDir.value.copy(sunDir);
     cityUniforms.uInteriorGlow.value = p.interiorGlow;
     cityUniforms.uRoadWetness.value = p.roadWetness;
     if (cityUniforms.uCanyonBounce) {
@@ -315,6 +482,7 @@ class LightingSystem {
     // stays sharp, and expand it with altitude (helicopter / observatory) so shadows reach all the way down to street level.
     const altitude = focusPos && Number.isFinite(focusPos.y) ? Math.max(0, focusPos.y) : 0;
     this.sunLight.shadow.camera.far = Math.max(300, Math.min(720, 260 + altitude * 1.6));
+    if (this.activePresetId === 'live') this.updateLive();
   }
 }
 
