@@ -11,8 +11,8 @@ Fork it, remix it, improve it, break it. Make games, animations, films, experime
 ## Taipei port (in progress)
 
 This fork is being retargeted to Taipei. It currently covers a 2 km box around Taipei 101 (Xinyi and around) and a
-1 km box around Lungshan Temple in Wanhua (`taipei.html?area=wanhua`): open `taipei.html` over http in a WebGPU
-browser. Building footprints come from OpenStreetMap (`tools/build-taipei-geodata.mjs`, `GEO_AREA=wanhua` for the
+1 km box around Lungshan Temple in Wanhua (`index.html?area=wanhua`): open `index.html` over http in a WebGPU
+browser (the original New York simulation is now `nyc.html`). Building footprints come from OpenStreetMap (`tools/build-taipei-geodata.mjs`, `GEO_AREA=wanhua` for the
 second box). **The Wanhua box has large holes:** OSM maps roughly a third of its buildings (about 390 outlines where
 Taipei's 3D city model has over 5,000), so empty blocks there are missing data, not open space. To keep it from
 reading as wasteland, the Wanhua box adds about 3,300 **stand-in buildings** (`tools/geo-infill.mjs`): rows of narrow lots

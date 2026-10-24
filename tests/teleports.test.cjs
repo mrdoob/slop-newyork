@@ -11,7 +11,7 @@ test.before(async () => {
 });
 
 test('every teleport button has a destination on a real roadway inside Manhattan', () => {
-  const buttons = [...read('index.html').matchAll(/data-teleport="([^"]+)"/g)].map((match) => match[1]);
+  const buttons = [...read('nyc.html').matchAll(/data-teleport="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(Object.keys(TELEPORT_LOCATIONS).sort(), buttons.sort());
   for (const [name, point] of Object.entries(TELEPORT_LOCATIONS)) {
     assert.ok(Number.isFinite(point.heading), `${name} has a heading`);

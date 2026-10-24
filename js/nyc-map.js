@@ -1251,7 +1251,7 @@ class NYCMapSystem {
       }
     }
 
-    // 6. Scale bar (true metres); the true-north compass sits with the map controls (index.html)
+    // 6. Scale bar (true metres); the true-north compass sits with the map controls (nyc.html)
     this.drawScaleBar(ctx, v);
     ctx.restore();
   }

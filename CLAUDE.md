@@ -124,8 +124,8 @@ bash tools/overpass.sh tools/data-taipei/osm_buildings.json tools/data-taipei/q_
 bash tools/overpass.sh tools/data-taipei/osm_roads.json    tools/data-taipei/q_roads.overpassql
 # generate geodata (tools/build-geodata.mjs is NYC-only)
 node tools/build-taipei-geodata.mjs
-# serve over http, open taipei.html (NYC: index.html) in WebGPU browser (Chrome/Edge recent)
-python3 -m http.server 8123   # -> http://127.0.0.1:8123/taipei.html
+# serve over http, open index.html (Taipei; NYC: nyc.html) in WebGPU browser (Chrome/Edge recent)
+python3 -m http.server 8123   # -> http://127.0.0.1:8123/ (Taipei; NYC: /nyc.html)
 # run the test suite before and after each change
 ```
 Node: not on PATH by default; use nvm Node 23.4.0 (`~/.nvm/versions/node/v23.4.0/bin`). Tests:
@@ -135,13 +135,13 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
 
 ## Order of work for the 1 km milestone
 1. Projection frame (above) — everything hangs on it.
-2. Buildings query + render with `estimateHeight()` — DONE (`taipei.html`, `js/taipei-main.js`, generic
+2. Buildings query + render with `estimateHeight()` — DONE (`index.html`, `js/taipei-main.js`, generic
    `js/footprint-buildings.js`). Make-or-break; get height variation right here.
 3. Roads from graph — DONE: `tools/geo-osm-roadgraph.mjs` (OSM ways → NYC-shaped `roadGraph` + walking `paths`),
    generic `js/graph-roads.js` (asphalt, junction discs, lane lines, zebra crossings, skywalks). Widths: `width` tag →
    `lanes` × 3.25 m → class default (untagged = estimate; e.g. Songzhi Rd lacks `lanes`, renders narrow).
 4. Taipei 101 at real height; ground plane.
-   Extras since (viewer `taipei.html`): car/plane (`js/simple-vehicles.js`), AI cars & pedestrians on the graph
+   Extras since (viewer `index.html`): car/plane (`js/simple-vehicles.js`), AI cars & pedestrians on the graph
    (`js/footprint-traffic.js`), signals at OSM `traffic_signals` nodes (`js/signal-control.js`, generic fixed cycle),
    trees + green areas (`js/green-areas.js` + NYC `trees.js`). NYC models reused via `js/city-uniforms.js`,
    `js/tree-material.js`, `js/tsl-noise.js` (split out of `tsl-materials.js` so Taipei never loads NYC geodata).
@@ -174,7 +174,7 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
 Then, only then: second 1 km box in OLD district (Wanhua/Datong) to stress
 fallback where data sparse, then expand in stages checking looks AND framerate.
 Second box — DONE as data (`GEO_AREA=wanhua`, `tools/data-taipei/wanhua/`, `js/taipei-wanhua-geodata.js`,
-viewer `taipei.html?area=wanhua`): 1 km around Lungshan Temple (way 198401479 = origin). Areas live in `AREAS`
+viewer `index.html?area=wanhua`): 1 km around Lungshan Temple (way 198401479 = origin). Areas live in `AREAS`
 (`geo-taipei-base.mjs`); xinyi output unchanged. Result: FAILS no-holes — OSM 391 outlines vs 5,257 measured
 buildings (3,438 missing ≥ 4 m). Heights: 10% tag, 52% levels, 38% estimate; estimate median error 8.0 m (1.13×,
 n=132, too few to retune global tiers; tags/levels 0.82×). Open fill source checked: 臺北市建築執照套繪圖

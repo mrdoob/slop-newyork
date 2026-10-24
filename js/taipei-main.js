@@ -14,11 +14,11 @@ import { FootprintMap } from './footprint-map.js';
 import { TimeOfDay } from './time-of-day.js';
 
 // js/taipei-main.js
-// Taipei viewer (taipei.html): one test box (GEO.frame.box) from OSM, orbit camera, sun & sky. ?area= picks the box:
+// Taipei viewer (index.html): one test box (GEO.frame.box) from OSM, orbit camera, sun & sky. ?area= picks the box:
 // xinyi (default; 2 km around Taipei 101) or wanhua (1 km around Lungshan Temple), each its own generated geodata file.
-// The NYC app (index.html, js/main.js) is untouched and stays the comparison baseline.
+// The NYC app (nyc.html, js/main.js) is untouched and stays the comparison baseline.
 
-// Loading screen (taipei.html #loading): a sweeping bar while the modules download, then real progress through the
+// Loading screen (index.html #loading): a sweeping bar while the modules download, then real progress through the
 // build steps and shader compilation. Each step yields a frame so the bar repaints between the synchronous builds.
 const loading = {
   el: document.getElementById('loading'),
