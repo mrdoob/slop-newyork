@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, float, color, positionWorld, uniform, mod, fract, step, smoothstep, mix } from 'three/tsl';
+import { Fn, float, color, positionWorld, uniform, mod, fract, step, smoothstep, mix, attribute, texture, uv, vec2 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   HAS_GRID,
@@ -11,7 +11,8 @@ import {
   fromOldFrame,
   CENTRAL_PARK_BOUNDS as CPB,
   BLOCKS,
-  LANDMARK_SITES
+  LANDMARK_SITES,
+  nearestRoads
 } from './city-config.js';
 import { cityUniforms, createSteamMaterial, createTreeGrateMaterial, createGodRayMaterial } from './tsl-materials.js';
 import { PropBreaker } from './mayhem.js';
@@ -1293,7 +1294,136 @@ function buildStreetDetails(scene) {
     hydrant: [{ geometry: hydrantInst.geometry, material: hydrantMat, matrix: at(0, 0.425, 0) }]
   });
 
-  return { group, footprints, signalClock, audioSignals, update, breaker };
+  /**
+   * Mexican mast-arm traffic signals at the road network's signalised junctions (built once the network exists, see
+   * main.js): on each approach a black pole at the right-hand curb, an arm over the lanes, a black three-light head
+   * over them facing the traffic (lit with that road's phase, like the grid's heads at the same height) and a green
+   * blade with the name of the street crossing it.
+   */
+  function addJunctionSignals(network) {
+    if (HAS_GRID || !network) return 0;
+    const housingMat = new THREE.MeshStandardNodeMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide });
+    const mastMat = new THREE.MeshStandardNodeMaterial({ color: 0x2e3236, roughness: 0.45, metalness: 0.6 });
+    const poles = [], arms = [], heads = [], aveLenses = [], stLenses = [], blades = [];
+    const names = [];
+    const nameSlot = new Map();
+    const slotOf = (name) => {
+      if (!nameSlot.has(name)) { nameSlot.set(name, names.length); names.push(name); }
+      return nameSlot.get(name);
+    };
+    const roadName = (x, z) => {
+      const r = nearestRoads(x, z, 12).find((q) => q.road.name);
+      return r ? r.road.name : '';
+    };
+    for (const n of network.nodes) {
+      if (!n.signal || !n.in) continue;
+      for (const e of n.in) {
+        if (!e.lanes || !e.lanes.length) continue;
+        const ex = e.sx + e.dx * e.len, ez = e.sz + e.dz * e.len; // its stop line, on the centreline
+        let off = e.half + 1.1;
+        let px = ex + e.rx * off, pz = ez + e.rz * off;
+        if (!isOnCurbIsland(px, pz, 0.3)) {
+          off = e.half + 1.7;
+          px = ex + e.rx * off;
+          pz = ez + e.rz * off;
+          if (!isOnCurbIsland(px, pz, 0.3)) continue;
+        }
+        const mid = e.lanes.reduce((t, o) => t + o, 0) / e.lanes.length; // over the middle of its lanes
+        const reach = off - mid;
+        if (reach < 1.5) continue;
+        placedPoles.push({ x: px, z: pz });
+        const yaw = Math.atan2(e.dx, e.dz);
+        const armYaw = Math.atan2(e.rz, -e.rx); // the arm runs from the pole to the left (−r)
+        dummy.rotation.set(0, 0, 0);
+        dummy.position.set(px, 3.3, pz);
+        dummy.scale.set(0.17, 6.6, 0.17);
+        dummy.updateMatrix();
+        poles.push(dummy.matrix.clone());
+        dummy.rotation.set(0, armYaw, 0);
+        dummy.position.set(px - e.rx * (reach + 0.4) * 0.5, 6.1, pz - e.rz * (reach + 0.4) * 0.5);
+        dummy.scale.set(reach + 0.4, 0.13, 0.13);
+        dummy.updateMatrix();
+        arms.push(dummy.matrix.clone());
+        // the head over the lanes, its lenses facing the approach
+        dummy.rotation.set(0, yaw, 0);
+        dummy.position.set(ex + e.rx * mid, 5.42, ez + e.rz * mid);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        heads.push(dummy.matrix.clone());
+        (e.axisIndex === 0 ? aveLenses : stLenses).push(dummy.matrix.clone());
+        // the green blade with the cross street's name, on the arm between the pole and the head
+        const own = roadName(ex - e.dx * 15, ez - e.dz * 15);
+        let cross = '';
+        for (const f of n.in) {
+          if (f === e || Math.abs(f.dx * e.dx + f.dz * e.dz) > 0.5) continue;
+          const nm = roadName(f.sx + f.dx * (f.len - 15), f.sz + f.dz * (f.len - 15));
+          if (nm && nm !== own) { cross = nm; break; }
+        }
+        if (cross && reach > 3.2) {
+          const bx = px - e.rx * reach * 0.55, bz = pz - e.rz * reach * 0.55;
+          dummy.rotation.set(0, yaw, 0);
+          dummy.position.set(bx, 6.55, bz);
+          dummy.scale.set(Math.min(3.4, reach - 1.2), 0.5, 0.05);
+          dummy.updateMatrix();
+          blades.push({ m: dummy.matrix.clone(), slot: slotOf(cross.toUpperCase()) });
+        }
+        dummy.rotation.set(0, 0, 0);
+      }
+    }
+    const add = (geo, mat, list, shadow = true) => {
+      if (!list.length) return null;
+      const inst = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach((m, i) => inst.setMatrixAt(i, m));
+      inst.castShadow = shadow;
+      inst.receiveShadow = shadow;
+      group.add(inst);
+      return inst;
+    };
+    add(unitCyl, mastMat, poles);
+    add(unitBox, mastMat, arms);
+    add(signalHousingGeo, housingMat, heads);
+    add(signalLensGeo, aveSignalLensMat, aveLenses, false);
+    add(signalLensGeo, streetSignalLensMat, stLenses, false);
+    // street name blades: an atlas of the names, a slot per blade
+    if (blades.length) {
+      const COLS = 4, SW = 512, SH = 64;
+      const rows = Math.ceil(names.length / COLS);
+      const c = document.createElement('canvas');
+      c.width = COLS * SW;
+      c.height = rows * SH;
+      const ctx = c.getContext('2d');
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      names.forEach((name, k) => {
+        const x0 = (k % COLS) * SW, y0 = Math.floor(k / COLS) * SH;
+        ctx.fillStyle = '#0b6b3a';
+        ctx.fillRect(x0, y0, SW, SH);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(x0 + 5, y0 + 5, SW - 10, SH - 10);
+        ctx.fillStyle = '#ffffff';
+        let px = 34;
+        do { ctx.font = `700 ${px}px Overpass, Inter, Arial, sans-serif`; px--; } while (px > 12 && ctx.measureText(name).width > SW - 30);
+        ctx.fillText(name, x0 + SW / 2, y0 + SH / 2 + 2);
+      });
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      const geo = unitBox.clone();
+      const slots = new THREE.InstancedBufferAttribute(new Float32Array(blades.map((b) => b.slot)), 1);
+      geo.setAttribute('bladeSlot', slots);
+      const slot = attribute('bladeSlot', 'float');
+      const col = slot.mod(COLS);
+      const row = slot.sub(col).div(COLS);
+      const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.35 });
+      mat.colorNode = texture(tex, vec2(col.add(uv().x).div(COLS), float(1.0).sub(row.add(float(1.0).sub(uv().y)).div(rows))));
+      add(geo, mat, blades.map((b) => b.m));
+    }
+    console.info(`[signals] ${heads.length} mast-arm signal heads, ${blades.length} street name blades at the signalised junctions`);
+    return heads.length;
+  }
+
+  return { group, footprints, signalClock, audioSignals, update, breaker, addJunctionSignals };
 }
 
 export { buildStreetDetails };

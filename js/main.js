@@ -97,6 +97,8 @@ async function initApp() {
     ...allColliders.filter((c) => !c.obb && (c.minY ?? 0) < 3.5)
   ]);
   markInit('traffic');
+  // Mast-arm traffic signals at the signalised junctions of a city off the grid (the grid's are built with the streets)
+  streetDetails.addJunctionSignals?.(trafficSystem.network);
   const highwayTraffic = createHighwayTraffic(scene, cityGrid.highwayLanes);
   buildRoadPaint(scene, trafficSystem.network);
   markInit('roadPaint');
