@@ -151,8 +151,10 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
    Official heights: Taipei UDD LOD1_2025 I3S (measured `H`, scriptable) is NOT openly licensed (no redistribution) —
    don't bake into geodata without written permission. Same for 3d.taipei 3D Tiles (NLSC-schema models, measured
    `BUILD_H`, "non-value-added" use): `tools/validate-heights.mjs` uses them LOCAL-ONLY (cache + report in git-ignored
-   `tools/data-local/`) to tune `ESTIMATE_TIERS`; only tuned parameters are committed. Xinyi result: estimate median
-   error 8.3 m → 5.4 m. Re-run for each new district before trusting estimates there.
+   `tools/data-local/`) to tune `ESTIMATE_TIERS` (now a piecewise [footprint m², storeys] table per type); only tuned
+   parameters are committed. 2 km box: estimate median error 7.6 m (1.29× too tall: Xinyi-tuned curve vs old
+   walk-ups) → 5.1 m (1.07×). Re-run for each new district before trusting estimates there. Same check lists
+   ~3,275 3D-model buildings with no OSM footprint (mostly the west / south-west of the box).
    Sidewalks (`tools/geo-sidewalks.mjs`): only ~7% of street length has mapped sidewalks both sides. Default/lanes
    road widths fit to mapped sidewalks (never into buildings); missing sidewalks drawn from road `sidewalk=*` tags or
    inferred on untagged streets ≥ 6 m; paths carry source mapped/tagged/inferred. Raised 0.15 m with kerbs.

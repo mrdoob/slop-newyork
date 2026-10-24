@@ -14,30 +14,33 @@
 
 export const LEVEL_M = 3.2; // storey height (floor to floor) used to turn level counts into metres
 
-// Estimated storeys by OSM `building` type: [levels at footprint ≤ a0 m², levels at footprint ≥ a1 m², a0, a1].
-// Storeys grow with the logarithm of the footprint area between the two ends (bigger plots carry taller buildings),
-// so untagged buildings vary with their real footprints instead of sharing one default height.
-// Calibrated in the 1 km Xinyi box around Taipei 101 (2026-10): first on OSM's tagged buildings, then checked against
-// measured heights for 329 footprints (tools/validate-heights.mjs, a local-only comparison with the 智慧城市3D臺北
-// building models; those heights are not redistributed). Medians of the measured heights:
-//   apartments  100–300 m²: 25 m, 300–1000 m²: 43 m;   residential 100–300 m²: 22 m;   school 1000–3000 m²: 24 m
-//   commercial  300–1000 m²: 56 m, 1000–3000 m²: 89 m;  office 300–1000 m²: 32 m, 1000–3000 m²: 48 m
-//   retail      300–1000 m²: 7 m, 3000+ m²: 53 m (malls);   yes < 100 m²: 4 m, 100–300 m²: 19 m, 300–1000 m²: 41 m
-// That check moved the median error of estimated buildings from 8.3 m (estimates ~18% low) to 5.4 m (unbiased: median
-// ratio 1.02), on a par with heights from `building:levels`. Types without enough measured examples keep typical
-// building programmes. Other districts (older, denser) need their own check.
+// Estimated storeys by OSM `building` type, as a piecewise table [[footprint m², storeys], ...]: storeys are
+// interpolated on the logarithm of the footprint area between the points (held flat beyond the first and last), so
+// untagged buildings vary with their real footprints instead of sharing one default height.
+//
+// Calibration (2026-10): medians of measured heights for 2,234 OSM footprints in the 2 km box around Taipei 101,
+// compared locally with the 智慧城市3D臺北 building models (tools/validate-heights.mjs; those heights are not
+// redistributed). Points with enough measured buildings come from those medians, e.g.
+//   apartments  ~170 m²: 6 storeys (769 buildings: the old 5–6 storey walk-ups), ~550 m²: 13, ~1,700 m²: 16
+//   residential ~60 m²: 4, ~170 m²: 5, ~550 m²: 6;   house (mostly townhouses here) ~170 m²: 5
+//   commercial  ~550 m²: 14, ~1,700 m²: 24, ~5,000 m²: 31;   yes ~60 m²: 3, ~170 m²: 5, ~550 m²: 8
+// The first version, a log-linear curve per type fitted in the 1 km Xinyi core, overestimated the older districts
+// (median estimate 1.29 × measured, 7.6 m off); the table brings the 2 km box to a 5.1 m median error with a median
+// ratio of 1.07, close to heights from storey counts (4.0 m). Types with few measured examples keep typical building
+// programmes. Other districts need their own check.
 export const ESTIMATE_TIERS = {
-  house: [1, 2, 60, 300], detached: [1, 2, 60, 300], semidetached_house: [2, 3, 60, 300], terrace: [2, 4, 60, 300],
-  hut: [1, 1, 10, 100], shed: [1, 1, 10, 100], garage: [1, 1, 10, 100], garages: [1, 1, 10, 100], kiosk: [1, 1, 10, 100],
-  toilets: [1, 1, 10, 100], outbuilding: [1, 1, 10, 100], service: [1, 1, 10, 100], construction: [1, 1, 10, 100],
-  residential: [6, 9, 80, 1000],
-  apartments: [5, 21, 100, 2000],
-  retail: [1, 15, 300, 6000], supermarket: [1, 3, 300, 5000], department_store: [4, 12, 1000, 10000],
-  commercial: [6, 34, 150, 3000], office: [6, 18, 300, 3000], hotel: [6, 25, 300, 3000],
-  hospital: [6, 15, 500, 5000], school: [3, 9, 300, 5000], university: [3, 9, 300, 5000], college: [3, 6, 300, 5000],
-  public: [2, 8, 100, 3000], civic: [2, 8, 100, 3000], government: [3, 12, 200, 3000],
-  industrial: [1, 3, 200, 5000], warehouse: [1, 2, 200, 5000],
-  yes: [1, 14, 50, 1500] // unspecified type: anything from a kiosk to a tower podium
+  house: [[60, 4], [300, 5]], detached: [[60, 1], [300, 2]], semidetached_house: [[60, 2], [300, 3]], terrace: [[60, 2], [300, 4]],
+  hut: [[10, 1]], shed: [[10, 1]], garage: [[10, 1]], garages: [[10, 1]], kiosk: [[10, 1]], toilets: [[10, 1]],
+  outbuilding: [[10, 1]], service: [[10, 1]], construction: [[10, 1]],
+  residential: [[60, 4], [173, 5], [548, 6]],
+  apartments: [[60, 6], [173, 6], [548, 13], [1732, 16], [5000, 25]],
+  retail: [[300, 2], [1000, 4], [5000, 17]], supermarket: [[300, 1], [5000, 3]], department_store: [[1000, 4], [10000, 12]],
+  commercial: [[173, 10], [548, 14], [1732, 24], [5000, 31]], office: [[300, 8], [548, 10], [1732, 15], [5000, 19]],
+  hotel: [[300, 8], [1000, 18], [3000, 25]], hospital: [[500, 6], [1732, 8], [5000, 18]],
+  school: [[60, 1], [548, 5], [1732, 7]], university: [[300, 3], [1732, 8], [5000, 9]], college: [[300, 3], [5000, 6]],
+  public: [[100, 1], [3000, 8]], civic: [[100, 2], [3000, 8]], government: [[200, 3], [3000, 12]],
+  industrial: [[200, 1], [5000, 3]], warehouse: [[200, 1], [5000, 2]],
+  yes: [[60, 3], [173, 5], [548, 8], [1732, 8], [5000, 19]] // unspecified type: anything from a kiosk to a tower podium
 };
 const DEFAULT_TIER = ESTIMATE_TIERS.yes;
 const ROOF_M = 4; // canopy top when a roof-only structure has no height tags
@@ -46,9 +49,17 @@ const ROOF_SLAB_M = 0.6; // thickness of a roof-only structure's slab
 // Estimated height (m) of an untagged building of OSM type `type` with footprint area `area` m².
 export function estimateHeight(type, area) {
   if (type === 'roof') return ROOF_M;
-  const [l0, l1, a0, a1] = ESTIMATE_TIERS[type] || DEFAULT_TIER;
-  const t = Math.min(1, Math.max(0, Math.log(Math.max(area, 1) / a0) / Math.log(a1 / a0)));
-  return Math.round(l0 + (l1 - l0) * t) * LEVEL_M;
+  const pts = ESTIMATE_TIERS[type] || DEFAULT_TIER;
+  const a = Math.max(area, 1);
+  let storeys = pts[pts.length - 1][1];
+  if (a <= pts[0][0]) storeys = pts[0][1];
+  else {
+    for (let i = 1; i < pts.length; i++) {
+      const [a0, l0] = pts[i - 1], [a1, l1] = pts[i];
+      if (a <= a1) { storeys = l0 + ((l1 - l0) * Math.log(a / a0)) / Math.log(a1 / a0); break; }
+    }
+  }
+  return Math.max(1, Math.round(storeys)) * LEVEL_M;
 }
 
 // OSM length value in metres ("30", "93.2m", "93.2 m", "100'", "100 ft"); null when absent or unreadable

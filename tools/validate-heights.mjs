@@ -197,20 +197,23 @@ console.table(Object.fromEntries(Object.entries(rows).sort().map(([k, v]) => [k,
   medianAbsErr: stat(v.map((x) => Math.abs(x.est - x.measured))).median
 }])));
 
-// Suggested tiers: storeys at the a0 / a1 ends from a least-squares fit of measured storeys on log(area), per type
-const suggested = {};
-for (const [type, [l0, l1, a0, a1]] of Object.entries(ESTIMATE_TIERS)) {
-  const pts = matches.filter((m) => (ESTIMATE_TIERS[m.type] ? m.type : 'yes') === type)
-    .map((m) => [Math.min(1, Math.max(0, Math.log(Math.max(m.area, 1) / a0) / Math.log(a1 / a0))), m.measured / LEVEL_M]);
-  if (pts.length < 8) continue;
-  const n = pts.length, sx = pts.reduce((s, p) => s + p[0], 0), sy = pts.reduce((s, p) => s + p[1], 0);
-  const sxx = pts.reduce((s, p) => s + p[0] * p[0], 0), sxy = pts.reduce((s, p) => s + p[0] * p[1], 0);
-  const slope = n * sxx - sx * sx > 1e-9 ? (n * sxy - sx * sy) / (n * sxx - sx * sx) : 0;
-  const icpt = (sy - slope * sx) / n;
-  suggested[type] = { n, current: [l0, l1, a0, a1], fitted: [Math.max(1, Math.round(icpt)), Math.max(1, Math.round(icpt + slope)), a0, a1] };
+// Suggested piecewise tiers: per type, the median measured storeys in each footprint band (≥ 5 buildings), at the
+// band's geometric middle; kept non-decreasing with footprint
+const KNOT_BANDS = [[0, 100, 60], [100, 300, 173], [300, 1000, 548], [1000, 3000, 1732], [3000, Infinity, 5000]];
+const knots = {};
+for (const type of Object.keys(ESTIMATE_TIERS)) {
+  const ms = matches.filter((m) => (ESTIMATE_TIERS[m.type] ? m.type : 'yes') === type);
+  if (ms.length < 8) continue;
+  const row = [];
+  for (const [lo, hi, mid] of KNOT_BANDS) {
+    const hs = ms.filter((m) => m.area >= lo && m.area < hi).map((m) => m.measured / LEVEL_M).sort((a, b) => a - b);
+    if (hs.length >= 5) row.push([mid, Math.max(1, Math.round(hs[hs.length >> 1])), hs.length]);
+  }
+  for (let i = 1; i < row.length; i++) row[i][1] = Math.max(row[i][1], row[i - 1][1]);
+  if (row.length) knots[type] = row;
 }
-console.log('\nSuggested ESTIMATE_TIERS (storeys at a0 / a1 m², fitted to measured heights):');
-console.table(Object.fromEntries(Object.entries(suggested).map(([k, v]) => [k, { n: v.n, current: v.current.join(' / '), fitted: v.fitted.join(' / ') }])));
+console.log('\nSuggested piecewise tiers [footprint m², storeys] (n per band in brackets):');
+for (const [type, row] of Object.entries(knots)) console.log(`  ${type.padEnd(12)} ${row.map(([a, l, n]) => `[${a}, ${l}] (${n})`).join('  ')}`);
 
 // Gaps: measured buildings ≥ 4 m tall whose centre lies in no OSM building or building:part, grouped on a 50 m grid
 const footprints = osm.elements.filter((e) => e.type === 'way' && e.tags && (e.tags.building || e.tags['building:part']) && e.geometry)
@@ -226,5 +229,5 @@ const gapCells = [...cells].map(([k, l]) => ({ cell: k, buildings: l.length, tal
 console.log(`\nBuildings the 3D models have but OSM lacks: ${gaps.length} (≥ 4 m tall), in ${cells.size} 50 m cells; busiest cells (world x,z of the cell's corner):`);
 console.table(gapCells.slice(0, 15));
 
-fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, suggested, gapCells }, null, 1));
+fs.writeFileSync(REPORT, JSON.stringify({ note: 'LOCAL ONLY: derived from https://3d.taipei (no open licence). Do not commit.', bySource, knots, gapCells }, null, 1));
 log(`report written to ${REPORT} (git-ignored)`);
