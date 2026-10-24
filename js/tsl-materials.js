@@ -54,7 +54,9 @@ import {
   sqrt,
   specularColor,
   specularColorBlended,
-  specularF90
+  specularF90,
+  uniformArray,
+  int
 } from 'three/tsl';
 import {
   CENTRAL_PARK_BOUNDS,
@@ -370,7 +372,7 @@ const evaluateApartmentInterior = Fn(([uCoord, vCoord, winUV, cellId, winWNode, 
  * entrance door; rear: yard, court & air-shaft walls, plain common brick with windows on every floor; lotLine:
  * windowless lot-line (party) wall, common brick or grey parging; blankStone: windowless wall in the facade's stone.
  */
-const WALL_KINDS = { shop: 0, entry: 1, rear: 2, lotLine: 3, blankStone: 4 };
+const WALL_KINDS = { shop: 0, entry: 1, rear: 2, lotLine: 3, blankStone: 4, chainStore: 5 };
 
 /**
  * Facade cell coordinates shared by the curtain-wall & pre-war materials: wall UV (u runs along whichever horizontal
@@ -480,6 +482,128 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
     isRoof, uCoord, vCoord, gridV, cellId, cellUV, fw, bayWidth, isGroundFloor, solid, floor0, back, blank, door, tone,
     wallS, wallW, wallH, fromTop, boxSeed, partial, coping
   };
+}
+
+/**
+ * Mexican house TSL material (box-local, for createFacadeBoxes): rendered & painted walls, each house in its own colour
+ * (the instance's tone), a darker plinth ("guardapolvo") and a pale coping on the parapet; a few windows per floor
+ * with aluminium frames behind iron bars (rejas); on the street front's ground floor a door and a garage gate, or a
+ * shop's rolled-down steel shutter (cortina); side & rear walls partly bare grey block (obra negra); flat concrete roofs,
+ * some coated red (impermeabilizante). WALL_KINDS.chainStore fronts get a convenience store's glazing under a yellow
+ * stripe and a red band. Lit windows & open stores glow at night.
+ */
+let _mexicanHouseMat = null;
+// `chains`: [{ band, stripe }] colours of each chain store front (js/storefronts), picked by the wall kind
+// WALL_KINDS.chainStore + its index
+function createMexicanHouseMaterial({ floorHeight = 3.0, chains = [] } = {}) {
+  if (_mexicanHouseMat) return _mexicanHouseMat;
+  const chainList = chains.length ? chains : [{ band: '#d8232a', stripe: '#f5a623' }];
+  const chainBands = uniformArray(chainList.map((c) => new THREE.Color(c.band)), 'color');
+  const chainStripes = uniformArray(chainList.map((c) => new THREE.Color(c.stripe)), 'color');
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.86 });
+  const box = attribute('box', 'vec4'); // width, height, depth, seed + tone
+  const faces = attribute('faces', 'vec4'); // WALL_KINDS of the -x, +x, -z & +z walls
+  const fH = float(floorHeight);
+  const PALETTE = [0xefe3c8, 0xe0a94a, 0xc8735f, 0xe59aa6, 0x8fc1d4, 0x9fd3b0, 0xf3efe6, 0xe8d36a, 0xe8836b, 0xb9a3cf, 0xd9c7a3, 0x7fb08a];
+
+  // the wall's node graph, built once and shared by the colour, roughness & emissive outputs
+  const wall = (() => {
+    const n = normalGeometry;
+    const nA = abs(n);
+    const isRoof = step(0.75, nA.y);
+    const alongZ = step(nA.z, nA.x); // a wall facing ±x runs along z
+    const kind = mix(mix(faces.z, faces.w, step(0.0, n.z)), mix(faces.x, faces.y, step(0.0, n.x)), alongZ);
+    const wallW = mix(box.x, box.z, alongZ);
+    const along = mix(positionGeometry.x, positionGeometry.z, alongZ).add(0.5);
+    const flip = mix(step(n.z, 0.0), step(0.0, n.x), alongZ);
+    const sx = mix(along, float(1.0).sub(along), flip).mul(wallW); // metres along the wall from its left end
+    const y = positionGeometry.y.add(0.5).mul(box.y); // metres above the ground
+    const fromTop = box.y.sub(y);
+    const tone = fract(box.w).sub(0.1).div(0.8);
+    const seed = floor(box.w);
+    const wallSeed = hash2D(vec2(seed, dot(n, vec3(3.1, 0.0, 7.7))));
+
+    // which kind of wall
+    const isChain = step(4.5, kind);
+    const chainNo = int(clamp(floor(kind.sub(5.0).add(0.5)), 0.0, chainList.length - 1));
+    const isShop = float(1.0).sub(step(0.5, kind));
+    const isEntry = step(0.5, kind).mul(float(1.0).sub(step(1.5, kind)));
+    const isFront = isShop.add(isEntry);
+    const isBack = float(1.0).sub(isFront).sub(isChain).max(0.0);
+    const rawBlock = isBack.mul(step(wallSeed, 0.42));
+
+    // the house's paint
+    let paint = color(PALETTE[0]);
+    const idx = floor(tone.mul(PALETTE.length));
+    for (let i = 1; i < PALETTE.length; i++) paint = mix(paint, color(PALETTE[i]), step(i - 0.5, idx));
+    const blockGrey = color(0x8e8b85);
+    const mortar = max(lineAA(fract(y.div(0.2)).sub(0.5), 0.04), lineAA(fract(sx.div(0.4).add(step(0.5, fract(y.div(0.4))).mul(0.5))).sub(0.5), 0.02));
+    const block = blockGrey.mul(float(1.0).sub(mortar.mul(0.25))).mul(hash2D(vec2(floor(sx.div(0.4)), floor(y.div(0.2)))).mul(0.12).add(0.94));
+    let base = mix(paint, block, rawBlock);
+    base = base.mul(float(1.0).sub(step(y, 0.45).mul(0.32).mul(float(1.0).sub(rawBlock)))); // plinth
+    base = mix(base, mix(paint, color(0xfaf7f0), 0.6), step(fromTop, 0.22).mul(float(1.0).sub(rawBlock))); // coping
+    // weathering: rain streaks under the parapet, dust at the foot
+    const streak = noise2D(vec2(sx.mul(1.3), y.mul(0.08)).add(seed.mul(0.37)));
+    base = base.mul(float(1.0).sub(smoothstep(0.55, 0.9, streak).mul(0.14)));
+
+    // window cells: one every ~3.4 m, a window per floor (fewer on the back walls)
+    const cells = max(floor(wallW.div(3.4)), 1.0);
+    const sp = wallW.div(cells);
+    const cellK = floor(sx.div(sp));
+    const u = fract(sx.div(sp)).sub(0.5).mul(sp); // metres from the cell's centre
+    const fl = floor(y.div(fH));
+    const fv = y.sub(fl.mul(fH)); // height within the storey
+    const ground = float(1.0).sub(step(1.0, fl));
+    const doorK = mod(floor(tone.mul(13.0)), cells);
+    const gateK = mod(doorK.add(1.0), cells);
+    const hasGate = step(1.5, cells).mul(step(0.3, hash2D(vec2(seed, 9.1))));
+    const door = isEntry.mul(ground).mul(step(abs(cellK.sub(doorK)), 0.5)).mul(step(abs(u), 0.5)).mul(step(fv, 2.15));
+    const gateHalf = min(float(1.35), sp.mul(0.5).sub(0.25));
+    const gate = isEntry.mul(ground).mul(hasGate).mul(step(abs(cellK.sub(gateK)), 0.5)).mul(step(abs(u), gateHalf)).mul(step(fv, 2.45));
+    const cortina = isShop.mul(ground).mul(step(0.3, sx)).mul(step(sx, wallW.sub(0.3))).mul(step(fv, 2.55));
+    const backWin = step(0.55, hash2D(vec2(cellK.add(seed), fl.add(wallSeed.mul(13.0)))));
+    const freeCell = float(1.0).sub(ground.mul(isFront).mul(step(abs(cellK.sub(doorK)), 0.5).add(step(abs(cellK.sub(gateK)), 0.5).mul(hasGate)).min(1.0)));
+    const win = step(abs(u), 0.62).mul(step(1.0, fv)).mul(step(fv, 2.2)).mul(mix(float(1.0), backWin, isBack)).mul(float(1.0).sub(rawBlock.mul(0.6)))
+      .mul(freeCell).mul(float(1.0).sub(isShop.mul(ground))).mul(float(1.0).sub(isChain)).mul(step(0.3, fromTop));
+    // frame, glass & bars
+    const frame = win.mul(float(1.0).sub(step(abs(u), 0.56).mul(step(1.06, fv)).mul(step(fv, 2.14))));
+    const bars = win.mul(max(step(0.82, fract(u.mul(6.0).add(0.5))), step(0.88, fract(fv.sub(1.0).mul(1.6)))));
+    let c = base;
+    c = mix(c, color(0x27323a), win);
+    c = mix(c, color(0xd6d6cf), frame);
+    c = mix(c, color(0x1c1c1e), bars.mul(float(1.0).sub(frame)));
+    // door & gate
+    const doorTint = mix(color(0x5b3a26), color(0x2e3438), step(0.5, hash2D(vec2(seed, 3.3))));
+    c = mix(c, doorTint.mul(float(1.0).sub(lineAA(fract(u.mul(2.0)).sub(0.5), 0.03).mul(0.3))), door);
+    const gateTint = mix(color(0xdedad2), mix(color(0x7a2a22), color(0x34495e), step(0.5, hash2D(vec2(seed, 5.7)))), step(0.45, hash2D(vec2(seed, 7.9))));
+    c = mix(c, gateTint.mul(float(1.0).sub(step(0.8, fract(u.mul(6.5))).mul(0.18))), gate);
+    // steel shutter
+    c = mix(c, color(0xaeb2b5).mul(float(1.0).sub(step(0.7, fract(fv.div(0.09))).mul(0.22))), cortina);
+
+    // chain convenience store front: glazing between grey piers, a yellow stripe, a red band above
+    const storeTop = box.y;
+    const glazH = min(storeTop.mul(0.62), float(2.6));
+    const pier = step(fract(sx.div(2.6)), 0.14);
+    const glass = isChain.mul(step(y, glazH));
+    const stripe = isChain.mul(step(glazH, y)).mul(step(y, glazH.add(0.45)));
+    const band = isChain.mul(step(glazH.add(0.45), y));
+    c = mix(c, mix(color(0x2c3e44), color(0x8a8f94), pier), glass);
+    c = mix(c, chainStripes.element(chainNo), stripe);
+    c = mix(c, chainBands.element(chainNo).mul(float(1.0).sub(step(0.97, fract(sx.div(2.0))).mul(0.3))), band);
+
+    // roofs: concrete, some coated red
+    const roof = mix(color(0x9c988f), color(0xa64b3d), step(hash2D(vec2(seed, 2.7)), 0.35))
+      .mul(noise2D(positionWorld.xz.mul(0.4)).mul(0.12).add(0.94));
+    const glowWin = win.mul(float(1.0).sub(frame)).mul(float(1.0).sub(bars)).mul(step(0.5, hash2D(vec2(cellK.add(seed.mul(3.0)), fl.add(1.7)))));
+    return { color: mix(c, roof, isRoof), glowWin: glowWin.mul(float(1.0).sub(isRoof)), store: glass.mul(float(1.0).sub(pier)).mul(float(1.0).sub(isRoof)), shiny: win.add(glass).min(1.0).mul(float(1.0).sub(isRoof)) };
+  })();
+
+  mat.colorNode = wall.color;
+  mat.roughnessNode = mix(float(0.86), float(0.3), wall.shiny);
+  mat.emissiveNode = color(0xffc27a).mul(wall.glowWin).mul(0.55).add(color(0xeef4ff).mul(wall.store).mul(0.35)).mul(smoothstep(0.35, 1.2, cityUniforms.uInteriorGlow));
+  mat.aoNode = canyonSkyAONode();
+  _mexicanHouseMat = mat;
+  return mat;
 }
 
 /**
@@ -3020,6 +3144,7 @@ function createCarFlareMaterial() {
 export {
   cityUniforms,
   WALL_KINDS,
+  createMexicanHouseMaterial,
   createCurtainWallMaterial,
   createPreWarBuildingMaterial,
   createFacadeBoxes,

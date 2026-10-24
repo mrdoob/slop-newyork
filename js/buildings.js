@@ -39,11 +39,13 @@ import {
 import {
   createPreWarBuildingMaterial,
   createCurtainWallMaterial,
+  createMexicanHouseMaterial,
   createFacadeBoxes,
   createBillboardMaterial,
   WALL_KINDS
 } from './tsl-materials.js';
 import { GEO } from './city-geodata.js';
+import { STOREFRONTS } from './storefronts/index.js';
 import { fdrViaduct, pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
 
 // js/buildings.js
@@ -378,16 +380,14 @@ function buildCityBlocks(scene) {
       reflectivity: 0.95,
       seed: 94.3
     }],
-    // 6-9: Tepic's painted stucco houses & shops (aplanado pintado): cream, ochre, terracotta pink and sky blue walls
-    // with small dark windows. Only appended off the Manhattan grid, so New York keeps its six facades
+    // 6: Mexican houses & shops (Tepic): painted walls in each house's own colour, barred windows, gates, shutters,
+    //    the chain stores' fronts (js/storefronts). Only off the Manhattan grid, so New York keeps its six facades
     ...(HAS_GRID ? [] : [
-      [createPreWarBuildingMaterial, { stoneColor: 0xe8dcc0, trimColor: 0xb8a888, stucco: true, windowGlassColor: 0x1d2a33, windowWidth: 1.6, floorHeight: 3.0, litProbability: 0.5, warmth: 0.85, seed: 63.1 }],
-      [createPreWarBuildingMaterial, { stoneColor: 0xd9a54e, trimColor: 0xf0e2c4, stucco: true, windowGlassColor: 0x1d2a33, windowWidth: 1.6, floorHeight: 3.0, litProbability: 0.5, warmth: 0.9, seed: 71.7 }],
-      [createPreWarBuildingMaterial, { stoneColor: 0xc9796a, trimColor: 0xeedfcf, stucco: true, windowGlassColor: 0x1d2a33, windowWidth: 1.5, floorHeight: 3.0, litProbability: 0.5, warmth: 0.9, seed: 83.9 }],
-      [createPreWarBuildingMaterial, { stoneColor: 0x8fb3c2, trimColor: 0xeef0ea, stucco: true, windowGlassColor: 0x1d2a33, windowWidth: 1.6, floorHeight: 3.0, litProbability: 0.5, warmth: 0.85, seed: 95.2 }]
+      [createMexicanHouseMaterial, { floorHeight: 3.0, chains: STOREFRONTS.map((sf) => sf.facade) }]
     ])
   ];
   const materials = facades.map(([create, opts]) => create({ ...opts, boxLocal: true }));
+  const MEX = HAS_GRID ? 1 : 6; // the Mexican house facade (falls back to brick in New York)
   // Storey height of each facade: buildings are massed in whole storeys so every window row lines up across tiers
   const storeys = facades.map(([, opts]) => opts.floorHeight);
 
@@ -1440,7 +1440,7 @@ function buildCityBlocks(scene) {
         ? [rect(x, x + w, minZ, maxZ)]
         : [rect(x, x + w, minZ, minZ + halfD), rect(x, x + w, maxZ - halfD, maxZ)];
       for (const lot of lots) {
-        const mat = cfg.tepic ? pickW([[6, 5], [7, 3], [8, 3], [9, 2], [1, 1]]) : pickW([[1, 4], [0, 3], [3, 1]]);
+        const mat = cfg.tepic ? MEX : pickW([[1, 4], [0, 3], [3, 1]]);
         const f = irange(cfg.floors[0], cfg.floors[1]);
         const b = building(blk, mat, lot);
         mass(b, [lot], 0, f);
@@ -2013,6 +2013,7 @@ function buildCityBlocks(scene) {
   }
   // Blocks the real buildings stand on (city-geodata.js `houses`, Overture Maps): built house by house (A2) instead
   const HOUSES = GEO.houses || [];
+  const pylons = []; // chain stores' pole signs (5C)
   const HS = GEO.houseStride || 7; // integers per house
   const SIGNS = GEO.signs || []; // shop sign faces (chains under parody names, local businesses, trades)
   const houseBlocks = new Set();
@@ -2040,77 +2041,108 @@ function buildCityBlocks(scene) {
   }
   minLot = 15;
 
-  // A2. THE REAL BUILDINGS (Overture Maps footprints as oriented boxes, see tools/build-tepic-geodata.mjs): painted
-  //     stucco walls with windows all round, the front towards the street with a door or a shop on the ground floor,
-  //     a parapet on some roofs. Grouped per block for the maps & the streaming of roof details
+  // A2. THE REAL BUILDINGS (Overture Maps footprints as oriented boxes, see tools/build-tepic-geodata.mjs), as Mexican
+  //     houses: a long street front is split into houses 6-10 m wide, each its own colour & height; the front towards
+  //     the street with a door & gate, a shop's shutter & sign, or a chain store's front (js/storefronts); flat roofs
+  //     with a black water tank (tinaco) on most. Grouped per block for the maps & the streaming of roof details
   {
-    const TEPIC_MATS = materials.length > 6 ? [6, 6, 6, 7, 7, 8, 8, 9] : [0, 1, 2];
     const byBlock = new Map();
-    for (let i = 0; i < HOUSES.length; i += HS) {
-      const cx = HOUSES[i] / 10, cz = HOUSES[i + 1] / 10;
-      const w = HOUSES[i + 2] / 10, d = HOUSES[i + 3] / 10;
-      const th = HOUSES[i + 4] / 1000;
-      const floors = HOUSES[i + 5];
-      const front = HOUSES[i + 6] & 3;
-      const shop = HOUSES[i + 6] >= 4;
-      const signNo = HS > 7 ? HOUSES[i + 7] : 0; // 1-based into SIGNS
-      const sign = signNo ? SIGNS[signNo - 1] : null;
-      const b = houseBlock[i / HS];
+    const blockOf = (b, cx, cz) => {
       const key = b ? b.id : -1;
       let blk = byBlock.get(key);
       if (!blk) {
         blk = {
           id: `house_${key}`, cx: b ? b.cx : cx, cz: b ? b.cz : cz, minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity,
           district: b ? b.district : 'colonia', cornices: [], waterTowers: [], hvacUnits: [], fireEscapes: [], awnings: [],
-          scaffoldSheds: [], footprints: [], yards: [], maxH: 0, avenueFronts: { w: [], e: [] }
+          scaffoldSheds: [], footprints: [], yards: [], tinacos: [], maxH: 0, avenueFronts: { w: [], e: [] }
         };
         byBlock.set(key, blk);
       }
-      rand = mulberry32((Math.imul(Math.round(cx * 4), 73856093) ^ Math.imul(Math.round(cz * 4), 19349663) ^ 4421) >>> 0);
-      const mat = pick(TEPIC_MATS);
-      const h = floors * storeys[mat];
-      const tone = rand();
-      const faces = [WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear];
-      faces[front] = shop ? WALL_KINDS.shop : WALL_KINDS.entry;
-      buckets[mat].push({ x: cx, y: h * 0.5, z: cz, w, h, d, faces, tone, ry: th });
+      return blk;
+    };
+    for (let i = 0; i < HOUSES.length; i += HS) {
+      const cx0 = HOUSES[i] / 10, cz0 = HOUSES[i + 1] / 10;
+      const w0 = HOUSES[i + 2] / 10, d0 = HOUSES[i + 3] / 10;
+      const th = HOUSES[i + 4] / 1000;
+      const floors0 = HOUSES[i + 5];
+      const front = HOUSES[i + 6] & 3;
+      const shop0 = HOUSES[i + 6] >= 4;
+      const signNo = HS > 7 ? HOUSES[i + 7] : 0; // 1-based into SIGNS
+      const sign = signNo ? SIGNS[signNo - 1] : null;
+      const chain = sign && sign.chain ? STOREFRONTS[sign.store] : null;
+      const blk = blockOf(houseBlock[i / HS], cx0, cz0);
+      rand = mulberry32((Math.imul(Math.round(cx0 * 4), 73856093) ^ Math.imul(Math.round(cz0 * 4), 19349663) ^ 4421) >>> 0);
       const cs = Math.cos(th), sn = Math.sin(th);
-      const hx = w * 0.5, hz = d * 0.5;
-      const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;
-      const ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
-      colliders.push({ minX: cx - ex, maxX: cx + ex, minZ: cz - ez, maxZ: cz + ez, minY: 0, maxY: h, obb: { cx, cz, hx, hz, cs, sn } });
-      const pts = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]].map(([u, v]) => ({ x: cx + u * cs + v * sn, z: cz - u * sn + v * cs }));
-      blk.footprints.push({ x0: cx - ex, x1: cx + ex, z0: cz - ez, z1: cz + ez, h, tone, pts });
-      blk.minX = Math.min(blk.minX, cx - ex);
-      blk.maxX = Math.max(blk.maxX, cx + ex);
-      blk.minZ = Math.min(blk.minZ, cz - ez);
-      blk.maxZ = Math.max(blk.maxZ, cz + ez);
-      if (h > blk.maxH) blk.maxH = h;
-      // a low parapet round some flat roofs
-      if (chance(0.45)) blk.cornices.push({ x: cx, y: h, z: cz, w: w + 0.24, h: 0.32, d: d + 0.24, ry: th });
-      // The street front: a chain's fascia band across its top, or a shop's awning with its sign above it
-      if (shop && (sign || chance(0.55))) {
-        const along = front < 2 ? d : w;
-        const ou = front === 0 ? -1 : front === 1 ? 1 : 0;
-        const ov = front === 2 ? -1 : front === 3 ? 1 : 0;
+      const ou = front === 0 ? -1 : front === 1 ? 1 : 0;
+      const ov = front === 2 ? -1 : front === 3 ? 1 : 0;
+      // the street front runs along local z (fronts w / e) or local x (fronts n / s)
+      const alongZ = ou !== 0;
+      const along0 = alongZ ? d0 : w0;
+      // split long fronts into houses (never a chain store)
+      const parts = [];
+      if (!chain && along0 > 13) {
+        let n = Math.max(2, Math.round(along0 / range(6.5, 9.5)));
+        const cuts = [0];
+        for (let k = 1; k < n; k++) cuts.push((k / n + (rand() - 0.5) * 0.25 / n) * along0);
+        cuts.push(along0);
+        for (let k = 0; k < n; k++) parts.push([cuts[k], cuts[k + 1]]);
+      } else parts.push([0, along0]);
+      const signPart = Math.floor(parts.length / 2);
+      parts.forEach(([t0, t1], k) => {
+        const len = t1 - t0;
+        const mid = (t0 + t1) * 0.5 - along0 * 0.5; // along the front, from the footprint's centre
+        const u = alongZ ? 0 : mid, v = alongZ ? mid : 0;
+        const cx = cx0 + u * cs + v * sn, cz = cz0 - u * sn + v * cs;
+        const w = alongZ ? w0 : len, d = alongZ ? len : d0;
+        const floors = chain ? floors0 : Math.max(1, Math.min(4, floors0 + (parts.length > 1 ? pickW([[0, 5], [1, 2], [-1, 1.5]]) : 0)));
+        const hasSign = k === signPart && !!sign;
+        const shop = (shop0 && k === signPart) || (shop0 && chance(0.3));
+        const h = floors * storeys[MEX] + (chain ? 0.6 : range(0, 0.35));
+        const tone = rand();
+        const faces = [WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear];
+        faces[front] = chain ? WALL_KINDS.chainStore + sign.store : shop ? WALL_KINDS.shop : WALL_KINDS.entry;
+        buckets[MEX].push({ x: cx, y: h * 0.5, z: cz, w, h, d, faces, tone, ry: th });
+        const hx = w * 0.5, hz = d * 0.5;
+        const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;
+        const ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
+        colliders.push({ minX: cx - ex, maxX: cx + ex, minZ: cz - ez, maxZ: cz + ez, minY: 0, maxY: h, obb: { cx, cz, hx, hz, cs, sn } });
+        const pts = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]].map(([a, b]) => ({ x: cx + a * cs + b * sn, z: cz - a * sn + b * cs }));
+        blk.footprints.push({ x0: cx - ex, x1: cx + ex, z0: cz - ez, z1: cz + ez, h, tone, pts });
+        blk.minX = Math.min(blk.minX, cx - ex);
+        blk.maxX = Math.max(blk.maxX, cx + ex);
+        blk.minZ = Math.min(blk.minZ, cz - ez);
+        blk.maxZ = Math.max(blk.maxZ, cz + ez);
+        if (h > blk.maxH) blk.maxH = h;
+        // a black water tank on most roofs, back from the street
+        if (!chain && chance(0.72) && w > 3.2 && d > 3.2) {
+          const tu = (alongZ ? -ou : 0) * range(0.1, 0.35) * w + (alongZ ? 0 : range(-0.3, 0.3) * w);
+          const tv = (alongZ ? range(-0.3, 0.3) * d : -ov * range(0.1, 0.35) * d);
+          blk.tinacos.push({ x: cx + tu * cs + tv * sn, y: h, z: cz - tu * sn + tv * cs, s: range(0.85, 1.15) });
+        }
+        // The street front: a chain's fascia, or a shop's awning with its sign above it
+        if (!shop && !chain) return;
         const toFront = (out) => {
           const r = (ou ? hx : hz) + out;
           return [cx + (ou * r) * cs + (ov * r) * sn, cz - (ou * r) * sn + (ov * r) * cs];
         };
         // awnings are laid out along local z facing ±x: a front on a local n / s side turns a quarter more
         const ry = th + (ov ? (ov > 0 ? -Math.PI / 2 : Math.PI / 2) : 0);
-        if (sign && sign.chain) {
-          const [sx, sz] = toFront(0.18);
-          const bandH = sign.big ? 1.6 : 1.0;
-          blk.awnings.push({ x: sx, y: 0, z: sz, w: 0, d: Math.min(along - 0.6, sign.big ? 30 : 12), sideDir: ou || 1, colorIdx: 0, ry,
-            noAwning: true, sign: signNo - 1, signY: h - bandH * 0.5 - 0.15, signH: bandH, signW: 0.3 });
-        } else {
+        if (chain) {
+          // the logo box over the middle of the front (a supermarket's runs further along it)
+          const [sx, sz] = toFront(0.25);
+          const boxH = chain.big ? 1.8 : 1.3;
+          blk.awnings.push({ x: sx, y: 0, z: sz, w: 0, d: Math.min(len - 1.0, chain.big ? 26 : 5.2), sideDir: ou || 1, colorIdx: 0, ry,
+            noAwning: true, sign: signNo - 1, signY: h - boxH * 0.5 + 0.35, signH: boxH, signW: 0.5 });
+          if (chain.pylon) pylons.push({ front: toFront(1.4), ry, along: len, slot: signNo - 1, ou, ov, cs, sn, pylon: chain.pylon });
+        } else if (hasSign || chance(0.55)) {
           const [ax, az] = toFront(0.9);
           const [sx, sz] = toFront(0.16); // the sign flat on the wall above the awning
-          const signY = floors < 2 ? h - 0.45 : storeys[mat] + 0.9;
-          blk.awnings.push({ x: ax, y: Math.min(3.2, storeys[mat] * 0.95) - 0.4, z: az, w: 1.8, d: Math.min(8.5, along - 1.2), sideDir: ou || 1,
-            colorIdx: irange(0, 4), ry, sign: sign ? signNo - 1 : undefined, signY, signPX: sx, signPZ: sz, signW: 0.12, noSign: !sign && floors < 2 });
+          const signY = floors < 2 ? h - 0.45 : storeys[MEX] + 0.6;
+          const sg = hasSign ? signNo - 1 : undefined;
+          blk.awnings.push({ x: ax, y: Math.min(2.7, storeys[MEX] * 0.9) - 0.15, z: az, w: 1.5, d: Math.min(7, len - 1.2), sideDir: ou || 1,
+            colorIdx: irange(0, 4), ry, sign: sg, signY, signPX: sx, signPZ: sz, signW: 0.12, signH: 0.62, noSign: sg === undefined && floors < 2 });
         }
-      }
+      });
     }
     for (const blk of byBlock.values()) {
       blk.footprints.sort((a, b) => a.h - b.h);
@@ -2387,6 +2419,20 @@ function buildCityBlocks(scene) {
   hvacInst.frustumCulled = false;
   group.add(hvacInst);
 
+  // 3B. Black polyethylene water tanks (tinacos) on the Mexican houses' flat roofs: ribbed drum, domed lid, a cap
+  const MAX_TINACOS = 2400;
+  const tinacoGeo = mergeGeometries([
+    new THREE.CylinderGeometry(0.56, 0.6, 1.25, 14).translate(0, 0.625, 0),
+    new THREE.SphereGeometry(0.56, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.35, 1).translate(0, 1.25, 0),
+    new THREE.CylinderGeometry(0.2, 0.2, 0.08, 10).translate(0, 1.47, 0),
+    new THREE.BoxGeometry(0.9, 0.12, 0.9).translate(0, 0.06, 0)
+  ].map((g) => g.toNonIndexed()));
+  const tinacoInst = new THREE.InstancedMesh(tinacoGeo, new THREE.MeshStandardNodeMaterial({ color: 0x17181a, roughness: 0.55 }), MAX_TINACOS);
+  tinacoInst.castShadow = tinacoInst.receiveShadow = true;
+  tinacoInst.frustumCulled = false;
+  tinacoInst.count = 0;
+  group.add(tinacoInst);
+
   // 4. Instanced fire escapes: real steps nearby, lightweight silhouettes in the distance.
   const fireEscapeSystem = createFireEscapes(group);
 
@@ -2462,9 +2508,16 @@ function buildCityBlocks(scene) {
       const y0 = Math.floor(k / ATLAS_COLS) * SLOT_H;
       ctx.fillStyle = sg.bg;
       ctx.fillRect(x0, y0, SLOT_W, SLOT_H);
-      ctx.strokeStyle = sg.border;
-      ctx.lineWidth = sg.chain ? 4 : 2;
-      ctx.strokeRect(x0 + 3, y0 + 3, SLOT_W - 6, SLOT_H - 6);
+      if (sg.stripe) {
+        // a logo between two stripes (OKSO)
+        ctx.fillStyle = sg.stripe;
+        ctx.fillRect(x0, y0, SLOT_W, 6);
+        ctx.fillRect(x0, y0 + SLOT_H - 6, SLOT_W, 6);
+      } else {
+        ctx.strokeStyle = sg.border;
+        ctx.lineWidth = sg.chain ? 4 : 2;
+        ctx.strokeRect(x0 + 3, y0 + 3, SLOT_W - 6, SLOT_H - 6);
+      }
       ctx.fillStyle = sg.fg;
       let px = sg.chain ? 26 : 22;
       const weight = sg.chain ? '900' : '800';
@@ -2490,6 +2543,36 @@ function buildCityBlocks(scene) {
     atlasInst.frustumCulled = false;
     atlasInst.count = 0;
     group.add(atlasInst);
+
+    // 5C. Chain stores' pole signs: a tall pole at the corner of the front with the logo box on top (both faces)
+    if (pylons.length) {
+      const poleInst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.2, 1, 10).translate(0, 0.5, 0), new THREE.MeshStandardNodeMaterial({ roughness: 0.5, metalness: 0.3 }), pylons.length);
+      const signGeo = unitBox.clone();
+      const pylonSlots = new THREE.InstancedBufferAttribute(new Float32Array(pylons.length), 1);
+      signGeo.setAttribute('signSlot', pylonSlots);
+      const signInst = new THREE.InstancedMesh(signGeo, mat, pylons.length);
+      pylons.forEach((p, k) => {
+        // at one end of the front, out on the sidewalk
+        const endU = (p.along * 0.5 - 0.8) * (p.ov ? 1 : 0), endV = (p.along * 0.5 - 0.8) * (p.ou ? 1 : 0);
+        const x = p.front[0] + endU * p.cs + endV * p.sn, z = p.front[1] - endU * p.sn + endV * p.cs;
+        const H = p.pylon.height;
+        dummy.rotation.set(0, 0, 0);
+        dummy.position.set(x, 0, z);
+        dummy.scale.set(1, H, 1);
+        dummy.updateMatrix();
+        poleInst.setMatrixAt(k, dummy.matrix);
+        poleInst.setColorAt(k, new THREE.Color(p.pylon.pole));
+        dummy.rotation.set(0, p.ry + Math.PI / 2, 0); // its faces towards the street both ways
+        dummy.position.set(x, H + 0.55, z);
+        dummy.scale.set(0.35, 1.1, 2.6);
+        dummy.updateMatrix();
+        signInst.setMatrixAt(k, dummy.matrix);
+        pylonSlots.setX(k, p.slot);
+        colliders.push({ minX: x - 0.25, maxX: x + 0.25, minZ: z - 0.25, maxZ: z + 0.25, minY: 0, maxY: H });
+      });
+      poleInst.castShadow = signInst.castShadow = true;
+      group.add(poleInst, signInst);
+    }
   }
 
   // 6. Sidewalk construction scaffolding sheds
@@ -2564,6 +2647,7 @@ function buildCityBlocks(scene) {
     let corniceCount = 0;
     let wtCount = 0;
     let hvacCount = 0;
+    let tinacoCount = 0;
     fireEscapeSystem.begin();
     let awningCount = 0;
     let shedCount = 0;
@@ -2607,6 +2691,15 @@ function buildCityBlocks(scene) {
       }
 
       // 3. Rooftop HVAC & mechanical bulkheads
+      for (let i = 0; blk.tinacos && i < blk.tinacos.length && tinacoCount < MAX_TINACOS; i++) {
+        const t = blk.tinacos[i];
+        dummy.rotation.set(0, 0, 0);
+        dummy.position.set(t.x, t.y, t.z);
+        dummy.scale.set(t.s, t.s, t.s);
+        dummy.updateMatrix();
+        tinacoInst.setMatrixAt(tinacoCount++, dummy.matrix);
+      }
+      dummy.rotation.set(0, blk.ry || 0, 0);
       for (let i = 0; i < blk.hvacUnits.length && hvacCount < MAX_HVAC; i++) {
         const u = blk.hvacUnits[i];
         dummy.position.set(u.x, u.y + u.h * 0.5, u.z);
@@ -2671,6 +2764,8 @@ function buildCityBlocks(scene) {
 
     hvacInst.count = hvacCount;
     flagRange(hvacInst.instanceMatrix, hvacCount);
+    tinacoInst.count = tinacoCount;
+    flagRange(tinacoInst.instanceMatrix, tinacoCount);
 
     fireEscapeSystem.end();
 

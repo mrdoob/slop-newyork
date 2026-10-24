@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { log, ringArea, bbox, centroid, rdp, rdpRing, extractBlocks, ringCells, clearCapsule, minAreaRect } from './tepic-lib.mjs';
+import { STOREFRONTS } from '../js/storefronts/index.js';
 
 const DATA = process.env.GEO_DATA || fileURLToPath(new URL('data/tepic/', import.meta.url));
 const OUT = process.argv[2] || fileURLToPath(new URL('../js/city-geodata.js', import.meta.url));
@@ -485,33 +486,8 @@ const houses = [];
 // =====================================================================================================================
 const signs = [];
 {
-  const CHAINS = [
-    // [match on name or brand, parody, background, text, border, big store]
-    [/\boxxo\b/i, 'OKSO', '#d8232a', '#ffffff', '#ffc20e', false],
-    [/\bsoriana\b/i, 'SORIANDA', '#e31837', '#ffffff', '#ffffff', true],
-    [/\bwal-?mart\b/i, 'GUALMART', '#0071ce', '#ffffff', '#ffc220', true],
-    [/\bbodega aurrera\b|\baurrera\b/i, 'BODEGA AHORRERA', '#00873e', '#ffde00', '#ffde00', true],
-    [/\bcasa ley\b|^ley\b|\bley (mololoa|rodeo|express|plaza)\b|\bplaza ley\b/i, 'CASA REY', '#c8102e', '#ffffff', '#003da5', true],
-    [/\bchedraui\b/i, 'CHEDRAUY', '#004b93', '#ffffff', '#f7941d', true],
-    [/\bcoppel\b/i, 'COPPELITO', '#ffd100', '#003a70', '#003a70', true],
-    [/\belektra\b/i, 'ELEKTRÓN', '#ffd200', '#c8102e', '#c8102e', true],
-    [/\bliverpool\b/i, 'LIVERPUL', '#e10098', '#ffffff', '#ffffff', true],
-    [/\bsuburbia\b/i, 'SUBURBIOS', '#6d2077', '#ffffff', '#ffffff', true],
-    [/\bhome depot\b/i, 'CASA DEPOT', '#f96302', '#ffffff', '#ffffff', true],
-    [/\bsam'?s club\b/i, "SAMY'S CLUB", '#0067a0', '#ffffff', '#ffffff', true],
-    [/\bmodelorama\b/i, 'MODELORRAMA', '#0a2a5e', '#ffd100', '#ffd100', false],
-    [/\bkiosko\b/i, 'KIOSKITO', '#e30613', '#ffe600', '#ffe600', false],
-    [/farmacias? guadalajara/i, 'FARMACIAS GUANATOS', '#00529b', '#ffffff', '#e2231a', false],
-    [/farmacias? del ahorro/i, 'FARMACIAS DEL AHORRITO', '#003b71', '#ffffff', '#e30613', false],
-    [/farmacias? benavides/i, 'FARMACIAS BENAVIDOS', '#00539b', '#ffffff', '#ffffff', false],
-    [/farmacias? (de )?similares/i, 'FARMACIAS SIMILARCITOS', '#0077c8', '#ffffff', '#ffd100', false],
-    [/\bpemex\b/i, 'PEMEZ', '#006847', '#ffffff', '#ce1126', false],
-    [/\bbbva\b/i, 'BBVAH', '#004481', '#ffffff', '#ffffff', false],
-    [/\bbanorte\b/i, 'BANORTI', '#eb0029', '#ffffff', '#ffffff', false],
-    [/\bburger king\b/i, 'BURGUER QUING', '#d62300', '#f5ebdc', '#f5ebdc', false],
-    [/\blittle caesars\b/i, 'LITTLE CÉSAR', '#ff6900', '#ffffff', '#ffffff', false],
-    [/\bsubway\b/i, 'SUBGÜEY', '#008c15', '#ffc600', '#ffc600', false]
-  ];
+  // the chain stores' looks & parody names live in js/storefronts (one module per kind of store)
+  const CHAINS = STOREFRONTS;
   const GENERIC = [
     [/tortiller/i, 'TORTILLERÍA'], [/carnicer/i, 'CARNICERÍA'], [/papeler/i, 'PAPELERÍA'], [/marisc/i, 'MARISCOS'],
     [/pollo/i, 'POLLOS ASADOS'], [/\btaco/i, 'TACOS'], [/birria/i, 'BIRRIA'], [/torta/i, 'TORTAS AHOGADAS'],
@@ -539,7 +515,7 @@ const signs = [];
   };
   const hashS = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
   // chains first, then the trades, so neither is ever crowded out by local names
-  for (const [, text, bg, fg, border, big] of CHAINS) addSign(`chain:${text}`, { text, bg, fg, border, chain: 1, big: big ? 1 : 0 });
+  CHAINS.forEach((sf, k) => addSign(`chain:${sf.id}`, { text: sf.name, ...sf.sign, chain: 1, big: sf.big ? 1 : 0, store: k }));
   for (const t of new Set([...GENERIC.map((g) => g[1]), ...STREET_TRADES, 'MISCELÁNEA'])) {
     const [bg, fg] = LOCAL_COLOURS[hashS(t) % LOCAL_COLOURS.length];
     addSign(`trade:${t}`, { text: t, bg, fg, border: fg });
@@ -588,13 +564,13 @@ const signs = [];
       if (/school|place_of_learning|government|worship|college|university|real_estate|attorney|professional_service|home_service|event_or_party|manufacturer/.test(cat)) continue;
       const [x, z] = toWorld(f.geometry.coordinates[0], f.geometry.coordinates[1]);
       if (!inBox(x, z)) continue;
-      const chain = CHAINS.find(([re]) => re.test(name) || re.test(brand));
+      const chain = CHAINS.find((sf) => sf.match.test(name) || sf.match.test(brand));
       if (chain) {
-        const i = houseAt(x, z, chain[5] ? 40 : 15);
+        const i = houseAt(x, z, chain.big ? 40 : 15);
         if (i < 0) continue;
-        houses[i + 7] = signIndex.get(`chain:${chain[1]}`);
+        houses[i + 7] = signIndex.get(`chain:${chain.id}`);
         houses[i + 6] |= 4; // a shop
-        if (chain[5]) houses[i + 5] = Math.min(houses[i + 5], 2);
+        houses[i + 5] = Math.min(houses[i + 5], chain.big ? 2 : 1);
         chains++;
         continue;
       }
