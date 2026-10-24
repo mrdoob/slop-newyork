@@ -201,3 +201,29 @@ test('Taipei geodata builds with Taipei 101 at 508 m and labelled height sources
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('Wanhua geodata builds in its own frame around Lungshan Temple', { timeout: 60000 }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taipei wanhua '));
+  try {
+    const out = path.join(dir, 'taipei-wanhua-geodata.js');
+    const result = spawnSync(process.execPath, [path.join(root, 'tools/build-taipei-geodata.mjs'), out],
+      { encoding: 'utf8', timeout: 60000, env: { ...process.env, GEO_AREA: 'wanhua' } });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    const { GEO } = await import(pathToFileURL(out).href);
+    assert.equal(GEO.area, 'wanhua');
+    assert.equal(GEO.frame.origin, 'Lungshan Temple');
+    assert.deepEqual(GEO.landmarks, {}, 'no pinned landmark height');
+    // The temple (way 198401479) sits at the origin
+    const temple = GEO.buildings.find((b) => b[0] === 'w198401479');
+    assert.ok(temple, 'Lungshan Temple footprint');
+    const xs = temple[1].filter((_, i) => i % 2 === 0), zs = temple[1].filter((_, i) => i % 2 === 1);
+    assert.ok(Math.abs((Math.min(...xs) + Math.max(...xs)) / 2) < 40 && Math.abs((Math.min(...zs) + Math.max(...zs)) / 2) < 40);
+    // Everything lies within the 1 km box (±~500 m, plus footprints and ways crossing its edge)
+    assert.ok(GEO.buildings.length > 200 && GEO.buildings.every((b) => b[1].every((v) => Math.abs(v) < 800)));
+    assert.ok(GEO.roadGraph.links.length > 200 && GEO.roadGraph.nodes.every((v) => Math.abs(v) < 1500));
+    assert.ok(GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'), 'estimates are labelled');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

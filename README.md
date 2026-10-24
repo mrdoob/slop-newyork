@@ -10,14 +10,16 @@ Fork it, remix it, improve it, break it. Make games, animations, films, experime
 
 ## Taipei port (in progress)
 
-This fork is being retargeted to Taipei. It currently covers a 2 km box around Taipei 101 (Xinyi and around): open
-`taipei.html` over http in a WebGPU browser. Building footprints come from OpenStreetMap
-(`tools/build-taipei-geodata.mjs`).
+This fork is being retargeted to Taipei. It currently covers a 2 km box around Taipei 101 (Xinyi and around) and a
+1 km box around Lungshan Temple in Wanhua (`taipei.html?area=wanhua`): open `taipei.html` over http in a WebGPU
+browser. Building footprints come from OpenStreetMap (`tools/build-taipei-geodata.mjs`, `GEO_AREA=wanhua` for the
+second box). **The Wanhua box has large holes:** OSM maps roughly a third of its buildings (about 390 outlines where
+Taipei's 3D city model has over 5,000), so empty blocks there are missing data, not open space.
 
 **The Taipei skyline is partially estimated.** Where OSM gives a building's `height` or storey count, that is used;
-where it gives neither (about 17% of buildings in the Xinyi box), the height is inferred from building type and
+where it gives neither (52% of buildings in the 2 km Xinyi box, 38% in Wanhua), the height is inferred from building type and
 footprint area by `estimateHeight()` in `tools/geo-height.mjs`. Its parameters were checked locally against measured
-heights from Taipei's 3D city models (median error about 5 m in the Xinyi box); those measured heights are not
+heights from Taipei's 3D city models (median error about 5 m in the Xinyi box, 8 m in Wanhua); those measured heights are not
 redistributed here. Estimated buildings are labelled in the data and can be
 highlighted in the viewer (press E). Taipei 101 renders at its real 508 m from OSM's building parts. Streets are
 drawn from the OSM road graph; road widths come from the `width` or `lanes` tags where present and otherwise from a

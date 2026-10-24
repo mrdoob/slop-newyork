@@ -173,6 +173,13 @@ renderer expects — use as spec; update NYC expectations to Taipei while portin
 5. Judge against pass/fail criteria. Fix height variation before expanding.
 Then, only then: second 1 km box in OLD district (Wanhua/Datong) to stress
 fallback where data sparse, then expand in stages checking looks AND framerate.
+Second box — DONE as data (`GEO_AREA=wanhua`, `tools/data-taipei/wanhua/`, `js/taipei-wanhua-geodata.js`,
+viewer `taipei.html?area=wanhua`): 1 km around Lungshan Temple (way 198401479 = origin). Areas live in `AREAS`
+(`geo-taipei-base.mjs`); xinyi output unchanged. Result: FAILS no-holes — OSM 391 outlines vs 5,257 measured
+buildings (3,438 missing ≥ 4 m). Heights: 10% tag, 52% levels, 38% estimate; estimate median error 8.0 m (1.13×,
+n=132, too few to retune global tiers; tags/levels 0.82×). Open fill source checked: 臺北市建築執照套繪圖
+(data.gov.tw 151936, OGDL v1, footprints + bud_floor) has only post-2006 permits — 92 in the Wanhua box, not a fix.
+Real fix = mapping in OSM from allowed sources.
 
 ## Honesty rule
 If building heights estimated because OSM lacks them, say so in code comments

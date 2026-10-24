@@ -1,0 +1,6897 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-24T06:45:21Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 471717338,
+  "lat": 25.0399621,
+  "lon": 121.5023013,
+  "tags": {
+    "bench": "no",
+    "bin": "no",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "lit": "yes",
+    "name": "祖師廟(貴陽)",
+    "name:en": "Zushi Temple (Guiyang)",
+    "name:nan": "Chó͘-su-biō(Kùi-iông)",
+    "name:nan-Hant": "祖師廟(貴陽)",
+    "name:nan-Latn-pehoeji": "Chó͘-su-biō(Kùi-iông)",
+    "name:nan-Latn-tailo": "Tsóo-su-biō(Kuì-iông)",
+    "name:zh": "祖師廟(貴陽)",
+    "network": "臺北市公車",
+    "public_transport": "platform",
+    "shelter": "no",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 2075746450,
+  "lat": 25.0353574,
+  "lon": 121.5016032,
+  "tags": {
+    "name": "龍山寺捷運站3號出口",
+    "name:zh": "龍山寺捷運站3號出口",
+    "railway": "subway_entrance",
+    "wheelchair": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 2075746451,
+  "lat": 25.0349843,
+  "lon": 121.4999932,
+  "tags": {
+    "name": "龍山寺捷運站2號出口",
+    "name:zh": "龍山寺捷運站2號出口",
+    "railway": "subway_entrance",
+    "ref": "2",
+    "toilets:wheelchair": "yes",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 2075746454,
+  "lat": 25.0354814,
+  "lon": 121.4996523,
+  "tags": {
+    "name": "龍山寺捷運站1號出口",
+    "name:zh": "龍山寺捷運站1號出口",
+    "railway": "subway_entrance",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 2384166472,
+  "lat": 25.0350877,
+  "lon": 121.5025172,
+  "tags": {
+    "bus": "yes",
+    "description": "和平西路三段82號同向",
+    "highway": "bus_stop",
+    "local_ref": "台北市公車",
+    "name": "昆明街口",
+    "name:en": "Kunming St. Entrance",
+    "name:nan": "Khun-bêng Koe-kháu",
+    "name:nan-Hant": "昆明街口",
+    "name:nan-Latn-pehoeji": "Khun-bêng Koe-kháu",
+    "name:nan-Latn-tailo": "Khun-bîng Kue-kháu",
+    "name:zh": "昆明街口",
+    "name:zh-Hans": "昆明街口",
+    "name:zh-Hant": "昆明街口",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1764"
+  }
+},
+{
+  "type": "node",
+  "id": 2384166473,
+  "lat": 25.0351355,
+  "lon": 121.4999046,
+  "tags": {
+    "bus": "yes",
+    "description": "和平西路三段120號(捷運出口2)(向東)",
+    "highway": "bus_stop",
+    "local_ref": "台北市公車",
+    "name": "捷運龍山寺站",
+    "name:en": "MRT Longshan Temple Sta.",
+    "name:zh": "捷運龍山寺站",
+    "name:zh-Hans": "捷运龙山寺站",
+    "name:zh-Hant": "捷運龍山寺站",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1794",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 2384166474,
+  "lat": 25.0352505,
+  "lon": 121.4963864,
+  "tags": {
+    "bus": "yes",
+    "description": "和平西路三段226-230號同向",
+    "highway": "bus_stop",
+    "local_ref": "台北市公車",
+    "name": "中國時報",
+    "name:en": "China Times",
+    "name:nan": "Tiong-kok Sî-pò͘",
+    "name:nan-Hant": "中國時報",
+    "name:nan-Latn-pehoeji": "Tiong-kok Sî-pò͘",
+    "name:nan-Latn-tailo": "Tiong-kok Sî-pò",
+    "name:zh": "中國時報",
+    "name:zh-Hans": "中国时报",
+    "name:zh-Hant": "中國時報",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "note": "停靠環河南路右轉和平西路路線",
+    "public_transport": "platform",
+    "ref": "3940"
+  }
+},
+{
+  "type": "node",
+  "id": 2410093588,
+  "lat": 25.0380001,
+  "lon": 121.5043931,
+  "tags": {
+    "bus": "yes",
+    "description": "台北市桂林路45號",
+    "highway": "bus_stop",
+    "name": "桂林昆明街口",
+    "name:en": "Guilin and Kunming Intersection",
+    "name:nan": "Kùi-lîm Khun-bêng Lō͘-kháu",
+    "name:nan-Hant": "桂林昆明街口",
+    "name:nan-Latn-pehoeji": "Kùi-lîm Khun-bêng Lō͘-kháu",
+    "name:nan-Latn-tailo": "Kuì-lîm Khun-bîng Lōo-kháu",
+    "name:zh": "桂林昆明街口",
+    "name:zh-Hans": "桂林昆明街口",
+    "name:zh-Hant": "桂林昆明街口",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1761",
+    "source": "Bing",
+    "toilets:wheelchair": "no",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 2410093589,
+  "lat": 25.0383111,
+  "lon": 121.5027140,
+  "tags": {
+    "bus": "yes",
+    "description": "桂林路64號同向",
+    "highway": "bus_stop",
+    "name": "老松國小",
+    "name:en": "Laosong Elementary School",
+    "name:nan": "Nó͘-siông Kok-sió",
+    "name:nan-Hant": "老松國小",
+    "name:nan-Latn-pehoeji": "Nó͘-siông Kok-sió",
+    "name:nan-Latn-tailo": "Nóo-siông Kok-sió",
+    "name:zh": "老松國小",
+    "name:zh-Hans": "老松国小",
+    "name:zh-Hant": "老松國小",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "4613",
+    "toilets:wheelchair": "no",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 2426954480,
+  "lat": 25.0381204,
+  "lon": 121.5024588,
+  "tags": {
+    "bus": "yes",
+    "description": "桂林路67號同向",
+    "highway": "bus_stop",
+    "name": "老松國小",
+    "name:en": "Laosong Elementary School",
+    "name:nan": "Nó͘-siông Kok-sió",
+    "name:nan-Hant": "老松國小",
+    "name:nan-Latn-pehoeji": "Nó͘-siông Kok-sió",
+    "name:nan-Latn-tailo": "Nóo-siông Kok-sió",
+    "name:zh": "老松國小",
+    "name:zh-Hans": "老松国小",
+    "name:zh-Hant": "老松國小",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1751"
+  }
+},
+{
+  "type": "node",
+  "id": 2426954481,
+  "lat": 25.0385044,
+  "lon": 121.5008304,
+  "tags": {
+    "bench": "no",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "桂林路",
+    "name:en": "Guilin Rd.",
+    "name:nan": "Kùi-lîm-lō͘",
+    "name:nan-Latn-pehoeji": "Kùi-lîm-lō͘",
+    "name:nan-Latn-tailo": "Kuì-lîm-lōo",
+    "name:zh": "桂林路",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "shelter": "no",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 2426954482,
+  "lat": 25.0383112,
+  "lon": 121.5011201,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "桂林路",
+    "name:en": "Guilin Rd.",
+    "name:nan": "Kùi-lîm-lō͘",
+    "name:nan-Latn-pehoeji": "Kùi-lîm-lō͘",
+    "name:nan-Latn-tailo": "Kuì-lîm-lōo",
+    "name:zh": "桂林路",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 2440534864,
+  "lat": 25.0405822,
+  "lon": 121.5017724,
+  "tags": {
+    "alt_name": "中華郵政;郵局",
+    "amenity": "post_box",
+    "operator": "中華郵政",
+    "operator:en": "Chunghwa Post",
+    "operator:nan": "Tiong-hôa Iû-chèng",
+    "operator:nan-Hant": "中華郵政",
+    "operator:nan-Latn-pehoeji": "Tiong-hôa Iû-chèng",
+    "operator:nan-Latn-tailo": "Tiong-huâ Iû-tsìng",
+    "operator:wikidata": "Q709259",
+    "operator:zh": "中華郵政"
+  }
+},
+{
+  "type": "node",
+  "id": 2517444162,
+  "lat": 25.0354305,
+  "lon": 121.4970348,
+  "tags": {
+    "bus": "yes",
+    "description": "和平西路三段199號同向",
+    "highway": "bus_stop",
+    "local_ref": "台北市公車",
+    "name": "中國時報",
+    "name:en": "China Times",
+    "name:nan": "Tiong-kok Sî-pò͘",
+    "name:nan-Hant": "中國時報",
+    "name:nan-Latn-pehoeji": "Tiong-kok Sî-pò͘",
+    "name:nan-Latn-tailo": "Tiong-kok Sî-pò",
+    "name:zh": "中國時報",
+    "name:zh-Hans": "中国时报",
+    "name:zh-Hant": "中國時報",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "3913"
+  }
+},
+{
+  "type": "node",
+  "id": 2517444173,
+  "lat": 25.0353728,
+  "lon": 121.5005504,
+  "tags": {
+    "bus": "yes",
+    "description": "和平西路三段120號對面(捷運出口1)(向西)",
+    "highway": "bus_stop",
+    "local_ref": "台北市公車",
+    "name": "捷運龍山寺站",
+    "name:en": "MRT Longshan Temple Sta.",
+    "name:zh": "捷運龍山寺站",
+    "name:zh-Hans": "捷运龙山寺站",
+    "name:zh-Hant": "捷運龍山寺站",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "note": "原艋舺公園旁站牌; 預計2026年6月隨公園候車亭部分完工搬遷回去",
+    "public_transport": "platform",
+    "ref": "3912"
+  }
+},
+{
+  "type": "node",
+  "id": 2517444174,
+  "lat": 25.0353312,
+  "lon": 121.5020213,
+  "tags": {
+    "bus": "yes",
+    "description": "和平西路三段83號對向",
+    "highway": "bus_stop",
+    "local_ref": "台北市公車",
+    "name": "昆明街口",
+    "name:en": "Kunming St. Entrance",
+    "name:nan": "Khun-bêng Koe-kháu",
+    "name:nan-Hant": "昆明街口",
+    "name:nan-Latn-pehoeji": "Khun-bêng Koe-kháu",
+    "name:nan-Latn-tailo": "Khun-bîng Kue-kháu",
+    "name:zh": "昆明街口",
+    "name:zh-Hans": "昆明街口",
+    "name:zh-Hant": "昆明街口",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1762"
+  }
+},
+{
+  "type": "node",
+  "id": 2706519918,
+  "lat": 25.0358285,
+  "lon": 121.5039389,
+  "tags": {
+    "bus": "yes",
+    "description": "南寧路45號同向",
+    "highway": "bus_stop",
+    "name": "龍山國中",
+    "name:en": "Longshan Junior High School",
+    "name:nan": "Liông-san Kok-tiong",
+    "name:nan-Hant": "龍山國中",
+    "name:nan-Latn-pehoeji": "Liông-san Kok-tiong",
+    "name:nan-Latn-tailo": "Liông-san Kok-tiong",
+    "name:zh": "龍山國中",
+    "name:zh-Hans": "龙山国中",
+    "name:zh-Hant": "龍山國中",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1835"
+  }
+},
+{
+  "type": "node",
+  "id": 2706519921,
+  "lat": 25.0358327,
+  "lon": 121.5042598,
+  "tags": {
+    "bus": "yes",
+    "description": "202區 245 265 656;南寧路50號對向",
+    "highway": "bus_stop",
+    "name": "龍山國中",
+    "name:en": "Longshan Junior High School",
+    "name:nan": "Liông-san Kok-tiong",
+    "name:nan-Hant": "龍山國中",
+    "name:nan-Latn-pehoeji": "Liông-san Kok-tiong",
+    "name:nan-Latn-tailo": "Liông-san Kok-tiong",
+    "name:zh": "龍山國中",
+    "name:zh-Hans": "龙山国中",
+    "name:zh-Hant": "龍山國中",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "50736"
+  }
+},
+{
+  "type": "node",
+  "id": 2706523431,
+  "lat": 25.0348513,
+  "lon": 121.5010759,
+  "tags": {
+    "bus": "yes",
+    "description": "康定路348號同向",
+    "highway": "bus_stop",
+    "name": "萬華車站",
+    "name:en": "Wanhua Station",
+    "name:zh": "萬華車站",
+    "name:zh-Hans": "万华车站",
+    "name:zh-Hant": "萬華車站",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "4619"
+  }
+},
+{
+  "type": "node",
+  "id": 2706523432,
+  "lat": 25.0343993,
+  "lon": 121.5011590,
+  "tags": {
+    "bus": "yes",
+    "description": "康定路273號同向",
+    "highway": "bus_stop",
+    "name": "萬華車站",
+    "name:en": "Wanhua Station",
+    "name:zh": "萬華車站",
+    "name:zh-Hans": "万华车站",
+    "name:zh-Hant": "萬華車站",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1814"
+  }
+},
+{
+  "type": "node",
+  "id": 2706628496,
+  "lat": 25.0362286,
+  "lon": 121.5014449,
+  "tags": {
+    "bus": "yes",
+    "description": "康定路189號",
+    "highway": "bus_stop",
+    "name": "龍山寺(康定)",
+    "name:en": "Longshan Temple(Kangding)",
+    "name:nan": "Liông-san-sī(Khong-tēng)",
+    "name:nan-Hant": "龍山寺(康定)",
+    "name:nan-Latn-pehoeji": "Liông-san-sī(Khong-tēng)",
+    "name:nan-Latn-tailo": "Liông-san-sī(Khong-tīng)",
+    "name:zh": "龍山寺(康定)",
+    "name:zh-Hans": "龙山寺(康定)",
+    "name:zh-Hant": "龍山寺(康定)",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "note": "停靠龍山寺(剝皮寮)站牌者，本站不停靠",
+    "public_transport": "platform",
+    "ref": "1000975",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 3139434726,
+  "lat": 25.0348891,
+  "lon": 121.5012427,
+  "tags": {
+    "amenity": "post_box"
+  }
+},
+{
+  "type": "node",
+  "id": 3186233004,
+  "lat": 25.0340605,
+  "lon": 121.4984060,
+  "tags": {
+    "bench": "no",
+    "bin": "no",
+    "bus": "yes",
+    "description": "台北市大理街76巷1-2前",
+    "highway": "bus_stop",
+    "lit": "yes",
+    "name": "大理服飾",
+    "name:en": "Dali Garments",
+    "name:nan": "Tāi-lí Ho̍k-sek",
+    "name:nan-Hant": "大理服飾",
+    "name:nan-Latn-pehoeji": "Tāi-lí Ho̍k-sek",
+    "name:nan-Latn-tailo": "Tāi-lí Ho̍k-sik",
+    "name:zh": "大理服飾",
+    "name:zh-Hans": "大理服饰",
+    "name:zh-Hant": "大理服飾",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1738",
+    "shelter": "no",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 3186233005,
+  "lat": 25.0341357,
+  "lon": 121.4987824,
+  "tags": {
+    "bus": "yes",
+    "description": "艋舺大道西園路口",
+    "highway": "bus_stop",
+    "name": "大理服飾",
+    "name:en": "Dali Garments",
+    "name:nan": "Tāi-lí Ho̍k-sek",
+    "name:nan-Hant": "大理服飾",
+    "name:nan-Latn-pehoeji": "Tāi-lí Ho̍k-sek",
+    "name:nan-Latn-tailo": "Tāi-lí Ho̍k-sik",
+    "name:zh": "大理服飾",
+    "name:zh-Hans": "大理服饰",
+    "name:zh-Hant": "大理服飾",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "4626",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 3188323185,
+  "lat": 25.0415965,
+  "lon": 121.5031397,
+  "tags": {
+    "bus": "yes",
+    "description": "內江街100號",
+    "highway": "bus_stop",
+    "name": "臺北護理健康大學",
+    "name:en": "Taipei Nursing College",
+    "name:nan": "Tâi-pak Hō͘-lí Kiān-khong Tāi-ha̍k",
+    "name:nan-Hant": "臺北護理健康大學",
+    "name:nan-Latn-pehoeji": "Tâi-pak Hō͘-lí Kiān-khong Tāi-ha̍k",
+    "name:nan-Latn-tailo": "Tâi-pak Hōo-lí Kiān-khong Tāi-ha̍k",
+    "name:zh": "臺北護理健康大學",
+    "name:zh-Hans": "台北护理健康大学",
+    "name:zh-Hant": "臺北護理健康大學",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1842",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3188479012,
+  "lat": 25.0393961,
+  "lon": 121.5019542,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "祖師廟 (康定)",
+    "name:en": "Zushi Temple (Kangding)",
+    "name:nan": "Chó͘-su-biō (Khong-tēng)",
+    "name:nan-Hant": "祖師廟 (康定)",
+    "name:nan-Latn-pehoeji": "Chó͘-su-biō (Khong-tēng)",
+    "name:nan-Latn-tailo": "Tsóo-su-biō (Khong-tīng)",
+    "name:zh": "祖師廟 (康定)",
+    "network": "臺北市公車",
+    "old_name": "祖師廟",
+    "public_transport": "platform",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 3188479013,
+  "lat": 25.0395865,
+  "lon": 121.5018600,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "祖師廟 (康定)",
+    "name:en": "Zushi Temple (Kangding)",
+    "name:nan": "Chó͘-su-biō (Khong-tēng)",
+    "name:nan-Hant": "祖師廟 (康定)",
+    "name:nan-Latn-pehoeji": "Chó͘-su-biō (Khong-tēng)",
+    "name:nan-Latn-tailo": "Tsóo-su-biō (Khong-tīng)",
+    "name:zh": "祖師廟 (康定)",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "old_name": "祖師廟",
+    "public_transport": "platform",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 3188479024,
+  "lat": 25.0359852,
+  "lon": 121.5012765,
+  "tags": {
+    "bus": "yes",
+    "description": "康定路191號對面",
+    "highway": "bus_stop",
+    "name": "龍山寺(康定)",
+    "name:en": "Longshan Temple(Kangding)",
+    "name:ko": "용산사",
+    "name:nan": "Liông-san-sī(Khong-tēng)",
+    "name:nan-Hant": "龍山寺(康定)",
+    "name:nan-Latn-pehoeji": "Liông-san-sī(Khong-tēng)",
+    "name:nan-Latn-tailo": "Liông-san-sī(Khong-tīng)",
+    "name:zh": "龍山寺(康定)",
+    "name:zh-Hans": "龙山寺(康定)",
+    "name:zh-Hant": "龍山寺(康定)",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1000242",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 3188479025,
+  "lat": 25.0362684,
+  "lon": 121.4992477,
+  "tags": {
+    "PTX:date": "2021-02-05T20:00:18+08:00",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "龍山寺(西園)",
+    "name:en": "Longshan Temple (Xiyuan)",
+    "name:zh": "龍山寺 (西園)",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "source": "PTX",
+    "source:date": "2021-02-05T20:00:18+08:00",
+    "toilets:wheelchair": "no",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3188479026,
+  "lat": 25.0379128,
+  "lon": 121.4996984,
+  "tags": {
+    "PTX:date": "2021-02-05T20:00:18+08:00",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "龍山寺(西園)",
+    "name:en": "Longshan Temple (Xiyuan)",
+    "name:zh": "龍山寺 (西園)",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "source": "PTX",
+    "source:date": "2021-02-05T20:00:18+08:00",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 3191035896,
+  "lat": 25.0361524,
+  "lon": 121.4995061,
+  "tags": {
+    "amenity": "parking_entrance"
+  }
+},
+{
+  "type": "node",
+  "id": 3191035897,
+  "lat": 25.0361724,
+  "lon": 121.4995026,
+  "tags": {
+    "amenity": "parking_entrance"
+  }
+},
+{
+  "type": "node",
+  "id": 3204024260,
+  "lat": 25.0373885,
+  "lon": 121.4996433,
+  "tags": {
+    "colour": "green",
+    "man_made": "street_cabinet",
+    "operator": "台灣電力公司",
+    "operator:en": "Taiwan Power Company",
+    "operator:wikidata": "Q711691",
+    "operator:zh": "台灣電力公司",
+    "utility": "power"
+  }
+},
+{
+  "type": "node",
+  "id": 3315216382,
+  "lat": 25.0351756,
+  "lon": 121.4986578,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "捷運龍山寺站",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "note": "停靠左轉康定路路線",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 3336564657,
+  "lat": 25.0329430,
+  "lon": 121.4970274,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "時報大樓",
+    "name:en": "China Times",
+    "name:nan": "Sî-pò Tōa-lâu",
+    "name:nan-Hant": "時報大樓",
+    "name:nan-Latn-pehoeji": "Sî-pò Tōa-lâu",
+    "name:nan-Latn-tailo": "Sî-pò Tuā-lâu",
+    "name:zh": "時報大樓",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3336564658,
+  "lat": 25.0330442,
+  "lon": 121.4964979,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "時報大樓",
+    "name:en": "China Times",
+    "name:nan": "Sî-pò Tōa-lâu",
+    "name:nan-Hant": "時報大樓",
+    "name:nan-Latn-pehoeji": "Sî-pò Tōa-lâu",
+    "name:nan-Latn-tailo": "Sî-pò Tuā-lâu",
+    "name:zh": "時報大樓",
+    "network": "臺北市公車",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 3336565993,
+  "lat": 25.0332316,
+  "lon": 121.5027883,
+  "tags": {
+    "bench": "no",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "艋舺大道",
+    "name:en": "Bangka Boulevard",
+    "name:zh": "艋舺大道",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3336565994,
+  "lat": 25.0335860,
+  "lon": 121.5029990,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "艋舺大道",
+    "name:en": "Bangka Boulevard",
+    "name:zh": "艋舺大道",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3336566001,
+  "lat": 25.0328389,
+  "lon": 121.5008112,
+  "tags": {
+    "bus": "yes",
+    "description": "臺北市艋舺大道172號",
+    "highway": "bus_stop",
+    "name": "萬華車站",
+    "name:en": "Wanhua Station",
+    "name:nan": "Báng-kah Chhia-chām",
+    "name:nan-Hant": "艋舺車站",
+    "name:nan-Latn-pehoeji": "Báng-kah Chhia-chām",
+    "name:nan-Latn-tailo": "Báng-kah Tshia-tsām",
+    "name:zh": "萬華車站",
+    "name:zh-Hans": "万华车站",
+    "name:zh-Hant": "萬華車站",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "70035"
+  }
+},
+{
+  "type": "node",
+  "id": 3336566002,
+  "lat": 25.0330929,
+  "lon": 121.4999511,
+  "tags": {
+    "bus": "yes",
+    "description": "臺北市艋舺大道188號對面",
+    "highway": "bus_stop",
+    "name": "萬華車站",
+    "name:en": "Wanhua Station",
+    "name:nan": "Báng-kah Chhia-chām",
+    "name:nan-Hant": "艋舺車站",
+    "name:nan-Latn-pehoeji": "Báng-kah Chhia-chām",
+    "name:nan-Latn-tailo": "Báng-kah Tshia-tsām",
+    "name:zh": "萬華車站",
+    "name:zh-Hans": "万华车站",
+    "name:zh-Hant": "萬華車站",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "70034"
+  }
+},
+{
+  "type": "node",
+  "id": 3419699342,
+  "lat": 25.0405725,
+  "lon": 121.5024093,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "康定路口",
+    "name:en": "Kangding Rd. Entrance",
+    "name:nan": "Khong-tēng Lō͘-kháu",
+    "name:nan-Hant": "康定路口",
+    "name:nan-Latn-pehoeji": "Khong-tēng Lō͘-kháu",
+    "name:nan-Latn-tailo": "Khong-tīng Lōo-kháu",
+    "name:zh": "康定路口",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 3419733296,
+  "lat": 25.0388294,
+  "lon": 121.5040449,
+  "tags": {
+    "bus": "yes",
+    "description": "昆明街209號",
+    "highway": "bus_stop",
+    "name": "昆明活動中心",
+    "name:en": "Kunming Activity Center",
+    "name:zh": "昆明活動中心",
+    "name:zh-Hans": "昆明活动中心",
+    "name:zh-Hant": "昆明活動中心",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform",
+    "ref": "1808"
+  }
+},
+{
+  "type": "node",
+  "id": 3682829895,
+  "lat": 25.0412565,
+  "lon": 121.5021363,
+  "tags": {
+    "bench": "no",
+    "bin": "no",
+    "bus": "yes",
+    "description": "康定路102-106號前",
+    "highway": "bus_stop",
+    "lit": "no",
+    "name": "西門國小(臺大醫院北護分院)",
+    "name:en": "Ximen Elementary School (Nat‘l Taiwan U. Hospital Beihu Branch)",
+    "name:zh": "西門國小(臺大醫院北護分院)",
+    "name:zh-Hans": "西门国小(台大医院北护分院)",
+    "name:zh-Hant": "西門國小(臺大醫院北護分院)",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "note": "停靠非內江街左轉路線",
+    "public_transport": "platform",
+    "ref": "1000434",
+    "shelter": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3764994776,
+  "lat": 25.0354970,
+  "lon": 121.4995640,
+  "tags": {
+    "amenity": "drinking_water",
+    "bottle": "yes",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 2181 2345",
+    "description": "臺北市西園路1段153號，龍山寺站1號出口",
+    "description:covid19": "至2021-11-30二級、三級警戒期間都不開放使用",
+    "is_in:district": "萬華",
+    "opening_hours": "06:00-23:00",
+    "operator": "臺北大眾捷運股份有限公司",
+    "ref": "1820",
+    "source": "台北自來水事業處",
+    "source:date": "2018-11-05 09:50:00",
+    "source:department": "板南線",
+    "source:devision": "西區",
+    "source:type": "捷運站",
+    "source:url": "https://data.taipei/dataset/detail/metadata?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "start_date": "2016-12-01 09:50:00",
+    "toilets:wheelchair": "no",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "node",
+  "id": 3806354857,
+  "lat": 25.0369720,
+  "lon": 121.4953203,
+  "tags": {
+    "amenity": "drinking_water",
+    "description": "台北市立圖書館柳鄉民眾閱覽室",
+    "level": "4",
+    "opening_hours": "Su-Mo 09:00-17:00; Tu-Sa 08:30-21:00"
+  }
+},
+{
+  "type": "node",
+  "id": 3806362100,
+  "lat": 25.0385508,
+  "lon": 121.5023960,
+  "tags": {
+    "amenity": "drinking_water",
+    "description": "台北市立圖書館龍山分館飲水機",
+    "opening_hours": "Su-Mo 09:00-17:00; Tu-Sa 08:30-21:00"
+  }
+},
+{
+  "type": "node",
+  "id": 3835834673,
+  "lat": 25.0363844,
+  "lon": 121.4953799,
+  "tags": {
+    "bench": "no",
+    "bus": "yes",
+    "description": "環河南路二段128號對向",
+    "highway": "bus_stop",
+    "name": "龍山國小",
+    "name:en": "Longshan Elementary School",
+    "name:nan": "Liông-san Kok-sió",
+    "name:nan-Hant": "龍山國小",
+    "name:nan-Latn-pehoeji": "Liông-san Kok-sió",
+    "name:nan-Latn-tailo": "Liông-san Kok-sió",
+    "name:zh": "龍山國小",
+    "name:zh-Hans": "龙山国小",
+    "name:zh-Hant": "龍山國小",
+    "public_transport": "platform",
+    "ref": "3945",
+    "shelter": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3835835094,
+  "lat": 25.0384105,
+  "lon": 121.4980121,
+  "tags": {
+    "bus": "yes",
+    "description": "桂林路154號同向",
+    "highway": "bus_stop",
+    "name": "萬華分局",
+    "name:en": "Wanhua Police Sta.",
+    "name:nan": "Bān-hôa Hun-kio̍k",
+    "name:nan-Hant": "萬華分局",
+    "name:nan-Latn-pehoeji": "Bān-hôa Hun-kio̍k",
+    "name:nan-Latn-tailo": "Bān-huâ Hun-kio̍k",
+    "name:zh": "萬華分局",
+    "name:zh-Hans": "万华分局",
+    "name:zh-Hant": "萬華分局",
+    "public_transport": "platform",
+    "ref": "1812"
+  }
+},
+{
+  "type": "node",
+  "id": 3835835095,
+  "lat": 25.0385498,
+  "lon": 121.4980371,
+  "tags": {
+    "bus": "yes",
+    "description": "桂林路154號對向",
+    "highway": "bus_stop",
+    "name": "萬華分局",
+    "name:en": "Wanhua Police Sta.",
+    "name:nan": "Bān-hôa Hun-kio̍k",
+    "name:nan-Hant": "萬華分局",
+    "name:nan-Latn-pehoeji": "Bān-hôa Hun-kio̍k",
+    "name:nan-Latn-tailo": "Bān-huâ Hun-kio̍k",
+    "name:zh": "萬華分局",
+    "name:zh-Hans": "万华分局",
+    "name:zh-Hant": "萬華分局",
+    "public_transport": "platform",
+    "ref": "4614"
+  }
+},
+{
+  "type": "node",
+  "id": 4386474189,
+  "lat": 25.0328874,
+  "lon": 121.4987248,
+  "tags": {
+    "amenity": "parking_entrance"
+  }
+},
+{
+  "type": "node",
+  "id": 4386474196,
+  "lat": 25.0328457,
+  "lon": 121.4987283,
+  "tags": {
+    "amenity": "parking_entrance",
+    "parking": "underground"
+  }
+},
+{
+  "type": "node",
+  "id": 5071287969,
+  "lat": 25.0365804,
+  "lon": 121.5045629,
+  "tags": {
+    "addr:city": "臺北市",
+    "addr:country": "TW",
+    "addr:district": "萬華區",
+    "addr:full": "108213臺北市萬華區廣州街67號",
+    "addr:housenumber": "67",
+    "addr:postcode": "108213",
+    "addr:street": "廣州街",
+    "alt_name": "中華郵政;郵局",
+    "amenity": "atm",
+    "brand": "中華郵政",
+    "brand:en": "Chunghwa Post",
+    "brand:nan": "Tiong-hôa Iû-chèng",
+    "brand:nan-Hant": "中華郵政",
+    "brand:nan-Latn-pehoeji": "Tiong-hôa Iû-chèng",
+    "brand:nan-Latn-tailo": "Tiong-huâ Iû-tsìng",
+    "brand:wikidata": "Q709259",
+    "brand:zh": "中華郵政",
+    "opening_hours": "24/7",
+    "operator": "中華郵政股份有限公司",
+    "phone": "+886 2 2306 4755;+886 2 2306 4755"
+  }
+},
+{
+  "type": "node",
+  "id": 5696806692,
+  "lat": 25.0328239,
+  "lon": 121.4974366,
+  "tags": {
+    "access": "yes",
+    "amenity": "drinking_water",
+    "brand": "Justime",
+    "cold_water": "yes",
+    "description": "和平青草園裡面的公園內有直飲台，旁邊亦有公廁",
+    "indoor": "no",
+    "level": "1",
+    "operator": "台北市政府工務局"
+  }
+},
+{
+  "type": "node",
+  "id": 6114008362,
+  "lat": 25.0404550,
+  "lon": 121.5026976,
+  "tags": {
+    "amenity": "waste_basket"
+  }
+},
+{
+  "type": "node",
+  "id": 6130571919,
+  "lat": 25.0395020,
+  "lon": 121.4984560,
+  "tags": {
+    "amenity": "drinking_water",
+    "bottle": "yes",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 2303 2451",
+    "description": "臺北市萬華區華西街10巷旁，青山公園北側草坪",
+    "description:covid19": "至2021-11-30二級、三級警戒期間都不開放使用",
+    "fee": "no",
+    "is_in:district": "萬華",
+    "opening_hours": "24/7",
+    "operator": "工務局公園處",
+    "ref": "0274",
+    "source": "台北自來水事業處",
+    "source:date": "2018-11-19 14:20:00",
+    "source:department": "公園處",
+    "source:devision": "西區",
+    "source:type": "公園",
+    "source:url": "https://data.taipei/dataset/detail/metadata?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "start_date": "2017-09-26 16:00:00"
+  }
+},
+{
+  "type": "node",
+  "id": 6130571924,
+  "lat": 25.0386270,
+  "lon": 121.5028680,
+  "tags": {
+    "amenity": "drinking_water",
+    "bottle": "yes",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 2303 2451",
+    "description": "桂林路與永福街之間，老松公園遊戲區旁",
+    "description:covid19": "至2021-11-30二級、三級警戒期間都不開放使用",
+    "fee": "no",
+    "is_in:district": "萬華",
+    "opening_hours": "24/7",
+    "operator": "工務局公園處",
+    "ref": "0269",
+    "source": "台北自來水事業處",
+    "source:date": "2018-11-19 14:30:00",
+    "source:department": "公園處",
+    "source:devision": "西區",
+    "source:type": "公園",
+    "source:url": "https://data.taipei/dataset/detail/metadata?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "start_date": "2017-06-27 10:00:00"
+  }
+},
+{
+  "type": "node",
+  "id": 6130571925,
+  "lat": 25.0335750,
+  "lon": 121.4992190,
+  "tags": {
+    "amenity": "drinking_water",
+    "bottle": "yes",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 2303 2451",
+    "description": "西園路1段282巷內，寺前公園草坪上",
+    "description:covid19": "至2021-11-30二級、三級警戒期間都不開放使用",
+    "fee": "no",
+    "is_in:district": "萬華",
+    "opening_hours": "24/7",
+    "operator": "工務局公園處",
+    "ref": "0268",
+    "source": "台北自來水事業處",
+    "source:date": "2018-11-19 15:20:00",
+    "source:department": "公園處",
+    "source:devision": "西區",
+    "source:type": "公園",
+    "source:url": "https://data.taipei/dataset/detail/metadata?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "start_date": "2017-06-27 10:00:00"
+  }
+},
+{
+  "type": "node",
+  "id": 6130571926,
+  "lat": 25.0386970,
+  "lon": 121.4987650,
+  "tags": {
+    "amenity": "drinking_water",
+    "bottle": "yes",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 2303 2451",
+    "description": "臺北市萬華區華西街21巷內，華西公園Ubike旁",
+    "description:covid19": "至2021-11-30二級、三級警戒期間都不開放使用",
+    "fee": "no",
+    "is_in:district": "萬華",
+    "opening_hours": "24/7",
+    "operator": "工務局公園處",
+    "ref": "0267",
+    "source": "台北自來水事業處",
+    "source:date": "2018-11-19 14:10:00",
+    "source:department": "公園處",
+    "source:devision": "西區",
+    "source:type": "公園",
+    "source:url": "https://data.taipei/dataset/detail/metadata?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "start_date": "2017-09-26 16:00:00"
+  }
+},
+{
+  "type": "node",
+  "id": 6130571928,
+  "lat": 25.0333240,
+  "lon": 121.4950380,
+  "tags": {
+    "amenity": "drinking_water",
+    "bottle": "yes",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 2303 2451",
+    "description": "臺北市萬華區大理街160巷旁，糖廍園區廣場西側",
+    "description:covid19": "至2021-11-30二級、三級警戒期間都不開放使用",
+    "fee": "no",
+    "is_in:district": "萬華",
+    "opening_hours": "24/7",
+    "operator": "工務局公園處",
+    "ref": "0265b",
+    "source": "台北自來水事業處",
+    "source:date": "2018/11/29 下午 12:10:00",
+    "source:department": "公園處",
+    "source:devision": "西區",
+    "source:type": "公園",
+    "source:url": "https://data.taipei/dataset/detail/metadata?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "start_date": "2017-09-26 16:00:00"
+  }
+},
+{
+  "type": "node",
+  "id": 6130571933,
+  "lat": 25.0366010,
+  "lon": 121.5026560,
+  "tags": {
+    "amenity": "drinking_water",
+    "contact:phone": "+886 2 2308 2966#238",
+    "description": "台北市萬華區廣州街129-1號廣場，剝皮寮歷史街區大門廣場",
+    "description:covid19": "至2021-11-30二級、三級警戒期間都不開放使用",
+    "fee": "no",
+    "is_in:district": "萬華",
+    "opening_hours": "24/7",
+    "operator": "台北市文化基金會",
+    "ref": "0258",
+    "source": "台北自來水事業處",
+    "source:date": "2018-11-19 11:40:00",
+    "source:department": "文化局",
+    "source:devision": "西區",
+    "source:type": "機關",
+    "source:url": "https://data.taipei/dataset/detail/metadata?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "start_date": "2017-05-08 10:00:00"
+  }
+},
+{
+  "type": "node",
+  "id": 6336420138,
+  "lat": 25.0354464,
+  "lon": 121.5009910,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "6433",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336421826,
+  "lat": 25.0360563,
+  "lon": 121.5025525,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "15734",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336422054,
+  "lat": 25.0413185,
+  "lon": 121.5008541,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "26720",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336422233,
+  "lat": 25.0390677,
+  "lon": 121.5040766,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "677",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336422345,
+  "lat": 25.0361472,
+  "lon": 121.4980427,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "6026",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336422599,
+  "lat": 25.0406903,
+  "lon": 121.5021520,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "2451",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336422675,
+  "lat": 25.0353143,
+  "lon": 121.4956356,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "5216",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336422676,
+  "lat": 25.0333755,
+  "lon": 121.5033365,
+  "tags": {
+    "description": "台北市萬華區頂碩里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "11819",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336422716,
+  "lat": 25.0381389,
+  "lon": 121.4969230,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "5262",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336422991,
+  "lat": 25.0375148,
+  "lon": 121.5013128,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "5670",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336423639,
+  "lat": 25.0343002,
+  "lon": 121.5017159,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "3172",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336423714,
+  "lat": 25.0356272,
+  "lon": 121.5031413,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "18527",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336425004,
+  "lat": 25.0354510,
+  "lon": 121.5035971,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "6977",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336425043,
+  "lat": 25.0415246,
+  "lon": 121.5002116,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "15734",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336425083,
+  "lat": 25.0397718,
+  "lon": 121.5039478,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "11526",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336425734,
+  "lat": 25.0353852,
+  "lon": 121.4982769,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "3752",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336426205,
+  "lat": 25.0367946,
+  "lon": 121.4970456,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "235",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336426280,
+  "lat": 25.0353696,
+  "lon": 121.4994453,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "1868",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336426571,
+  "lat": 25.0389290,
+  "lon": 121.4976974,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "26210",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336426949,
+  "lat": 25.0349639,
+  "lon": 121.5032891,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "2561",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336427415,
+  "lat": 25.0348117,
+  "lon": 121.4993922,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:position": "sidewalk",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "1415",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336427456,
+  "lat": 25.0365046,
+  "lon": 121.5040118,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "21149",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336427694,
+  "lat": 25.0385077,
+  "lon": 121.5017861,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "6273",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336427735,
+  "lat": 25.0389708,
+  "lon": 121.5046587,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "4982",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336428612,
+  "lat": 25.0383673,
+  "lon": 121.4955624,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "9885",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336428785,
+  "lat": 25.0386249,
+  "lon": 121.4970469,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25799",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336429041,
+  "lat": 25.0404252,
+  "lon": 121.5041897,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "11567",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336429157,
+  "lat": 25.0367556,
+  "lon": 121.4983852,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "24076",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336429231,
+  "lat": 25.0388878,
+  "lon": 121.5002253,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13263",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336429588,
+  "lat": 25.0353277,
+  "lon": 121.5011899,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "6119",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336429872,
+  "lat": 25.0403771,
+  "lon": 121.4982774,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "8479",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336430101,
+  "lat": 25.0341673,
+  "lon": 121.5027644,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "26329",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336430175,
+  "lat": 25.0389990,
+  "lon": 121.5019786,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3168",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336430963,
+  "lat": 25.0361410,
+  "lon": 121.4976150,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "25191",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336431119,
+  "lat": 25.0408246,
+  "lon": 121.5028350,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "7772",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336431395,
+  "lat": 25.0341741,
+  "lon": 121.4970106,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "17842",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336431398,
+  "lat": 25.0330711,
+  "lon": 121.5031356,
+  "tags": {
+    "description": "台北市萬華區頂碩里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "15186",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336431435,
+  "lat": 25.0389398,
+  "lon": 121.4984390,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "15427",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336431510,
+  "lat": 25.0366823,
+  "lon": 121.5004909,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "7152",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336432478,
+  "lat": 25.0336928,
+  "lon": 121.5033049,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "8779",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336432553,
+  "lat": 25.0359679,
+  "lon": 121.5033889,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "2440",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336432852,
+  "lat": 25.0413250,
+  "lon": 121.4999768,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "9857",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336432931,
+  "lat": 25.0372186,
+  "lon": 121.5037062,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "6163",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336432966,
+  "lat": 25.0378637,
+  "lon": 121.4951558,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3644",
+    "ref:UFID": "864",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336433042,
+  "lat": 25.0354241,
+  "lon": 121.4965862,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "6445",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336433267,
+  "lat": 25.0338426,
+  "lon": 121.4982770,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "16430",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336433308,
+  "lat": 25.0367762,
+  "lon": 121.4988895,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "10101",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336433387,
+  "lat": 25.0393409,
+  "lon": 121.5014418,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3297",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336434051,
+  "lat": 25.0351878,
+  "lon": 121.4995040,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:position": "sidewalk",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "17491",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336434931,
+  "lat": 25.0359803,
+  "lon": 121.5026781,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "9559",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336435723,
+  "lat": 25.0356835,
+  "lon": 121.5038367,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "2383",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336435762,
+  "lat": 25.0401384,
+  "lon": 121.4997809,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "5837",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336436598,
+  "lat": 25.0397312,
+  "lon": 121.5041164,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "10238",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336436639,
+  "lat": 25.0370218,
+  "lon": 121.5045498,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "8131",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336437078,
+  "lat": 25.0331207,
+  "lon": 121.4969610,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "4100",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336437119,
+  "lat": 25.0386016,
+  "lon": 121.4990098,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "2559",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336437491,
+  "lat": 25.0379512,
+  "lon": 121.4990332,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "23450",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336437711,
+  "lat": 25.0384941,
+  "lon": 121.5000425,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "22659",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336438280,
+  "lat": 25.0335188,
+  "lon": 121.4994419,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:position": "lane",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "975",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336438555,
+  "lat": 25.0388101,
+  "lon": 121.5030620,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "10093",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336439299,
+  "lat": 25.0377976,
+  "lon": 121.4963169,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25813",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336439335,
+  "lat": 25.0330011,
+  "lon": 121.4949833,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3643",
+    "ref:UFID": "4817",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336439376,
+  "lat": 25.0377900,
+  "lon": 121.4995455,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "22989",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336441989,
+  "lat": 25.0328213,
+  "lon": 121.5023625,
+  "tags": {
+    "description": "台北市萬華區頂碩里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "23827",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336442024,
+  "lat": 25.0375501,
+  "lon": 121.4989794,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "10798",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336442402,
+  "lat": 25.0383879,
+  "lon": 121.5005414,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3365",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336442955,
+  "lat": 25.0356500,
+  "lon": 121.5012311,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "12430",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336443467,
+  "lat": 25.0347107,
+  "lon": 121.5030687,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "18189",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336444145,
+  "lat": 25.0394249,
+  "lon": 121.5027026,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "8098",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336445274,
+  "lat": 25.0416205,
+  "lon": 121.5015590,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "26782",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336446427,
+  "lat": 25.0359932,
+  "lon": 121.4949890,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3643",
+    "ref:UFID": "6900",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336446465,
+  "lat": 25.0360775,
+  "lon": 121.4968648,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "25178",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336448004,
+  "lat": 25.0400443,
+  "lon": 121.5025054,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "7793",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336448076,
+  "lat": 25.0345775,
+  "lon": 121.4959261,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "14249",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336448916,
+  "lat": 25.0384302,
+  "lon": 121.4984580,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25827",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336449295,
+  "lat": 25.0370124,
+  "lon": 121.5011920,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "12906",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336449370,
+  "lat": 25.0403847,
+  "lon": 121.5035410,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "4136",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336450459,
+  "lat": 25.0337527,
+  "lon": 121.5022057,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "2474",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336451138,
+  "lat": 25.0352872,
+  "lon": 121.5020465,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "17405",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336451178,
+  "lat": 25.0417047,
+  "lon": 121.5045967,
+  "tags": {
+    "description": "台北市萬華區西門里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "10040",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336453127,
+  "lat": 25.0343383,
+  "lon": 121.5044134,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "6071",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336453164,
+  "lat": 25.0406054,
+  "lon": 121.5017065,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "6623",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336455508,
+  "lat": 25.0359971,
+  "lon": 121.4986643,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "15707",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336456938,
+  "lat": 25.0349567,
+  "lon": 121.4976926,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "6982",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336456979,
+  "lat": 25.0369576,
+  "lon": 121.4963176,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "2627",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336457354,
+  "lat": 25.0393152,
+  "lon": 121.5006186,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "5538",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336458722,
+  "lat": 25.0345132,
+  "lon": 121.5033133,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "10344",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336459098,
+  "lat": 25.0359210,
+  "lon": 121.5028380,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "3925",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336460189,
+  "lat": 25.0347834,
+  "lon": 121.5045012,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "582",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336460228,
+  "lat": 25.0405394,
+  "lon": 121.5016944,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "14082",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336460268,
+  "lat": 25.0379833,
+  "lon": 121.5036784,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "21306",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336460839,
+  "lat": 25.0381559,
+  "lon": 121.5047625,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "11620",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336460876,
+  "lat": 25.0376857,
+  "lon": 121.4953928,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3644",
+    "ref:UFID": "1733",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336462442,
+  "lat": 25.0382471,
+  "lon": 121.4961306,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13726",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336462478,
+  "lat": 25.0333112,
+  "lon": 121.4979441,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:position": "lane",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "18225",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336462831,
+  "lat": 25.0341004,
+  "lon": 121.5014270,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "28220",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336462871,
+  "lat": 25.0354232,
+  "lon": 121.5040335,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "4639",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336463019,
+  "lat": 25.0374954,
+  "lon": 121.4963619,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "4609",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336464386,
+  "lat": 25.0367548,
+  "lon": 121.4984027,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "24079",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336464464,
+  "lat": 25.0383981,
+  "lon": 121.5004513,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "22535",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336465519,
+  "lat": 25.0361189,
+  "lon": 121.4994083,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "13554",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336466509,
+  "lat": 25.0389401,
+  "lon": 121.5026197,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "4819",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336467635,
+  "lat": 25.0407093,
+  "lon": 121.4988032,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "26415",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336468053,
+  "lat": 25.0384670,
+  "lon": 121.4968863,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3040",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336468526,
+  "lat": 25.0383635,
+  "lon": 121.4996298,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25792",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336468758,
+  "lat": 25.0337621,
+  "lon": 121.4975495,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "6087",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336468798,
+  "lat": 25.0384207,
+  "lon": 121.4977056,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "10279",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336468872,
+  "lat": 25.0371390,
+  "lon": 121.5014832,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13023",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336469830,
+  "lat": 25.0354681,
+  "lon": 121.5004289,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "10493",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336469942,
+  "lat": 25.0351171,
+  "lon": 121.5018480,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "4815",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336470016,
+  "lat": 25.0399668,
+  "lon": 121.5020219,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "8466",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336470245,
+  "lat": 25.0407553,
+  "lon": 121.4999226,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "26422",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336470326,
+  "lat": 25.0365785,
+  "lon": 121.5037565,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "21146",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336470436,
+  "lat": 25.0354449,
+  "lon": 121.4957993,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "15639",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336470690,
+  "lat": 25.0404944,
+  "lon": 121.5032367,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "9193",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336470766,
+  "lat": 25.0348779,
+  "lon": 121.4964338,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "9652",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336470907,
+  "lat": 25.0374232,
+  "lon": 121.4976786,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25820",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336470982,
+  "lat": 25.0371941,
+  "lon": 121.5005447,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "1133",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336471061,
+  "lat": 25.0411508,
+  "lon": 121.5045350,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "10359",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336471350,
+  "lat": 25.0344807,
+  "lon": 121.5001518,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "13310",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336471525,
+  "lat": 25.0352405,
+  "lon": 121.5031587,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "17464",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336471528,
+  "lat": 25.0329159,
+  "lon": 121.4969118,
+  "tags": {
+    "description": "台北市萬華區和平里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "586",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336471814,
+  "lat": 25.0340893,
+  "lon": 121.5047876,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "1628",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336471855,
+  "lat": 25.0412496,
+  "lon": 121.4999657,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "9147",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336471993,
+  "lat": 25.0397677,
+  "lon": 121.5039729,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "637",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336472145,
+  "lat": 25.0363750,
+  "lon": 121.4989590,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "18603",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336472371,
+  "lat": 25.0338198,
+  "lon": 121.4971036,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "7630",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336472539,
+  "lat": 25.0374610,
+  "lon": 121.4968121,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "5253",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336472718,
+  "lat": 25.0401464,
+  "lon": 121.5003473,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "12981",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336473009,
+  "lat": 25.0395728,
+  "lon": 121.4990895,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "26122",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336473083,
+  "lat": 25.0350929,
+  "lon": 121.5027634,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "8663",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336473304,
+  "lat": 25.0416906,
+  "lon": 121.5027304,
+  "tags": {
+    "description": "台北市萬華區西門里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13333",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336473454,
+  "lat": 25.0354773,
+  "lon": 121.5044676,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "4437",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336473493,
+  "lat": 25.0360075,
+  "lon": 121.5044627,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "7891",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336473529,
+  "lat": 25.0381748,
+  "lon": 121.5026402,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "22793",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336473936,
+  "lat": 25.0378271,
+  "lon": 121.4957663,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "9211",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336474709,
+  "lat": 25.0363918,
+  "lon": 121.4970497,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "12230",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336474853,
+  "lat": 25.0403641,
+  "lon": 121.4988880,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "1303",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336474964,
+  "lat": 25.0403173,
+  "lon": 121.5043241,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "1833",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336475279,
+  "lat": 25.0367780,
+  "lon": 121.4976710,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "24056",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336475353,
+  "lat": 25.0377043,
+  "lon": 121.5015848,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "1319",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336475708,
+  "lat": 25.0360628,
+  "lon": 121.5010836,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "3629",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336475823,
+  "lat": 25.0341611,
+  "lon": 121.5033561,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "26322",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336475859,
+  "lat": 25.0359675,
+  "lon": 121.5041237,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "4221",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336475897,
+  "lat": 25.0382660,
+  "lon": 121.5018039,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13694",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336476267,
+  "lat": 25.0364536,
+  "lon": 121.4951169,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3644",
+    "ref:UFID": "13596",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336476444,
+  "lat": 25.0363566,
+  "lon": 121.4985100,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "25948",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336476672,
+  "lat": 25.0353144,
+  "lon": 121.4956263,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "6664",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336476712,
+  "lat": 25.0372922,
+  "lon": 121.4972371,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13386",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336476790,
+  "lat": 25.0376260,
+  "lon": 121.4996349,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "5200",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336476942,
+  "lat": 25.0333043,
+  "lon": 121.5041716,
+  "tags": {
+    "description": "台北市萬華區頂碩里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "24281",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336477054,
+  "lat": 25.0346400,
+  "lon": 121.5021537,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "14749",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336477332,
+  "lat": 25.0356642,
+  "lon": 121.5017689,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "8643",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336478684,
+  "lat": 25.0415105,
+  "lon": 121.4997579,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25778",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336479398,
+  "lat": 25.0380759,
+  "lon": 121.4949723,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3644",
+    "ref:UFID": "2341",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336479475,
+  "lat": 25.0357279,
+  "lon": 121.4980818,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "16932",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336480901,
+  "lat": 25.0339514,
+  "lon": 121.4971212,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "6899",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336480904,
+  "lat": 25.0328829,
+  "lon": 121.5009081,
+  "tags": {
+    "description": "台北市萬華區頂碩里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "1438",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336480942,
+  "lat": 25.0384881,
+  "lon": 121.4974379,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25806",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336481159,
+  "lat": 25.0357973,
+  "lon": 121.5025801,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "13905",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336481321,
+  "lat": 25.0399500,
+  "lon": 121.5019726,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "4891",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336481396,
+  "lat": 25.0398709,
+  "lon": 121.5036357,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "4763",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336481586,
+  "lat": 25.0351659,
+  "lon": 121.5001648,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "4670",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336481849,
+  "lat": 25.0363633,
+  "lon": 121.5035564,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "4377",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336481886,
+  "lat": 25.0405817,
+  "lon": 121.5007345,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "7368",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336481924,
+  "lat": 25.0392678,
+  "lon": 121.5036433,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "8639",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336481965,
+  "lat": 25.0385079,
+  "lon": 121.5039649,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "2154",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336482176,
+  "lat": 25.0357641,
+  "lon": 121.4988629,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "15565",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336482506,
+  "lat": 25.0339832,
+  "lon": 121.4955191,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "12862",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336482547,
+  "lat": 25.0388128,
+  "lon": 121.4986825,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3690",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336482822,
+  "lat": 25.0396596,
+  "lon": 121.5002708,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "10367",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336482902,
+  "lat": 25.0409483,
+  "lon": 121.5044473,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "4756",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336483015,
+  "lat": 25.0397592,
+  "lon": 121.4978788,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "1453",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336483599,
+  "lat": 25.0350641,
+  "lon": 121.5012617,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "5708",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336484764,
+  "lat": 25.0339164,
+  "lon": 121.4994133,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:position": "lane",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "17955",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336485303,
+  "lat": 25.0351392,
+  "lon": 121.5037875,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "5020",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336485343,
+  "lat": 25.0365728,
+  "lon": 121.5019846,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "5443",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336486886,
+  "lat": 25.0381844,
+  "lon": 121.4957755,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "12531",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336486963,
+  "lat": 25.0385644,
+  "lon": 121.4994719,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "5345",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336487523,
+  "lat": 25.0378920,
+  "lon": 121.4976055,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "14566",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336487601,
+  "lat": 25.0365927,
+  "lon": 121.5004865,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "11979",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336487956,
+  "lat": 25.0359506,
+  "lon": 121.5004489,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "17515",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336488067,
+  "lat": 25.0341461,
+  "lon": 121.5022575,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "3247",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336488207,
+  "lat": 25.0356088,
+  "lon": 121.5022501,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "4625",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336488245,
+  "lat": 25.0391507,
+  "lon": 121.5019219,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "4641",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336488985,
+  "lat": 25.0386932,
+  "lon": 121.5047173,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "5967",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336489672,
+  "lat": 25.0400763,
+  "lon": 121.4991785,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "9516",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336489863,
+  "lat": 25.0355285,
+  "lon": 121.4975996,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "25380",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336490018,
+  "lat": 25.0411708,
+  "lon": 121.5022385,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "15134",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336490194,
+  "lat": 25.0339272,
+  "lon": 121.4982789,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "11569",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336490234,
+  "lat": 25.0373006,
+  "lon": 121.4979480,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13059",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336490309,
+  "lat": 25.0367455,
+  "lon": 121.4995377,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25785",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336490677,
+  "lat": 25.0351428,
+  "lon": 121.5010588,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "14137",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336490752,
+  "lat": 25.0356064,
+  "lon": 121.5027008,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "16875",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336491581,
+  "lat": 25.0412901,
+  "lon": 121.5021957,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "951",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336739800,
+  "lat": 25.0361885,
+  "lon": 121.4987729,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "2603",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336740330,
+  "lat": 25.0352312,
+  "lon": 121.4985896,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "14541",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336740371,
+  "lat": 25.0376677,
+  "lon": 121.4966667,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "4767",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336740446,
+  "lat": 25.0393495,
+  "lon": 121.5012751,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "4523",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336740837,
+  "lat": 25.0396132,
+  "lon": 121.4981282,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "26233",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336740914,
+  "lat": 25.0356805,
+  "lon": 121.5033906,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "802",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336740990,
+  "lat": 25.0360962,
+  "lon": 121.5014223,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "7957",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336741031,
+  "lat": 25.0416306,
+  "lon": 121.5034186,
+  "tags": {
+    "description": "台北市萬華區西門里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3087",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336741181,
+  "lat": 25.0354667,
+  "lon": 121.5036136,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "4502",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336741522,
+  "lat": 25.0406907,
+  "lon": 121.5020924,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "10584",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336741560,
+  "lat": 25.0381351,
+  "lon": 121.5034335,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "21305",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336741812,
+  "lat": 25.0362230,
+  "lon": 121.4991920,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "7456",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336742038,
+  "lat": 25.0336128,
+  "lon": 121.4955373,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "15294",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336742079,
+  "lat": 25.0374681,
+  "lon": 121.4983667,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13151",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336742349,
+  "lat": 25.0376138,
+  "lon": 121.4986846,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "23463",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336742423,
+  "lat": 25.0384552,
+  "lon": 121.5011558,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "22660",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336742581,
+  "lat": 25.0353338,
+  "lon": 121.5004995,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "28607",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336742693,
+  "lat": 25.0334528,
+  "lon": 121.4986123,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:position": "lane",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "2438",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336742732,
+  "lat": 25.0350396,
+  "lon": 121.5036151,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "3058",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336742768,
+  "lat": 25.0371541,
+  "lon": 121.5016047,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3386",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336743297,
+  "lat": 25.0410663,
+  "lon": 121.4991680,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25848",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336743415,
+  "lat": 25.0387283,
+  "lon": 121.4962759,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "8417",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336743447,
+  "lat": 25.0344567,
+  "lon": 121.4953424,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3643",
+    "ref:UFID": "20882",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336743488,
+  "lat": 25.0383925,
+  "lon": 121.4996993,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13629",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336743919,
+  "lat": 25.0352540,
+  "lon": 121.4975870,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "7999",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336743959,
+  "lat": 25.0367322,
+  "lon": 121.4956148,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "472",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336744033,
+  "lat": 25.0370194,
+  "lon": 121.5006628,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3175",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336744487,
+  "lat": 25.0362574,
+  "lon": 121.5013378,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "9834",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336744602,
+  "lat": 25.0340728,
+  "lon": 121.5002319,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "11690",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336744676,
+  "lat": 25.0396377,
+  "lon": 121.5032093,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "13229",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336744717,
+  "lat": 25.0379898,
+  "lon": 121.5042673,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "10942",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336744908,
+  "lat": 25.0412006,
+  "lon": 121.5014665,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "26783",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336744987,
+  "lat": 25.0373431,
+  "lon": 121.5042437,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "21143",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336745022,
+  "lat": 25.0372079,
+  "lon": 121.4951772,
+  "tags": {
+    "description": "台北市萬華區柳鄉里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3644",
+    "ref:UFID": "939",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336745099,
+  "lat": 25.0357705,
+  "lon": 121.4975335,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "25374",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336745653,
+  "lat": 25.0404330,
+  "lon": 121.5025965,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25771",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336746225,
+  "lat": 25.0343606,
+  "lon": 121.4984426,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "1925",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336746265,
+  "lat": 25.0384384,
+  "lon": 121.4975773,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25834",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336746344,
+  "lat": 25.0390821,
+  "lon": 121.4998398,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "6065",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336746608,
+  "lat": 25.0344711,
+  "lon": 121.4994766,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:position": "lane",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "13249",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336746687,
+  "lat": 25.0360155,
+  "lon": 121.5023348,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "5911",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336746916,
+  "lat": 25.0402594,
+  "lon": 121.5006615,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "14057",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336747107,
+  "lat": 25.0358536,
+  "lon": 121.4983443,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "3866",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336747533,
+  "lat": 25.0352701,
+  "lon": 121.4967774,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "5865",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336747536,
+  "lat": 25.0331882,
+  "lon": 121.5021913,
+  "tags": {
+    "description": "台北市萬華區頂碩里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "7612",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336747574,
+  "lat": 25.0374200,
+  "lon": 121.4962940,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "15240",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336747753,
+  "lat": 25.0398049,
+  "lon": 121.5006541,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "7240",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336747829,
+  "lat": 25.0409340,
+  "lon": 121.5038799,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "8730",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336747945,
+  "lat": 25.0395267,
+  "lon": 121.4984859,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "11920",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336748218,
+  "lat": 25.0345825,
+  "lon": 121.5008338,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "16579",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336748827,
+  "lat": 25.0417590,
+  "lon": 121.5016433,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "6371",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336748865,
+  "lat": 25.0382772,
+  "lon": 121.5026593,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "22792",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336748906,
+  "lat": 25.0370711,
+  "lon": 121.5040720,
+  "tags": {
+    "description": "台北市萬華區仁德里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3844",
+    "ref:UFID": "3934",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336749447,
+  "lat": 25.0335075,
+  "lon": 121.4975968,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "11437",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336749488,
+  "lat": 25.0386206,
+  "lon": 121.4978351,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "25841",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336749755,
+  "lat": 25.0372267,
+  "lon": 121.4994140,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "22998",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336750033,
+  "lat": 25.0383571,
+  "lon": 121.5013690,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "22538",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336750487,
+  "lat": 25.0353346,
+  "lon": 121.5010566,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "14116",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336750600,
+  "lat": 25.0345566,
+  "lon": 121.5010452,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "28614",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336750638,
+  "lat": 25.0343932,
+  "lon": 121.5039652,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3843",
+    "ref:UFID": "27946",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336750678,
+  "lat": 25.0365413,
+  "lon": 121.5027376,
+  "tags": {
+    "description": "台北市萬華區福音里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "9570",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336750718,
+  "lat": 25.0378261,
+  "lon": 121.5046195,
+  "tags": {
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336750906,
+  "lat": 25.0400422,
+  "lon": 121.4983673,
+  "tags": {
+    "description": "台北市萬華區菜園里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "15592",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336751097,
+  "lat": 25.0355042,
+  "lon": 121.4992759,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "25977",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336751353,
+  "lat": 25.0401940,
+  "lon": 121.5032490,
+  "tags": {
+    "description": "台北市萬華區新起里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "10129",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336751425,
+  "lat": 25.0348269,
+  "lon": 121.4972194,
+  "tags": {
+    "description": "台北市萬華區糖蔀里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "8535",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336751465,
+  "lat": 25.0366641,
+  "lon": 121.4982836,
+  "tags": {
+    "description": "台北市萬華區青山里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "10471",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6336751543,
+  "lat": 25.0385301,
+  "lon": 121.4998150,
+  "tags": {
+    "description": "台北市萬華區富民里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "underground",
+    "fire_hydrant:type:zh": "地下式消防栓",
+    "ref:DGNID": "3744",
+    "ref:UFID": "3125",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6397118784,
+  "lat": 25.0353422,
+  "lon": 121.5034213,
+  "tags": {
+    "description": "台北市萬華區富福里",
+    "emergency": "fire_hydrant",
+    "fire_hydrant:type": "pillar",
+    "fire_hydrant:type:zh": "地上式消防栓",
+    "ref:DGNID": "3743",
+    "ref:UFID": "28113",
+    "source": "臺北自來水事業處"
+  }
+},
+{
+  "type": "node",
+  "id": 6468374628,
+  "lat": 25.0356405,
+  "lon": 121.5040643,
+  "tags": {
+    "bus": "yes",
+    "description": "38 仁愛 310 651站牌",
+    "highway": "bus_stop",
+    "name": "龍山國中",
+    "name:en": "Longshan Junior High School",
+    "name:nan": "Liông-san Kok-tiong",
+    "name:nan-Hant": "龍山國中",
+    "name:nan-Latn-pehoeji": "Liông-san Kok-tiong",
+    "name:nan-Latn-tailo": "Liông-san Kok-tiong",
+    "name:zh": "龍山國中",
+    "name:zh-Hans": "龙山国中",
+    "name:zh-Hant": "龍山國中",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 6837857524,
+  "lat": 25.0385878,
+  "lon": 121.5019253,
+  "tags": {
+    "amenity": "atm",
+    "brand": "華南商業銀行",
+    "brand:en": "Hua Nan Commercial Bank",
+    "brand:wikidata": "Q11620043",
+    "brand:zh": "華南商業銀行",
+    "name": "華南商業銀行",
+    "name:en": "Hua Nan Commercial Bank",
+    "name:nan": "Hoâ-lâm Siong-gia̍p Gîn-hâng",
+    "name:nan-Hant": "華南商業銀行",
+    "name:nan-Latn-pehoeji": "Hoâ-lâm Siong-gia̍p Gîn-hâng",
+    "name:nan-Latn-tailo": "Huâ-lâm Siong-gia̍p Gîn-hâng",
+    "name:zh": "華南商業銀行",
+    "operator": "華南商業銀行",
+    "operator:en": "Hua Nan",
+    "operator:wikidata": "Q11620043"
+  }
+},
+{
+  "type": "node",
+  "id": 6837865805,
+  "lat": 25.0369275,
+  "lon": 121.4979782,
+  "tags": {
+    "amenity": "atm",
+    "brand": "華南商業銀行",
+    "brand:en": "Hua Nan Commercial Bank",
+    "brand:wikidata": "Q11620043",
+    "brand:zh": "華南商業銀行",
+    "name": "華南商業銀行",
+    "name:en": "Hua Nan Commercial Bank",
+    "name:nan": "Hoâ-lâm Siong-gia̍p Gîn-hâng",
+    "name:nan-Hant": "華南商業銀行",
+    "name:nan-Latn-pehoeji": "Hoâ-lâm Siong-gia̍p Gîn-hâng",
+    "name:nan-Latn-tailo": "Huâ-lâm Siong-gia̍p Gîn-hâng",
+    "name:zh": "華南商業銀行",
+    "operator": "華南商業銀行",
+    "operator:en": "Hua Nan",
+    "operator:wikidata": "Q11620043"
+  }
+},
+{
+  "type": "node",
+  "id": 8421027804,
+  "lat": 25.0328433,
+  "lon": 121.5008558,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "萬華車站",
+    "name:en": "Wanhua Station",
+    "name:nan": "Báng-kah Chhia-chām",
+    "name:nan-Hant": "艋舺車站",
+    "name:nan-Latn-pehoeji": "Báng-kah Chhia-chām",
+    "name:nan-Latn-tailo": "Báng-kah Tshia-tsām",
+    "name:zh": "萬華車站",
+    "name:zh-Hans": "万华车站",
+    "name:zh-Hant": "萬華車站",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 8421027805,
+  "lat": 25.0330936,
+  "lon": 121.5000035,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "萬華車站",
+    "name:en": "Wanhua Station",
+    "name:nan": "Báng-kah Chhia-chām",
+    "name:nan-Hant": "艋舺車站",
+    "name:nan-Latn-pehoeji": "Báng-kah Chhia-chām",
+    "name:nan-Latn-tailo": "Báng-kah Tshia-tsām",
+    "name:zh": "萬華車站",
+    "name:zh-Hans": "万华车站",
+    "name:zh-Hant": "萬華車站",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 8432380454,
+  "lat": 25.0368884,
+  "lon": 121.5015779,
+  "tags": {
+    "bus": "yes",
+    "description": "康定路169號(向北)",
+    "highway": "bus_stop",
+    "name": "龍山寺(剝皮寮)",
+    "name:en": "Longshan Temple(Bopiliao)",
+    "name:nan": "Liông-san-sī(Pak-phê-liâu)",
+    "name:nan-Hant": "龍山寺(剝皮寮)",
+    "name:nan-Latn-pehoeji": "Liông-san-sī(Pak-phê-liâu)",
+    "name:nan-Latn-tailo": "Liông-san-sī(Pak-phê-liâu)",
+    "name:zh": "龍山寺(剝皮寮)",
+    "name:zh-Hans": "龙山寺(剥皮寮)",
+    "name:zh-Hant": "龍山寺(剝皮寮)",
+    "note": "停靠38區/藍29/231/242/658",
+    "public_transport": "platform",
+    "ref": "1165605675",
+    "source": "PTX",
+    "source:date": "2020-12-14"
+  }
+},
+{
+  "type": "node",
+  "id": 8432380455,
+  "lat": 25.0353744,
+  "lon": 121.5005842,
+  "tags": {
+    "bus": "yes",
+    "description": "和平西路三段105號同向(向西)",
+    "highway": "bus_stop",
+    "name": "捷運龍山寺站",
+    "name:en": "MRT Longshan Temple Sta.",
+    "name:zh": "捷運龍山寺站",
+    "name:zh-Hans": "捷运龙山寺站",
+    "name:zh-Hant": "捷運龍山寺站",
+    "note": "停靠201/651/藍28",
+    "public_transport": "platform",
+    "ref": "3911",
+    "source": "PTX",
+    "source:date": "2020-12-14"
+  }
+},
+{
+  "type": "node",
+  "id": 9020115372,
+  "lat": 25.0330100,
+  "lon": 121.5016000,
+  "tags": {
+    "alt_name": "YouBike2.0_艋舺大道146巷口",
+    "alt_name:en": "YouBike2.0_Ln. 146, Bangka Blvd Intersection",
+    "alt_name:zh": "YouBike2.0_艋舺大道146巷口",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄇㄥˇㄒㄧㄚˊㄉㄚˋㄉㄠˋ146ㄒㄧㄤˋㄎㄡˇ",
+    "alt_name:zh-Hans": "YouBike2.0_艋舺大道146巷口",
+    "alt_name:zh-Hant": "YouBike2.0_艋舺大道146巷口",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_měngxiádàdào146xiàngkǒu",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "14",
+    "description": "艋舺大道142號前",
+    "description:en": "No. 142, Bangka Blvd.",
+    "description:zh": "艋舺大道142號前",
+    "description:zh-Hans": "艋舺大道142号前",
+    "description:zh-Hant": "艋舺大道142號前",
+    "fee": "yes",
+    "name": "艋舺大道146巷口",
+    "name:en": "Ln. 146, Bangka Blvd Intersection",
+    "name:zh": "艋舺大道146巷口",
+    "name:zh-Bopo": "ㄇㄥˇㄒㄧㄚˊㄉㄚˋㄉㄠˋ146ㄒㄧㄤˋㄎㄡˇ",
+    "name:zh-Hans": "艋舺大道146巷口",
+    "name:zh-Hant": "艋舺大道146巷口",
+    "name:zh-Latn-pinyin": "měngxiádàdào146xiàngkǒu",
+    "nat_ref": "TPE500113016",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113016",
+    "rental": "city_bike",
+    "source": "PTX",
+    "source:date": "2021-08-17 16:07:21",
+    "start_date": "2021-08-13 10:00"
+  }
+},
+{
+  "type": "node",
+  "id": 9180652830,
+  "lat": 25.0417000,
+  "lon": 121.4999200,
+  "tags": {
+    "alt_name": "YouBike2.0_長沙公園",
+    "alt_name:en": "YouBike2.0_Changsha Park",
+    "alt_name:zh": "YouBike2.0_長沙公園",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄓㄤˇㄕㄚㄍㄨㄥㄩㄢˊ",
+    "alt_name:zh-Hans": "YouBike2.0_长沙公园",
+    "alt_name:zh-Hant": "YouBike2.0_長沙公園",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_zhǎngshāgōngyuán",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "37",
+    "description": "環河南路一段280-1號(對面)",
+    "description:en": "No. 280-1, Sec. 1, Huanhe S Rd. (Opposite)",
+    "description:zh": "環河南路一段280-1號(對面)",
+    "description:zh-Hans": "环河南路一段280-1号(对面)",
+    "description:zh-Hant": "環河南路一段280-1號(對面)",
+    "fee": "yes",
+    "name": "長沙公園",
+    "name:en": "Changsha Park",
+    "name:zh": "長沙公園",
+    "name:zh-Bopo": "ㄓㄤˇㄕㄚㄍㄨㄥㄩㄢˊ",
+    "name:zh-Hans": "长沙公园",
+    "name:zh-Hant": "長沙公園",
+    "name:zh-Latn-pinyin": "zhǎngshāgōngyuán",
+    "nat_ref": "TPE500113036",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113036",
+    "rental": "city_bike",
+    "source": "臺北市政府",
+    "start_date": "2021-09-17 10:00"
+  }
+},
+{
+  "type": "node",
+  "id": 9191159951,
+  "lat": 25.0350900,
+  "lon": 121.5019900,
+  "tags": {
+    "alt_name": "YouBike2.0_捷運龍山寺站(3號出口)",
+    "alt_name:en": "YouBike2.0_MRT Longshan Temple Sta. (Exit 3)",
+    "alt_name:zh": "YouBike2.0_捷運龍山寺站(3號出口)",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄐㄧㄝˊㄩㄣˋㄌㄨㄥˊㄕㄢㄙˋㄓㄢˋ(3ㄏㄠˋㄔㄨㄎㄡˇ)",
+    "alt_name:zh-Hans": "YouBike2.0_捷运龙山寺站(3号出口)",
+    "alt_name:zh-Hant": "YouBike2.0_捷運龍山寺站(3號出口)",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_jiéyùnlóngshānsìzhàn(3hàochūkǒu)",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "40",
+    "description": "和平西路三段/和平西路三段88巷(西南側)",
+    "description:en": "Sec. 3, Heping W Rd. & Ln. 88, Sec. 3, Heping W Rd. Intersection (Southwest)",
+    "description:zh": "和平西路三段/和平西路三段88巷(西南側)",
+    "description:zh-Hans": "和平西路三段/和平西路三段88巷(西南侧)",
+    "description:zh-Hant": "和平西路三段/和平西路三段88巷(西南側)",
+    "fee": "yes",
+    "name": "捷運龍山寺站(3號出口)",
+    "name:en": "MRT Longshan Temple Sta. (Exit 3)",
+    "name:zh": "捷運龍山寺站(3號出口)",
+    "name:zh-Bopo": "ㄐㄧㄝˊㄩㄣˋㄌㄨㄥˊㄕㄢㄙˋㄓㄢˋ(3ㄏㄠˋㄔㄨㄎㄡˇ)",
+    "name:zh-Hans": "捷运龙山寺站(3号出口)",
+    "name:zh-Hant": "捷運龍山寺站(3號出口)",
+    "name:zh-Latn-pinyin": "jiéyùnlóngshānsìzhàn(3hàochūkǒu)",
+    "nat_ref": "TPE500113046",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113046",
+    "rental": "city_bike",
+    "source": "YouBike;臺北市政府",
+    "source:date": "2021-10-22"
+  }
+},
+{
+  "type": "node",
+  "id": 9191159952,
+  "lat": 25.0339400,
+  "lon": 121.5011700,
+  "tags": {
+    "alt_name": "YouBike2.0_萬華火車站(D2廣場)",
+    "alt_name:en": "YouBike2.0_Wanhua Train Sta. (D2 Plaza)",
+    "alt_name:zh": "YouBike2.0_萬華火車站(D2廣場)",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄨㄢˋㄏㄨㄚˊㄏㄨㄛˇㄔㄜㄓㄢˋ(D2ㄍㄨㄤˇㄔㄤˇ)",
+    "alt_name:zh-Hans": "YouBike2.0_万华火车站(D2广场)",
+    "alt_name:zh-Hant": "YouBike2.0_萬華火車站(D2廣場)",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_wànhuáhuǒchēzhàn(D2guǎngchǎng)",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "42",
+    "description": "康定路/康定路287巷(東南側)",
+    "description:en": "Kangding Rd. & Ln. 287, Kangding Rd. Intersection",
+    "description:zh": "康定路/康定路287巷(東南側)",
+    "description:zh-Hans": "康定路/康定路287巷(东南侧)",
+    "description:zh-Hant": "康定路/康定路287巷(東南側)",
+    "fee": "yes",
+    "name": "萬華火車站(D2廣場)",
+    "name:en": "Wanhua Train Sta. (D2 Plaza)",
+    "name:zh": "萬華火車站(D2廣場)",
+    "name:zh-Bopo": "ㄨㄢˋㄏㄨㄚˊㄏㄨㄛˇㄔㄜㄓㄢˋ(D2ㄍㄨㄤˇㄔㄤˇ)",
+    "name:zh-Hans": "万华火车站(D2广场)",
+    "name:zh-Hant": "萬華火車站(D2廣場)",
+    "name:zh-Latn-pinyin": "wànhuáhuǒchēzhàn(D2guǎngchǎng)",
+    "nat_ref": "TPE500113045",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113045",
+    "rental": "city_bike",
+    "source": "YouBike;臺北市政府",
+    "source:date": "2021-10-22"
+  }
+},
+{
+  "type": "node",
+  "id": 9191159953,
+  "lat": 25.0336400,
+  "lon": 121.5032200,
+  "tags": {
+    "alt_name": "YouBike2.0_萬華火車站",
+    "alt_name:en": "YouBike2.0_Wanhua Train Sta.",
+    "alt_name:zh": "YouBike2.0_萬華火車站",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄨㄢˋㄏㄨㄚˊㄏㄨㄛˇㄔㄜㄓㄢˋ",
+    "alt_name:zh-Hans": "YouBike2.0_万华火车站",
+    "alt_name:zh-Hant": "YouBike2.0_萬華火車站",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_wànhuáhuǒchēzhàn",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "78",
+    "description": "艋舺大道83號(前)",
+    "description:en": "No. 83, Bangka Blvd.",
+    "description:zh": "艋舺大道83號(前)",
+    "description:zh-Hans": "艋舺大道83号(前)",
+    "description:zh-Hant": "艋舺大道83號(前)",
+    "fee": "yes",
+    "name": "萬華火車站",
+    "name:en": "Wanhua Train Sta.",
+    "name:zh": "萬華火車站",
+    "name:zh-Bopo": "ㄨㄢˋㄏㄨㄚˊㄏㄨㄛˇㄔㄜㄓㄢˋ",
+    "name:zh-Hans": "万华火车站",
+    "name:zh-Hant": "萬華火車站",
+    "name:zh-Latn-pinyin": "wànhuáhuǒchēzhàn",
+    "nat_ref": "TPE500113044",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113044",
+    "rental": "city_bike",
+    "source": "YouBike;臺北市政府",
+    "source:date": "2021-10-22"
+  }
+},
+{
+  "type": "node",
+  "id": 9191159954,
+  "lat": 25.0379200,
+  "lon": 121.5017700,
+  "tags": {
+    "alt_name": "YouBike2.0_老松國小",
+    "alt_name:en": "YouBike2.0_laosong Elementary School",
+    "alt_name:zh": "YouBike2.0_老松國小",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄌㄠˇㄙㄨㄥㄍㄨㄛˊㄒㄧㄠˇ",
+    "alt_name:zh-Hans": "YouBike2.0_老松国小",
+    "alt_name:zh-Hant": "YouBike2.0_老松國小",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_lǎosōngguóxiǎo",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "74",
+    "description": "康定路238號(對面)",
+    "description:en": "No. 238, Kangding Rd. (Opposite)",
+    "description:zh": "康定路238號(對面)",
+    "description:zh-Hans": "康定路238号(对面)",
+    "description:zh-Hant": "康定路238號(對面)",
+    "fee": "yes",
+    "name": "老松國小",
+    "name:en": "laosong Elementary School",
+    "name:zh": "老松國小",
+    "name:zh-Bopo": "ㄌㄠˇㄙㄨㄥㄍㄨㄛˊㄒㄧㄠˇ",
+    "name:zh-Hans": "老松国小",
+    "name:zh-Hant": "老松國小",
+    "name:zh-Latn-pinyin": "lǎosōngguóxiǎo",
+    "nat_ref": "TPE500113043",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113043",
+    "rental": "city_bike",
+    "source": "YouBike;臺北市政府",
+    "source:date": "2021-10-22"
+  }
+},
+{
+  "type": "node",
+  "id": 9191159955,
+  "lat": 25.0385200,
+  "lon": 121.4988100,
+  "tags": {
+    "alt_name": "YouBike2.0_華西公園",
+    "alt_name:en": "YouBike2.0_Huaxi Park",
+    "alt_name:zh": "YouBike2.0_華西公園",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄏㄨㄚˊㄒㄧㄍㄨㄥㄩㄢˊ",
+    "alt_name:zh-Hans": "YouBike2.0_华西公园",
+    "alt_name:zh-Hant": "YouBike2.0_華西公園",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_huáxīgōngyuán",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "51",
+    "description": "桂林路134號(對面)",
+    "description:en": "No. 134, Guilin Rd. (Opposite)",
+    "description:zh": "桂林路134號(對面)",
+    "description:zh-Hans": "桂林路134号(对面)",
+    "description:zh-Hant": "桂林路134號(對面)",
+    "fee": "yes",
+    "name": "華西公園",
+    "name:en": "Huaxi Park",
+    "name:zh": "華西公園",
+    "name:zh-Bopo": "ㄏㄨㄚˊㄒㄧㄍㄨㄥㄩㄢˊ",
+    "name:zh-Hans": "华西公园",
+    "name:zh-Hant": "華西公園",
+    "name:zh-Latn-pinyin": "huáxīgōngyuán",
+    "nat_ref": "TPE500113042",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113042",
+    "rental": "city_bike",
+    "source": "YouBike;臺北市政府",
+    "source:date": "2021-10-22"
+  }
+},
+{
+  "type": "node",
+  "id": 9191159956,
+  "lat": 25.0355000,
+  "lon": 121.4954100,
+  "tags": {
+    "alt_name": "YouBike2.0_龍山國小",
+    "alt_name:en": "YouBike2.0_Longshan Elementary School",
+    "alt_name:zh": "YouBike2.0_龍山國小",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄌㄨㄥˊㄕㄢㄍㄨㄛˊㄒㄧㄠˇ",
+    "alt_name:zh-Hans": "YouBike2.0_龙山国小",
+    "alt_name:zh-Hant": "YouBike2.0_龍山國小",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_lóngshānguóxiǎo",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "62",
+    "description": "和平西路三段235號(旁)",
+    "description:en": "No. 235, Sec. 3, Heping W Rd. (Side)",
+    "description:zh": "和平西路三段235號(旁)",
+    "description:zh-Hans": "和平西路三段235号(旁)",
+    "description:zh-Hant": "和平西路三段235號(旁)",
+    "fee": "yes",
+    "name": "龍山國小",
+    "name:en": "Longshan Elementary School",
+    "name:zh": "龍山國小",
+    "name:zh-Bopo": "ㄌㄨㄥˊㄕㄢㄍㄨㄛˊㄒㄧㄠˇ",
+    "name:zh-Hans": "龙山国小",
+    "name:zh-Hant": "龍山國小",
+    "name:zh-Latn-pinyin": "lóngshānguóxiǎo",
+    "nat_ref": "TPE500113041",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113041",
+    "rental": "city_bike",
+    "source": "YouBike;臺北市政府",
+    "source:date": "2021-10-22"
+  }
+},
+{
+  "type": "node",
+  "id": 9191159957,
+  "lat": 25.0353500,
+  "lon": 121.4993800,
+  "tags": {
+    "alt_name": "YouBike2.0_捷運龍山寺站(1號出口)",
+    "alt_name:en": "YouBike2.0_MRT Longshan Temple Sta. (Exit 1)",
+    "alt_name:zh": "YouBike2.0_捷運龍山寺站(1號出口)",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄐㄧㄝˊㄩㄣˋㄌㄨㄥˊㄕㄢㄙˋㄓㄢˋ(1ㄏㄠˋㄔㄨㄎㄡˇ)",
+    "alt_name:zh-Hans": "YouBike2.0_捷运龙山寺站(1号出口)",
+    "alt_name:zh-Hant": "YouBike2.0_捷運龍山寺站(1號出口)",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_jiéyùnlóngshānsìzhàn(1hàochūkǒu)",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "11",
+    "description": "和平西路三段/西園路一段(東北側)",
+    "description:en": "Sec. 3, Heping W Rd. & Sec. 1, Xiyuan Rd. (Northeast)",
+    "description:zh": "和平西路三段/西園路一段(東北側)",
+    "description:zh-Hans": "和平西路三段/西园路一段(东北侧)",
+    "description:zh-Hant": "和平西路三段/西園路一段(東北側)",
+    "fee": "yes",
+    "name": "捷運龍山寺站(1號出口)",
+    "name:en": "MRT Longshan Temple Sta. (Exit 1)",
+    "name:zh": "捷運龍山寺站(1號出口)",
+    "name:zh-Bopo": "ㄐㄧㄝˊㄩㄣˋㄌㄨㄥˊㄕㄢㄙˋㄓㄢˋ(1ㄏㄠˋㄔㄨㄎㄡˇ)",
+    "name:zh-Hans": "捷运龙山寺站(1号出口)",
+    "name:zh-Hant": "捷運龍山寺站(1號出口)",
+    "name:zh-Latn-pinyin": "jiéyùnlóngshānsìzhàn(1hàochūkǒu)",
+    "nat_ref": "TPE500113040",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113040",
+    "rental": "city_bike",
+    "source": "YouBike;臺北市政府",
+    "source:date": "2021-10-22"
+  }
+},
+{
+  "type": "node",
+  "id": 9403338885,
+  "lat": 25.0360901,
+  "lon": 121.4992551,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "龍山寺(西園)",
+    "name:en": "Longshan Temple (Xiyuan)",
+    "name:zh": "龍山寺 (西園)",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "note": "停靠38/38區/673/綠17",
+    "public_transport": "platform",
+    "toilets:wheelchair": "no",
+    "wheelchair": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 9410207219,
+  "lat": 25.0373100,
+  "lon": 121.4952600,
+  "tags": {
+    "alt_name": "YouBike2.0_柳鄉公園",
+    "alt_name:en": "YouBike2.0_Liuxiang Park",
+    "alt_name:zh": "YouBike2.0_柳鄉公園",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄌㄧㄡˇㄒㄧㄤㄍㄨㄥㄩㄢˊ",
+    "alt_name:zh-Hans": "YouBike2.0_柳乡公园",
+    "alt_name:zh-Hant": "YouBike2.0_柳鄉公園",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_liǔxiānggōngyuán",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "34",
+    "description": "環河南路二段100巷15號對側",
+    "description:en": "No. 102, Sec. 2, Huanhe S. Rd. (Northwest)",
+    "description:zh": "環河南路二段100巷15號對側",
+    "description:zh-Hans": "环河南路二段100巷15号对侧",
+    "description:zh-Hant": "環河南路二段100巷15號對側",
+    "fee": "yes",
+    "name": "柳鄉公園",
+    "name:en": "Liuxiang Park",
+    "name:zh": "柳鄉公園",
+    "name:zh-Bopo": "ㄌㄧㄡˇㄒㄧㄤㄍㄨㄥㄩㄢˊ",
+    "name:zh-Hans": "柳乡公园",
+    "name:zh-Hant": "柳鄉公園",
+    "name:zh-Latn-pinyin": "liǔxiānggōngyuán",
+    "nat_ref": "TPE500113057",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113057",
+    "rental": "city_bike",
+    "source": "PTX",
+    "source:date": "2023-12-24T20:12:17+08:00"
+  }
+},
+{
+  "type": "node",
+  "id": 9410207220,
+  "lat": 25.0403000,
+  "lon": 121.5019700,
+  "tags": {
+    "alt_name": "YouBike2.0_萬華266號綠地",
+    "alt_name:en": "YouBike2.0_wanhua greehs NO.266",
+    "alt_name:zh": "YouBike2.0_萬華266號綠地",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄨㄢˋㄏㄨㄚˊ266ㄏㄠˋㄌㄩˋㄉㄧˋ",
+    "alt_name:zh-Hans": "YouBike2.0_万华266号绿地",
+    "alt_name:zh-Hant": "YouBike2.0_萬華266號綠地",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_wànhuá266hàolǜdì",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "19",
+    "description": "康定路81號(對面)",
+    "description:en": "No. 81, Kangding Rd. (Opposite)",
+    "description:zh": "康定路81號(對面)",
+    "description:zh-Hans": "康定路81号(对面)",
+    "description:zh-Hant": "康定路81號(對面)",
+    "fee": "yes",
+    "name": "萬華266號綠地",
+    "name:en": "wanhua greehs NO.266",
+    "name:zh": "萬華266號綠地",
+    "name:zh-Bopo": "ㄨㄢˋㄏㄨㄚˊ266ㄏㄠˋㄌㄩˋㄉㄧˋ",
+    "name:zh-Hans": "万华266号绿地",
+    "name:zh-Hant": "萬華266號綠地",
+    "name:zh-Latn-pinyin": "wànhuá266hàolǜdì",
+    "nat_ref": "TPE500113050",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113050",
+    "rental": "city_bike",
+    "source": "PTX",
+    "source:date": "2022-01-10T10:48:11+08:00"
+  }
+},
+{
+  "type": "node",
+  "id": 9720220775,
+  "lat": 25.0352401,
+  "lon": 121.4967460,
+  "tags": {
+    "bus": "yes",
+    "description": "和平西路三段226-230號同向",
+    "highway": "bus_stop",
+    "local_ref": "台北市公車",
+    "name": "中國時報",
+    "name:en": "China Times",
+    "name:zh": "中國時報",
+    "name:zh-Hans": "中国时报",
+    "name:zh-Hant": "中國時報",
+    "network": "臺北市市區公車",
+    "network:en": "Taipei Joint Bus System",
+    "network:nan": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Hant": "臺北市市區公車",
+    "network:nan-Latn-pehoeji": "Tâi-pak-chhī Chhī-khu Kong-chhia",
+    "network:nan-Latn-tailo": "Tâi-pak-tshiī Tshī-khu Kong-tshia",
+    "network:wikidata": "Q5972821",
+    "network:zh": "臺北市市區公車",
+    "note": "停靠其他路線",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 11250932794,
+  "lat": 25.0353103,
+  "lon": 121.5038335,
+  "tags": {
+    "amenity": "charging_station",
+    "brand": "Gogoro 電池交換站",
+    "brand:wikidata": "Q19880591",
+    "name": "Gogoro 電池交換站",
+    "operator": "Gogoro 電池交換站",
+    "operator:wikidata": "Q19880591"
+  }
+},
+{
+  "type": "node",
+  "id": 11252882073,
+  "lat": 25.0345697,
+  "lon": 121.4997958,
+  "tags": {
+    "amenity": "parking_entrance"
+  }
+},
+{
+  "type": "node",
+  "id": 11252882074,
+  "lat": 25.0345697,
+  "lon": 121.4997544,
+  "tags": {
+    "amenity": "parking_entrance"
+  }
+},
+{
+  "type": "node",
+  "id": 11425676394,
+  "lat": 25.0381100,
+  "lon": 121.5036200,
+  "tags": {
+    "alt_name": "YouBike2.0_桂林昆明街口",
+    "alt_name:en": "YouBike2.0_Guilin Rd. & Kunming St. Intersection",
+    "alt_name:zh": "YouBike2.0_桂林昆明街口",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄍㄨㄟˋㄌㄧㄣˊㄎㄨㄣㄇㄧㄥˊㄐㄧㄝㄎㄡˇ",
+    "alt_name:zh-Hans": "YouBike2.0_桂林昆明街口",
+    "alt_name:zh-Hant": "YouBike2.0_桂林昆明街口",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_guìlínkūnmíngjiēkǒu",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "29",
+    "description": "桂林路與昆明街口西北側",
+    "description:en": "Guilin Rd. & Kunming St. Intersection (Northwest)",
+    "description:zh": "桂林路與昆明街口西北側",
+    "description:zh-Hans": "桂林路与昆明街口西北侧",
+    "description:zh-Hant": "桂林路與昆明街口西北側",
+    "fee": "yes",
+    "name": "桂林昆明街口",
+    "name:en": "Guilin Rd. & Kunming St. Intersection",
+    "name:zh": "桂林昆明街口",
+    "name:zh-Bopo": "ㄍㄨㄟˋㄌㄧㄣˊㄎㄨㄣㄇㄧㄥˊㄐㄧㄝㄎㄡˇ",
+    "name:zh-Hans": "桂林昆明街口",
+    "name:zh-Hant": "桂林昆明街口",
+    "name:zh-Latn-pinyin": "guìlínkūnmíngjiēkǒu",
+    "nat_ref": "TPE500113064",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113064",
+    "rental": "city_bike"
+  }
+},
+{
+  "type": "node",
+  "id": 11453062148,
+  "lat": 25.0334800,
+  "lon": 121.5044500,
+  "tags": {
+    "alt_name": "YouBike2.0_和平西路二段190巷口",
+    "alt_name:en": "YouBike2.0_Ln. 190, Sec. 2, Heping W. Rd.",
+    "alt_name:zh": "YouBike2.0_和平西路二段190巷口",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄏㄜˊㄆㄧㄥˊㄒㄧㄌㄨˋㄦˋㄉㄨㄢˋ190ㄒㄧㄤˋㄎㄡˇ",
+    "alt_name:zh-Hans": "YouBike2.0_和平西路二段190巷口",
+    "alt_name:zh-Hant": "YouBike2.0_和平西路二段190巷口",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_hépíngxīlùèrduàn190xiàngkǒu",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "15",
+    "description": "和平西路二段190巷11號前",
+    "description:en": "No. 11, Ln. 190, Sec. 2, Heping W. Rd.",
+    "description:zh": "和平西路二段190巷11號前",
+    "description:zh-Hans": "和平西路二段190巷11号前",
+    "description:zh-Hant": "和平西路二段190巷11號前",
+    "fee": "yes",
+    "name": "和平西路二段190巷口",
+    "name:en": "Ln. 190, Sec. 2, Heping W. Rd.",
+    "name:zh": "和平西路二段190巷口",
+    "name:zh-Bopo": "ㄏㄜˊㄆㄧㄥˊㄒㄧㄌㄨˋㄦˋㄉㄨㄢˋ190ㄒㄧㄤˋㄎㄡˇ",
+    "name:zh-Hans": "和平西路二段190巷口",
+    "name:zh-Hant": "和平西路二段190巷口",
+    "name:zh-Latn-pinyin": "hépíngxīlùèrduàn190xiàngkǒu",
+    "nat_ref": "TPE500113074",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113074",
+    "rental": "city_bike",
+    "source": "TDX",
+    "source:date": "2023-12-24T20:12:17+08:00"
+  }
+},
+{
+  "type": "node",
+  "id": 11453062153,
+  "lat": 25.0354800,
+  "lon": 121.5002600,
+  "tags": {
+    "alt_name": "YouBike2.0_捷運龍山寺站(1號出口)_1",
+    "alt_name:en": "YouBike2.0_MRT Longshan Temple Sta. (Exit 1)_1",
+    "alt_name:zh": "YouBike2.0_捷運龍山寺站(1號出口)_1",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄐㄧㄝˊㄩㄣˋㄌㄨㄥˊㄕㄢㄙˋㄓㄢˋ(1ㄏㄠˋㄔㄨㄎㄡˇ)_1",
+    "alt_name:zh-Hans": "YouBike2.0_捷运龙山寺站(1号出口)_1",
+    "alt_name:zh-Hant": "YouBike2.0_捷運龍山寺站(1號出口)_1",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_jiéyùnlóngshānsìzhàn(1hàochūkǒu)_1",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikidata": "Q20687952",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "11",
+    "description": "和平西路三段/和平西路三段109巷(西北側)",
+    "description:en": "Sec. 3, Heping W. Rd. & Ln. 109, Sec. 3, Heping W. Rd. Intersection (Northwest)",
+    "description:zh": "和平西路三段/和平西路三段109巷(西北側)",
+    "description:zh-Hans": "和平西路三段/和平西路三段109巷(西北侧)",
+    "description:zh-Hant": "和平西路三段/和平西路三段109巷(西北側)",
+    "fee": "yes",
+    "name": "捷運龍山寺站(1號出口)_1",
+    "name:en": "MRT Longshan Temple Sta. (Exit 1)_1",
+    "name:zh": "捷運龍山寺站(1號出口)_1",
+    "name:zh-Bopo": "ㄐㄧㄝˊㄩㄣˋㄌㄨㄥˊㄕㄢㄙˋㄓㄢˋ(1ㄏㄠˋㄔㄨㄎㄡˇ)_1",
+    "name:zh-Hans": "捷运龙山寺站(1号出口)_1",
+    "name:zh-Hant": "捷運龍山寺站(1號出口)_1",
+    "name:zh-Latn-pinyin": "jiéyùnlóngshānsìzhàn(1hàochūkǒu)_1",
+    "nat_ref": "TPE500113068",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator": "微笑單車股份有限公司",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "government",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113068",
+    "rental": "city_bike",
+    "source": "TDX",
+    "source:date": "2023-12-24T20:12:17+08:00"
+  }
+},
+{
+  "type": "node",
+  "id": 13271997621,
+  "lat": 25.0354970,
+  "lon": 121.4995640,
+  "tags": {
+    "access": "yes",
+    "amenity": "drinking_water",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 25363001#8653",
+    "description": "臺北大眾捷運股份有限公司，龍山寺站，臺北市萬華區西園路1段153號，臺北大眾捷運股份有限公司，龍山寺站，1號出口",
+    "image": "https://gismobile.water.gov.taipei/WaterMap_drinkImg/1820a.JPG",
+    "is_in:city": "臺北市",
+    "is_in:district": "萬華",
+    "opening_hours": "Mo-Su 06:00-23:00",
+    "operator": "臺北大眾捷運股份有限公司(藍橘線)",
+    "operator:type": "捷運站",
+    "ref": "1820a",
+    "source": "臺北市自來水處",
+    "source:url": "https://data.taipei/dataset/detail?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "website": "https://gismobile.water.gov.taipei:8443/W/S.aspx?SD=1820a"
+  }
+},
+{
+  "type": "node",
+  "id": 13271997792,
+  "lat": 25.0349300,
+  "lon": 121.5020110,
+  "tags": {
+    "access": "yes",
+    "amenity": "drinking_water",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 27003830",
+    "description": "工務局公園處，萬華1號綠地，臺北市萬華區大理街22號對面，工務局公園處，萬華1號綠地，入口旁",
+    "image": "https://gismobile.water.gov.taipei/WaterMap_drinkImg/0289.JPG",
+    "is_in:city": "臺北市",
+    "is_in:district": "萬華區",
+    "opening_hours": "24/7",
+    "operator": "工務局公園處青年管理所",
+    "operator:type": "公園步道",
+    "ref": "0289",
+    "source": "臺北市自來水處",
+    "source:url": "https://data.taipei/dataset/detail?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "website": "https://gismobile.water.gov.taipei:8443/W/S.aspx?SD=0289"
+  }
+},
+{
+  "type": "node",
+  "id": 13271997793,
+  "lat": 25.0416890,
+  "lon": 121.5001110,
+  "tags": {
+    "access": "yes",
+    "amenity": "drinking_water",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 27003830",
+    "description": "工務局公園處，長沙公園，臺北市萬華區環河南路一段280號之1，工務局公園處，長沙公園，廣場旁",
+    "image": "https://gismobile.water.gov.taipei/WaterMap_drinkImg/0287.JPG",
+    "is_in:city": "臺北市",
+    "is_in:district": "萬華",
+    "opening_hours": "24/7",
+    "operator": "工務局公園處青年管理所",
+    "operator:type": "公園步道",
+    "ref": "0287",
+    "source": "臺北市自來水處",
+    "source:url": "https://data.taipei/dataset/detail?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "website": "https://gismobile.water.gov.taipei:8443/W/S.aspx?SD=0287"
+  }
+},
+{
+  "type": "node",
+  "id": 13271997801,
+  "lat": 25.0372440,
+  "lon": 121.4953050,
+  "tags": {
+    "access": "yes",
+    "amenity": "drinking_water",
+    "cold_water": "yes",
+    "contact:phone": "+886 2 27003830",
+    "description": "工務局公園處，柳鄉公園，臺北市萬華區環河南路二段100巷，工務局公園處，柳鄉公園，遊樂場旁",
+    "image": "https://gismobile.water.gov.taipei/WaterMap_drinkImg/0277.JPG",
+    "is_in:city": "臺北市",
+    "is_in:district": "萬華",
+    "opening_hours": "24/7",
+    "operator": "工務局公園處青年管理所",
+    "operator:type": "公園步道",
+    "ref": "0277",
+    "source": "臺北市自來水處",
+    "source:url": "https://data.taipei/dataset/detail?id=155999f2-3c5d-486b-af58-d7f4c0b0a4c9",
+    "website": "https://gismobile.water.gov.taipei:8443/W/S.aspx?SD=0277"
+  }
+},
+{
+  "type": "node",
+  "id": 13377641660,
+  "lat": 25.0406503,
+  "lon": 121.4998238,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "青山宮",
+    "name:en": "Qingshan Temple",
+    "name:zh": "青山宮",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 13377641661,
+  "lat": 25.0400652,
+  "lon": 121.5000357,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "青山宮",
+    "name:en": "Qingshan Temple",
+    "name:zh": "青山宮",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 13605138465,
+  "lat": 25.0394964,
+  "lon": 121.4982805,
+  "tags": {
+    "amenity": "bench",
+    "armrest": "no",
+    "backrest": "no",
+    "material": "stone"
+  }
+},
+{
+  "type": "node",
+  "id": 13605138466,
+  "lat": 25.0394480,
+  "lon": 121.4982735,
+  "tags": {
+    "amenity": "bench",
+    "armrest": "no",
+    "backrest": "no",
+    "material": "stone"
+  }
+},
+{
+  "type": "node",
+  "id": 13605138470,
+  "lat": 25.0393718,
+  "lon": 121.4983087,
+  "tags": {
+    "amenity": "bench",
+    "armrest": "no",
+    "backrest": "no",
+    "material": "stone"
+  }
+},
+{
+  "type": "node",
+  "id": 13605138472,
+  "lat": 25.0394107,
+  "lon": 121.4983110,
+  "tags": {
+    "amenity": "bench",
+    "armrest": "no",
+    "backrest": "no",
+    "material": "stone"
+  }
+},
+{
+  "type": "node",
+  "id": 13605138473,
+  "lat": 25.0393966,
+  "lon": 121.4982702,
+  "tags": {
+    "amenity": "bench",
+    "armrest": "no",
+    "backrest": "no",
+    "material": "stone"
+  }
+},
+{
+  "type": "node",
+  "id": 13607291718,
+  "lat": 25.0393500,
+  "lon": 121.4974300,
+  "tags": {
+    "alt_name": "YouBike2.0_環河南路一段350巷口",
+    "alt_name:en": "YouBike2.0_Ln. 350, Sec. 1, HuanHe S. Rd.",
+    "alt_name:zh": "YouBike2.0_環河南路一段350巷口",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄏㄨㄢˊㄏㄜˊㄋㄢˊㄌㄨˋㄧㄉㄨㄢˋ350ㄒㄧㄤˋㄎㄡˇ",
+    "alt_name:zh-Hans": "YouBike2.0_环河南路一段350巷口",
+    "alt_name:zh-Hant": "YouBike2.0_環河南路一段350巷口",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_huánhénánlùyīduàn350xiàngkǒu",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "15",
+    "description": "環河南路一段350巷/環河南路二段",
+    "description:en": "Ln. 350, Sec. 1, HuanHe S. Rd. & Sec. 2, HuanHe S. Rd.",
+    "description:zh": "環河南路一段350巷/環河南路二段",
+    "description:zh-Hans": "环河南路一段350巷/环河南路二段",
+    "description:zh-Hant": "環河南路一段350巷/環河南路二段",
+    "fee": "yes",
+    "name": "環河南路一段350巷口",
+    "name:en": "Ln. 350, Sec. 1, HuanHe S. Rd.",
+    "name:zh": "環河南路一段350巷口",
+    "name:zh-Bopo": "ㄏㄨㄢˊㄏㄜˊㄋㄢˊㄌㄨˋㄧㄉㄨㄢˋ350ㄒㄧㄤˋㄎㄡˇ",
+    "name:zh-Hans": "环河南路一段350巷口",
+    "name:zh-Hant": "環河南路一段350巷口",
+    "name:zh-Latn-pinyin": "huánhénánlùyīduàn350xiàngkǒu",
+    "nat_ref": "TPE500113096",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "private",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113096",
+    "rental": "city_bike",
+    "source": "TDX",
+    "source:date": "2026-02-26T08:53:01+08:00"
+  }
+},
+{
+  "type": "node",
+  "id": 13607291719,
+  "lat": 25.0345700,
+  "lon": 121.5000000,
+  "tags": {
+    "alt_name": "YouBike2.0_萬華區公所(大理街)",
+    "alt_name:en": "YouBike2.0_Wanhua District Office (DaLi St.)",
+    "alt_name:zh": "YouBike2.0_萬華區公所(大理街)",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄨㄢˋㄏㄨㄚˊㄑㄩㄍㄨㄥㄙㄨㄛˇ(ㄉㄚˋㄌㄧˇㄐㄧㄝ)",
+    "alt_name:zh-Hans": "YouBike2.0_万华区公所(大理街)",
+    "alt_name:zh-Hant": "YouBike2.0_萬華區公所(大理街)",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_wànhuáqūgōngsuǒ(dàlǐjiē)",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "26",
+    "description": "大理街42之6號對側",
+    "description:en": "No. 42-6, DaLi St. (Opposite)",
+    "description:zh": "大理街42之6號對側",
+    "description:zh-Hans": "大理街42之6号对侧",
+    "description:zh-Hant": "大理街42之6號對側",
+    "fee": "yes",
+    "name": "萬華區公所(大理街)",
+    "name:en": "Wanhua District Office (DaLi St.)",
+    "name:zh": "萬華區公所(大理街)",
+    "name:zh-Bopo": "ㄨㄢˋㄏㄨㄚˊㄑㄩㄍㄨㄥㄙㄨㄛˇ(ㄉㄚˋㄌㄧˇㄐㄧㄝ)",
+    "name:zh-Hans": "万华区公所(大理街)",
+    "name:zh-Hant": "萬華區公所(大理街)",
+    "name:zh-Latn-pinyin": "wànhuáqūgōngsuǒ(dàlǐjiē)",
+    "nat_ref": "TPE500113095",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "private",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113095",
+    "rental": "city_bike",
+    "source": "TDX",
+    "source:date": "2026-02-26T08:53:01+08:00"
+  }
+},
+{
+  "type": "node",
+  "id": 13607291720,
+  "lat": 25.0348400,
+  "lon": 121.4992800,
+  "tags": {
+    "alt_name": "YouBike2.0_萬華51號公園",
+    "alt_name:en": "YouBike2.0_Wanhua Park NO.51",
+    "alt_name:zh": "YouBike2.0_萬華51號公園",
+    "alt_name:zh-Bopo": "YouBike2.0_ㄨㄢˋㄏㄨㄚˊ51ㄏㄠˋㄍㄨㄥㄩㄢˊ",
+    "alt_name:zh-Hans": "YouBike2.0_万华51号公园",
+    "alt_name:zh-Hant": "YouBike2.0_萬華51號公園",
+    "alt_name:zh-Latn-pinyin": "YouBike2.0_wànhuá51hàogōngyuán",
+    "amenity": "bicycle_rental",
+    "authentication:app": "yes",
+    "authentication:contactless": "yes",
+    "authentication:membership_card": "yes",
+    "bicycle_rental": "docking_station",
+    "brand": "YouBike 2.0",
+    "brand:en": "YouBike 2.0",
+    "brand:wikipedia": "en:YouBike",
+    "brand:zh": "微笑單車2.0",
+    "capacity": "14",
+    "description": "西園路一段167號對側公園",
+    "description:en": "No. 167, Sec. 1, XiYuan Rd. (Opposite)",
+    "description:zh": "西園路一段167號對側公園",
+    "description:zh-Hans": "西园路一段167号对侧公园",
+    "description:zh-Hant": "西園路一段167號對側公園",
+    "fee": "yes",
+    "name": "萬華51號公園",
+    "name:en": "Wanhua Park NO.51",
+    "name:zh": "萬華51號公園",
+    "name:zh-Bopo": "ㄨㄢˋㄏㄨㄚˊ51ㄏㄠˋㄍㄨㄥㄩㄢˊ",
+    "name:zh-Hans": "万华51号公园",
+    "name:zh-Hant": "萬華51號公園",
+    "name:zh-Latn-pinyin": "wànhuá51hàogōngyuán",
+    "nat_ref": "TPE500113094",
+    "network": "臺北市公共自行車租賃系統",
+    "network:en": "Taipei City Public Bike",
+    "network:wikidata": "Q20687952",
+    "network:zh": "臺北市公共自行車租賃系統",
+    "opening_hours": "24/7",
+    "operator:en": "YOUBIKE CO.",
+    "operator:type": "private",
+    "operator:wikidata": "Q703557",
+    "operator:zh": "微笑單車股份有限公司",
+    "payment:credit_cards": "yes",
+    "payment:ep_easycard": "yes",
+    "payment:ep_easywallet": "yes",
+    "payment:ep_ipass": "yes",
+    "payment:jcb": "yes",
+    "payment:mastercard": "yes",
+    "payment:visa": "yes",
+    "ref": "500113094",
+    "rental": "city_bike",
+    "source": "TDX",
+    "source:date": "2026-02-26T08:53:01+08:00"
+  }
+},
+{
+  "type": "way",
+  "id": 308676421,
+  "bounds": {
+    "minlat": 25.0335957,
+    "minlon": 121.5026139,
+    "maxlat": 25.0336643,
+    "maxlon": 121.5028059
+  },
+  "nodes": [
+    3139435932,
+    3139435933,
+    3139435934,
+    3139435935,
+    3139435932
+  ],
+  "geometry": [
+    { "lat": 25.0336539, "lon": 121.5026139 },
+    { "lat": 25.0335957, "lon": 121.5026178 },
+    { "lat": 25.0336061, "lon": 121.5028059 },
+    { "lat": 25.0336643, "lon": 121.5028020 },
+    { "lat": 25.0336539, "lon": 121.5026139 }
+  ],
+  "tags": {
+    "amenity": "motorcycle_parking",
+    "fee": "no",
+    "name": "機車停車場"
+  }
+}
+
+  ]
+}

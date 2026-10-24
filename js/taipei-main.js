@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { color, mix, smoothstep, step, positionLocal } from 'three/tsl';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GEO } from './taipei-geodata.js';
 import { buildFootprintBuildings } from './footprint-buildings.js';
 import { buildGraphRoads } from './graph-roads.js';
 import { SimpleVehicles } from './simple-vehicles.js';
@@ -13,7 +12,8 @@ import { buildStreetFurniture } from './street-furniture.js';
 import { buildBasemapOverlay } from './basemap-overlay.js';
 
 // js/taipei-main.js
-// Taipei viewer (taipei.html): the test box around Taipei 101 (GEO.frame.box, 2 km) from OSM, orbit camera, sun & sky.
+// Taipei viewer (taipei.html): one test box (GEO.frame.box) from OSM, orbit camera, sun & sky. ?area= picks the box:
+// xinyi (default; 2 km around Taipei 101) or wanhua (1 km around Lungshan Temple), each its own generated geodata file.
 // The NYC app (index.html, js/main.js) is untouched and stays the comparison baseline.
 
 // Loading screen (taipei.html #loading): a sweeping bar while the modules download, then real progress through the
@@ -77,7 +77,12 @@ async function precompile(renderer, scene, camera, onProgress) {
   await Promise.all(Array.from({ length: 8 }, worker));
 }
 
+const AREAS = { xinyi: './taipei-geodata.js', wanhua: './taipei-wanhua-geodata.js' };
+const AREA = AREAS[new URLSearchParams(location.search).get('area')] ? new URLSearchParams(location.search).get('area') : 'xinyi';
+let GEO;
+
 async function init() {
+  ({ GEO } = await import(AREAS[AREA]));
   await loading.step(0.02, 'Starting WebGPU');
   const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: 'high-performance', reversedDepthBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -146,18 +151,20 @@ async function init() {
   const traffic = buildFootprintTraffic(scene, GEO, {
     signals,
     driveOnRight: true,
-    carCount: 320,
-    pedCount: 420,
+    // Xinyi's 2 km box: 320 cars, 420 people; other boxes in proportion to their area
+    carCount: Math.round(320 * (half / 1000) ** 2),
+    pedCount: Math.round(420 * (half / 1000) ** 2),
     taxiShare: 0.14,
     taxiColour: 0xf3c316,
     palette: [0xf4f4f2, 0xf4f4f2, 0xf4f4f2, 0xc8cbcf, 0xc8cbcf, 0x8a8e93, 0x1c1e21, 0x1c1e21, 0x24395a, 0x7d1d22]
   });
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 20000);
-  camera.position.set(1500, 820, 1800); // from the south-east, the whole box & Taipei 101 in view
+  // From the south-east, the whole box in view (Xinyi: 1500, 820, 1800 with Taipei 101 at the centre)
+  camera.position.set(half * 1.5, half * 0.82, half * 1.8);
   const controls = new OrbitControls(camera, renderer.domElement);
   const t101 = GEO.landmarks['Taipei 101'];
-  controls.target.set(t101 ? t101.x : 0, 120, t101 ? t101.z : 0);
+  controls.target.set(t101 ? t101.x : 0, half * 0.12, t101 ? t101.z : 0);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI * 0.495;
   controls.minDistance = 30;
@@ -204,7 +211,7 @@ async function init() {
     driveOnRight: true,
     blocked: (x, z, fx, fz, hl, hw) =>
       traffic.carOverlaps(x, z, fx, fz, hl + 0.1, hw + 0.1) || traffic.pedNear(x + fx * hl * 0.6, z + fz * hl * 0.6, 1.6) || traffic.pedNear(x - fx * hl * 0.6, z - fz * hl * 0.6, 1.6),
-    planeSpawn: { x: -250, y: 220, z: 900, heading: 0 }
+    planeSpawn: { x: -half * 0.25, y: 220, z: half * 0.9, heading: 0 }
   });
   const modeButtons = [...document.querySelectorAll('[data-mode]')];
   const vehicleStatus = document.getElementById('vehicle-status');

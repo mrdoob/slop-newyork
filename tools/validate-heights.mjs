@@ -15,12 +15,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { toWorld, BOX, load, log } from './geo-taipei-base.mjs';
+import { toWorld, BOX, AREA_NAME, load, log } from './geo-taipei-base.mjs';
 import { buildingHeight, estimateHeight, ESTIMATE_TIERS, LEVEL_M } from './geo-height.mjs';
 
 const ROOT = 'https://3d.taipei/data/3dTiles/115_A/';
 const CACHE = fileURLToPath(new URL('data-local/3dtaipei/', import.meta.url));
-const REPORT = fileURLToPath(new URL('data-local/height-validation.json', import.meta.url));
+const REPORT = fileURLToPath(new URL(`data-local/height-validation${AREA_NAME === 'xinyi' ? '' : `-${AREA_NAME}`}.json`, import.meta.url));
 fs.mkdirSync(CACHE, { recursive: true });
 
 async function fetchCached(url, binary = false) {
