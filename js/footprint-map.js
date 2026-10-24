@@ -3,8 +3,11 @@
 // GEO.roadGraph, GEO.green, GEO.frame.box & .boundary): the minimap follows the player north-up; the full map shows the whole area,
 // zooms with the wheel, pans by dragging, names the street under the pointer and teleports the player where it is
 // clicked. City-agnostic: colours and labels come in through `options`.
+// Drawing: the whole area once into a bitmap (≤ BASE_PX across) for the zoomed-out full map; the minimap and a zoomed-in
+// full map draw the shapes in view straight from a grid index, so they stay sharp however big the area is. Stand-ins
+// (GEO.infill) show only while they show in 3D (setInfill; options.showInfill, default true).
 //
-// new FootprintMap(geo, { mini, full, fullCanvas, hoverInfo, getPlayer, onTeleport, onToggle, colours })
+// new FootprintMap(geo, { mini, full, fullCanvas, hoverInfo, getPlayer, onTeleport, onToggle, colours, showInfill })
 //   mini        <canvas> for the minimap (clicking it opens the full map)
 //   full        the full map's container (hidden when closed); fullCanvas its <canvas>; hoverInfo a text element
 //   getPlayer   () => { x, z, heading } (heading: forward = (-sin h, -cos h)), drawn as an arrow
@@ -16,6 +19,8 @@ const DEFAULT_COLOURS = {
   player: '#d8322a', boxEdge: 'rgba(40, 44, 52, 0.45)', label: '#2a2d33'
 };
 const PAD_M = 40; // m of ground drawn around the box
+const BASE_PX = 2400; // the zoomed-out bitmap's longest side
+const CELL_M = 100; // grid index cell
 
 class FootprintMap {
   constructor(geo, options) {
@@ -30,24 +35,60 @@ class FootprintMap {
     this.x1 = (e - geo.frame.lon0) * kx + PAD_M;
     this.z0 = -(n - geo.frame.lat0) * ky - PAD_M;
     this.z1 = -(s - geo.frame.lat0) * ky + PAD_M;
-    this.ppm = Math.min(2, 2400 / Math.max(this.x1 - this.x0, this.z1 - this.z0)); // static layer pixels per metre
-    this.base = this._drawBase();
+    this.ppm = Math.min(2, BASE_PX / Math.max(this.x1 - this.x0, this.z1 - this.z0)); // bitmap pixels per metre
+    this.showInfill = options.showInfill ?? true;
+    this.bases = {}; // bitmaps with / without stand-ins, made when first needed
+    this._index();
     this.segs = this._streetSegments();
     this.view = null; // full map: { cx, cz, ppm } in CSS pixels per metre
     this._bindFull();
     options.mini.addEventListener('click', () => this.toggle(true));
   }
 
-  // --- The static layer: ground, green, roads, buildings, stand-ins, drawn once ----------------------------------------
-  _drawBase() {
-    const { geo, c, ppm } = this;
-    const cv = document.createElement('canvas');
-    cv.width = Math.ceil((this.x1 - this.x0) * ppm);
-    cv.height = Math.ceil((this.z1 - this.z0) * ppm);
-    const g = cv.getContext('2d');
-    const X = (x) => (x - this.x0) * ppm, Z = (z) => (z - this.z0) * ppm;
-    g.fillStyle = c.ground;
-    g.fillRect(0, 0, cv.width, cv.height);
+  // --- Shapes: green, roads, buildings, stand-ins, bucketed in CELL_M cells by bounding box ----------------------------
+  _index() {
+    const { geo } = this;
+    const RG = geo.roadGraph;
+    const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
+    this.layers = { green: [], roads: [], buildings: [], infill: [] };
+    this.cells = new Map();
+    const add = (layer, flat, extra) => {
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (let i = 0; i < flat.length; i += 2) { x0 = Math.min(x0, flat[i]); x1 = Math.max(x1, flat[i]); z0 = Math.min(z0, flat[i + 1]); z1 = Math.max(z1, flat[i + 1]); }
+      const item = { flat, extra };
+      this.layers[layer].push(item);
+      for (let i = Math.floor(x0 / CELL_M); i <= Math.floor(x1 / CELL_M); i++) {
+        for (let j = Math.floor(z0 / CELL_M); j <= Math.floor(z1 / CELL_M); j++) {
+          const k = `${i},${j}`;
+          if (!this.cells.has(k)) this.cells.set(k, { green: [], roads: [], buildings: [], infill: [] });
+          this.cells.get(k)[layer].push(item);
+        }
+      }
+    };
+    for (const [, ring] of geo.green || []) add('green', ring);
+    for (const [a, b, , w, , , inner] of RG.links) add('roads', [...node(a), ...inner, ...node(b)], w);
+    for (const b of geo.buildings) if (b[4] < 1) add('buildings', b[1]);
+    for (const b of geo.infill || []) add('infill', b[1]);
+  }
+
+  // The shapes of each layer meeting the world rectangle (all of them without one), each once (within a layer every shape
+  // has one colour, so their order doesn't matter)
+  _inView(rect) {
+    if (!rect) return this.layers;
+    const [x0, z0, x1, z1] = rect, out = { green: new Set(), roads: new Set(), buildings: new Set(), infill: new Set() };
+    for (let i = Math.floor(x0 / CELL_M); i <= Math.floor(x1 / CELL_M); i++) {
+      for (let j = Math.floor(z0 / CELL_M); j <= Math.floor(z1 / CELL_M); j++) {
+        const c = this.cells.get(`${i},${j}`);
+        if (c) for (const k in out) for (const it of c[k]) out[k].add(it);
+      }
+    }
+    return out;
+  }
+
+  // Draw the shapes in `rect` (world) with world -> pixel mappings X, Z at `ppm` pixels per metre
+  _paint(g, X, Z, ppm, rect) {
+    const { c, geo } = this;
+    const L = this._inView(rect);
     const poly = (flat, fill) => {
       g.beginPath();
       for (let i = 0; i < flat.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, X(flat[i]), Z(flat[i + 1]));
@@ -55,27 +96,23 @@ class FootprintMap {
       g.fillStyle = fill;
       g.fill();
     };
-    for (const [, ring] of geo.green || []) poly(ring, c.green);
+    for (const { flat } of L.green) poly(flat, c.green);
     // Roads: an edge stroke under a lighter fill, at their drawn widths
-    const RG = geo.roadGraph;
-    const node = (i) => [RG.nodes[2 * i], RG.nodes[2 * i + 1]];
-    const strokeLinks = (colour, extra) => {
+    const strokeRoads = (colour, extra) => {
       g.strokeStyle = colour;
       g.lineCap = g.lineJoin = 'round';
-      for (const [a, b, , w, , , inner] of RG.links) {
+      for (const { flat, extra: w } of L.roads) {
         g.lineWidth = Math.max(1, (w + extra) * ppm);
         g.beginPath();
-        g.moveTo(X(node(a)[0]), Z(node(a)[1]));
-        for (let i = 0; i < inner.length; i += 2) g.lineTo(X(inner[i]), Z(inner[i + 1]));
-        g.lineTo(X(node(b)[0]), Z(node(b)[1]));
+        for (let i = 0; i < flat.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, X(flat[i]), Z(flat[i + 1]));
         g.stroke();
       }
     };
-    strokeLinks(c.roadEdge, 2);
-    strokeLinks(c.road, 0);
-    for (const b of geo.buildings) if (b[4] < 1) poly(b[1], c.building);
-    for (const b of geo.infill || []) poly(b[1], c.infill);
-    // The area's edge: the district outline when there is one (GEO.frame.boundary), else the box; beyond it, no data
+    strokeRoads(c.roadEdge, 2);
+    strokeRoads(c.road, 0);
+    for (const { flat } of L.buildings) poly(flat, c.building);
+    if (this.showInfill) for (const { flat } of L.infill) poly(flat, c.infill);
+    // The area's edge: the district outline(s) when there is one (GEO.frame.boundary), else the box; beyond it, no data
     g.strokeStyle = c.boxEdge;
     g.lineWidth = 2;
     g.setLineDash([8, 6]);
@@ -86,8 +123,33 @@ class FootprintMap {
         g.closePath();
         g.stroke();
       }
-    } else g.strokeRect(PAD_M * ppm, PAD_M * ppm, cv.width - 2 * PAD_M * ppm, cv.height - 2 * PAD_M * ppm);
-    return cv;
+    } else {
+      const [x0, z0, x1, z1] = [this.x0 + PAD_M, this.z0 + PAD_M, this.x1 - PAD_M, this.z1 - PAD_M];
+      g.strokeRect(X(x0), Z(z0), X(x1) - X(x0), Z(z1) - Z(z0));
+    }
+    g.setLineDash([]);
+  }
+
+  // The whole area as a bitmap at this.ppm (for the zoomed-out full map)
+  get base() {
+    const key = this.showInfill ? 'with' : 'without';
+    if (!this.bases[key]) {
+      const { ppm } = this;
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil((this.x1 - this.x0) * ppm);
+      cv.height = Math.ceil((this.z1 - this.z0) * ppm);
+      const g = cv.getContext('2d');
+      g.fillStyle = this.c.ground;
+      g.fillRect(0, 0, cv.width, cv.height);
+      this._paint(g, (x) => (x - this.x0) * ppm, (z) => (z - this.z0) * ppm, ppm, null);
+      this.bases[key] = cv;
+    }
+    return this.bases[key];
+  }
+
+  setInfill(on) {
+    this.showInfill = on;
+    this.renderFull();
   }
 
   // Street centre-line segments with names, for "which street is this" on hover
@@ -143,10 +205,10 @@ class FootprintMap {
     if (cv.width !== size) cv.width = cv.height = size;
     const g = cv.getContext('2d');
     const p = this.o.getPlayer();
-    const s = this.ppm;
+    const k = size / span; // pixels per metre
     g.fillStyle = this.c.ground;
     g.fillRect(0, 0, size, size);
-    g.drawImage(this.base, (p.x - span / 2 - this.x0) * s, (p.z - span / 2 - this.z0) * s, span * s, span * s, 0, 0, size, size);
+    this._paint(g, (x) => (x - p.x) * k + size / 2, (z) => (z - p.z) * k + size / 2, k, [p.x - span / 2, p.z - span / 2, p.x + span / 2, p.z + span / 2]);
     this._arrow(g, size / 2, size / 2, p.heading, size * 0.055);
   }
 
@@ -183,8 +245,13 @@ class FootprintMap {
     g.fillStyle = this.c.ground;
     g.fillRect(0, 0, r.width, r.height);
     const v = this.view, k = v.ppm / this.ppm;
-    g.imageSmoothingEnabled = k < 2;
-    g.drawImage(this.base, r.width / 2 - (v.cx - this.x0) * v.ppm, r.height / 2 - (v.cz - this.z0) * v.ppm, this.base.width * k, this.base.height * k);
+    if (k <= 1.25 / dpr) {
+      // zoomed out: the whole-area bitmap is at least as sharp as the screen
+      g.drawImage(this.base, r.width / 2 - (v.cx - this.x0) * v.ppm, r.height / 2 - (v.cz - this.z0) * v.ppm, this.base.width * k, this.base.height * k);
+    } else {
+      const hw = r.width / 2 / v.ppm, hh = r.height / 2 / v.ppm;
+      this._paint(g, (x) => (x - v.cx) * v.ppm + r.width / 2, (z) => (z - v.cz) * v.ppm + r.height / 2, v.ppm, [v.cx - hw, v.cz - hh, v.cx + hw, v.cz + hh]);
+    }
     const p = this.o.getPlayer();
     this._arrow(g, r.width / 2 + (p.x - v.cx) * v.ppm, r.height / 2 + (p.z - v.cz) * v.ppm, p.heading, 11);
   }

@@ -107,10 +107,13 @@ function polygons(e) {
 // --- District outline (areas defined by an administrative boundary) ---------------------------------------------------
 const boundary = [];
 if (AREA.boundary) {
-  const rel = load('osm_boundary.json').elements.find((e) => e.type === 'relation' && e.id === AREA.boundary);
-  if (!rel) throw new Error(`boundary relation ${AREA.boundary} not in osm_boundary.json`);
-  for (const [outer] of polygons(rel)) boundary.push(outer);
-  log(`boundary: relation ${AREA.boundary}, ${boundary.length} ring(s), ${Math.round(boundary.reduce((t, r) => t + Math.abs(ringArea(r)), 0) / 1e4) / 100} km²`);
+  const ids = [AREA.boundary].flat(), els = load('osm_boundary.json').elements;
+  for (const id of ids) {
+    const rel = els.find((e) => e.type === 'relation' && e.id === id);
+    if (!rel) throw new Error(`boundary relation ${id} not in osm_boundary.json`);
+    for (const [outer] of polygons(rel)) boundary.push(outer);
+  }
+  log(`boundary: relation ${ids.join(' + ')}, ${boundary.length} ring(s), ${Math.round(boundary.reduce((t, r) => t + Math.abs(ringArea(r)), 0) / 1e4) / 100} km²`);
 }
 const inBoundary = (x, z) => !boundary.length || boundary.some((r) => pointInRing(x, z, r));
 
@@ -119,7 +122,7 @@ const inBoundary = (x, z) => !boundary.length || boundary.some((r) => pointInRin
 const TERRAIN_STEP = 20;
 let terrain = null;
 if (AREA.terrain) {
-  const t = await buildTerrain(BOX, frame, path.join(fileURLToPath(new URL(AREA.data, import.meta.url)), 'terrain'), log);
+  const t = await buildTerrain(BOX, frame, fileURLToPath(new URL('data-taipei/terrain/', import.meta.url)), log);
   const k = TERRAIN_STEP / t.step, nx = Math.floor((t.nx - 1) / k) + 1, nz = Math.floor((t.nz - 1) / k) + 1;
   const h = [];
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) h.push(t.h[j * k * t.nx + i * k]);
@@ -150,9 +153,22 @@ for (const e of osm.elements) {
   }
 }
 // An outline is modelled by its parts when any part's centroid lies inside it
+// (parts bucketed by centroid on a 25 m grid; each outline tests only the parts in the cells its bounding box covers)
 let replaced = 0;
+const PART_CELL = 25, partCells = new Map(), outlineOf = new Map();
+parts.forEach((p, i) => {
+  const k = `${Math.floor(p.c[0] / PART_CELL)},${Math.floor(p.c[1] / PART_CELL)}`;
+  if (!partCells.has(k)) partCells.set(k, []);
+  partCells.get(k).push(i);
+});
 for (const o of outlines) {
-  o.parts = parts.filter((p) => pointInRing(...p.c, o.outer) && !o.holes.some((h) => pointInRing(...p.c, h)));
+  const xs = o.outer.map((q) => q[0]), zs = o.outer.map((q) => q[1]), near = [];
+  for (let i = Math.floor(Math.min(...xs) / PART_CELL); i <= Math.floor(Math.max(...xs) / PART_CELL); i++) {
+    for (let j = Math.floor(Math.min(...zs) / PART_CELL); j <= Math.floor(Math.max(...zs) / PART_CELL); j++) near.push(...(partCells.get(`${i},${j}`) || []));
+  }
+  o.parts = near.sort((a, b) => a - b).map((i) => parts[i])
+    .filter((p) => pointInRing(...p.c, o.outer) && !o.holes.some((h) => pointInRing(...p.c, h)));
+  for (const p of o.parts) if (!outlineOf.has(p)) outlineOf.set(p, o);
   if (o.parts.length) replaced++;
 }
 log(`${outlines.length} outlines (${replaced} modelled by parts), ${parts.length} parts; skipped ${underground} underground, ${broken} without geometry`);
@@ -178,7 +194,7 @@ function emit(b, outline) {
 for (const o of outlines) {
   if (!o.parts.length) emit(o, null);
 }
-for (const p of parts) emit(p, outlines.find((o) => o.parts.includes(p)) || null);
+for (const p of parts) emit(p, outlineOf.get(p) || null);
 
 // --- Building-permit footprints where OSM maps no building (permits.json, tools/extract-permits.mjs) -----------------------
 // 臺北市建築執照套繪圖 (Taipei building-permit drawings, OGDL v1): real footprints of buildings permitted since ~2001, with

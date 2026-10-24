@@ -291,6 +291,32 @@ test('stand-in lots face streets and keep off buildings, open ground, walkways a
   assert.ok(north.length && north.every((l) => l.outer.every(([, z]) => z < 0)), 'right of an eastbound line is south (z > 0): skipped');
 });
 
+test('Xinyi + Da\'an (city) geodata builds as one world around Taipei 101', { timeout: 120000 }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taipei city '));
+  try {
+    const out = path.join(dir, 'taipei-city-geodata.js');
+    const result = spawnSync(process.execPath, [path.join(root, 'tools/build-taipei-geodata.mjs'), out],
+      { encoding: 'utf8', timeout: 120000, env: { ...process.env, GEO_AREA: 'city' } });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    const { GEO } = await import(pathToFileURL(out).href);
+    assert.equal(GEO.area, 'city');
+    assert.equal(GEO.frame.origin, 'Taipei 101');
+    // Two district outlines; Taipei 101 at the origin and at its real height
+    assert.ok(GEO.frame.boundary.length === 2 && GEO.frame.boundary.every((r) => r.length > 100), 'two district outlines');
+    assert.equal(GEO.landmarks['Taipei 101'].top, 508);
+    // Da'an lies west of Xinyi: buildings well past Xinyi's western edge (~1.2 km west of 101), and its main streets
+    assert.ok(GEO.buildings.length > 15000, `${GEO.buildings.length} buildings`);
+    assert.ok(GEO.buildings.filter((b) => b[1][0] < -2500).length > 2000, 'buildings in Da\'an');
+    for (const name of ['Dunhua South Road', 'Fuxing South Road', 'Heping East Road', 'Songren Road']) {
+      assert.ok(GEO.roadGraph.names.some((n) => n.includes(name)), `${name} in the road graph`);
+    }
+    assert.ok(GEO.terrain && GEO.infillShown === false && GEO.buildings.some((b) => GEO.heightSources[b[5]] === 'estimate'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('Wanhua geodata builds in its own frame around Lungshan Temple', { timeout: 60000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taipei wanhua '));
   try {
@@ -344,7 +370,7 @@ test('the Taipei viewer never loads NYC map data or the NYC-only modules', () =>
     for (const [, spec] of src.matchAll(/:\s*'\.\/([\w-]+-geodata\.js)'/g)) visit(spec);
   };
   visit('taipei-main.js');
-  for (const f of ['player-actors.js', 'sky-craft.js', 'hud-panels.js', 'footprint-map.js', 'time-of-day.js', 'taipei-geodata.js', 'taipei-wanhua-geodata.js']) assert.ok(seen.has(f), f);
+  for (const f of ['player-actors.js', 'sky-craft.js', 'hud-panels.js', 'footprint-map.js', 'time-of-day.js', 'taipei-geodata.js', 'taipei-city-geodata.js', 'taipei-wanhua-geodata.js']) assert.ok(seen.has(f), f);
   for (const nyc of ['nyc-geodata.js', 'tsl-materials.js', 'city-config.js', 'lighting.js', 'controllers.js', 'nyc-map.js']) {
     assert.ok(!seen.has(nyc), `the Taipei viewer pulls in ${nyc}`);
   }

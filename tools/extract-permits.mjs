@@ -8,7 +8,7 @@
 //
 // Writes permits.json into each area's data directory (tools/data-taipei/, …/wanhua/): the footprints with any vertex in
 // the area's box, with their permit number, floor count (the record's bud_floor, else the "nF" in the permit number,
-// else 0 = unknown), construction type and permit year (ROC year + 1911). The drawings cover permits from about 2006
+// else 0 = unknown; a count above MAX_FLOORS is a misread and also 0), construction type and permit year (ROC year + 1911). The drawings cover permits from about 2006
 // on, so they add recent buildings only; tools/build-taipei-geodata.mjs decides which to use.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -55,18 +55,22 @@ for (let o = 100; o + 8 <= shp.length;) {
 }
 if (shapes.length !== records.length) throw new Error(`${shapes.length} shapes vs ${records.length} records`);
 
+const MAX_FLOORS = 101; // Taipei 101's storeys: nothing in the city has more
 const r7 = (v) => Math.round(v * 1e7) / 1e7;
 const features = [];
 shapes.forEach((rings, i) => {
   if (!rings) return;
   const rec = records[i];
   const floorsTag = parseInt(rec.bud_floor, 10) || 0;
-  const m = /(\d+)\s*F/i.exec(rec.budatt_no);
+  // Permit numbers read year.serial.nF ("101.0033.6F"); some drop the second dot ("103.03018F" = serial 0301, 8F), so
+  // the floors are the digits after a dot or after the 4-digit serial, never the serial itself
+  const m = /\.(\d{1,2})\s*F/i.exec(rec.budatt_no) || /^\d{2,3}\.\d{4}(\d{1,2})\s*F/i.exec(rec.budatt_no);
   const year = /^(\d{2,3})[.\s]/.exec(rec.budatt_no);
+  const floors = floorsTag || (m ? +m[1] : 0);
   features.push({
     permit: rec.budatt_no,
-    floors: floorsTag || (m ? +m[1] : 0),
-    floorsFrom: floorsTag ? 'bud_floor' : m ? 'permit number' : 'unknown',
+    floors: floors <= MAX_FLOORS ? floors : 0,
+    floorsFrom: floors > MAX_FLOORS ? 'unknown' : floorsTag ? 'bud_floor' : m ? 'permit number' : 'unknown',
     construction: rec.bud_const,
     year: year ? +year[1] + 1911 : null,
     rings: rings.map((ring) => ring.map(([E, N]) => { const [lat, lon] = tm2ToGeo(E, N); return [r7(lon), r7(lat)]; }))

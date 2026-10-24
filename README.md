@@ -11,8 +11,9 @@ Fork it, remix it, improve it, break it. Make games, animations, films, experime
 ## Taipei port (in progress)
 
 This fork is being retargeted to Taipei. It currently covers the whole of Xinyi District (信義區, about 11 km² around
-Taipei 101, with the Four Beasts hills in its south-east) and a 1 km box around Lungshan Temple in
-Wanhua (`index.html?area=wanhua`): open `index.html` over http in a WebGPU
+Taipei 101, with the Four Beasts hills in its south-east), Xinyi together with Da'an District (大安區; about 23 km², one
+world around Taipei 101, `index.html?area=city`, `GEO_AREA=city`: the city growing district by district) and a 1 km box
+around Lungshan Temple in Wanhua (`index.html?area=wanhua`): open `index.html` over http in a WebGPU
 browser (the original New York simulation is now `nyc.html`). Building footprints come from OpenStreetMap (`tools/build-taipei-geodata.mjs`, `GEO_AREA=wanhua` for the
 second box). **The Wanhua box has large holes:** OSM maps roughly a third of its buildings (about 390 outlines where
 Taipei's 3D city model has over 5,000), so empty blocks there are missing data, not open space. To keep it from
@@ -56,8 +57,9 @@ the player. At night, which windows are lit and which shops are open is random, 
 hold buttons drive the player, and the viewer lowers its resolution, shadows and traffic to keep the frame rate up.
 Every panel can be minimized (the map-data credit always stays visible).
 
-**Terrain** (Xinyi District): ground heights from the open AWS Terrain Tiles (Mapzen, from NASA's SRTM, ~30 m), with
-buildings filtered out of that surface model and the basin floor set to 0, so the city stays flat and the hills rise;
+**Terrain** (Xinyi, Xinyi + Da'an): ground heights from the open AWS Terrain Tiles (Mapzen, from NASA's SRTM, ~30 m),
+kept only on real hills (connected areas more than 40 m above the basin floor, with a 200 m fade around their feet); the
+basin is flat at 0, since in the city that surface model measures roofs and tree canopy, not the street;
 approximate (peaks read 15–50 m below their surveyed heights). Everything stands on it. Hillsides are tinted wooded green
 as a look, not data.
 

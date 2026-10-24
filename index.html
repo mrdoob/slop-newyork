@@ -95,9 +95,15 @@
       .time .panel-body { flex-direction: column; width: 100%; }
       .time .panel-body button { min-height: 34px; padding: 2px 8px; }
       .credit .long { display: none; }
-      .credit { font-size: 11px; }
-      .modes .panel-body button { padding: 4px 8px; }
-      #vehicle-status { flex-basis: 100%; margin: 0; font-size: 12px; }
+      /* modes: one row that scrolls sideways (not three rows over the view), the status pinned under its start */
+      .stack > .modes { max-width: 100%; box-sizing: border-box; }
+      .modes .panel-body { display: grid; grid-template-columns: repeat(7, max-content); gap: 4px; overflow-x: auto;
+        scrollbar-width: none; min-width: 0; flex: 1 1 auto; }
+      .modes .panel-body::-webkit-scrollbar { display: none; }
+      .modes .panel-body button { padding: 3px 9px; }
+      body.touch-enabled .modes .panel-body button { min-height: 36px; }
+      #vehicle-status { grid-column: 1 / -1; position: sticky; left: 0; margin: 0; font-size: 12px; }
+      .credit { font-size: 10.5px; line-height: 1.3; }
       .hud { font-size: 12px; }
     }
     #loading { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center;
@@ -189,7 +195,7 @@
         <button id="btn-overlay" type="button" aria-pressed="false">Reference photo <kbd>M</kbd></button></p>
       <p id="overlay-credit" hidden></p>
       <p class="keys-help">Keys: 1–7 orbit / walk / bike / car / plane / UFO / rocket · T map &amp; teleport · L time of day</p>
-      <p>Area: <a href="?area=xinyi">Xinyi District</a> · <a href="?area=wanhua">Wanhua (1 km)</a></p>
+      <p>Area: <a href="?area=xinyi">Xinyi District</a> · <a href="?area=city">Xinyi + Da'an</a> · <a href="?area=wanhua">Wanhua (1 km)</a></p>
     </div>
     <p class="panel-keep credit"><span class="long">Map data </span>© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap<span class="long"> contributors</span></a> (ODbL) ·
       <span class="long">permit footprints </span><a href="https://data.gov.tw/dataset/151936">臺北市建管處</a> (OGDL) ·

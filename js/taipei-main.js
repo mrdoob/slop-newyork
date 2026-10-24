@@ -17,8 +17,9 @@ import { buildTerrainMesh } from './terrain.js';
 import { TouchControls } from './touch-controls.js';
 
 // js/taipei-main.js
-// Taipei viewer (index.html): one test box (GEO.frame.box) from OSM, orbit camera, sun & sky. ?area= picks the box:
-// xinyi (default; 2 km around Taipei 101) or wanhua (1 km around Lungshan Temple), each its own generated geodata file.
+// Taipei viewer (index.html): one area (GEO.frame.box) from OSM, orbit camera, sun & sky. ?area= picks it: xinyi
+// (default; Xinyi District), city (Xinyi + Da'an Districts) or wanhua (1 km around Lungshan Temple), each its own
+// generated geodata file.
 // The NYC app (nyc.html, js/main.js) is untouched and stays the comparison baseline.
 
 // Loading screen (index.html #loading): a sweeping bar while the modules download, then real progress through the
@@ -89,7 +90,7 @@ const SMALL = TOUCH || window.innerWidth < 700;
 const panels = initPanels({ small: SMALL });
 if (TOUCH) document.querySelector('.stack').append(document.querySelector('.hud')); // up out of the touch controls' way
 
-const AREAS = { xinyi: './taipei-geodata.js', wanhua: './taipei-wanhua-geodata.js' };
+const AREAS = { xinyi: './taipei-geodata.js', city: './taipei-city-geodata.js', wanhua: './taipei-wanhua-geodata.js' };
 const AREA = AREAS[new URLSearchParams(location.search).get('area')] ? new URLSearchParams(location.search).get('area') : 'xinyi';
 let GEO;
 
@@ -214,12 +215,13 @@ async function init() {
   window.addEventListener('keydown', (ev) => { if (ev.key === 'e' || ev.key === 'E') setEstimates(!showEstimates); });
   // Stand-ins (I): shown by default, so blocks OSM leaves empty don't read as open ground; hide them to see OSM alone
   const infillButton = document.getElementById('btn-infill');
-  let player = null; // the SimpleVehicles below, once made
+  let player = null, map = null; // the SimpleVehicles and FootprintMap below, once made
   let showInfill = GEO.infillShown ?? true; // an area whose stand-ins are less certain starts with them hidden
   const setInfill = (on) => {
     showInfill = on;
     buildings.setShowInfill(on);
     player?.index.setInfill(on); // hidden stand-ins don't block the player
+    map?.setInfill(on); // nor show on the map
     infillButton.setAttribute('aria-pressed', String(on));
     infillState.textContent = st.infill && !on ? ' (hidden: I or the button shows them)' : '';
   };
@@ -295,7 +297,8 @@ async function init() {
     camera.getWorldDirection(f);
     return { x: controls.target.x, z: controls.target.z, heading: Math.atan2(-f.x, -f.z) };
   };
-  const map = new FootprintMap(GEO, {
+  map = new FootprintMap(GEO, {
+    showInfill,
     mini: document.getElementById('minimap'),
     full: document.getElementById('fullmap'),
     fullCanvas: document.getElementById('fullmap-canvas'),

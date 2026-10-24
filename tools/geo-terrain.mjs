@@ -4,11 +4,13 @@
 //
 // Source: AWS Terrain Tiles ("terrarium" PNG encoding, https://registry.opendata.aws/terrain-tiles/), which for Taiwan
 // come from SRTM (NASA, public domain) via Mapzen. Attribution: "Elevation: Mapzen terrain tiles (SRTM, NASA)".
-// SRTM is a surface model with ~30 m cells: in the city it measures roofs, not the street. So the build keeps only
-// shapes wider than OPEN_M (a morphological opening: a min filter, then a max filter, removes anything narrower, i.e.
-// buildings, while hills survive), lifts the basin floor to 0 and fades out the last few metres, so the flat city stays
-// flat. On hillsides (no buildings to remove; the opening would shave the ridges) the lightly smoothed heights are used
-// instead. It is approximate (30 m source, smoothed), not survey-grade.
+// SRTM is a surface model with ~30 m cells: in the city it measures roofs and tree canopy, not the street. The basin
+// floor is flat to within a few metres, so the build keeps terrain only on real hills: connected areas whose opened
+// height (a morphological opening: a min filter, then a max filter, removes anything narrower than OPEN_M, i.e.
+// buildings) rises more than HILL_CORE_M above the basin floor over at least HILL_MIN_KM2, plus a HILL_REACH_M fade
+// around their feet. Everywhere else the ground is 0, so dense blocks and park canopy don't become rolling ground. On
+// hillsides the lightly smoothed heights are used (the opening would shave the ridges). It is approximate (30 m source,
+// smoothed), not survey-grade.
 //
 // buildTerrain(box, toWorld, cacheDir, log) -> { x0, z0, step, nx, nz, h: [decimetres, row-major z then x], max } | null
 
@@ -20,7 +22,9 @@ const ZOOM = 14; // ~9.5 m pixels at 25° N (the source is ~30 m)
 const STEP_M = 10; // output grid spacing
 const MARGIN_M = 300; // grid reaches this far beyond the box
 const OPEN_M = 140; // shapes narrower than this (buildings, blocks) are filtered out
-const FLOOR_FADE_M = 10; // heights up to this above the basin floor fade to 0 (the basin's SRTM noise)
+const HILL_CORE_M = 40; // a hill's core rises this far above the basin floor (opened heights)…
+const HILL_MIN_KM2 = 0.1; // …over at least this area (a big podium block or a park's canopy is neither)
+const HILL_REACH_M = 200; // ground within this of a hill core follows the hill, fading to the flat basin at its edge
 const HILL_M = [15, 40]; // where the opened land rises this far above the floor it is hillside: the less-filtered heights return
 const TILE_URL = (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
 
@@ -139,21 +143,40 @@ export async function buildTerrain(box, frame, cacheDir, log = () => {}) {
       raw[j * nx + i] = e ?? 0;
     }
   }
-  // Opening (buildings out), then the basin floor (the 5th percentile) to 0 with a soft fade, then a light blur
+  // Opening (buildings out); the basin floor (the 5th percentile) is 0
   const r = Math.round(OPEN_M / 2 / STEP_M);
   const opened = filter2d(filter2d(raw, nx, nz, r, Math.min), nx, nz, r, Math.max);
   const sorted = Array.from(opened).sort((a, b) => a - b);
   const floor = sorted[Math.floor(sorted.length * 0.05)];
+  // Hill cores: connected cells HILL_CORE_M above the floor, kept when large enough
+  const core = new Uint8Array(nx * nz), seen = new Uint8Array(nx * nz);
+  let hills = 0;
+  for (let s0 = 0; s0 < core.length; s0++) {
+    if (seen[s0] || opened[s0] - floor <= HILL_CORE_M) continue;
+    const comp = [s0];
+    seen[s0] = 1;
+    for (let q = 0; q < comp.length; q++) {
+      const k = comp[q], i = k % nx, j = (k - i) / nx;
+      for (const n of [i > 0 && k - 1, i < nx - 1 && k + 1, j > 0 && k - nx, j < nz - 1 && k + nx]) {
+        if (n !== false && !seen[n] && opened[n] - floor > HILL_CORE_M) { seen[n] = 1; comp.push(n); }
+      }
+    }
+    if (comp.length * STEP_M * STEP_M >= HILL_MIN_KM2 * 1e6) { hills++; for (const k of comp) core[k] = 1; }
+  }
+  // Weight: 1 on and near a core, fading to 0 by HILL_REACH_M from it (a dilated, then blurred mask)
+  const reach = Math.round(HILL_REACH_M / STEP_M);
+  const weight = boxBlur(filter2d(Float32Array.from(core), nx, nz, Math.round(reach / 2), Math.max), nx, nz, Math.round(reach / 2));
   const smooth = boxBlur(raw, nx, nz, 2);
   const lifted = opened.map((v, k) => {
     const t = Math.min(1, Math.max(0, (v - floor - HILL_M[0]) / (HILL_M[1] - HILL_M[0]))), hill = t * t * (3 - 2 * t);
     const d = Math.max(0, v + (Math.max(v, smooth[k]) - v) * hill - floor);
-    return d < FLOOR_FADE_M ? (d * d) / (2 * FLOOR_FADE_M) : d - FLOOR_FADE_M / 2;
+    const w = Math.min(1, weight[k]);
+    return d * w * w * (3 - 2 * w);
   });
   const h = boxBlur(lifted, nx, nz, 2);
   let max = 0;
   for (const v of h) max = Math.max(max, v);
-  log(`terrain: ${tiles.size} elevation tiles (z${ZOOM}), ${nx}×${nz} grid every ${STEP_M} m, basin floor ${floor.toFixed(1)} m (SRTM) -> 0, ` +
+  log(`terrain: ${tiles.size} elevation tiles (z${ZOOM}), ${nx}×${nz} grid every ${STEP_M} m, basin floor ${floor.toFixed(1)} m (SRTM) -> 0, ${hills} hill(s), ` +
     `highest ${max.toFixed(0)} m above it${missing ? `, ${missing} samples outside the tiles` : ''}`);
   return { x0: gx0, z0: gz0, step: STEP_M, nx, nz, floor: Math.round(floor * 10) / 10, max: Math.round(max), h: Array.from(h, (v) => Math.round(v * 10)), elev: (lon, lat) => elev(lon, lat) };
 }

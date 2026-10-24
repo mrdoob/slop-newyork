@@ -16,6 +16,9 @@
 //   xinyi   the whole of Xinyi District (信義區, OSM relation 2881027; queries select the district area, the box is its
 //           bounding box): the best-mapped area. Earlier milestones used 1 km and 2 km boxes around Taipei 101. The
 //           south-east quarter is the Four Beasts hills (Elephant Mountain…), drawn flat until terrain data is in.
+//   city    Xinyi + Da'an Districts (大安區, OSM relation 2869465) in one world, origin still Taipei 101: the city growing
+//           district by district (Xinyi stays as its own area, the baseline). Da'an is well mapped, flat but for the
+//           Fuzhou Shan / Treasure Hill edge to the south-east.
 //   wanhua  1 km box around Lungshan Temple (艋舺龍山寺, way 198401479, centre 25.037276 N, 121.499881 E): the old
 //           district, low walk-ups and shophouses, sparse OSM height tags; stresses the height fallback. No landmark
 //           height is pinned (no published, sourced figure for the temple roof).
@@ -36,8 +39,10 @@ import { makeFrame } from './geo-frame.mjs';
 // Boxes are [S, W, N, E] degrees and must match the q_*.overpassql bounds in the area's data directory (at 25° N,
 // 1 km ≈ 0.00902° of latitude and ≈ 0.00991° of longitude). Xinyi: the district's bounding box (its queries select the
 // district area itself; the 2 km milestone box was [25.0249, 121.5546, 25.043, 121.5744]). Wanhua: ±0.5 km of the temple.
-// `boundary`: the OSM relation of the district outline (osm_boundary.json), exported as GEO.frame.boundary.
-// `terrain`: ground heights from open elevation tiles (tools/geo-terrain.mjs); without it the area is flat.
+// `boundary`: the OSM relation(s) of the district outline(s) (osm_boundary.json), exported as GEO.frame.boundary.
+// `terrain`: ground heights from open elevation tiles (tools/geo-terrain.mjs, tiles cached in data-taipei/terrain/ for
+// every area); without it the area is flat.
+// `landmarks`: names (LANDMARKS) whose sourced height the build checks.
 // `permits`: add building-permit footprints (permits.json, tools/extract-permits.mjs) where OSM maps no building.
 // `infill`: add stand-in buildings where OSM maps none (tools/geo-infill.mjs). Chosen per area from the local check
 // against measured buildings (tools/validate-heights.mjs): in Wanhua, where OSM lacks whole blocks, 14% of stand-ins
@@ -50,7 +55,11 @@ const AREAS = {
   xinyi: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0081, 121.5526, 25.0496, 121.5923], boundary: 2881027, data: 'data-taipei/', out: 'taipei-geodata.js',
     // stand-ins only inside built-up fabric, off the big roads, clear of towers; hidden until the viewer turns them on
     infill: { skipClasses: ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link'], largeClear: 15, minCover: 0.2 },
-    infillShown: false, permits: true, terrain: true },
+    infillShown: false, permits: true, terrain: true, landmarks: ['Taipei 101'] },
+  city: { lat0: 25.033964, lon0: 121.564468, origin: 'Taipei 101', box: [25.0072, 121.5217, 25.0496, 121.5923], boundary: [2881027, 2869465], data: 'data-taipei/city/', out: 'taipei-city-geodata.js',
+    // Xinyi's stand-in rules (checked again for Da'an with tools/validate-heights.mjs before trusting them)
+    infill: { skipClasses: ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link'], largeClear: 15, minCover: 0.2 },
+    infillShown: false, permits: true, terrain: true, landmarks: ['Taipei 101'] },
   wanhua: { lat0: 25.037276, lon0: 121.499881, origin: 'Lungshan Temple', box: [25.0328, 121.4949, 25.0418, 121.5048], data: 'data-taipei/wanhua/', out: 'taipei-wanhua-geodata.js', infill: true, permits: true }
 };
 const AREA_NAME = process.env.GEO_AREA || 'xinyi';
@@ -73,11 +82,12 @@ const BOX = AREA.box;
 // (way 198637969, 0–386 m in OSM) is, by its design, a tapered base followed by eight flared modules of eight floors
 // ("pagoda" segments, each wider at its top); the footprint and heights stay OSM's, the base/module split and flare
 // are a shape model of the published design, not survey data.
-const LANDMARKS = AREA_NAME !== 'xinyi' ? {} : {
+const ALL_LANDMARKS = {
   'Taipei 101': {
     height: 508, tol: 1, ref: 'architectural top incl. spire, CTBUH',
     tiers: { part: 'w198637969', baseTop: 117, baseScale: [1.05, 0.95], count: 8, moduleScale: [0.93, 1.06] }
   }
 };
+const LANDMARKS = Object.fromEntries((AREA.landmarks || []).map((n) => [n, ALL_LANDMARKS[n]]));
 
 export { frame, toWorld, BOX, LANDMARKS, AREA, AREA_NAME, AREAS, load, log };

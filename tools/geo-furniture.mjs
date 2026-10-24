@@ -48,17 +48,33 @@ export function buildFurniture(elements, toWorld, roadGraph, solid = () => false
     pts.push(node(b));
     return { pts, w, a, b };
   });
-  // Yaw turning an item's front towards the nearest road centre line (0 when no road within 60 m)
-  function yawToRoad(x, z) {
-    let best = null, bd = 60;
-    for (const { pts } of lines) {
-      for (let i = 0; i + 1 < pts.length; i++) {
-        const [x0, z0] = pts[i], [x1, z1] = pts[i + 1];
-        const dx = x1 - x0, dz = z1 - z0, L2 = dx * dx + dz * dz || 1e-9;
-        const t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / L2));
-        const px = x0 + dx * t, pz = z0 + dz * t, d = Math.hypot(px - x, pz - z);
-        if (d < bd) { bd = d; best = [px, pz]; }
+  // Yaw turning an item's front towards the nearest road centre line (0 when no road within 60 m). Segments are
+  // bucketed in 60 m cells, so the 3 × 3 cells around an item hold every segment within reach; they are tested in
+  // their original order, which keeps ties resolving as a full scan would.
+  const REACH = 60, segCells = new Map(), segs = [];
+  for (const { pts } of lines) {
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const s = segs.push([pts[i], pts[i + 1]]) - 1;
+      const [[x0, z0], [x1, z1]] = segs[s];
+      for (let a = Math.floor(Math.min(x0, x1) / REACH); a <= Math.floor(Math.max(x0, x1) / REACH); a++) {
+        for (let b = Math.floor(Math.min(z0, z1) / REACH); b <= Math.floor(Math.max(z0, z1) / REACH); b++) {
+          const k = `${a},${b}`;
+          if (!segCells.has(k)) segCells.set(k, []);
+          segCells.get(k).push(s);
+        }
       }
+    }
+  }
+  function yawToRoad(x, z) {
+    let best = null, bd = REACH;
+    const ci = Math.floor(x / REACH), cj = Math.floor(z / REACH), near = new Set();
+    for (let a = ci - 1; a <= ci + 1; a++) for (let b = cj - 1; b <= cj + 1; b++) for (const s of segCells.get(`${a},${b}`) || []) near.add(s);
+    for (const s of [...near].sort((p, q) => p - q)) {
+      const [[x0, z0], [x1, z1]] = segs[s];
+      const dx = x1 - x0, dz = z1 - z0, L2 = dx * dx + dz * dz || 1e-9;
+      const t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / L2));
+      const px = x0 + dx * t, pz = z0 + dz * t, d = Math.hypot(px - x, pz - z);
+      if (d < bd) { bd = d; best = [px, pz]; }
     }
     return best && bd > 0.1 ? Math.atan2(best[0] - x, best[1] - z) : 0;
   }

@@ -228,9 +228,24 @@ Xinyi stand-ins: rule E (skip trunk/primary/secondary frontage, 15 m clear of > 
 of ground within 100 m already built) → 7,511 lots, 39% on open ground (A–D 54–60%, F/G 37% but cover far less);
 `infillShown: false` → hidden until I; hidden stand-ins don't collide. No open footprint source for the rest:
 Microsoft ML footprints have no Taiwan tiles; Taipei 1:1000 topo buildings are fee/application, not open.
-Terrain (`tools/geo-terrain.mjs`, AREA.terrain, xinyi only): AWS Terrain Tiles terrarium z14 (Mapzen; SRTM) cached in
-`tools/data-taipei/terrain/`, 10 m grid, opening 140 m (buildings out) in the basin, raw-ish on hills, floor (5th pct)
-→ 0 with 10 m fade; exported every 20 m as GEO.terrain (decimetres). Elephant Mt reads ~136 m (SRTM 153, survey 183).
+Terrain (`tools/geo-terrain.mjs`, AREA.terrain, xinyi + city): AWS Terrain Tiles terrarium z14 (Mapzen; SRTM) cached in
+`tools/data-taipei/terrain/` (shared by all areas), 10 m grid, opening 140 m (buildings out), floor (5th pct) → 0. Owner:
+city must NOT read as rolling terrain (SRTM roofs / canopy left 0.5–10 m bumps over 63% of the basin) → terrain only on hill
+cores (connected, > 40 m above floor, ≥ 0.1 km²) + 200 m fade; basin exactly 0 (70% of Xinyi + Da'an). Exported every 20 m
+as GEO.terrain (decimetres). Elephant Mt reads ~141 m (SRTM 153, survey 183).
+Xinyi + Da'an (`city` area, owner's call "grow by one district"): boundary = [2881027, 2869465] (AREA.boundary may be a
+list), data `tools/data-taipei/city/`, out `js/taipei-city-geodata.js` (~8.3 MB, 2.2 MB gzip), viewer `?area=city`; xinyi
+area kept as baseline. 21,549 buildings (34% estimate), 10,176 links; build ~26 s after grid-indexing parts-in-outline
+and furniture yawToRoad (were 82 s; output identical). Headless desktop ~33 ms/frame vs Xinyi 17. Local check: estimates
+5.5 m median error (1.07×), stand-ins 35% on open ground → hidden. Memory (JS heap after GC, load): city 573 → 288 MB,
+Xinyi 234 → 140 MB: footprint-buildings' returned closures shared a V8 context with `paint`, keeping every pre-merge
+ExtrudeGeometry + THREE.Shape alive (now `parts = []` after merging); stand-in mesh built on first show (~1 s for city).
+Watch for this pattern: a module-scope array captured by any closure lives as long as the returned API.
+Permit numbers year.serial.nF: some drop the 2nd dot ("103.03018F" = 8F, was read as 3,018 floors → 9.6 km tower);
+extract-permits parses digits after the 4-digit serial, caps at 101 floors.
+Map (`js/footprint-map.js`): minimap + zoomed full map draw vectors from a 100 m grid index (bitmap only zoomed out; was
+blurry at 0.33 px/m for big areas); stand-ins on the map follow I (were always drawn). Phones: mode buttons one
+sideways-scrolling row.
 Renderer: `js/terrain.js` (heightAt / drape / resample / buildTerrainMesh): roads & sidewalks resampled 8 m + lifted,
 green areas draped, buildings at lowest ground under outline (`ground` attribute for facades), trees / furniture /
 signals / cars / people / player / UFO / rocket pad on it; collision index absolute (solidAbove for ground modes);

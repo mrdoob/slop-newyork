@@ -19,7 +19,8 @@ import { heightAt } from './terrain.js';
 // On terrain (GEO.terrain, js/terrain.js) each building stands at the lowest ground under its outline (its uphill side
 // sinks into the slope rather than its downhill side floating); storeys & shopfronts count from there (`ground` attribute).
 // geo.infill (optional, same row shape): stand-in buildings whose footprint is inferred too, not mapped. They form a
-// separate mesh (infillMesh, setShowInfill) and tint violet where estimates tint orange.
+// separate mesh (infillMesh, setShowInfill), built the first time they show (geo.infillShown false: not at load), and
+// tint violet where estimates tint orange.
 
 const LEVEL_M = 3.2; // storey height, matches tools/geo-height.mjs
 const GROUND_FLOOR_M = 4.2; // shopfront storey
@@ -109,7 +110,7 @@ function buildFootprintBuildings(scene, geo) {
   const roofShapes = geo.roofShapes || ['flat'];
   const facades = geo.facades || ['punched'];
   const NONE = Math.max(0, facades.indexOf('none'));
-  const parts = [];
+  let parts = []; // the pieces of the rows being built (geometryOf)
   const wallColour = new THREE.Color();
   const roofColour = new THREE.Color();
   const stats = { total: 0, bySource: Object.fromEntries(geo.heightSources.map((s) => [s, 0])), maxTop: 0, infill: 0 };
@@ -129,69 +130,70 @@ function buildFootprintBuildings(scene, geo) {
     if (groundY) g.translate(0, groundY, 0);
     parts.push(g);
   };
-  const rows = [...geo.buildings.map((b) => [b, false]), ...(geo.infill || []).map((b) => [b, true])];
-  let infillParts = 0;
-  for (const [[id, outer, holes, top, base, source, kind, osmColour, roofIdx = 0, roofH = 0, osmRoofColour = 0, facadeIdx = 0, topScale = 1], isInfill] of rows) {
-    if (isInfill && !infillParts) infillParts = parts.length; // stand-ins follow the mapped buildings in `parts`
-    if (!(top - base > 0) || outer.length < 6) continue;
-    groundY = Infinity;
-    for (let i = 0; i < outer.length; i += 2) groundY = Math.min(groundY, ground(outer[i], outer[i + 1]));
-    const shape = roofShapes[roofIdx] || 'flat';
-    const eaves = shape === 'flat' ? top : Math.max(base + 0.5, top - roofH);
-    let g;
-    try {
-      g = new THREE.ExtrudeGeometry(shapeOf(outer, holes), { depth: eaves - base, bevelEnabled: false, curveSegments: 1 });
-    } catch {
-      // a footprint whose holes can't be triangulated (degenerate or crossing rings): drawn solid instead
-      g = new THREE.ExtrudeGeometry(shapeOf(outer, []), { depth: eaves - base, bevelEnabled: false, curveSegments: 1 });
-    }
-    g.rotateX(-Math.PI / 2); // extrusion axis -> +y, shape (x, -z) -> world (x, z)
-    g.translate(0, base, 0);
-    g.deleteAttribute('uv');
-    if (topScale !== 1) {
-      // tapered / flared walls: the footprint scales about its centroid from 1 at the base to topScale at the eaves
-      const [cx, cz] = centroid(ringPts(outer));
-      const p = g.attributes.position;
-      for (let v = 0; v < p.count; v++) {
-        const k = 1 + (topScale - 1) * ((p.getY(v) - base) / (eaves - base));
-        p.setX(v, cx + (p.getX(v) - cx) * k);
-        p.setZ(v, cz + (p.getZ(v) - cz) * k);
+  const drawable = ([, outer, , top, base]) => top - base > 0 && outer.length >= 6;
+  // One merged geometry for a list of rows (the mapped buildings, or the stand-ins)
+  const geometryOf = (rows, isInfill) => {
+    parts = [];
+    for (const [id, outer, holes, top, base, source, kind, osmColour, roofIdx = 0, roofH = 0, osmRoofColour = 0, facadeIdx = 0, topScale = 1] of rows) {
+      if (!drawable([id, outer, holes, top, base])) continue;
+      groundY = Infinity;
+      for (let i = 0; i < outer.length; i += 2) groundY = Math.min(groundY, ground(outer[i], outer[i + 1]));
+      const shape = roofShapes[roofIdx] || 'flat';
+      const eaves = shape === 'flat' ? top : Math.max(base + 0.5, top - roofH);
+      let g;
+      try {
+        g = new THREE.ExtrudeGeometry(shapeOf(outer, holes), { depth: eaves - base, bevelEnabled: false, curveSegments: 1 });
+      } catch {
+        // a footprint whose holes can't be triangulated (degenerate or crossing rings): drawn solid instead
+        g = new THREE.ExtrudeGeometry(shapeOf(outer, []), { depth: eaves - base, bevelEnabled: false, curveSegments: 1 });
       }
-      g.computeVertexNormals();
+      g.rotateX(-Math.PI / 2); // extrusion axis -> +y, shape (x, -z) -> world (x, z)
+      g.translate(0, base, 0);
+      g.deleteAttribute('uv');
+      if (topScale !== 1) {
+        // tapered / flared walls: the footprint scales about its centroid from 1 at the base to topScale at the eaves
+        const [cx, cz] = centroid(ringPts(outer));
+        const p = g.attributes.position;
+        for (let v = 0; v < p.count; v++) {
+          const k = 1 + (topScale - 1) * ((p.getY(v) - base) / (eaves - base));
+          p.setX(v, cx + (p.getX(v) - cx) * k);
+          p.setZ(v, cz + (p.getZ(v) - cz) * k);
+        }
+        g.computeVertexNormals();
+      }
+      if (osmColour) wallColour.setStyle(osmColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN);
+      else wallColour.setHex(KIND_COLOURS[geo.kinds[kind]] ?? DEFAULT_COLOUR);
+      wallColour.offsetHSL(0, 0, (hash01(id) - 0.5) * 0.08);
+      if (osmRoofColour) roofColour.setStyle(osmRoofColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN * 0.5);
+      else roofColour.setHex(ROOF_COLOUR).lerp(wallColour, 0.25);
+      const est = isInfill ? 2 : source === estimateIndex ? 1 : 0;
+      // ExtrudeGeometry lists its caps first (group 0), then the walls
+      paint(g, wallColour, roofColour, g.groups.length ? g.groups[0].count : 0, est, facadeIdx, base);
+      if (shape !== 'flat') {
+        const pts = ringPts(outer);
+        const area = centroid(pts)[2];
+        const roof = shape === 'dome' || shape === 'onion' ? domeRoof(pts, area, eaves, top) : pitchedRoof(pts, eaves, top, shape);
+        paint(roof, roofColour, roofColour, 0, est, NONE, base);
+      }
+      const osmId = id.split('_')[0];
+      if (!isInfill && !counted.has(osmId)) {
+        counted.add(osmId);
+        stats.total++;
+        stats.bySource[geo.heightSources[source]]++;
+      }
+      stats.maxTop = Math.max(stats.maxTop, top);
     }
-    if (osmColour) wallColour.setStyle(osmColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN);
-    else wallColour.setHex(KIND_COLOURS[geo.kinds[kind]] ?? DEFAULT_COLOUR);
-    wallColour.offsetHSL(0, 0, (hash01(id) - 0.5) * 0.08);
-    if (osmRoofColour) roofColour.setStyle(osmRoofColour).lerp(NEUTRAL, OSM_COLOUR_SOFTEN * 0.5);
-    else roofColour.setHex(ROOF_COLOUR).lerp(wallColour, 0.25);
-    const est = isInfill ? 2 : source === estimateIndex ? 1 : 0;
-    // ExtrudeGeometry lists its caps first (group 0), then the walls
-    paint(g, wallColour, roofColour, g.groups.length ? g.groups[0].count : 0, est, facadeIdx, base);
-    if (shape !== 'flat') {
-      const pts = ringPts(outer);
-      const area = centroid(pts)[2];
-      const roof = shape === 'dome' || shape === 'onion' ? domeRoof(pts, area, eaves, top) : pitchedRoof(pts, eaves, top, shape);
-      paint(roof, roofColour, roofColour, 0, est, NONE, base);
-    }
-    const osmId = id.split('_')[0];
-    if (isInfill) stats.infill++;
-    else if (!counted.has(osmId)) {
-      counted.add(osmId);
-      stats.total++;
-      stats.bySource[geo.heightSources[source]]++;
-    }
-    stats.maxTop = Math.max(stats.maxTop, top);
-  }
-  const merge = (list) => {
-    if (!list.length) return null;
-    const g = mergeGeometries(list, false);
-    g.computeBoundingSphere();
-    return g;
+    if (!parts.length) return null;
+    const merged = mergeGeometries(parts, false);
+    merged.computeBoundingSphere();
+    for (const g of parts) g.dispose();
+    // Drop the per-building pieces: closures made below share this scope with `paint`, which holds `parts`, so without this
+    // every pre-merge geometry (and its THREE.Shape) would stay in memory for the page's life
+    parts = [];
+    return merged;
   };
-  const mapped = infillParts ? parts.slice(0, infillParts) : parts;
-  const geometry = merge(mapped);
-  const infillGeometry = infillParts ? merge(parts.slice(infillParts)) : null;
-  for (const g of parts) g.dispose();
+  const geometry = geometryOf(geo.buildings, false);
+  stats.infill = (geo.infill || []).filter(drawable).length;
 
   // --- Facade shader ------------------------------------------------------------------------------------------------
   const showEstimates = uniform(0);
@@ -269,20 +271,25 @@ function buildFootprintBuildings(scene, geo) {
   mesh.receiveShadow = true;
   mesh.name = 'footprint-buildings';
   scene.add(mesh);
+  // Stand-ins: their own mesh, built the first time they show (an area may start with them hidden: no memory spent then)
   let infillMesh = null;
-  if (infillGeometry) {
-    infillMesh = new THREE.Mesh(infillGeometry, material);
-    infillMesh.castShadow = true;
-    infillMesh.receiveShadow = true;
-    infillMesh.name = 'footprint-buildings-infill';
-    scene.add(infillMesh);
-  }
+  const showInfill = (on) => {
+    if (on && !infillMesh && stats.infill) {
+      infillMesh = new THREE.Mesh(geometryOf(geo.infill, true), material);
+      infillMesh.castShadow = true;
+      infillMesh.receiveShadow = true;
+      infillMesh.name = 'footprint-buildings-infill';
+      scene.add(infillMesh);
+    }
+    if (infillMesh) infillMesh.visible = on;
+  };
+  showInfill(geo.infillShown ?? true);
   return {
     mesh,
-    infillMesh,
+    get infillMesh() { return infillMesh; },
     stats,
     setShowEstimates(on) { showEstimates.value = on ? 1 : 0; },
-    setShowInfill(on) { if (infillMesh) infillMesh.visible = on; },
+    setShowInfill: showInfill,
     setNight(f) { night.value = f; }
   };
 }
