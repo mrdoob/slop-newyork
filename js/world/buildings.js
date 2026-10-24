@@ -38,14 +38,14 @@ import {
   createFacadeBoxes,
   atlasSlotUV,
   WALL_KINDS
-} from './tsl-materials.js';
+} from '../render/tsl-materials.js';
 import { GEO } from './city-geodata.js';
 import { STOREFRONTS } from './storefronts/index.js';
 import { LANDMARK_RESERVES as TEPIC_RESERVES } from './tepic-landmarks.js';
 import { hillGround } from './terrain.js';
 import { pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
 
-// js/buildings.js
+// js/world/buildings.js
 // Generates the city's buildings: Tepic's real building footprints (Overture Maps) as Mexican houses & shops, and the
 // lots of every other block filled for its district (centro, colonia, industrial), indexed by a spatial 2D quadtree
 // that streams the high-detail architectural elements (cornices, rooftop gear, awnings, storefront signs) around the
@@ -376,7 +376,7 @@ function buildCityBlocks(scene) {
       seed: 94.3
     }],
     // 6: Mexican houses & shops (Tepic): painted walls in each house's own colour, barred windows, gates, shutters,
-    //    the chain stores' fronts (js/storefronts)
+    //    the chain stores' fronts (js/world/storefronts)
     [createMexicanHouseMaterial, { floorHeight: 3.0, chains: STOREFRONTS.map((sf) => sf.facade) }]
   ];
   const materials = facades.map(([create, opts]) => create({ ...opts, boxLocal: true }));
@@ -1853,7 +1853,7 @@ function buildCityBlocks(scene) {
 
   // A2. THE REAL BUILDINGS (Overture Maps footprints as oriented boxes, see tools/build-tepic-geodata.mjs), as Mexican
   //     houses: a long street front is split into houses 6-10 m wide, each its own colour & height; the front towards
-  //     the street with a door & gate, a shop's shutter & sign, or a chain store's front (js/storefronts); flat roofs
+  //     the street with a door & gate, a shop's shutter & sign, or a chain store's front (js/world/storefronts); flat roofs
   //     with a black water tank (tinaco) on most. Grouped per block for the maps & the streaming of roof details
   {
     const byBlock = new Map();

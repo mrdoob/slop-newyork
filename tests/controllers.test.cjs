@@ -4,7 +4,7 @@ const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
-const source = readFileSync(join(__dirname, '../js/controllers.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../js/player/controllers.js'), 'utf8');
 
 function eventTarget() {
   const listeners = new Map();
@@ -31,11 +31,11 @@ function keyboardHarness(nyc = {}) {
     globals: { window, document },
     imports: {
       'three/webgpu': {},
-      './city-config.js': config,
-      './tsl-materials.js': {},
-      './actor-models.js': {},
-      './pedestrians.js': {},
-      './vehicle-lights.js': {},
+      '../world/city-config.js': config,
+      '../render/tsl-materials.js': {},
+      '../actors/actor-models.js': {},
+      '../sim/pedestrians.js': {},
+      '../actors/vehicle-lights.js': {},
     }
   });
   // Exercise the production event handlers without constructing the scene's 3D models.

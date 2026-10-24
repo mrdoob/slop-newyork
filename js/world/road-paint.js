@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { CROSSWALK } from './road-network.js';
-import { createRoadPaintMaterial } from './tsl-materials.js';
+import { createRoadPaintMaterial } from '../render/tsl-materials.js';
 
-// js/road-paint.js
-// Road markings generated from the drivable road network (js/road-network.js), so the paint matches where traffic
+// js/world/road-paint.js
+// Road markings generated from the drivable road network (js/world/road-network.js), so the paint matches where traffic
 // actually drives and stops: dashed lane lines, double yellow centre lines on two-way roads, stop bars at the stop
 // lines, continental crosswalks across every intersection approach and green bike lanes along wide one-way avenues.
 

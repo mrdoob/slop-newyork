@@ -1,4 +1,4 @@
-// js/weather.js
+// js/world/weather.js
 // Live weather & real sun for the "Live" time of day: the sun's true position over Tepic, Nayarit (computed locally
 // from the clock, no network) and the current conditions there from Open-Meteo (free, keyless, CORS-enabled; weather
 // data by Open-Meteo.com, CC BY 4.0). One point covers the whole map: the forecast models behind it resolve ~10 km

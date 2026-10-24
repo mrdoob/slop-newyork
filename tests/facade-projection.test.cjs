@@ -31,7 +31,7 @@ function matrix(elements) {
     return new Node([0, 3, 6].map(i => f(f(f(elements[i] * a[0]) + f(elements[i + 1] * a[1])) + f(elements[i + 2] * a[2]))));
   } };
 }
-const source = readFileSync(join(__dirname, '../js/tsl-materials.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../js/render/tsl-materials.js'), 'utf8');
 const frame = source.match(/const facadeNormalVertex =[\s\S]*?const facadeAlongZ =[\s\S]*?\.setInterpolation\([\s\S]*?\);/);
 assert.ok(frame, 'the shared camera-independent facade frame must exist');
 const projectionStart = source.indexOf('function facadeCell(');

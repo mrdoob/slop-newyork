@@ -1356,7 +1356,7 @@ body.touch-enabled .fullmap-header { top: max(var(--edge), env(safe-area-inset-t
 body.touch-enabled .map-controls .icon-btn { width: 44px; height: 44px; }
 body.touch-enabled .pop-item { min-height: 44px; }
 
-/* Multiplayer (js/multiplayer.js): room status pill & name tags over the other players */
+/* Multiplayer (js/net/multiplayer.js): room status pill & name tags over the other players */
 .mp-badge {
   position: relative;
   display: table;

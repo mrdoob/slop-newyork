@@ -6,7 +6,7 @@ const { loadModule } = require('./helpers/module.cjs');
 
 class Matrix4 {}
 const { BONES, boxHit, startTumble, stepTumble, slide, tumblePose, startTopple, stepTopple, hideInstance } = loadModule(
-  readFileSync(join(__dirname, '../js/mayhem.js'), 'utf8'),
+  readFileSync(join(__dirname, '../js/sim/mayhem.js'), 'utf8'),
   { imports: { 'three/webgpu': { Matrix4 } }, filename: 'mayhem.js' }
 );
 

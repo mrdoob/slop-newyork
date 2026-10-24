@@ -1,5 +1,5 @@
 // shared/protocol.js
-// Multiplayer wire protocol, shared verbatim by the browser client (js/multiplayer.js) and the room server
+// Multiplayer wire protocol, shared verbatim by the browser client (js/net/multiplayer.js) and the room server
 // (server/index.js). Binary WebSocket frames in the spirit of RuneScape's: a 1-byte opcode, fixed-width little-endian
 // integers (positions in centimetres, heading in 1/65536 turns), one TICK frame per client per server tick, and in it
 // only the players whose pose changed since that client last heard about them; the client keeps the rest where they

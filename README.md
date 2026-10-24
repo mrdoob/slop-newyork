@@ -12,7 +12,7 @@ python3 -m http.server 8000
 
 ## Rebuild the city data
 
-`js/city-geodata.js` is generated from OpenStreetMap (Overpass) and Overture Maps:
+`js/world/city-geodata.js` is generated from OpenStreetMap (Overpass) and Overture Maps:
 
 ```bash
 tools/data/tepic/fetch.sh

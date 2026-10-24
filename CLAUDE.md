@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-A browser open-world city (three.js `WebGPURenderer` + TSL shaders, no build step) growing from a 1:1 Manhattan into Mexican cities, starting with Tepic, Nayarit. Plain ES modules load straight from `js/`. three.js comes from jsDelivr through the import map in `index.html`.
+A browser GTA-style open world (three.js `WebGPURenderer` + TSL shaders, no build step) of Mexican cities at 1:1 scale, starting with Tepic, Nayarit (with Xalisco), forked from Slop New York. Plain ES modules load straight from `js/`. three.js comes from jsDelivr through the import map in `index.html`.
 
 ## Run and test
 
@@ -23,11 +23,11 @@ node --test tests/*.test.*           # client and tool tests (Node ≥ 22; no in
 |---|---|
 | `render/` | Sky and sun light, IBL and fog (`lighting.js`), post-processing and grading, TSL materials and shared uniforms (`tsl-materials.js`), culling |
 | `world/` | Map data and everything built from it: `city-config.js` (street database and frame helpers over the generated geodata), blocks and buildings, landmarks, street furniture, trees, the road graph and paint, terrain, storefronts, `weather.js` (real sun and Open-Meteo conditions) |
-| `sim/` | Traffic, pedestrians and their routes, knock-downs |
+| `sim/` | Traffic, pedestrians and their routes, knock-downs (`mayhem.js`) |
 | `actors/` | Vehicle and helicopter geometry and materials, vehicle lights |
 | `player/` | The four player controllers (person, car, cyclist, helicopter) and the camera rigs |
 | `input/` | Touch and gamepad controls (keyboard lives in `player/controllers.js`) |
-| `ui/` | The minimap and full map |
+| `ui/` | The minimap and full map (`city-map.js`) |
 | `audio/` | Procedural city audio, synthesised (no audio files) |
 | `net/` | Multiplayer client (`multiplayer.js`), loaded only with `?multiplayer=1` |
 
@@ -46,7 +46,7 @@ Outside `js/`:
 - **Preloads:** every module that `main.js` reaches through static imports has a `<link rel="modulepreload">` in `index.html`, and `tests/boot.test.cjs` checks the list and its count. Add the preload, and bump the count, when you add a module. Modules loaded on demand through dynamic `import()`, such as `net/multiplayer.js`, are not preloaded.
 - **Stylesheet:** bump the `style.css?v=` query in `index.html` when you change the CSS, so returning players don't keep a stale stylesheet.
 - **World frame:** 1 unit = 1 m. `x` runs east along the city's street grid, `z` runs south, and `y` is up. The grid is turned `GEO.frame.bearingDeg` degrees clockwise from true north. Real-world bearings (the sun, wind, compass) must go through it.
-- **Generated data:** generated geodata modules (`nyc-geodata.js`, `city-geodata.js`) say "GENERATED … do not edit by hand". Change the builder in `tools/` and its data instead.
+- **Generated data:** `city-geodata.js` says "GENERATED … do not edit by hand": it comes from `tools/build-tepic-geodata.mjs` over the OpenStreetMap / Overture data in `tools/data/tepic/` (see `README.md`). Change the builder or its data instead.
 - **Tests and `loadModule`:** module tests load a source file with `tests/helpers/module.cjs`'s `loadModule`, which stubs each import by its exact specifier (`'./city-config.js'`). Moving a module or changing an import path means updating those stub keys. `tools/reorganize.mjs` does it for moves.
 - **Keep Node-testable logic free of three.js imports** where you can: `weather.js` and `shared/protocol.js` are like that, so `node --test` imports them directly.
 - **DOM:** the HUD uses safe DOM APIs only (`textContent`, `classList`, `addEventListener`), never `innerHTML` with data.
@@ -54,7 +54,7 @@ Outside `js/`:
 - **Performance:**
   - The frame loop is hot. Don't allocate per frame (reuse vectors), and spread expensive work out. For example, Live re-bakes the sky IBL only when the sun moved about 0.5° or the weather changed.
   - Check fps in the HUD, and with `tools/benchmark-pedestrians.mjs` or `server/bench.js` where they apply.
-- **Attribution:** keep the credits in `README.md` when adding data sources: OpenStreetMap (ODbL), NYC Open Data, Open-Meteo (CC BY 4.0).
+- **Attribution:** keep the credits in `README.md` when adding data sources: OpenStreetMap and Overture Maps (ODbL), Open-Meteo (CC BY 4.0).
 
 ## Multiplayer in one paragraph
 

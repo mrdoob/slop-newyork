@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { solarPosition, sunDirection, parseOpenMeteo, weatherLabel, LiveWeather, WEATHER_LOCATION } from '../js/weather.js';
+import { solarPosition, sunDirection, parseOpenMeteo, weatherLabel, LiveWeather, WEATHER_LOCATION } from '../js/world/weather.js';
 
 const { latitude, longitude } = WEATHER_LOCATION;
 

@@ -57,7 +57,7 @@ import {
   int
 } from 'three/tsl';
 
-// js/tsl-materials.js
+// js/render/tsl-materials.js
 // Photorealistic TSL (Three.js Shading Language) procedural shaders for Three.js r186 WebGPURenderer
 // Incorporating techniques from three.js webgpu_generator_city.html:
 // - Mikkelsen Surface-Gradient Hardware Derivative Bump Mapping (bumpNormal)
@@ -483,7 +483,7 @@ function atlasSlotUV(slot, cols, rows) {
  * stripe and a red band. Lit windows & open stores glow at night.
  */
 let _mexicanHouseMat = null;
-// `chains`: [{ band, stripe }] colours of each chain store front (js/storefronts), picked by the wall kind
+// `chains`: [{ band, stripe }] colours of each chain store front (js/world/storefronts), picked by the wall kind
 // WALL_KINDS.chainStore + its index
 function createMexicanHouseMaterial({ floorHeight = 3.0, chains = [] } = {}) {
   if (_mexicanHouseMat) return _mexicanHouseMat;
@@ -1275,7 +1275,7 @@ class TreeNodeMaterial extends THREE.MeshStandardNodeMaterial {
 const TREE_WIND = vec2(0.86, 0.51);
 
 /**
- * Instanced street & park tree material (js/trees.js): bark tubes and alpha-tested leaf cards in ONE draw per mesh.
+ * Instanced street & park tree material (js/world/trees.js): bark tubes and alpha-tested leaf cards in ONE draw per mesh.
  * Geometry attributes:
  * - uv: leaf-atlas coordinates on the cards; on the bark (metres round the stem, metres along it)
  * - normal: on the cards, crown-shell normals (out from the crown centre, blended with the card face), so a crown
@@ -1546,7 +1546,7 @@ function roadWetMasks(field, drainage = 0.0) {
  * cityUniforms.uRoadWetness drives damp stains, a glossy wet film & standing puddles (roadWetMasks): bone dry at
  * midday, a few small pools at golden hour, slick & mirroring the lights at night. Water's Fresnel rides on metalness
  * (as for the rivers), so puddles reflect the street through SSR at grazing angles yet only darken seen from above.
- * Lane markings are separate geometry built from the road network (js/road-paint.js).
+ * Lane markings are separate geometry built from the road network (js/world/road-paint.js).
  */
 function createRoadSurfaceMaterial() {
   const mat = new THREE.MeshStandardNodeMaterial({
@@ -1646,7 +1646,7 @@ function createRoadSurfaceMaterial() {
 }
 
 /**
- * Road markings built from the road network (js/road-paint.js): vertex-coloured strips whose `paint` attribute
+ * Road markings built from the road network (js/world/road-paint.js): vertex-coloured strips whose `paint` attribute
  * holds (metres along the strip, pattern period, duty cycle) and `side` the offset from the strip's centre line.
  * Strips thinner than ~1.5 px are widened on screen and faded to match (phone-wire AA) and dashes are box-filtered,
  * so distant markings fade out smoothly instead of breaking up and flickering. Worn, and dark & glossy in puddles.

@@ -21,10 +21,10 @@ import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 import { SunLight } from 'three/addons/lights/SunLight.js';
 import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
 import { cityUniforms } from './tsl-materials.js';
-import { GEO } from './city-geodata.js';
-import { LiveWeather, sunDirection } from './weather.js';
+import { GEO } from '../world/city-geodata.js';
+import { LiveWeather, sunDirection } from '../world/weather.js';
 
-// js/lighting.js
+// js/render/lighting.js
 // Physically-Based Atmospheric Sky (Preetham SkyMesh + Beer-Powder Clouds),
 // Live PMREMGenerator IBL Cubemap, Three.js r186 SunLight (2-Cascade CSM),
 // and Occlusion-Aware Urban Canyon Global Illumination for Three.js r186 WebGPURenderer

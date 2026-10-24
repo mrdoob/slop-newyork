@@ -1,4 +1,4 @@
-import { GEO } from './city-geodata.js';
+import { GEO } from '../world/city-geodata.js';
 import {
   ROADS,
   BLOCKS,
@@ -8,9 +8,9 @@ import {
   CITY_OUTLINE,
   getLocationLabel,
   isTypingInField
-} from './city-config.js';
+} from '../world/city-config.js';
 
-// js/city-map.js
+// js/ui/city-map.js
 // GTA 6-Style Live Radar Minimap + Full-Screen Interactive City Map.
 // Synchronized 1:1 with the 3D world (1 unit = 1 m; x = east, z = south on the centro's street grid, so both maps are
 // drawn "grid north up", GEO.frame.bearingDeg east of true north). They draw the very geography the city is built

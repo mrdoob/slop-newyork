@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { float, color, mix, smoothstep, positionWorld, normalWorld, vec2, sin, fract, dot, floor } from 'three/tsl';
 import { GEO } from './city-geodata.js';
-import { cityUniforms } from './tsl-materials.js';
+import { cityUniforms } from '../render/tsl-materials.js';
 
-// js/terrain.js
+// js/world/terrain.js
 // The hills around the valley (city-geodata.js `terrain`, from open elevation data, see tools/build-tepic-geodata.mjs):
 // a heightfield over the flat city, zero under its streets and houses and rising beyond them (Cerro de San Juan to the
 // west, Cerro de la Cruz to the north with its cross, the lomas). terrainHeight(x, z) gives its height anywhere, for

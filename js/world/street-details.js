@@ -2,12 +2,12 @@ import * as THREE from 'three/webgpu';
 import { Fn, float, color, positionWorld, uniform, mod, step, smoothstep, mix, attribute, texture } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SIGNAL_TIMING, blockAt, BLOCKS, nearestRoads } from './city-config.js';
-import { cityUniforms, createTreeGrateMaterial, atlasSlotUV } from './tsl-materials.js';
-import { PropBreaker } from './mayhem.js';
+import { cityUniforms, createTreeGrateMaterial, atlasSlotUV } from '../render/tsl-materials.js';
+import { PropBreaker } from '../sim/mayhem.js';
 import { createTreeField } from './trees.js';
 import { pavedPlazaRects, parkTreeSites, sidewalkBlocks, parkLampSites } from './city-grid.js';
 
-// js/street-details.js
+// js/world/street-details.js
 // Populates the city's streets with street furniture using InstancedMesh:
 // - Mast-arm traffic signals at the road network's signalised junctions (addJunctionSignals)
 // - Cobra-head streetlights along the curbs and post-top lamps in the centro
@@ -15,7 +15,7 @@ import { pavedPlazaRects, parkTreeSites, sidewalkBlocks, parkLampSites } from '.
 
 /**
  * TSL 3-Aspect Traffic Signal Lens Material (Red y=5.78, Amber y=5.42, Green y=5.06)
- * Driven by the shared signal clock and SIGNAL_TIMING (city-config.js), which js/traffic.js obeys.
+ * Driven by the shared signal clock and SIGNAL_TIMING (city-config.js), which js/sim/traffic.js obeys.
  */
 function createTrafficSignalLensMaterial(isAvenueHead, clock) {
   const { cycle, avenueAmber, avenueRed, streetAmber } = SIGNAL_TIMING;
@@ -514,7 +514,7 @@ function buildStreetDetails(scene) {
     return s - Math.floor(s);
   }
 
-  // Procedural trees (js/trees.js): species skeletons with leaf-spray cards, one instanced mesh per species, variant &
+  // Procedural trees (js/world/trees.js): species skeletons with leaf-spray cards, one instanced mesh per species, variant &
   // level of detail, each tree's level following the camera
   const treeField = createTreeField(scene, treePositions);
   group.add(treeField.group);

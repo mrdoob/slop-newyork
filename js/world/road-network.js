@@ -7,7 +7,7 @@ import {
 } from './city-config.js';
 import { GEO } from './city-geodata.js';
 
-// js/road-network.js
+// js/world/road-network.js
 // Drivable road graph derived from the ground layout that city-grid.js actually builds: avenue corridors
 // between the raised curbs, cross-street gaps between curb rows, lanes that keep clear of medians, plazas
 // and steam stacks, intersections (signalized where street-details.js mounts signal heads) and the

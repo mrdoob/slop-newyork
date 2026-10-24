@@ -5,8 +5,8 @@ import {
   getIslandBoundsAtZ,
   isTypingInField,
   blockAt
-} from './city-config.js';
-import { cityUniforms, createCarPaintMaterial, createContactShadowMaterial } from './tsl-materials.js';
+} from '../world/city-config.js';
+import { cityUniforms, createCarPaintMaterial, createContactShadowMaterial } from '../render/tsl-materials.js';
 import {
   BODY_SPECS,
   buildCarGeometry,
@@ -17,11 +17,11 @@ import {
   buildHelicopterMainRotorGeometry,
   buildHelicopterTailRotorGeometry,
   createLoftedHelicopterMaterial
-} from './actor-models.js';
-import { PersonCrowd, PersonRig } from './pedestrians.js';
-import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
+} from '../actors/actor-models.js';
+import { PersonCrowd, PersonRig } from '../sim/pedestrians.js';
+import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from '../actors/vehicle-lights.js';
 
-// js/controllers.js
+// js/player/controllers.js
 // Sculpted, non-blocky GTA 6-style 3D models, animations, and physics controllers
 // for Third-Person Navigation:
 // 1. Person (Skinned Pedestrian: planted-footstep IK walk/run/jump, see pedestrians.js)

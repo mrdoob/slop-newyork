@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-// js/mayhem.js
+// js/sim/mayhem.js
 // Arcade knock-downs for the player's car and bicycle: people (pedestrians, cyclists) thrown and tumbling to the ground,
 // street furniture (lamp posts, hydrants) tipping over. Pure helpers (tested in tests/mayhem.test.cjs) plus the props'
 // breaker, which hides a prop's static instances and animates a stand-in falling in its place.

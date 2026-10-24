@@ -9,7 +9,7 @@ import {
   createParkPavingMaterial,
   createParkLampGlobeMaterial,
   createParkLampPoolMaterial
-} from './tsl-materials.js';
+} from '../render/tsl-materials.js';
 import { GEO } from './city-geodata.js';
 
 // Live construction data consumed by the building and street-detail builders after buildCityGrid().
@@ -18,7 +18,7 @@ let parkLampSites;
 let pavedPlazaRects;
 let sidewalkBlocks;
 
-// js/city-grid.js
+// js/world/city-grid.js
 // Builds the city's ground: the valley floor, the roadway deck over the city outline, the raised sidewalks &
 // curbstones of every real curb island (city-config.js BLOCKS), the open country between the roads, and the parks &
 // plazas with their walks, lawns, trees and lamps.

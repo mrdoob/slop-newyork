@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
-import { createTreeMaterial } from './tsl-materials.js';
+import { createTreeMaterial } from '../render/tsl-materials.js';
 
-// js/trees.js
+// js/world/trees.js
 // Procedural street & park trees, planted by street-details.js (section 7):
 // - London plane, honey locust & American elm grown from seeded per-species rules: a flared trunk / leader carrying
 //   scaffold limbs, branches and twigs as tapered, curving bark tubes (uv in metres for the bark shader)

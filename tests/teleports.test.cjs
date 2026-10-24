@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const read = (path) => readFileSync(join(__dirname, '..', path), 'utf8');
 let TELEPORT_LOCATIONS, LANDMARK_SITES, CITY, blockAt, nearestRoads, getIslandBoundsAtZ, getLocationLabel;
 test.before(async () => {
-  ({ TELEPORT_LOCATIONS, LANDMARK_SITES, CITY, blockAt, nearestRoads, getIslandBoundsAtZ, getLocationLabel } = await import('../js/city-config.js'));
+  ({ TELEPORT_LOCATIONS, LANDMARK_SITES, CITY, blockAt, nearestRoads, getIslandBoundsAtZ, getLocationLabel } = await import('../js/world/city-config.js'));
 });
 
 test('every teleport button has a destination on a real roadway inside the city', () => {

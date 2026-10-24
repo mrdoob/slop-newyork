@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-// js/cameras.js
+// js/player/cameras.js
 // Multi-camera system supporting Third-Person Chase (with mouse/touch orbit + zoom),
 // Low-Angle Action Cam, POV/Cockpit Cam, the scenic cameras over Tepic's landmarks, and Auto-Director Drone.
 // (The scenic preset ids are the New York game's; main.js anchors each one on a spot of the city.)

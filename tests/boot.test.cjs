@@ -35,7 +35,7 @@ test('native module entry and imports share canonical preloaded URLs on GitHub P
   const base = 'https://example.test/slop-tepic/';
   const urls = new Set(links.map((src) => new URL(src, base).href));
   for (const src of links) {
-    assert.match(src, /^\.\/js\/(storefronts\/)?[\w-]+\.js$/, 'preloads use the same unversioned paths as native imports');
+    assert.match(src, /^\.\/js\/(?:[\w-]+\/)*[\w-]+\.js$/, 'preloads use the same unversioned paths as native imports');
     const source = readFileSync(join(__dirname, '..', src), 'utf8');
     for (const [, specifier] of source.matchAll(/(?:\bfrom\s*|\bimport\s*)['"](\.[^'"]+)['"]/g)) {
       const url = new URL(specifier, new URL(src, base));

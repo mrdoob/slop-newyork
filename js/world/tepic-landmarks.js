@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { color, mix, positionWorld, fract, step } from 'three/tsl';
 import { GEO } from './city-geodata.js';
-import { cityUniforms } from './tsl-materials.js';
+import { cityUniforms } from '../render/tsl-materials.js';
 
-// js/tepic-landmarks.js
+// js/world/tepic-landmarks.js
 // Tepic's landmarks on their real footprints (city-geodata.js `landmarks`, from OpenStreetMap): the Catedral on the
 // Plaza Principal, its facade towards the plaza between two neo-Gothic towers (a tall shaft, two belfries with open
 // arches, an octagonal spire with a cross). LANDMARK_RESERVES are their lots, kept clear of the generic houses.

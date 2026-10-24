@@ -1,14 +1,14 @@
 import * as THREE from 'three/webgpu';
-import { PersonCrowd, PersonRig } from './pedestrians.js';
+import { PersonCrowd, PersonRig } from '../sim/pedestrians.js';
 import {
   SEND_HZ,
   OP,
   encodeHello,
   encodeState,
   decodeServer
-} from '../shared/protocol.js';
+} from '../../shared/protocol.js';
 
-// js/multiplayer.js
+// js/net/multiplayer.js
 // Browser side of the room server (server/index.js), loaded only with ?multiplayer=1 (see main.js). Sends the active
 // player's pose SEND_HZ times a second, keeps a local list of the players the server says are in view, and draws them
 // INTERP_DELAY_MS in the past, interpolating between the poses it received so 10 Hz updates look smooth.
@@ -18,7 +18,7 @@ import {
 //   &mp-region=nayarit           room region (default: this map's, see DEFAULT_REGION)
 //   &mp-name=Lalo                display name (remembered)
 
-const DEFAULT_REGION = 'nyc'; // the map this checkout builds; each city's map will name its own region
+const DEFAULT_REGION = 'nayarit'; // the map this checkout builds (Tepic); each city's map will name its own region
 const DEFAULT_PORT = 8787;
 const INTERP_DELAY_MS = 200; // two server ticks: a late packet still has a pose to blend toward
 const SNAP_DISTANCE = 60; // m between updates beyond which a player teleported instead of moving

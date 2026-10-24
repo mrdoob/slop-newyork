@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-// js/scene-culling.js
+// js/render/scene-culling.js
 // Spatial culling for the city-wide static geometry. Most of the street furniture and building massing is built as a
 // handful of instanced meshes spanning the whole city (bounding spheres several km across), which three.js can never
 // cull: every frame the GPU transformed every lamp post, signal and facade box of the city three times (the

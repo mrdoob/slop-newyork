@@ -1,25 +1,25 @@
 import * as THREE from 'three/webgpu';
 import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2, smoothstep } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
-import { createPostProcessing } from './post-processing.js';
+import { createPostProcessing } from './render/post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
-import { CITY, getLocationLabel, isTypingInField, ROADS, CITY_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
-import { buildCityGrid } from './city-grid.js';
-import { buildCityBlocks } from './buildings.js';
-import { buildStreetDetails } from './street-details.js';
-import { createTrafficSystem, createHighwayTraffic } from './traffic.js';
-import { buildRoadPaint } from './road-paint.js';
-import { ThirdPersonControllerManager } from './controllers.js';
-import { TouchControls } from './touch-controls.js';
-import { GamepadControls } from './gamepad-controls.js';
-import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
-import { LightingSystem } from './lighting.js';
-import { WEATHER_SAMPLES, weatherLabel } from './weather.js';
-import { CityMapSystem } from './city-map.js';
-import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
-import { CityAudioSystem } from './audio-system.js';
-import { buildTerrain, hillGround } from './terrain.js';
-import { buildTepicLandmarks } from './tepic-landmarks.js';
+import { CITY, getLocationLabel, isTypingInField, ROADS, CITY_LANDMARKS, TELEPORT_LOCATIONS } from './world/city-config.js';
+import { buildCityGrid } from './world/city-grid.js';
+import { buildCityBlocks } from './world/buildings.js';
+import { buildStreetDetails } from './world/street-details.js';
+import { createTrafficSystem, createHighwayTraffic } from './sim/traffic.js';
+import { buildRoadPaint } from './world/road-paint.js';
+import { ThirdPersonControllerManager } from './player/controllers.js';
+import { TouchControls } from './input/touch-controls.js';
+import { GamepadControls } from './input/gamepad-controls.js';
+import { CameraSystem, CAMERA_PRESETS } from './player/cameras.js';
+import { LightingSystem } from './render/lighting.js';
+import { WEATHER_SAMPLES, weatherLabel } from './world/weather.js';
+import { CityMapSystem } from './ui/city-map.js';
+import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js';
+import { CityAudioSystem } from './audio/audio-system.js';
+import { buildTerrain, hillGround } from './world/terrain.js';
+import { buildTepicLandmarks } from './world/tepic-landmarks.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -263,7 +263,7 @@ async function initApp() {
   const liveButton = document.getElementById('time-live');
   const liveLabel = liveButton && liveButton.querySelector('.seg-label');
 
-  // Live time of day: the real sun & weather over the weather location (js/weather.js). ?live-time=<ISO date> starts the
+  // Live time of day: the real sun & weather over the weather location (js/world/weather.js). ?live-time=<ISO date> starts the
   // clock elsewhere & ?live-weather=<clear|cloudy|overcast|rain|storm|fog> pins the conditions, to preview them
   const liveParams = new URLSearchParams(location.search);
   const liveStart = Date.parse(liveParams.get('live-time') || '');
@@ -649,10 +649,10 @@ async function initApp() {
     savedTime = localStorage.getItem('time-of-day');
   } catch { /* Storage may be disabled. */ }
   selectTime([...timeButtons].some((btn) => btn.getAttribute('data-time') === savedTime) ? savedTime : 'live');
-  // Multiplayer (?multiplayer=1, see js/multiplayer.js) loads only when asked for, so single-player pays nothing
+  // Multiplayer (?multiplayer=1, see js/net/multiplayer.js) loads only when asked for, so single-player pays nothing
   let multiplayer = null;
   if (new URLSearchParams(location.search).has('multiplayer')) {
-    import('./multiplayer.js')
+    import('./net/multiplayer.js')
       .then(({ Multiplayer, multiplayerOptions }) => {
         const options = multiplayerOptions();
         if (!options) {

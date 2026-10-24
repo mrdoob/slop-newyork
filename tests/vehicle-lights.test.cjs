@@ -25,7 +25,7 @@ class SpotLight {
   }
 }
 const { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } = loadModule(
-  readFileSync(join(__dirname, '../js/vehicle-lights.js'), 'utf8'),
+  readFileSync(join(__dirname, '../js/actors/vehicle-lights.js'), 'utf8'),
   { imports: { 'three/webgpu': { SpotLight } } }
 );
 const specs = {

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { cityUniforms } from './tsl-materials.js';
+import { cityUniforms } from '../render/tsl-materials.js';
 import {
   Fn,
   float,
@@ -25,7 +25,7 @@ import {
 } from 'three/tsl';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// js/actor-models.js
+// js/actors/actor-models.js
 // Realistic 3D Lofted Vehicle Geometry + TSL Materials (the skinned, animated people are in pedestrians.js)
 // Ported and adapted from Three.js webgpu_generator_city:
 // - LoftGeometry.js (skinning 3D cross-section rings with arc-length UVs, smooth seam normals & Newell caps)

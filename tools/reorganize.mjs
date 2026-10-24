@@ -22,15 +22,14 @@ const JS = path.join(ROOT, 'js');
 const FOLDERS = {
   render: ['lighting.js', 'post-processing.js', 'tsl-materials.js', 'scene-culling.js'],
   world: [
-    'city-config.js', 'nyc-geodata.js', 'city-geodata.js', 'city-grid.js', 'boroughs.js', 'buildings.js',
-    'fire-escapes.js', 'landmarks.js', 'tepic-landmarks.js', 'street-details.js', 'storefronts', 'terrain.js',
-    'trees.js', 'road-network.js', 'road-paint.js', 'weather.js'
+    'city-config.js', 'city-geodata.js', 'city-grid.js', 'buildings.js', 'tepic-landmarks.js', 'street-details.js',
+    'storefronts', 'terrain.js', 'trees.js', 'road-network.js', 'road-paint.js', 'weather.js'
   ],
   sim: ['traffic.js', 'pedestrians.js', 'pedestrian-routes.js', 'mayhem.js'],
   actors: ['actor-models.js', 'vehicle-lights.js'],
   player: ['controllers.js', 'cameras.js'],
   input: ['touch-controls.js', 'gamepad-controls.js'],
-  ui: ['nyc-map.js', 'city-map.js'],
+  ui: ['city-map.js'],
   audio: ['audio-acoustics.js', 'audio-events.js', 'audio-sources.js', 'audio-synthesis.js', 'audio-system.js'],
   net: ['multiplayer.js']
 };

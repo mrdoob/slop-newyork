@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { buildRoadNetwork } from './road-network.js';
+import { buildRoadNetwork } from '../world/road-network.js';
 import { createPedestrianRoutes } from './pedestrian-routes.js';
-import { signalPhase, walkSignal, blockAt } from './city-config.js';
-import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from './tsl-materials.js';
-import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
+import { signalPhase, walkSignal, blockAt } from '../world/city-config.js';
+import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from '../render/tsl-materials.js';
+import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from '../actors/vehicle-lights.js';
 import {
   BODY_SPECS,
   BUS_SPEC,
@@ -18,12 +18,12 @@ import {
   buildBusWheelGeo,
   createBusWheelMaterial,
   createLoftedBusMaterial
-} from './actor-models.js';
+} from '../actors/actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BONES, boxHit, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
 
-// js/traffic.js
+// js/sim/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
 // - 200 cars (taxis, sedans, SUVs, NYPD cruisers) and 12 MTA buses keep to their lanes and follow the vehicle
 //   ahead (Intelligent Driver Model), change lanes to overtake or to reach a turn lane, turn into other streets,

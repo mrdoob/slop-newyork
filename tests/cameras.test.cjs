@@ -4,7 +4,7 @@ const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
-const source = readFileSync(join(__dirname, '../js/cameras.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../js/player/cameras.js'), 'utf8');
 
 class Vector3 {
   constructor(x = 0, y = 0, z = 0) { this.set(x, y, z); }

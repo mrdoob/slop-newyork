@@ -4,14 +4,14 @@ const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
-const source = readFileSync(join(__dirname, '../js/city-map.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../js/ui/city-map.js'), 'utf8');
 
 for (const [width, height, dpr] of [[500, 300, 1], [320, 180, 1.5], [1920, 1080, 2]]) {
   test(`map clicks match rendered world positions at ${width}x${height}, DPR ${dpr}`, () => {
     const window = { innerWidth: width, innerHeight: height, devicePixelRatio: dpr };
     const { CityMapSystem } = loadModule(source, {
       globals: { window, performance: { now: () => 0 } },
-      imports: { './city-geodata.js': { GEO: {} }, './city-config.js': { ROADS: [] } }
+      imports: { '../world/city-geodata.js': { GEO: {} }, '../world/city-config.js': { ROADS: [] } }
     });
     const map = Object.create(CityMapSystem.prototype);
     // Capture the production render viewport; drawing primitives are irrelevant to coordinate conversion.
@@ -103,7 +103,7 @@ function mapHarness() {
   };
   const { CityMapSystem } = loadModule(source, {
     globals: { window, document },
-    imports: { './city-geodata.js': { GEO: { frame: {} } }, './city-config.js': config }
+    imports: { '../world/city-geodata.js': { GEO: { frame: {} } }, '../world/city-config.js': config }
   });
   const teleports = [], toggles = [];
   const map = new CityMapSystem({
