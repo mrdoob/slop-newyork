@@ -30,7 +30,7 @@ const FOLDERS = {
   actors: ['actor-models.js', 'vehicle-lights.js'],
   player: ['controllers.js', 'cameras.js'],
   input: ['touch-controls.js', 'gamepad-controls.js'],
-  ui: ['nyc-map.js'],
+  ui: ['nyc-map.js', 'city-map.js'],
   audio: ['audio-acoustics.js', 'audio-events.js', 'audio-sources.js', 'audio-synthesis.js', 'audio-system.js'],
   net: ['multiplayer.js']
 };
