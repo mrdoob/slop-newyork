@@ -36,6 +36,28 @@ async function initApp() {
     loadingFill.style.transform = `scaleX(${Math.min(1, Math.max(0, p))})`;
   };
 
+  // Start-up and GPU failures replace the loading status with an explanation, instead of leaving a blank canvas
+  const showFatalError = (title, message) => {
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    if (loadingTrack) loadingTrack.style.display = 'none';
+    if (!loadingStatus) return;
+    const box = document.createElement('div');
+    box.className = 'loader-error-box';
+    const heading = document.createElement('div');
+    heading.className = 'loader-error-title';
+    heading.textContent = title;
+    const text = document.createElement('div');
+    text.className = 'loader-error-desc';
+    text.textContent = message;
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.className = 'loader-reload-btn';
+    reload.textContent = 'Reload';
+    reload.addEventListener('click', () => location.reload());
+    box.append(heading, text, reload);
+    loadingStatus.replaceChildren(box);
+  };
+
   if (loadingStatus) {
     loadingStatus.textContent = `Initializing Three.js r${THREE.REVISION} WebGPURenderer & TSL Shaders...`;
   }
@@ -61,7 +83,26 @@ async function initApp() {
     initMark = now;
   };
 
-  await renderer.init();
+  try {
+    await renderer.init();
+  } catch (error) {
+    console.error('[init] WebGPURenderer failed to initialize', error);
+    showFatalError('WebGPU unavailable', 'This browser could not create a WebGPU device. Check that WebGPU and hardware acceleration are enabled.');
+    return;
+  }
+  // The city's storage buffers, compute passes and MRT post-processing need WebGPU: on the WebGL2 fallback the
+  // pipelines fail to link and the GPU process can be reset, leaving a blank page behind the HUD
+  if (!renderer.backend.isWebGPUBackend) {
+    console.warn('[init] WebGPU is not available, WebGPURenderer fell back to WebGL2');
+    showFatalError('WebGPU required', 'Slop New York needs WebGPU. Enable WebGPU and hardware acceleration in your browser settings, then reload.');
+    return;
+  }
+  renderer.backend.device.lost.then((info) => {
+    if (info.reason === 'destroyed') return; // released on purpose
+    console.error(`[gpu] Device lost: ${info.message}`);
+    renderer.setAnimationLoop(null);
+    showFatalError('Graphics device lost', 'The GPU was reset by the browser or the operating system. Reload to restart the city.');
+  });
   markInit('renderer');
 
   // 2. Build Scene & Physical Atmospheric Sky / PMREM IBL / 4096x4096 Shadow Lighting
