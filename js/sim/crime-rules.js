@@ -81,12 +81,17 @@ class Wanted {
   }
 }
 
-// Two gangs share the town's turf: Los Rojos shoot at whoever comes close, Los Verdes only at whoever starts it.
-// outfit: the colours they wear (pedestrians.js OUTFIT)
+// Two street gangs share the town's turf: Los Rojos shoot at whoever comes close, Los Verdes only at whoever starts
+// it. Out on the town's edges the (made-up) Cártel de la Sierra holds the ground with rifles: they shoot on sight,
+// fight the police wherever they meet, and send trucks of reinforcements after whoever takes them on (crime.js).
+// outfit: the colours they wear (pedestrians.js OUTFIT); sight: m they open fire from
 const GANGS = [
-  { id: 0, name: 'Los Rojos', outfit: 2, hostile: true, weapon: 'smg' },
-  { id: 1, name: 'Los Verdes', outfit: 3, hostile: false, weapon: 'pistol' }
+  { id: 0, name: 'Los Rojos', outfit: 2, hostile: true, weapon: 'smg', sight: 15 },
+  { id: 1, name: 'Los Verdes', outfit: 3, hostile: false, weapon: 'pistol', sight: 15 },
+  { id: 2, name: 'Cártel de la Sierra', outfit: 5, hostile: true, weapon: 'rifle', sight: 28, narco: true }
 ];
+const NARCO = 2; // GANGS index
+const NARCO_RADIUS = 900; // m from the plaza beyond which the cartel can hold a square
 const TURF_CELL = 260; // m: the turf is cut in squares this big, each one a gang's or nobody's
 
 function hash2(ix, iz) {
@@ -97,11 +102,14 @@ function hash2(ix, iz) {
 }
 
 // The gang whose turf (x, z) is in (an index into GANGS), or -1. The town centre (within 300 m of the origin, the
-// plaza) belongs to nobody.
+// plaza) belongs to nobody; the cartel only holds squares on the town's edges.
 function gangTurf(x, z) {
   if (Math.hypot(x, z) < 300) return -1;
-  const h = hash2(Math.floor(x / TURF_CELL), Math.floor(z / TURF_CELL));
-  return h < 0.2 ? 0 : h < 0.4 ? 1 : -1;
+  const ix = Math.floor(x / TURF_CELL), iz = Math.floor(z / TURF_CELL);
+  const h = hash2(ix, iz);
+  // (the cartel's by where the square's centre lies, so a square is all theirs or not at all)
+  const edge = Math.hypot((ix + 0.5) * TURF_CELL, (iz + 0.5) * TURF_CELL) > NARCO_RADIUS;
+  return h < 0.2 ? 0 : h < 0.4 ? 1 : h < 0.55 && edge ? NARCO : -1;
 }
 
-export { STAR_HEAT, CRIME_HEAT, POLICE, GANGS, TURF_CELL, Wanted, starsFor, evadeTime, gangTurf };
+export { STAR_HEAT, CRIME_HEAT, POLICE, GANGS, NARCO, NARCO_RADIUS, TURF_CELL, Wanted, starsFor, evadeTime, gangTurf };

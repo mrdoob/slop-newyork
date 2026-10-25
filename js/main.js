@@ -326,7 +326,7 @@ async function initApp() {
   // Keyboard guide for each mode: [keys, action]
   const controlHints = {
     person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['RMB', 'X'], 'Fire'],
-      [['1-4', 'R'], 'Weapon'], [['F'], 'Robar / Subir']],
+      [['1-4', 'R'], 'Weapon'], [['F'], 'Robar / Subir']], // (3 again: SMG / rifle)
     car: [[['W', 'S'], 'Gas / Brake'], [['A', 'D'], 'Steer'], [['Shift'], 'Nitro'], [['Space'], 'Handbrake'], [['E', 'Q'], 'Gears'],
       [['T'], 'Auto / Manual'], [['RMB', 'X'], 'Shoot'], [['F'], 'Bajar']],
     cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['RMB', 'X'], 'Shoot'], [['F'], 'Bajar']],

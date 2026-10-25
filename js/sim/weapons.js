@@ -9,9 +9,11 @@ const WEAPONS = {
   fists: { id: 'fists', label: 'Fists', melee: true, auto: false, rate: 2.6, damage: 20, range: 1.7, spread: 0, start: Infinity, pickup: 0 },
   pistol: { id: 'pistol', label: 'Pistol', auto: false, rate: 4.5, damage: 34, range: 70, spread: 0.018, start: 68, pickup: 34 },
   smg: { id: 'smg', label: 'SMG', auto: true, rate: 11, damage: 16, range: 55, spread: 0.05, start: 240, pickup: 90 },
+  // (the cartel's: none to start with, taken off them)
+  rifle: { id: 'rifle', label: 'Rifle', auto: true, rate: 8, damage: 28, range: 85, spread: 0.028, start: 0, pickup: 60 },
   bazooka: { id: 'bazooka', label: 'Bazooka', auto: false, rate: 0.9, damage: 220, range: 170, spread: 0.004, rocket: 48, blast: 8, start: 8, pickup: 4 }
 };
-const WEAPON_ORDER = ['fists', 'pistol', 'smg', 'bazooka'];
+const WEAPON_ORDER = ['fists', 'pistol', 'smg', 'rifle', 'bazooka'];
 const CLICK_BUFFER = 0.15; // s: a pull of a semi-automatic trigger just before it is ready again still fires
 
 const wrapAngle = (a) => a - Math.round(a / (Math.PI * 2)) * Math.PI * 2;

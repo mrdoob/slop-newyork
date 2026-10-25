@@ -730,12 +730,13 @@ const LEG_COLORS_F = [0x1c1c22, 0x2f4a6e, 0x46413b, 0xcfc8bb, 0x5a2a2e];
 const SKIN_COLORS = [0xc68863, 0xa96f4c, 0x8a5535, 0x6b3d24, 0xd9a077];
 const HAIR_COLORS = [0x1a1512, 0x3a2a1a, 0x584022, 0x6e6862, 0x2a2624, 0x8f6d43, 0x5e3020];
 // Outfits worn by whoever's seed is OUTFIT_SEED times the outfit or more (crime.js): 1 police (navy uniform),
-// 2 Los Rojos (red), 3 Los Verdes (green over khaki), 4 a thief (black hoodie). Index 0 (everyone else) is unused.
+// 2 Los Rojos (red), 3 Los Verdes (green over khaki), 4 a thief (black hoodie), 5 the cartel (black over olive drab).
+// Index 0 (everyone else) is unused.
 const OUTFIT_SEED = 1000;
-const OUTFIT = { police: 1, rojos: 2, verdes: 3, thief: 4 };
-const OUTFIT_COATS = [0, 0x1b2a4c, 0xb0161d, 0x1f7a35, 0x1c1c1f];
-const OUTFIT_SHIRTS = [0, 0x26365a, 0x1a1a1a, 0xe8e6e0, 0x2a2a2d];
-const OUTFIT_LEGS = [0, 0x161c2b, 0x2f3d5c, 0xa48b5f, 0x3b3b3e];
+const OUTFIT = { police: 1, rojos: 2, verdes: 3, thief: 4, narco: 5 };
+const OUTFIT_COATS = [0, 0x1b2a4c, 0xb0161d, 0x1f7a35, 0x1c1c1f, 0x141518];
+const OUTFIT_SHIRTS = [0, 0x26365a, 0x1a1a1a, 0xe8e6e0, 0x2a2a2d, 0x3a3d2c];
+const OUTFIT_LEGS = [0, 0x161c2b, 0x2f3d5c, 0xa48b5f, 0x3b3b3e, 0x4b4c35];
 
 // Branchless TSL palette selector from an array of hex colors and a [0..1) hash value
 function pickColorFromPalette(hexArray, tNode) {

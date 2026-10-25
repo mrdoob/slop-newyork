@@ -44,9 +44,9 @@ test('stars stay while the police see the player and drop one at a time out of s
   assert.equal(w.stars, 0);
 });
 
-test('the gangs hold turf away from the town centre, deterministically', () => {
+test('the gangs hold turf away from the town centre, the cartel out on the edges, deterministically', () => {
   assert.equal(gangTurf(0, 0), -1, 'the plaza is nobody\'s');
-  let rojos = 0, verdes = 0;
+  let rojos = 0, verdes = 0, narcos = 0;
   for (let x = -23 * 260; x < 6000; x += 260) {
     for (let z = -23 * 260; z < 6000; z += 260) {
       const g = gangTurf(x + 1, z + 1);
@@ -54,9 +54,13 @@ test('the gangs hold turf away from the town centre, deterministically', () => {
       assert.equal(g, gangTurf(x + 100, z + 100), 'the same square, the same gang');
       if (g === 0) rojos++;
       if (g === 1) verdes++;
+      if (g === 2) {
+        narcos++;
+        assert.ok(Math.hypot(x, z) > 600, 'the cartel keeps to the edges');
+      }
     }
   }
-  assert.ok(rojos > 150 && verdes > 150, `${rojos} / ${verdes} squares`);
-  assert.equal(GANGS.length, 2);
-  assert.ok(GANGS[0].hostile && !GANGS[1].hostile);
+  assert.ok(rojos > 150 && verdes > 150 && narcos > 100, `${rojos} / ${verdes} / ${narcos} squares`);
+  assert.equal(GANGS.length, 3);
+  assert.ok(GANGS[0].hostile && !GANGS[1].hostile && GANGS[2].hostile && GANGS[2].narco);
 });

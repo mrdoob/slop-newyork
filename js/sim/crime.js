@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { PersonCrowd, PersonRig, OUTFIT, OUTFIT_SEED } from './pedestrians.js';
 import { BONES, boxHit, startTumble, stepTumble, tumblePose } from './mayhem.js';
 import { WEAPONS, Arsenal, pickTarget, rayCircle, rayBox, boxOverlap, blastFalloff, hitChance, wrapAngle } from './weapons.js';
-import { Wanted, POLICE, GANGS, gangTurf } from './crime-rules.js';
+import { Wanted, POLICE, GANGS, NARCO, gangTurf } from './crime-rules.js';
 import { GunfireFX } from './gunfire-fx.js';
 import { BODY_SPECS, buildCarGeometry, createLoftedCarMaterial, buildLightbarGeometry, createLightbarMaterial } from '../actors/actor-models.js';
 import { createContactShadowMaterial } from '../render/tsl-materials.js';
@@ -19,10 +19,13 @@ import { isTypingInField } from '../world/city-config.js';
 //   money and run.
 // - The player's health, armour and money, pickups, and being WASTED (killed) or BUSTED (arrested): back at the
 //   nearest teleport spot (main.js onRespawn).
+// - Out on the town's edges a (made-up) cartel with rifles: shooting on sight, at war with the police wherever they
+//   meet, sending black trucks of reinforcements after whoever takes them on.
 // The people it adds are PersonRigs drawn in one crowd, dressed in their outfits (pedestrians.js OUTFIT).
 
 const MAX_AGENTS = 24; // people on foot: police, gang members, thieves
 const MAX_CRUISERS = 5;
+const MAX_TRUCKS = 2; // the cartel's
 const MAX_PICKUPS = 24;
 const PARKED_Y = -1000; // where unused meshes wait (still in the scene, so their pipelines compile at load)
 const BODY_R = 0.34; // m: a person's radius, to shots and to each other
@@ -37,11 +40,17 @@ const RESPAWN_TIME = 4.2; // s on the WASTED / BUSTED screen
 const COP_SIGHT = 45; // m an officer sees the player from (a patrol car: 70)
 const CRUISER_SIGHT = 70;
 const CRUISER = { halfW: 0.92, halfL: 2.3, mass: 1600, accel: 7.5, brake: 14, turn: 1.9 };
-const NPC_GUN = { pistol: { rate: 1.1, damage: 4, range: 45, burst: 1 }, smg: { rate: 0.8, damage: 3, range: 38, burst: 4 } };
-const SKILL = { cop: 0.5, gang: 0.35 };
+const NPC_GUN = {
+  pistol: { rate: 1.1, damage: 4, range: 45, burst: 1 },
+  smg: { rate: 0.8, damage: 3, range: 38, burst: 4 },
+  rifle: { rate: 0.7, damage: 4, range: 60, burst: 3 }
+};
+const FOE_DAMAGE = 3; // police and cartel shoot each other this many times harder than at the player: fights end
+const FOE_RANGE = 45; // m the police and the cartel take each other on from
+const SKILL = { cop: 0.5, gang: 0.35, narco: 0.45 };
 const PICKUP_COLORS = {
   money: [0.25, 3.2, 0.6], health: [3.2, 0.35, 0.35], armor: [0.4, 1.4, 3.4],
-  pistol: [3, 2.4, 0.6], smg: [3, 1.4, 0.3], bazooka: [3.2, 0.7, 0.2]
+  pistol: [3, 2.4, 0.6], smg: [3, 1.4, 0.3], rifle: [2.6, 3, 0.4], bazooka: [3.2, 0.7, 0.2]
 };
 
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -135,7 +144,7 @@ class CrimeSystem {
     this.rockets = [];
     this.pickups = [];
     this.candidates = []; // lock-on targets, rebuilt per shot
-    this.timers = { dispatch: 0, gangs: 2, thief: rand(40, 70), health: 30, bazooka: 45 };
+    this.timers = { dispatch: 0, gangs: 2, thief: rand(40, 70), health: 30, bazooka: 45, trucks: 0 };
 
     this.buildGuns();
     this.buildCruisers();
@@ -209,33 +218,39 @@ class CrimeSystem {
     const mat = createLoftedCarMaterial(spec, 0xf6f9fd);
     if (mat.userData.carState) mat.userData.carState.value.set(0, 0, 0, 1); // police livery
     this.burnt = new THREE.MeshStandardNodeMaterial({ color: 0x1d1b1a, roughness: 0.95, metalness: 0.1 });
+    // the cartel's black SUVs, without a light bar
+    const truckSpec = BODY_SPECS.suv || spec;
+    const truckMat = createLoftedCarMaterial(truckSpec, 0x0c0d0f);
+    const truckBody = buildCarGeometry(truckSpec, true);
     const body = buildCarGeometry(spec, true);
     const bar = buildLightbarGeometry(spec);
     const barMat = createLightbarMaterial();
     const shadowGeo = new THREE.PlaneGeometry(2.3, 5.2).rotateX(-Math.PI / 2);
     const shadowMat = createContactShadowMaterial();
-    for (let i = 0; i < MAX_CRUISERS + 1; i++) {
+    for (let i = 0; i < MAX_CRUISERS + 1 + MAX_TRUCKS; i++) {
+      const truck = i > MAX_CRUISERS;
       const root = new THREE.Group();
-      root.name = 'PoliceCruiser';
+      root.name = truck ? 'CartelTruck' : 'PoliceCruiser';
       const tiltPivot = new THREE.Group();
       root.add(tiltPivot);
       // the last one is never driven: a burnt-out wreck parked out of sight, so that material compiles at load too
-      const bodyMesh = new THREE.Mesh(body, i === MAX_CRUISERS ? this.burnt : mat);
+      const bodyMesh = new THREE.Mesh(truck ? truckBody : body, i === MAX_CRUISERS ? this.burnt : truck ? truckMat : mat);
       bodyMesh.castShadow = true;
       bodyMesh.receiveShadow = true;
       const lightbar = new THREE.Mesh(bar, barMat);
       const shadow = new THREE.Mesh(shadowGeo, shadowMat);
       shadow.position.y = 0.02;
       shadow.renderOrder = 998;
-      tiltPivot.add(bodyMesh, lightbar);
+      tiltPivot.add(bodyMesh);
+      if (!truck) tiltPivot.add(lightbar);
       root.add(shadow);
       root.position.y = PARKED_Y;
       this.scene.add(root);
       if (i === MAX_CRUISERS) continue;
       this.cruisers.push({
-        active: false, mesh: root, tiltPivot, bodyMesh, lightbar, paint: mat,
+        active: false, mesh: root, tiltPivot, bodyMesh, lightbar, paint: truck ? truckMat : mat, faction: truck ? 'narco' : 'police',
         x: 0, y: 0, z: 0, heading: 0, speed: 0, vx: 0, vz: 0, halfW: CRUISER.halfW, halfL: CRUISER.halfL,
-        mass: CRUISER.mass, type: 'car', police: true, hp: 100, wreck: 0, state: 'chase', path: null, pathI: 0,
+        mass: CRUISER.mass, type: 'car', police: !truck, hp: truck ? 140 : 100, wreck: 0, state: 'chase', path: null, pathI: 0,
         replan: 0, stuckT: 0, checkX: 0, checkZ: 0, reverseT: 0, deployed: false, life: 0, pitch: 0, roll: 0,
         position: new THREE.Vector3() // (for the audio: crashes & sirens)
       });
@@ -351,7 +366,9 @@ class CrimeSystem {
     window.addEventListener('blur', () => { this.mouseFire = false; });
     window.addEventListener('keydown', (e) => {
       if (isTypingInField(e) || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
-      const pick = { Digit1: 'fists', Digit2: 'pistol', Digit3: 'smg', Digit4: 'bazooka' }[e.code];
+      let pick = { Digit1: 'fists', Digit2: 'pistol', Digit3: 'smg', Digit4: 'bazooka' }[e.code];
+      // 3 switches between the SMG and the rifle (once one has been taken off the cartel)
+      if (pick === 'smg' && this.arsenal.has('rifle') && (this.arsenal.current === 'smg' || !this.arsenal.has('smg'))) pick = 'rifle';
       if (pick) this.selectWeapon(pick);
       else if (e.code === 'KeyR') this.cycleWeapon(e.shiftKey ? -1 : 1);
     });
@@ -417,7 +434,7 @@ class CrimeSystem {
       if (a.kind === 'cop' && !a.fallen && a.state !== 'leave' && Math.hypot(a.x - this.px, a.z - this.pz) < COP_SIGHT) seen = true;
     }
     for (const cr of this.cruisers) {
-      if (cr.active && !cr.wreck && Math.hypot(cr.x - this.px, cr.z - this.pz) < CRUISER_SIGHT) seen = true;
+      if (cr.active && !cr.wreck && cr.police && Math.hypot(cr.x - this.px, cr.z - this.pz) < CRUISER_SIGHT) seen = true;
     }
     if (this.state === 'play') this.wanted.update(dt, seen);
     this.dispatch(dt);
@@ -478,7 +495,7 @@ class CrimeSystem {
     const aimWant = this.mode === 'person' ? (w.melee ? (this.punchT > 0 ? 1 : 0) : this.aimHold > 0 ? 1 : 0) : 0;
     rig.aim += (aimWant - rig.aim) * Math.min(1, dt * (aimWant ? 14 : 6));
     rig.aimYaw = this.lockTarget && this.mode === 'person' ? Math.atan2(this.lockTarget.x - this.px, this.lockTarget.z - this.pz) : p.heading;
-    rig.aimBoth = w.id === 'smg' || w.id === 'bazooka';
+    rig.aimBoth = w.id === 'smg' || w.id === 'rifle' || w.id === 'bazooka';
     this.placePlayerGun(w);
   }
 
@@ -674,7 +691,7 @@ class CrimeSystem {
       if (a.kind === 'cop' && !a.fallen && Math.hypot(a.x - x, a.z - z) < r) return true;
     }
     for (const cr of this.cruisers) {
-      if (cr.active && !cr.wreck && Math.hypot(cr.x - x, cr.z - z) < r) return true;
+      if (cr.active && !cr.wreck && cr.police && Math.hypot(cr.x - x, cr.z - z) < r) return true;
     }
     return false;
   }
@@ -833,10 +850,16 @@ class CrimeSystem {
       kind, gang, rig, x, z, heading: Math.atan2(this.px - x, this.pz - z), speed: 0, hp: kind === 'cop' ? 100 : 80,
       fallen: null, fallBase: null, dead: false, state: kind === 'thief' ? 'approach' : kind === 'gang' ? 'idle' : 'chase',
       t: 0, weapon, cooldown: rand(0.5, 1.5), burst: 0, homeX: x, homeZ: z, money: 0, arrest: 0, idleYaw: Math.random() * 6.28,
-      wanderT: rand(2, 6), los: false, losT: 0, stepT: 0
+      wanderT: rand(2, 6), los: false, losT: 0, stepT: 0, foe: null, foeT: Math.random() * 0.5
     };
     this.agents.push(a);
     return a;
+  }
+
+  // The player took a gang on: they come after it (the cartel sends its trucks, see dispatch)
+  angerGang(g) {
+    if (g === NARCO && this.gangAnger[g] <= 0) this.timers.trucks = Math.min(this.timers.trucks, 4);
+    this.gangAnger[g] = g === NARCO ? 120 : 90;
   }
 
   removeAgent(a) {
@@ -851,7 +874,7 @@ class CrimeSystem {
     const killed = a.hp <= 0;
     if (byPlayer) {
       if (a.kind === 'cop') this.report(killed ? 'killCop' : damage > 15 ? 'shootCop' : 'hitCop');
-      if (a.kind === 'gang') this.gangAnger[a.gang] = 90;
+      if (a.kind === 'gang') this.angerGang(a.gang);
     }
     if (a.kind === 'cop' && byPlayer && this.wanted.stars === 0) this.report('hitCop');
     if (!killed && throwSpeed < 6) {
@@ -884,8 +907,9 @@ class CrimeSystem {
     } else if (a.kind === 'cop' && Math.random() < 0.7) {
       this.drop(a.weapon === 'smg' ? 'smg' : 'pistol', a.x, a.z);
     } else if (a.kind === 'gang') {
-      if (Math.random() < 0.6) this.drop(a.weapon === 'smg' ? 'smg' : 'pistol', a.x, a.z);
-      if (Math.random() < 0.7) this.drop('money', a.x + 0.6, a.z, Math.round(rand(15, 70)));
+      const narco = a.gang === NARCO;
+      if (Math.random() < (narco ? 0.75 : 0.6)) this.drop(a.weapon || 'pistol', a.x, a.z);
+      if (Math.random() < 0.7) this.drop('money', a.x + 0.6, a.z, Math.round(narco ? rand(60, 220) : rand(15, 70)));
     }
   }
 
@@ -927,7 +951,7 @@ class CrimeSystem {
         this.knockAgent(a, this.pvx, this.pvz, hit.nx, hit.nz);
         if (a.kind === 'cop') this.report(a.hp <= 0 ? 'killCop' : 'hitCop');
         else this.report('runOver');
-        if (a.kind === 'gang') this.gangAnger[a.gang] = 90;
+        if (a.kind === 'gang') this.angerGang(a.gang);
         if (a.hp <= 0) this.kill(a);
         this.crowd.add(a.rig, dist);
         return;
@@ -947,8 +971,27 @@ class CrimeSystem {
     }
     const toPlayer = Math.atan2(dx, dz);
     const playing = this.state === 'play';
+    // the police and the cartel shoot it out wherever they meet
+    const fights = a.kind === 'cop' || a.gang === NARCO;
+    if (fights) {
+      a.foeT -= dt;
+      if (a.foe && (a.foe.fallen || !this.agents.includes(a.foe))) a.foe = null;
+      if (a.foeT <= 0) {
+        a.foeT = 0.5 + Math.random() * 0.3;
+        a.foe = this.findFoe(a);
+      }
+    }
+    const foeDist = a.foe ? Math.hypot(a.foe.x - a.x, a.foe.z - a.z) : Infinity;
 
-    if (a.kind === 'cop') {
+    if (a.foe && (a.kind === 'cop' ? this.wanted.stars === 0 || foeDist < dist : !this.gangAnger[NARCO] || foeDist < dist)) {
+      // fighting the other side: facing them, shooting
+      goalYaw = Math.atan2(a.foe.x - a.x, a.foe.z - a.z);
+      aim = 1;
+      speed = foeDist > 30 ? RUN * 0.6 : 0;
+      const gun = NPC_GUN[a.weapon || 'pistol'];
+      if (a.stepT <= 0) this.npcShoot(a, gun, a.kind === 'cop' ? SKILL.cop : SKILL.narco, foeDist, dt, a.foe);
+      if (a.kind === 'cop' && a.state === 'leave') a.t = 0; // (still on the job)
+    } else if (a.kind === 'cop') {
       const stars = this.wanted.stars;
       if (!playing || stars === 0 || a.state === 'leave') {
         a.state = playing && stars > 0 ? 'chase' : 'leave';
@@ -983,13 +1026,16 @@ class CrimeSystem {
     } else if (a.kind === 'gang') {
       const g = GANGS[a.gang];
       const provoked = this.gangAnger[a.gang] > 0;
-      const near = dist < 15 && this.onStreet;
+      const near = dist < g.sight && this.onStreet;
       const hostile = playing && (provoked || (g.hostile && near));
-      if (hostile && a.los && dist < 34) {
+      const reach = g.narco ? 50 : 34;
+      if (hostile && a.los && dist < reach) {
         goalYaw = toPlayer;
         aim = 1;
-        speed = dist > 22 ? RUN * 0.7 : 0;
-        if (a.stepT <= 0) this.npcShoot(a, NPC_GUN[a.weapon || 'pistol'], SKILL.gang, dist, dt);
+        speed = dist > reach * 0.65 ? RUN * 0.7 : 0;
+        if (a.stepT <= 0) this.npcShoot(a, NPC_GUN[a.weapon || 'pistol'], g.narco ? SKILL.narco : SKILL.gang, dist, dt);
+        // opening fire on the player in their turf is taking them on
+        if (g.narco && !provoked && a.cooldown > 0.5) this.angerGang(NARCO);
       } else if (hostile && dist < 60) {
         goalYaw = toPlayer;
         speed = RUN * 0.8;
@@ -1052,7 +1098,7 @@ class CrimeSystem {
     const rig = a.rig;
     rig.aim += (aim - rig.aim) * Math.min(1, dt * 8);
     rig.aimYaw = a.heading;
-    rig.aimBoth = a.weapon === 'smg';
+    rig.aimBoth = a.weapon === 'smg' || a.weapon === 'rifle';
     const draw = dist < 140;
     rig.update(dt, a.x, a.z, a.heading, this.personGround, a, 0, draw);
     if (!draw) return;
@@ -1060,7 +1106,7 @@ class CrimeSystem {
     if (a.weapon && rig.aim > 0.05 && this.gunCount < MAX_AGENTS) {
       dummy.position.copy(rig.handPosition);
       dummy.rotation.set((1 - rig.aim) * 1.25, rig.aimYaw, 0, 'YXZ');
-      dummy.scale.set(1, 1, a.weapon === 'smg' ? 1.3 : 0.75);
+      dummy.scale.set(1, 1, a.weapon === 'rifle' ? 2.1 : a.weapon === 'smg' ? 1.3 : 0.75);
       dummy.updateMatrix();
       this.npcGuns.setMatrixAt(this.gunCount++, dummy.matrix);
     }
@@ -1094,9 +1140,25 @@ class CrimeSystem {
     return true;
   }
 
-  // Someone on foot firing at the player: in bursts for an SMG, hitting by distance, the player's speed and their skill
-  npcShoot(a, gun, skill, dist, dt) {
-    if (a.cooldown > 0 || this.state !== 'play') return;
+  // The nearest of the other side (the police for the cartel, the cartel for the police) within FOE_RANGE in sight
+  findFoe(a) {
+    let best = null;
+    let bestD = FOE_RANGE;
+    for (const o of this.agents) {
+      if (o.fallen || (a.kind === 'cop' ? o.gang !== NARCO : o.kind !== 'cop')) continue;
+      const d = Math.hypot(o.x - a.x, o.z - a.z);
+      if (d < bestD && this.clearLine(a.x, a.z, o.x, o.z)) {
+        bestD = d;
+        best = o;
+      }
+    }
+    return best;
+  }
+
+  // Someone on foot firing at the player (or at `foe`, one of the other side): in bursts for an SMG or a rifle,
+  // hitting by distance, the target's speed and their skill
+  npcShoot(a, gun, skill, dist, dt, foe = null) {
+    if (a.cooldown > 0 || (this.state !== 'play' && !foe)) return;
     if (gun.burst > 1) {
       a.burst = a.burst > 0 ? a.burst - 1 : gun.burst - 1;
       a.cooldown = a.burst > 0 ? 0.11 : 1 / gun.rate + rand(0.2, 0.9);
@@ -1108,7 +1170,19 @@ class CrimeSystem {
     const hy = a.rig.handPosition.y + 0.05;
     const hz = a.rig.handPosition.z + Math.cos(yaw) * 0.3;
     this.fx.muzzle(hx, hy, hz, yaw);
-    this.audio?.gunfire?.(a.weapon || 'pistol', hx, hy, hz);
+    this.audio?.gunfire?.(a.weapon === 'rifle' ? 'smg' : a.weapon || 'pistol', hx, hy, hz);
+    if (foe) {
+      const fy = this.groundAt(foe.x, foe.z) + 1.2;
+      if (Math.random() < hitChance(dist, foe.speed, skill, gun.range)) {
+        this.fx.tracer(hx, hy, hz, foe.x, fy, foe.z);
+        this.fx.impact(foe.x, fy, foe.z, 'blood', Math.sin(yaw), Math.cos(yaw));
+        this.damageAgent(foe, gun.damage * FOE_DAMAGE, Math.sin(yaw), Math.cos(yaw), false);
+      } else {
+        this.fx.tracer(hx, hy, hz, foe.x + rand(-2, 2) + Math.sin(yaw) * 5, fy + rand(-0.5, 0.5), foe.z + rand(-2, 2) + Math.cos(yaw) * 5);
+      }
+      this.traffic.panic(a.x, a.z, 40);
+      return;
+    }
     const hits = Math.random() < hitChance(dist, this.pspeed, skill, gun.range);
     const py = this.player.position.y + (this.mode === 'person' ? 1.2 : 0.9);
     if (hits) {
@@ -1128,18 +1202,20 @@ class CrimeSystem {
   // =========================================================================
   // 8. PATROL CARS
   // =========================================================================
-  spawnCruiser() {
-    const cr = this.cruisers.find((c) => !c.active);
+  // A patrol car (faction 'police') or a cartel truck ('narco') coming after the player, out of sight down the road
+  spawnCruiser(faction = 'police') {
+    const cr = this.cruisers.find((c) => !c.active && c.faction === faction);
     if (!cr) return null;
     const s = this.traffic.roadSpot(this.px, this.pz, 70, 160);
     if (!s) return null;
     Object.assign(cr, {
-      active: true, x: s.x, z: s.z, heading: Math.atan2(this.px - s.x, this.pz - s.z), speed: 6, vx: 0, vz: 0, hp: 100,
+      active: true, x: s.x, z: s.z, heading: Math.atan2(this.px - s.x, this.pz - s.z), speed: 6, vx: 0, vz: 0,
+      hp: faction === 'narco' ? 140 : 100,
       wreck: 0, state: 'chase', path: null, pathI: 0, replan: 0, stuckT: 0, checkX: s.x, checkZ: s.z, reverseT: 0,
       deployed: false, life: 0, pitch: 0, roll: 0, lift: 0, vy: 0, stuckCount: 0, slowT: 0, startX: s.x, startZ: s.z
     });
     cr.bodyMesh.material = cr.paint;
-    cr.lightbar.visible = true;
+    cr.lightbar.visible = faction === 'police';
     return cr;
   }
 
@@ -1153,14 +1229,16 @@ class CrimeSystem {
   damageCruiser(cr, damage, byPlayer) {
     if (cr.wreck) return;
     cr.hp -= damage;
-    if (byPlayer) this.report('shootCop', damage > 10 || this.wanted.stars === 0);
+    const police = cr.faction === 'police';
+    if (byPlayer && police) this.report('shootCop', damage > 10 || this.wanted.stars === 0);
+    if (byPlayer && !police) this.angerGang(NARCO);
     if (cr.hp > 0) return;
     // blown up: a burning wreck for a while
     cr.wreck = 20;
     cr.speed = 0;
     cr.bodyMesh.material = this.burnt;
     cr.lightbar.visible = false;
-    if (byPlayer) this.report('killCop');
+    if (byPlayer && police) this.report('killCop');
     this.explode(cr.x, cr.y + 0.8, cr.z, 7, 120, byPlayer);
     cr.vy = 6;
   }
@@ -1179,7 +1257,9 @@ class CrimeSystem {
       return;
     }
     const stars = this.wanted.stars;
-    if (stars === 0 || this.state !== 'play') cr.state = 'leave';
+    const narco = cr.faction === 'narco';
+    // the police chase while there are stars, the cartel while it is after the player
+    if ((narco ? this.gangAnger[NARCO] <= 0 : stars === 0) || this.state !== 'play') cr.state = 'leave';
     if (cr.state === 'leave' && (dist > 90 || cr.life > 90)) {
       this.removeCruiser(cr);
       return;
@@ -1235,7 +1315,7 @@ class CrimeSystem {
         tz = cr.z + Math.cos(cr.heading) * 12 + lz * 3.4 * pass;
       }
     }
-    let want = POLICE.speed[stars] || 13;
+    let want = narco ? 22 : POLICE.speed[stars] || 13;
     // stop near a player on foot and send the officers out
     cr.slowT = Math.abs(cr.speed) < 1.5 ? (cr.slowT || 0) + dt : 0;
     if (cr.state === 'chase' && this.mode === 'person' && (dist < 15 || (dist < 35 && cr.slowT > 1.5))) {
@@ -1306,6 +1386,17 @@ class CrimeSystem {
   }
 
   deployOfficers(cr) {
+    if (cr.faction === 'narco') {
+      // the cartel's gunmen jump out with their rifles
+      for (const side of [1, -1, 1]) {
+        const lx = Math.cos(cr.heading) * side * 1.7, lz = -Math.sin(cr.heading) * side * 1.7;
+        const back = side === 1 && this.agents.length % 2 ? -1.8 : 0;
+        const x = cr.x + lx + Math.sin(cr.heading) * back, z = cr.z + lz + Math.cos(cr.heading) * back;
+        if (this.solidAt(x, z)) continue;
+        this.spawnAgent('gang', x, z, { gang: NARCO, weapon: 'rifle' });
+      }
+      return;
+    }
     const stars = this.wanted.stars;
     const cops = this.agents.reduce((n, a) => n + (a.kind === 'cop' && !a.fallen ? 1 : 0), 0);
     for (const side of [1, -1]) {
@@ -1385,7 +1476,7 @@ class CrimeSystem {
       // patrol cars knock down the gangs and thieves in their way, not their own
       if (Math.abs(cr.speed) > 3) {
         for (const a of this.agents) {
-          if (a.kind === 'cop' || a.fallen) continue;
+          if (a.fallen || (cr.faction === 'police' ? a.kind === 'cop' : a.gang === NARCO)) continue;
           const hit = boxHit(cr.x, cr.z, cr.heading, cr.halfW, cr.halfL, a.x, a.z, 0.3);
           if (!hit) continue;
           a.hp -= Math.abs(cr.speed) * 6;
@@ -1502,12 +1593,12 @@ class CrimeSystem {
       let cops = 0;
       for (const a of this.agents) if (a.kind === 'cop' && !a.fallen && a.state !== 'leave') cops++;
       let cars = 0;
-      for (const cr of this.cruisers) if (cr.active && !cr.wreck && cr.state === 'chase') cars++;
+      for (const cr of this.cruisers) if (cr.active && !cr.wreck && cr.police && cr.state === 'chase') cars++;
       if (cops < POLICE.foot[stars] && this.mode !== 'helicopter') {
         const s = this.traffic.sidewalkSpot(this.px, this.pz, 35, 75);
         if (s) this.spawnAgent('cop', s.x, s.z, { weapon: POLICE.weapon[stars] || 'pistol' });
       } else if (cars < POLICE.cruisers[stars]) {
-        this.spawnCruiser();
+        this.spawnCruiser('police');
       }
     }
 
@@ -1518,7 +1609,7 @@ class CrimeSystem {
       const turf = gangTurf(this.px, this.pz);
       let members = 0;
       for (const a of this.agents) if (a.kind === 'gang' && !a.dead) members++;
-      if (turf >= 0 && members < 8 && this.agents.length < MAX_AGENTS - 6 && this.mode !== 'helicopter') {
+      if (turf >= 0 && members < (turf === NARCO ? 10 : 8) && this.agents.length < MAX_AGENTS - 6 && this.mode !== 'helicopter') {
         const s = this.traffic.sidewalkSpot(this.px, this.pz, 45, 95);
         if (s && gangTurf(s.x, s.z) === turf) {
           const n = 3 + Math.floor(Math.random() * 2);
@@ -1531,7 +1622,7 @@ class CrimeSystem {
               z = cz;
             }
             const g = GANGS[turf];
-            const a = this.spawnAgent('gang', x, z, { gang: turf, weapon: Math.random() < 0.5 ? g.weapon : 'pistol' });
+            const a = this.spawnAgent('gang', x, z, { gang: turf, weapon: g.narco || Math.random() < 0.5 ? g.weapon : 'pistol' });
             if (a) {
               a.homeX = cx;
               a.homeZ = cz;
@@ -1544,6 +1635,15 @@ class CrimeSystem {
       } else if (turf < 0) {
         this.lastTurf = -1;
       }
+    }
+
+    // the cartel, once provoked, sends its trucks after the player
+    t.trucks -= dt;
+    if (t.trucks <= 0 && this.gangAnger[NARCO] > 0 && this.state === 'play' && this.mode !== 'helicopter') {
+      t.trucks = 7;
+      let trucks = 0;
+      for (const cr of this.cruisers) if (cr.active && !cr.wreck && !cr.police && cr.state === 'chase') trucks++;
+      if (trucks < MAX_TRUCKS && this.spawnCruiser('narco') && !trucks) this.toast('The cartel is sending its people');
     }
 
     // a thief now and then, after a player on foot with money on it
@@ -1639,8 +1739,8 @@ class CrimeSystem {
   // Positions on the minimap: { kind: 'cop' | 'cruiser' | 'gang' | 'thief' | <pickup kind>, x, z } (reused)
   blips(out = (this._blips ??= [])) {
     out.length = 0;
-    for (const a of this.agents) if (!a.dead) out.push(a.kind === 'gang' ? (a.gang ? 'verdes' : 'rojos') : a.kind, a.x, a.z);
-    for (const cr of this.cruisers) if (cr.active && !cr.wreck) out.push('cruiser', cr.x, cr.z);
+    for (const a of this.agents) if (!a.dead) out.push(a.kind === 'gang' ? ['rojos', 'verdes', 'narcos'][a.gang] : a.kind, a.x, a.z);
+    for (const cr of this.cruisers) if (cr.active && !cr.wreck) out.push(cr.police ? 'cruiser' : 'truck', cr.x, cr.z);
     for (const p of this.pickups) out.push(p.kind, p.x, p.z);
     return out;
   }

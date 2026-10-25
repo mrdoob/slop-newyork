@@ -211,7 +211,7 @@ class CityAudioSources {
     for (let i = 0; i < this.pursuers.length; i++) {
       const c = this.pursuers[i];
       if (!c.active || c.wreck) continue;
-      this.motor(c, 'sedan', c.x, c.y + 0.7, c.z, Math.abs(c.speed), unit(Math.abs(c.speed) / 20), c.heading, true, false, seedAt(3000 + i), false);
+      this.motor(c, c.police ? 'sedan' : 'suv', c.x, c.y + 0.7, c.z, Math.abs(c.speed), unit(Math.abs(c.speed) / 20), c.heading, !!c.police, false, seedAt(3000 + i), false);
     }
     this.streetVehicles(this.cars, elapsed, 100);
     this.streetVehicles(this.buses, elapsed, 1000);
