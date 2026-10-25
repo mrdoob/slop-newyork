@@ -206,8 +206,10 @@ function clipToLattice(arrays, sizes, index, lattice) {
 const SLOPES = typeof location === 'undefined' || new URLSearchParams(location.search).get('slopes') !== '0';
 const ground = createGround(GEO, { slopes: SLOPES });
 const { townGrid, hillHeights, terrainHeight, hillGround, townHeight, groundHeight, groundSlope } = ground;
-// The lattice of both grids' triangles (the town's is laid on the hills' 75 m cells, see the geodata builder)
-const LATTICE = GEO.terrain ? { x0: GEO.terrain.x0, z0: GEO.terrain.z0, cell: GEO.terrain.cell } : null;
+// The lattice of both grids' triangles: the town's, whose cells halve the hills' 75 m ones on their own lines (see the
+// geodata builder), so its triangles lie each in one of theirs
+const LATTICE = GEO.ground ? { x0: GEO.ground.x0, z0: GEO.ground.z0, cell: GEO.ground.cell }
+  : GEO.terrain ? { x0: GEO.terrain.x0, z0: GEO.terrain.z0, cell: GEO.terrain.cell } : null;
 /**
  * How far up to set something the city builds at y = 0 (a lamppost, a tree, a house's floor) standing at (x, z): the
  * ground, or 0 in the flat city (?slopes=0)

@@ -1,8 +1,8 @@
 # Car models
 
 Every car the traffic drives (and the player can steal) is a plain data entry here, one file per make. Each one is
-drawn with one of the shared body shapes in `../bodies.js` (sedan, hatch, suv, pickup, coupe, fastback, van, wedge,
-taxi), stretched to the car's real length, width and height, and driven by a drivetrain built from its real numbers
+drawn with one of the shared body shapes (sedan, taxi, suv, pickup, van & hatch in `js/actors/actor-models.js`; coupe,
+fastback & wedge in `../bodies.js`), stretched to the car's real length, width and height, and driven by a drivetrain built from its real numbers
 (`js/player/drivetrain.js` `buildSpec`).
 
 To add a car: add an entry to its make's file (or a new `<make>.js` listed in `index.js`). Fields:

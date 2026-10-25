@@ -92,6 +92,7 @@ class CityAudioSources {
     this.players = Object.values(controllerManager.entities);
     this.cars = trafficSystem.cars;
     this.buses = trafficSystem.buses;
+    this.motos = trafficSystem.motos || [];
     this.peds = trafficSystem.peds;
     this.highwayCars = highwayTraffic.cars;
     this.signalSites = streetDetails.audioSignals;
@@ -159,7 +160,7 @@ class CityAudioSources {
       }
       const green = !v.edge.to.signal || signalPhase(elapsed, v.edge.axisIndex === 0) === 'green';
       const blocked = v.wait > 2 && v.speed < 0.5 && v.gap < 8 && v.leaderSpeed < 0.5 && green && !v.conn && !v.yielding;
-      this.motor(v, v.bus ? 'bus' : v.isSUV ? 'suv' : 'sedan', v.x, y, v.z,
+      this.motor(v, v.bus ? 'bus' : v.moto ? 'moto' : v.heavy ? 'suv' : 'sedan', v.x, y, v.z,
         v.speed, roadLoad(v.speed, v.acc, v.driver.a), v.yaw + v.yawOffset, !!v.isPolice, false, seedAt(seedOffset + i), blocked);
     }
   }
@@ -190,7 +191,7 @@ class CityAudioSources {
       } else {
         // Inactive bicycles stop updating and are silent, even if their stored speed is left over from riding.
         if (!player && (entity.type === 'cyclist' || entity.type === 'moto')) continue;
-        const kind = entity.type === 'car' || entity.type === 'moto' ? 'sedan' : entity.type;
+        const kind = entity.type === 'car' ? 'sedan' : entity.type; // (the moto: the traffic's single-cylinder voice)
         const helicopter = kind === 'helicopter';
         const verticalSpeed = player && helicopter ? helicopterVerticalSpeed(entity, this.floorUnder(entity)) : 0;
         // the player's car: its engine's own revs & throttle (drivetrain.js), gear changes and all; an electric car has
@@ -208,6 +209,7 @@ class CityAudioSources {
 
     this.streetVehicles(this.cars, elapsed, 100);
     this.streetVehicles(this.buses, elapsed, 1000);
+    this.streetVehicles(this.motos, elapsed, 2000);
     for (let i = 0; i < this.highwayCars.length; i++) {
       const car = this.highwayCars[i];
       // Lane ends sink into the road and the Battery tunnel is underground; neither should sound above ground.
