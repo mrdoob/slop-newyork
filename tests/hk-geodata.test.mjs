@@ -68,19 +68,21 @@ test('every landmark stands on land, with a real height', () => {
     assert.ok(onLand(lm.x, lm.z), `${lm.en} (${lm.id}) is in the harbour`);
     assert.ok(GEO.districts.some((d) => d.id === lm.district));
   }
+  const towers = GEO.buildings.filter((b) => b.tower === 1).length;
+  assert.ok(towers > 50 && towers < GEO.buildings.length, `${towers} towers`);
   const icc = GEO.landmarks.find((l) => l.id === 'icc');
   assert.ok(icc.h > 450, 'ICC is 484 m');
 });
 
 test('buildings front the streets and never sit on the roadway', () => {
   assert.ok(GEO.buildings.length > 400, `only ${GEO.buildings.length} buildings generated`);
-  const halfWidth = new Map(GEO.roads.map((r) => [r.en, r.w / 2]));
   let checked = 0;
   for (const b of GEO.buildings) {
     assert.ok(b.h >= 20 && b.h <= 320, `building height ${b.h}`);
     assert.ok(b.w > 8 && b.d > 8 && b.w < 30 && b.d < 24, `footprint ${b.w}×${b.d}`);
     assert.ok(onLand(b.x, b.z), `building at ${b.x},${b.z} is in the harbour`);
     assert.ok(Number.isFinite(b.rot));
+    assert.ok(b.tower === 0 || b.tower === 1, 'tower flag');
     assert.ok(GEO.districts.some((d) => d.id === b.district));
     checked++;
     if (checked > 300) break;
@@ -88,8 +90,8 @@ test('buildings front the streets and never sit on the roadway', () => {
   // The generator places each lot at roadHalf + footway + depth/2 from the centreline, so no building centre
   // may be within the carriageway of the road it fronts.
   for (const b of GEO.buildings.slice(0, 200)) {
-    const road = GEO.roads.find((r) => r.en === b.road) || GEO.roads.find((r) => Math.abs(r.w / 2 - (halfWidth.get(r.en) || 0)) < 99);
-    if (!road) continue;
+    const road = GEO.roads.find((r) => r.en === b.road);
+    assert.ok(road, `building at ${b.x},${b.z} does not name a known road (${b.road})`);
     let best = Infinity;
     const pts = pairs(road.pts);
     for (let i = 0; i + 1 < pts.length; i++) {

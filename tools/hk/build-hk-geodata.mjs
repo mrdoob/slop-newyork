@@ -91,7 +91,7 @@ const pairs = (flatArr) => {
   return out;
 };
 const { buildings, stats } = buildLots({
-  roads: roads.map((r) => ({ w: r.w, pts: pairs(r.pts) })),
+  roads: roads.map((r) => ({ w: r.w, en: r.en, pts: pairs(r.pts) })),
   land: land.map((l) => ({ ring: pairs(l.ring) })),
   heights: HEIGHT_PROFILE,
   districtAt
@@ -125,7 +125,8 @@ const GEO = {
   land,
   roads,
   buildings: buildings.map((b) => ({
-    x: round(b.x), z: round(b.z), w: round(b.w, 1), d: round(b.d, 1), h: round(b.h, 1), rot: round(b.rot, 3), district: districtAt(b.x, b.z)
+    x: round(b.x), z: round(b.z), w: round(b.w, 1), d: round(b.d, 1), h: round(b.h, 1), rot: round(b.rot, 3),
+    district: districtAt(b.x, b.z), tower: b.tower ? 1 : 0, road: b.road
   })),
   landmarks,
   districts,

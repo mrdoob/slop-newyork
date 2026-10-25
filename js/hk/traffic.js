@@ -32,7 +32,6 @@ export function createHongKongTraffic(scene) {
     mesh: null
   }));
   const cars = [];
-  const totalCapacity = fleets.reduce((a, f) => a + f.capacity, 0);
   {
     // 依 share 分配車輛，剩餘補給的士
     let assigned = 0;

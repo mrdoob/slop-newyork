@@ -199,12 +199,6 @@ export const TUNNELS = GEO.tunnels.map((t) => ({ ...t, pts: pairs(t.pts) }));
 export const landmarkById = (id) => LANDMARKS.find((l) => l.id === id);
 
 // --- 傳送點與出生點 -------------------------------------------------------------------------------------
-function headingToward(from, to) {
-  return Math.atan2(to.x - from.x, to.z - from.z);
-}
-const hkIsland = LANDMARKS.find((l) => l.id === 'ifc');
-const kowloon = LANDMARKS.find((l) => l.id === 'clock-tower');
-
 /** 在指定走廊上取一個車道位置（t = 0..1 沿線比例）；傳送點永遠落在真實車道上。 */
 function roadSpot(roadEn, t, lane = 1) {
   const road = ROADS.find((r) => r.en === roadEn) || ROADS[0];

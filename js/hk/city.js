@@ -226,8 +226,9 @@ function buildBuildings(group) {
     const side = WALL_KINDS.lotLine;
     // 本地 +X 沿街，所以臨街面是 ±Z；兩側是鄰地，背面是後巷
     const faces = [side, side, street, entry];
-    const rec = { x: b.x, y: b.h / 2, z: b.z, w: b.w, h: b.h, d: b.d, ry: -b.rot, tone: b.tower ? 0.72 : 0.4, faces };
-    (b.tower ? towers : midRise).push(rec);
+    const rec = { x: b.x, y: b.h / 2, z: b.z, w: b.w, h: b.h, d: b.d, ry: -b.rot, tone: 0.72, faces };
+    const isTower = b.tower === 1 || (b.tower === undefined && b.h >= 120);
+    (isTower ? towers : midRise).push(rec);
   }
   const curtain = createCurtainWallMaterial({
     boxLocal: true,
