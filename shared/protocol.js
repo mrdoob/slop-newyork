@@ -20,7 +20,7 @@
 const PROTOCOL_VERSION = 2;
 const SEND_HZ = 10; // client pose updates per second
 const TICK_HZ = 10; // server ticks per second (OSRS runs 600 ms ticks; driving needs 100 ms)
-const MODES = ['person', 'car', 'cyclist', 'helicopter'];
+const MODES = ['person', 'car', 'cyclist', 'helicopter', 'moto']; // (new modes go at the end: older clients' indices hold)
 const NAME_MAX = 24; // characters
 const REGION_RE = /^[a-z0-9-]{1,32}$/;
 const WORLD_LIMIT = 2e7; // |x|, |y|, |z| in metres, inside the i32-centimetre range (±21 474 km)

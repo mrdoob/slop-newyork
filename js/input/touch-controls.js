@@ -94,14 +94,21 @@ class TouchControls {
   }
 
   setMode(mode) {
-    if (!['person', 'car', 'cyclist', 'helicopter'].includes(mode)) return;
+    if (!['person', 'car', 'cyclist', 'helicopter', 'moto'].includes(mode)) return;
     this.reset();
     if (!this.root) return;
     this.mode = mode;
-    const labels = { boost: mode === 'person' || mode === 'cyclist' ? 'Sprint' : 'Boost', up: mode === 'helicopter' ? 'Ascend' : 'Jump', down: 'Descend' };
+    // (in the car the up button is its handbrake, see updateButton)
+    const labels = {
+      boost: mode === 'person' || mode === 'cyclist' ? 'Sprint' : mode === 'car' || mode === 'moto' ? 'Nitro' : 'Boost',
+      up: mode === 'helicopter' ? 'Ascend' : mode === 'car' ? 'Handbrake' : 'Jump',
+      down: 'Descend',
+      fire: 'Fire'
+    };
     for (const button of this.buttons) {
       const action = button.getAttribute('data-touch-action');
-      button.hidden = (action === 'up' && mode !== 'person' && mode !== 'helicopter') || (action === 'down' && mode !== 'helicopter');
+      button.hidden = (action === 'up' && (mode === 'cyclist' || mode === 'moto')) || (action === 'down' && mode !== 'helicopter') ||
+        (action === 'fire' && mode === 'helicopter'); // (no guns from the helicopter, crime.js)
       button.setAttribute('aria-label', labels[action]);
       const label = this.root.querySelector(`[data-touch-label="${action}"]`);
       if (label) label.textContent = labels[action];
@@ -143,7 +150,7 @@ class TouchControls {
     const pressed = held.some((pointer) => pointer.button === button);
     button.classList.toggle('is-pressed', pressed);
     button.setAttribute('aria-pressed', String(pressed));
-    this.controller.setTouchInput(action, held.some((pointer) => pointer.action === action) ? 1 : 0);
+    this.controller.setTouchInput(this.mode === 'car' && action === 'up' ? 'handbrake' : action, held.some((pointer) => pointer.action === action) ? 1 : 0);
   }
 
   releaseButton(pointerId) {

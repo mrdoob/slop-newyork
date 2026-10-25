@@ -216,14 +216,14 @@ class Multiplayer {
     const entity = this.controllers.entities[mode];
     if (mode !== 'person' && entity) {
       r.visual = cloneVisual(entity);
-      if (mode === 'cyclist') r.leanPivot = counterpart(entity.mesh, r.visual, entity.leanPivot);
+      if (mode === 'cyclist' || mode === 'moto') r.leanPivot = counterpart(entity.mesh, r.visual, entity.leanPivot);
       if (mode === 'helicopter') {
         r.mainRotor = counterpart(entity.mesh, r.visual, entity.mainRotorPivot);
         r.tailRotor = counterpart(entity.mesh, r.visual, entity.tailRotorPivot);
       }
       this.scene.add(r.visual);
     }
-    if ((mode === 'person' || mode === 'cyclist') && !r.rig) {
+    if ((mode === 'person' || mode === 'cyclist' || mode === 'moto') && !r.rig) {
       // every remote player keeps one look, seeded by its id
       r.rig = new PersonRig({ seed: 7.3 + r.id * 1.618, scale: 0.96 + (r.id % 7) * 0.012, girth: 0.95 + (r.id % 5) * 0.03, hair: (r.id % 4) * 0.08 });
     }
@@ -258,7 +258,7 @@ class Multiplayer {
         r.visual.position.set(p.x, p.y, p.z);
         r.visual.rotation.y = p.heading;
         // a car or bicycle lies on the slope under its wheels, as the local player's does (controllers.js tiltToGround)
-        if (r.mode === 'car' || r.mode === 'cyclist') {
+        if (r.mode === 'car' || r.mode === 'cyclist' || r.mode === 'moto') {
           const car = r.mode === 'car';
           const t = this.controllers.groundTilt(p.x, p.z, p.heading, car ? 1.35 : 0.55, car ? 0.8 : 0.3, this._tilt);
           r.visual.rotation.order = 'YXZ';
@@ -273,6 +273,9 @@ class Multiplayer {
       } else if (r.mode === 'cyclist' && r.leanPivot) {
         r.pedalPhase += (p.speed / 0.35 / 3.2) * dt;
         r.rig.ride(r.leanPivot, r.pedalPhase, this.controllers.entities.cyclist.bikeFrame);
+        this.crowd.add(r.rig, dist);
+      } else if (r.mode === 'moto' && r.leanPivot) {
+        r.rig.ride(r.leanPivot, 0, this.controllers.entities.moto.bikeFrame);
         this.crowd.add(r.rig, dist);
       } else if (r.mode === 'helicopter') {
         if (r.mainRotor) r.mainRotor.rotation.y += dt * 24.0;
