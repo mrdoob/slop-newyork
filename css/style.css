@@ -25,6 +25,7 @@
   --ok: #5ee08f;
   --warn: #ffc857;
   --bad: #ff7a6b;
+  --nitro: #5cc8ff;
 
   /* Shape & motion */
   --edge: 20px;
@@ -889,6 +890,107 @@ body[data-mode='helicopter'] .gauge-alt {
 body.is-boosting #hud-speed-meter {
   background: var(--taxi);
 }
+
+/* The car's (and the moto's) tachometer (js/ui/tachometer.js) takes the speed readout's place while driving */
+.tacho { display: none; }
+
+body[data-mode='car'] .gauge-speed,
+body[data-mode='car'] .gauge-meter,
+body[data-mode='moto'] .gauge-speed,
+body[data-mode='moto'] .gauge-meter { display: none; }
+
+body[data-mode='car'] .tacho,
+body[data-mode='moto'] .tacho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.tacho-dial {
+  flex: none;
+  width: 132px;
+  height: 132px;
+  overflow: visible;
+}
+
+.tacho-arc { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; }
+.tacho-red { fill: none; stroke: var(--bad); stroke-width: 5; opacity: 0.85; }
+.tacho-tick { stroke: rgba(255, 255, 255, 0.42); stroke-width: 1.2; stroke-linecap: round; }
+.tacho-tick.major { stroke: var(--text); stroke-width: 2; }
+.tacho-tick.red { stroke: var(--bad); }
+.tacho-num { font: 600 10px var(--font-sans); fill: var(--text-2); }
+.tacho-needle path { fill: var(--taxi); transition: fill 0.15s ease; }
+.tacho-hub { fill: rgba(10, 11, 13, 0.92); stroke: rgba(255, 255, 255, 0.14); }
+.tacho-gear { font: 700 27px var(--font-sans); fill: var(--text); transition: fill 0.1s ease; }
+.tacho-speed { font: 650 17px var(--font-sans); fill: var(--text); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tacho-unit { font: 650 7.5px var(--font-sans); fill: var(--text-3); letter-spacing: 0.12em; }
+
+/* Shift now (manual, near the redline) & the rev limiter light the gear red; nitro turns the needle blue */
+.tacho.is-shift .tacho-gear,
+.tacho.is-limiter .tacho-gear { fill: var(--bad); }
+.tacho.is-nitro .tacho-needle path { fill: var(--nitro); }
+
+.tacho-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tacho-box {
+  align-self: flex-start;
+  padding: 2px 7px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.tacho-bar { display: grid; gap: 5px; }
+
+.tacho-bar-label {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.tacho-track {
+  position: relative;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.tacho-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--text);
+  transform-origin: left center;
+  transition: transform 0.2s linear, background-color 0.2s ease;
+}
+
+.tacho-nitro .tacho-fill { background: var(--nitro); }
+.tacho-health .tacho-fill { background: var(--ok); }
+.tacho.is-hurt .tacho-health .tacho-fill { background: var(--bad); }
+
+.tacho-warning {
+  display: none;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--bad);
+}
+
+.tacho.is-dead .tacho-warning { display: block; }
 
 .camera-switch {
   display: flex;

@@ -26,11 +26,12 @@ node --test tests/*.test.*           # client and tool tests (Node ≥ 22; no in
 | `world/` | Map data and everything built from it: `city-config.js` (street database and frame helpers over the generated geodata), blocks and buildings, landmarks, street furniture, trees, the road graph and paint, terrain, storefronts, `weather.js` (real sun and Open-Meteo conditions) |
 | `sim/` | Traffic, pedestrians and their routes, knock-downs (`mayhem.js`) |
 | `actors/` | Vehicle and helicopter geometry and materials, vehicle lights |
-| `player/` | The four player controllers (person, car, cyclist, helicopter) and the camera rigs |
+| `player/` | The player controllers (person, car, cyclist, moto, helicopter), the car's drivetrain & crash damage, and the camera rigs |
 | `input/` | Touch and gamepad controls (keyboard lives in `player/controllers.js`) |
 | `ui/` | The minimap and full map (`city-map.js`) |
 | `audio/` | Procedural city audio, synthesised (no audio files) |
 | `net/` | Multiplayer client (`multiplayer.js`), loaded only with `?multiplayer=1` |
+| `models/` | Vehicle data: `cars/` (one file per make: real sizes, engines, top speeds, rarity in traffic; `cars/README.md` says how to add one), `motos/`, and the body shapes they are drawn with (`bodies.js`) |
 
 Outside `js/`:
 - `shared/protocol.js`: the binary multiplayer protocol, imported by both the client and the server.
