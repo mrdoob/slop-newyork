@@ -636,6 +636,33 @@ __BOOT_REPORT__ {"world":"hk","title":"Slop Hong Kong","hud":"Slop Hong Kong ←
 
 這些診斷本身也有測試：`tools/boot-hk.mjs` 會用 `?world=hk&test=1` 再跑一次，斷言探針方塊存在、離屏讀回碼路徑真係執行過而唔會拋錯、面板包含 canvas／最上層元素／GPU 資訊。
 
+**第六輪（畫面終於出嚟，但成個街景黑到似深夜）**
+
+`?world=hk&test=1` 的截圖證明**管線完全正常**：中環街景、車道標線、兩旁樓宇、亮起的窗、紅色探針方塊全部出到嚟。之前那張全黑圖是預覽面板（565×635）的偶發情況 —— 同一個 build 在本機 8082 正常。
+
+不過把截圖逐格量度之後（Pillow 取樣）發現一個**真問題**：
+
+| 量度 | 數值 | 意思 |
+|---|---|---|
+| 全畫面亮度 < 16/255 的像素 | 8,044 / 12,800（63%） | 畫面嚴重偏暗 |
+| 車道標線（反照率 0.9，受光） | (190, 178, 167) | 陽光**有**照到，而且偏暖 → 燈光系統正常 |
+| 樓宇牆身 | (9–50) | 幾乎冇光 |
+| 天空色 `#8fb2d8` 出現的像素 | 2 / 12,800 | 街道兩旁的樓太高，鏡頭見唔到天 |
+
+結論：**問題唔在燈光，在於「冇環境光（IBL）」**。香港的玻璃帷幕用 `reflectivity: 0.9`（近乎鏡面），水面 `metalness 0.72`、樓冠 `metalness 0.8` —— 這些 PBR 材質**冇環境貼圖就一定是黑色**，只有窗的 emissive 亮。紐約之所以冇事，是因為它的 `LightingSystem` 建了 Preetham 天空 + PMREM IBL。
+
+修法（`js/hk/lighting.js` 重寫）：
+
+| 改動 | 內容 |
+|---|---|
+| **程序化 IBL** | 用一張 32×16 的 `DataTexture`（上＝天空頂、中＝地平線霧色、下＝地面反射色）經 `PMREMGenerator` 生成環境貼圖 → `scene.environment`。**零外部檔案、零 CDN 依賴**；失敗會自動退回「半球光 ×1.8」 |
+| 更亮的 preset | golden：太陽 2.6→**3.4**、半球光 1.15→**1.5**、曝光 1.0→**1.15**、`environmentIntensity` 1.0；四個時段全部重調 |
+| 新 URL 參數 | `&light=golden                                                                                                                                                                                                                                                                                                                         |midday|twilight|midnight`、`&shadow=0`（關陰影）、`&exposure=1.4` |
+| 診斷面板 | 多一行 `light golden · shadow on · exposure 1.15 · env PMREM`（如果顯示「冇（原因）」就代表 IBL 失敗，玻璃會黑） |
+| 移除 | 之前 `?test=1` 的離屏像素讀回（r187dev 的 `readRenderTargetPixelsAsync` 會拋 `invalid value used as weak map key`，冇用就唔好留住） |
+
+`tools/boot-hk.mjs` 亦加了斷言：**PMREM 環境光必須建立成功**（失敗的話玻璃帷幕會全黑，而畫面其他部分仍然正常 —— 正是這一輪的症狀）。
+
 ### 15.1 先講結論
 
 **這不是「換字串」的工作。**（下面這些是動手前的量測，之後 Phase 0/1/3 已經落地，見 15.0。）我實際掃過耦合度（每檔出現 `streetZ|avenueX|CENTRAL_PARK|BROADWAY|MANHATTAN|NYC_` 的次數）：

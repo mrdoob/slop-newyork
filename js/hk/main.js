@@ -137,7 +137,11 @@ export async function startHongKong() {
   await yieldToBrowser('建立日光與天空…');
   // 自帶照明：半球光 + 平行光 + 明確天空色。不依賴 dev 分支的 SkyMesh / SunLight / PMREM，
   // 因為任何一環不配合都會變成全黑又沒有錯誤訊息（`?sky=1` 才切回完整大氣天空）。
-  const lighting = createHongKongLighting(scene);
+  // `?shadow=0` 關掉陰影（用來分辨「全街都落在陰影裡」）；`?exposure=` 直接調曝光
+  const shadows = params.get('shadow') !== '0';
+  const exposureOverride = params.has('exposure') ? Number(params.get('exposure')) : null;
+  const lighting = createHongKongLighting(scene, { renderer, shadows, preset: params.get('light') || 'golden' });
+  if (Number.isFinite(exposureOverride)) renderer.toneMappingExposure = exposureOverride;
   // 想試紐約那套完整大氣天空：?sky=1
   let skyLighting = null;
   if (params.get('sky') === '1') {
@@ -183,8 +187,6 @@ export async function startHongKong() {
   //   見到藍天但冇紅方塊 → 相機或 canvas 尺寸有事；
   //   連紅方塊都冇（全黑）→ 畫面根本冇輸出到 canvas（後端／CSS 遮蓋）。
   const testPattern = params.get('test') === '1';
-  // ?test=1 時會離屏渲染一次並讀回中央像素，填在這裡
-  let readback = '未執行（需要 ?test=1，並等 1.5 秒）';
   if (testPattern) {
     const probe = new THREE.Mesh(
       new THREE.BoxGeometry(2.4, 2.4, 0.4),
@@ -198,30 +200,6 @@ export async function startHongKong() {
     camera.add(probe);
     mark('testPattern');
 
-    // 再加上「離屏讀回一個像素」——這是唯一能在瀏覽器裡證明「場景到底畫出了甚麼顏色」的方法：
-    //   讀到天空藍 → 場景畫得出來，問題在 canvas 呈現（後端／CSS）；
-    //   讀到 #000000 → 繪製本身是黑（材質、燈光、clearing）。
-    setTimeout(async () => {
-      let target = null;
-      try {
-        target = new THREE.RenderTarget(64, 64, { depthBuffer: true });
-        renderer.setRenderTarget(target);
-        renderer.render(scene, camera);
-        const buffer = new Uint8Array(4);
-        if (typeof renderer.readRenderTargetPixelsAsync === 'function') {
-          await renderer.readRenderTargetPixelsAsync(target, 32, 32, 1, 1, buffer);
-        } else {
-          renderer.readRenderTargetPixels(target, 32, 32, 1, 1, buffer);
-        }
-        readback = `#${[buffer[0], buffer[1], buffer[2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-      } catch (error) {
-        readback = `失敗（${error.message}）`;
-      } finally {
-        try { renderer.setRenderTarget(null); } catch { /* 忽略 */ }
-        target?.dispose?.();
-        try { updateDiagnostics(); } catch { /* 面板可能未建立 */ }
-      }
-    }, 1500);
   }
 
   // 視窗大小改變時同步 canvas 與投影（原本冇做，改變視窗大小會變形）
@@ -318,6 +296,7 @@ export async function startHongKong() {
       timeIndex = (timeIndex + 1) % TIME_CYCLE.length;
       const id = TIME_CYCLE[timeIndex];
       lighting.applyPreset(id);
+      if (Number.isFinite(exposureOverride)) renderer.toneMappingExposure = exposureOverride;
       if (skyLighting) skyLighting.applyPreset(id);
       if (colorGrade) colorGrade.applyPreset(id);
       city.setNight(id === 'midnight' ? 1 : id === 'twilight' ? 0.5 : 0.1);
@@ -451,8 +430,8 @@ export async function startHongKong() {
       `camera ${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)} · near ${camera.near} far ${camera.far}`,
       `player ${player.state.x.toFixed(0)}, ${player.state.z.toFixed(0)} · ${HK.districtAt(player.state.x, player.state.z).zh}`,
       `path ${postPipeline ? 'post pipeline' : 'direct render'}${skyLighting ? ' + full sky' : ''} · test pattern ${testPattern ? 'ON' : 'off'}`,
+      `light ${lighting.activeId} · shadow ${shadows ? 'on' : 'off'} · exposure ${renderer.toneMappingExposure?.toFixed?.(2) ?? '?'} · env ${lighting.hasEnvironment ? 'PMREM' : `冇（${lighting.envError || 'renderer 未提供'}）`}`,
       `${gpuDetail}`,
-      `離屏讀回（?test=1）：${readback}`,
       gpuErrors.length ? `GPU 錯誤：\n${gpuErrors.join('\n')}` : 'GPU 錯誤：冇（uncapturederror 靜默）',
       'D 隱藏 · F12 有完整日誌'
     ].join('\n');
@@ -460,7 +439,7 @@ export async function startHongKong() {
     if (!diagLogged && (r.frame ?? 0) > 2) {
       diagLogged = true;
       console.log('[hk diag]\n' + diag.textContent);
-      if (covered) console.warn(`[hk] canvas 被 ${top} 蓋住 —— 這是 CSS 問題，不是渲染問題`);
+      if (covered && !top.startsWith('（')) console.warn(`[hk] canvas 被 ${top} 蓋住 —— 這是 CSS 問題，不是渲染問題`);
     }
   }
   window.addEventListener('keydown', (e) => {
@@ -512,6 +491,6 @@ export async function startHongKong() {
   });
 
   // 除錯／驗證用（不會影響正常遊玩）
-  globalThis.__slopHK = { scene, renderer, city, traffic, player, camera, HK, testPattern, gpuErrors };
+  globalThis.__slopHK = { scene, renderer, city, traffic, player, camera, HK, lighting, testPattern, gpuErrors };
   return { scene, renderer, city, traffic, player };
 }

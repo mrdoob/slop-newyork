@@ -121,14 +121,17 @@ check('靠左行駛（left-hand traffic）', () => {
 });
 check('renderer.render 真係被呼叫', () => assert.ok(hk.renderer.renders.length >= 1, '一次 render 都冇'));
 check('renderer.init 只行一次', () => assert.equal(hk.renderer.initCalls, 1));
+check('照明有 IBL 環境光（MV 玻璃唔會變全黑）', () => {
+  assert.ok(hk.lighting?.hasEnvironment, 'PMREM 環境光冇建立成功 —— 玻璃帷幕會全黑');
+  assert.equal(hk.lighting.activeId, 'golden');
+});
 check('場景有燈同天空色', () => {
   const lights = hk.scene.children.filter((o) => o.isLight);
   assert.ok(lights.length >= 2, `lights=${lights.length}`);
   assert.ok(hk.scene.background, 'scene.background 必須存在，唔係就成個畫面黑');
 });
-// 讓假 renderer 的 8 幀（setTimeout 排程）真的跑完；
-// ?test=1 的離屏讀回是 1.5 秒後才執行，所以要多等一會，確保它真的跑過而唔會拋錯
-await new Promise((resolve) => setTimeout(resolve, search.includes('test=1') ? 1900 : 150));
+// 讓假 renderer 的 8 幀（setTimeout 排程）真的跑完
+await new Promise((resolve) => setTimeout(resolve, 150));
 assert.equal(globalThis.__hkLoopError, undefined, `動畫迴圈拋錯：${globalThis.__hkLoopError && globalThis.__hkLoopError.stack}`);
 assert.ok(hk.renderer.renders.length >= 2, `動畫迴圈只 render 了 ${hk.renderer.renders.length} 次`);
 assert.ok(Number(doc.getElementById('hk-speed').textContent) >= 0, '速度表要係數字');
@@ -141,13 +144,6 @@ check('診斷面板：canvas 尺寸、最上層元素、GPU 錯誤都有報告',
 check('GPU 環境有被報告（真瀏覽器會顯示 adapter，Node 會顯示冇 WebGPU）', () => {
   const text = doc.querySelector('.hk-diagnostics').textContent;
   assert.match(text, /adapter|navigator\.gpu/);
-});
-check('?test=1 的離屏讀回真係執行過（唔會拋錯）', () => {
-  const text = doc.querySelector('.hk-diagnostics').textContent;
-  if (search.includes('test=1')) {
-    assert.doesNotMatch(text, /未執行/, `離屏讀回冇執行：\n${text}`);
-    assert.doesNotMatch(text, /readback 失敗|失敗（/, `離屏讀回拋錯：\n${text}`);
-  }
 });
 check('?test=1 會加一個唔受燈光影響的紅色探針方塊', () => {
   const probe = hk.scene.getObjectByName('hkTestProbe');

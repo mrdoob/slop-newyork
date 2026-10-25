@@ -30,6 +30,11 @@ export class WebGPURenderer {
     this.info.render.triangles = scene.children.length * 12;
   }
   async compileAsync() { this.compiled++; }
+  hasInitialized() { return true; }
+  getRenderTarget() { return this.renderTarget || null; }
+  getActiveCubeFace() { return 0; }
+  getActiveMipmapLevel() { return 0; }
+  getMRT() { return null; }
   setRenderTarget(target) { this.renderTarget = target; }
   async readRenderTargetPixelsAsync() { return new Uint8Array(4); }
   setAnimationLoop(fn) {
