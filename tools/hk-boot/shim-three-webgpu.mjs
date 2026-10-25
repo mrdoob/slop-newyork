@@ -30,6 +30,8 @@ export class WebGPURenderer {
     this.info.render.triangles = scene.children.length * 12;
   }
   async compileAsync() { this.compiled++; }
+  setRenderTarget(target) { this.renderTarget = target; }
+  async readRenderTargetPixelsAsync() { return new Uint8Array(4); }
   setAnimationLoop(fn) {
     this.loop = fn;
     if (!fn) return;

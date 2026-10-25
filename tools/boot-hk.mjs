@@ -16,8 +16,10 @@ const root = new URL('../', import.meta.url);
 
 // --- 1. 用真的 index.html 建 DOM（不執行任何 script） -------------------------------
 const html = readFileSync(new URL('index.html', root), 'utf8');
+// 可以傳入 search 字串，例如：node … tools/boot-hk.mjs '?world=hk&test=1'
+const search = process.argv[2] || '?world=hk&debug=1';
 const dom = new JSDOM(html, {
-  url: 'http://127.0.0.1:8082/?world=hk&debug=1',
+  url: `http://127.0.0.1:8082/${search}`,
   runScripts: 'outside-only',
   pretendToBeVisual: true
 });
@@ -124,11 +126,40 @@ check('場景有燈同天空色', () => {
   assert.ok(lights.length >= 2, `lights=${lights.length}`);
   assert.ok(hk.scene.background, 'scene.background 必須存在，唔係就成個畫面黑');
 });
-// 讓假 renderer 的 8 幀（setTimeout 排程）真的跑完
-await new Promise((resolve) => setTimeout(resolve, 150));
+// 讓假 renderer 的 8 幀（setTimeout 排程）真的跑完；
+// ?test=1 的離屏讀回是 1.5 秒後才執行，所以要多等一會，確保它真的跑過而唔會拋錯
+await new Promise((resolve) => setTimeout(resolve, search.includes('test=1') ? 1900 : 150));
 assert.equal(globalThis.__hkLoopError, undefined, `動畫迴圈拋錯：${globalThis.__hkLoopError && globalThis.__hkLoopError.stack}`);
 assert.ok(hk.renderer.renders.length >= 2, `動畫迴圈只 render 了 ${hk.renderer.renders.length} 次`);
 assert.ok(Number(doc.getElementById('hk-speed').textContent) >= 0, '速度表要係數字');
+check('診斷面板：canvas 尺寸、最上層元素、GPU 錯誤都有報告', () => {
+  const text = doc.querySelector('.hk-diagnostics').textContent;
+  for (const needle of ['canvas', 'in DOM', '最上層', 'draw calls', 'background #']) {
+    assert.ok(text.includes(needle), `診斷面板缺少「${needle}」：\n${text}`);
+  }
+});
+check('GPU 環境有被報告（真瀏覽器會顯示 adapter，Node 會顯示冇 WebGPU）', () => {
+  const text = doc.querySelector('.hk-diagnostics').textContent;
+  assert.match(text, /adapter|navigator\.gpu/);
+});
+check('?test=1 的離屏讀回真係執行過（唔會拋錯）', () => {
+  const text = doc.querySelector('.hk-diagnostics').textContent;
+  if (search.includes('test=1')) {
+    assert.doesNotMatch(text, /未執行/, `離屏讀回冇執行：\n${text}`);
+    assert.doesNotMatch(text, /readback 失敗|失敗（/, `離屏讀回拋錯：\n${text}`);
+  }
+});
+check('?test=1 會加一個唔受燈光影響的紅色探針方塊', () => {
+  const probe = hk.scene.getObjectByName('hkTestProbe');
+  if (search.includes('test=1')) {
+    assert.ok(probe, 'test=1 但冇探針');
+    assert.equal(probe.material.type, 'MeshBasicMaterial');
+    assert.equal(probe.material.depthTest, false);
+    assert.equal(hk.testPattern, true);
+  } else {
+    assert.equal(probe, undefined, '冇 test=1 就唔應該有探針');
+  }
+});
 check('診斷面板有內容（?debug=1）', () => {
   const diag = doc.querySelector('.hk-diagnostics');
   assert.ok(diag, '.hk-diagnostics 唔存在');
@@ -144,6 +175,9 @@ console.log('__BOOT_REPORT__ ' + JSON.stringify({
   speed: doc.getElementById('hk-speed').textContent,
   frames: hk.renderer.renders.length,
   compiled: hk.renderer.compiled,
+  search,
+  testPattern: hk.testPattern,
+  gpuErrors: hk.gpuErrors.length,
   buildings: hk.city.counts.buildings,
   landmarks: hk.city.counts.landmarks,
   cars: hk.traffic.counts.cars,

@@ -258,3 +258,11 @@ body[data-world="hk"] #canvas-container {
   font: 12px/1.6 Inter, system-ui, sans-serif;
   color: rgba(255, 255, 255, 0.72);
 }
+
+/* 診斷面板的警告狀態：canvas 被 HTML 蓋住，或者一個 draw call 都冇 */
+.hk-diagnostics.is-warning {
+  color: #ffd7d8;
+  border-color: rgba(255, 107, 107, 0.7);
+  background: rgba(38, 6, 8, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.25), 0 12px 32px rgba(0, 0, 0, 0.45);
+}

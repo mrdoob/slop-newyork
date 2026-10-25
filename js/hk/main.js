@@ -96,10 +96,13 @@ export async function startHongKong() {
   window.addEventListener('unhandledrejection', (e) => showBootError(e.reason, PHASES));
 
   await yieldToBrowser('初始化 WebGPURenderer…');
+  // `?webgl=1`：強制用 WebGL2 後端。用來分辨「香港場景畫唔出」同「WebGPU 後端有問題」。
+  const forceWebGL = params.get('webgl') === '1';
   const renderer = new THREE.WebGPURenderer({
     antialias: true,
     powerPreference: 'high-performance',
-    reversedDepthBuffer: true
+    reversedDepthBuffer: true,
+    forceWebGL
   });
   renderer.setPixelRatio(1.0);
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -109,6 +112,26 @@ export async function startHongKong() {
   container.appendChild(renderer.domElement);
   await renderer.init();
   mark('renderer');
+
+  // WebGPU 的錯誤是「靜默」的：validation error 只會去 uncapturederror / device.lost，
+  // 唔會 throw，畫面就係一直黑。這裡一律接住並記落 gpuErrors，顯示在診斷面板。
+  const gpuErrors = [];
+  const noteGpuError = (message) => {
+    gpuErrors.push(`${new Date().toISOString().slice(11, 19)} ${message}`);
+    if (gpuErrors.length > 6) gpuErrors.shift();
+    console.error('[hk gpu]', message);
+  };
+  try {
+    const device = renderer.backend?.device;
+    if (device?.addEventListener) {
+      device.addEventListener('uncapturederror', (event) => noteGpuError(event.error?.message || String(event.error)));
+    }
+    if (device?.lost?.then) {
+      device.lost.then((info) => noteGpuError(`DEVICE LOST: ${info?.reason || ''} ${info?.message || ''}`.trim()));
+    }
+  } catch (error) {
+    console.warn('[hk] could not attach GPU error listeners', error);
+  }
 
   const scene = new THREE.Scene();
   await yieldToBrowser('建立日光與天空…');
@@ -153,6 +176,60 @@ export async function startHongKong() {
   if (lowDetail) {
     city.group.traverse((o) => { if (o.name === 'HongKongTowers' || o.name === 'HongKongMidRise') o.visible = false; });
   }
+
+  // `?test=1`：鏡頭前放一個**唔受燈光影響**的紅色方塊（MeshBasicMaterial + depthTest false）。
+  // 三種結果，三種結論：
+  //   見到紅色方塊 → 渲染器同 canvas 正常，問題在場景／材質／燈光；
+  //   見到藍天但冇紅方塊 → 相機或 canvas 尺寸有事；
+  //   連紅方塊都冇（全黑）→ 畫面根本冇輸出到 canvas（後端／CSS 遮蓋）。
+  const testPattern = params.get('test') === '1';
+  // ?test=1 時會離屏渲染一次並讀回中央像素，填在這裡
+  let readback = '未執行（需要 ?test=1，並等 1.5 秒）';
+  if (testPattern) {
+    const probe = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 2.4, 0.4),
+      new THREE.MeshBasicMaterial({ color: 0xff2d2d, depthTest: false, depthWrite: false, fog: false, toneMapped: false })
+    );
+    probe.name = 'hkTestProbe';
+    probe.position.set(0, 0, -6);
+    probe.renderOrder = 1e6;
+    probe.frustumCulled = false;
+    scene.add(camera);
+    camera.add(probe);
+    mark('testPattern');
+
+    // 再加上「離屏讀回一個像素」——這是唯一能在瀏覽器裡證明「場景到底畫出了甚麼顏色」的方法：
+    //   讀到天空藍 → 場景畫得出來，問題在 canvas 呈現（後端／CSS）；
+    //   讀到 #000000 → 繪製本身是黑（材質、燈光、clearing）。
+    setTimeout(async () => {
+      let target = null;
+      try {
+        target = new THREE.RenderTarget(64, 64, { depthBuffer: true });
+        renderer.setRenderTarget(target);
+        renderer.render(scene, camera);
+        const buffer = new Uint8Array(4);
+        if (typeof renderer.readRenderTargetPixelsAsync === 'function') {
+          await renderer.readRenderTargetPixelsAsync(target, 32, 32, 1, 1, buffer);
+        } else {
+          renderer.readRenderTargetPixels(target, 32, 32, 1, 1, buffer);
+        }
+        readback = `#${[buffer[0], buffer[1], buffer[2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+      } catch (error) {
+        readback = `失敗（${error.message}）`;
+      } finally {
+        try { renderer.setRenderTarget(null); } catch { /* 忽略 */ }
+        target?.dispose?.();
+        try { updateDiagnostics(); } catch { /* 面板可能未建立 */ }
+      }
+    }, 1500);
+  }
+
+  // 視窗大小改變時同步 canvas 與投影（原本冇做，改變視窗大小會變形）
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
 
   // --- 繪製路徑 ----------------------------------------------------------------------------------
   // 預設：renderer.render(scene, camera) —— 最笨、最直接、最少變數。
@@ -311,25 +388,80 @@ export async function startHongKong() {
   // draw call 與三角形數就是分辨這三者的最快證據。
   const diag = document.createElement('div');
   diag.className = 'hk-diagnostics';
-  let diagVisible = params.get('debug') === '1';
+  // 現在是「畫面全黑」的除錯期，診斷面板預設就開；`?debug=0` 或按 D 可以關掉。
+  let diagVisible = params.get('debug') !== '0';
   diag.hidden = !diagVisible;
   document.body.appendChild(diag);
+  // 誰在畫面正中央的最上層？如果唔係 canvas，就代表 3D 畫面被 HTML 蓋住（CSS 問題，唔係渲染問題）。
+  function topElementAtCentre() {
+    try {
+      const el = document.elementFromPoint(Math.round(window.innerWidth / 2), Math.round(window.innerHeight / 2));
+      if (!el) return '（冇元素）';
+      const id = el.id ? `#${el.id}` : '';
+      const cls = el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).join('.')}` : '';
+      return `${el.tagName.toLowerCase()}${id}${cls}`;
+    } catch {
+      return '（elementFromPoint 失敗）';
+    }
+  }
+
+  function backendName() {
+    const name = renderer.backend?.constructor?.name;
+    if (renderer.backend?.isWebGPUBackend) return `WebGPU${name ? ` (${name})` : ''}`;
+    return `WebGL2${name ? ` (${name})` : ''}${forceWebGL ? ' · 強制' : ' · 自動退回'}`;
+  }
+
+  let gpuDetail = (() => {
+    const gpu = navigator.gpu;
+    if (!gpu) return 'navigator.gpu：冇（瀏覽器唔支援／未開啟 WebGPU）';
+    return 'navigator.gpu：有（adapter 查詢中…）';
+  })();
+  // 額外查一次 adapter：要知道係真 GPU 定係軟件模擬（WARP / SwiftShader），
+  // 軟件後端畫唔出係常見原因，而 ?webgl=1 可以直接繞過。
+  (async () => {
+    if (!navigator.gpu || !navigator.gpu.requestAdapter) return;
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) { gpuDetail = 'navigator.gpu：有，但 requestAdapter() 回傳 null'; return; }
+      const info = adapter.info || {};
+      gpuDetail = `adapter：${info.vendor || '?'} / ${info.architecture || '?'} / ${info.device || info.description || '?'}${info.isFallbackAdapter ? '（軟件模擬）' : ''}`;
+    } catch (error) {
+      gpuDetail = `adapter 查詢失敗：${error.message}`;
+    }
+  })();
+
+  let diagLogged = false;
   function updateDiagnostics() {
     if (!diagVisible) return;
     const info = renderer.info || {};
     const r = info.render || {};
     const canvas = renderer.domElement;
     const rect = canvas.getBoundingClientRect();
+    const style = getComputedStyle(canvas);
+    const top = topElementAtCentre();
+    const covered = !top.startsWith('canvas');
     diag.textContent = [
-      `three r${THREE.REVISION} · ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} backend`,
-      `canvas ${canvas.width}×${canvas.height} @ ${Math.round(rect.width)}×${Math.round(rect.height)} css`,
-      `draw calls ${r.drawCalls ?? r.calls ?? '?'} · tris ${r.triangles ?? '?'}`,
-      `frames ${r.frame ?? '?'} · scene children ${scene.children.length}`,
-      `camera ${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)}`,
+      `three r${THREE.REVISION} · ${backendName()}`,
+      `canvas ${canvas.width}×${canvas.height} @ ${Math.round(rect.width)}×${Math.round(rect.height)} css · ${canvas.isConnected ? 'in DOM' : '唔在 DOM！'}`,
+      `canvas style opacity ${style.opacity} · display ${style.display} · visibility ${style.visibility}`,
+      `畫面中央最上層：${top}${covered ? '  ← 蓋住咗 canvas！' : ''}`,
+      `draw calls ${r.drawCalls ?? r.calls ?? '?'} · tris ${r.triangles ?? '?'} · frames ${r.frame ?? '?'}`,
+      `scene children ${scene.children.length} · lights ${scene.children.filter((o) => o.isLight).length}`,
+      `background ${scene.background && scene.background.getHexString ? `#${scene.background.getHexString()}` : String(scene.background)}`,
+      `camera ${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)} · near ${camera.near} far ${camera.far}`,
       `player ${player.state.x.toFixed(0)}, ${player.state.z.toFixed(0)} · ${HK.districtAt(player.state.x, player.state.z).zh}`,
-      `lights ${scene.children.filter((o) => o.isLight).length} · path ${postPipeline ? 'post pipeline' : 'direct render'}${skyLighting ? ' + full sky' : ''}`,
+      `path ${postPipeline ? 'post pipeline' : 'direct render'}${skyLighting ? ' + full sky' : ''} · test pattern ${testPattern ? 'ON' : 'off'}`,
+      `${gpuDetail}`,
+      `離屏讀回（?test=1）：${readback}`,
+      gpuErrors.length ? `GPU 錯誤：\n${gpuErrors.join('\n')}` : 'GPU 錯誤：冇（uncapturederror 靜默）',
       'D 隱藏 · F12 有完整日誌'
     ].join('\n');
+    diag.classList.toggle('is-warning', covered || (r.drawCalls ?? r.calls ?? 0) === 0);
+    if (!diagLogged && (r.frame ?? 0) > 2) {
+      diagLogged = true;
+      console.log('[hk diag]\n' + diag.textContent);
+      if (covered) console.warn(`[hk] canvas 被 ${top} 蓋住 —— 這是 CSS 問題，不是渲染問題`);
+    }
   }
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyD' && !e.metaKey && !e.ctrlKey) {
@@ -380,6 +512,6 @@ export async function startHongKong() {
   });
 
   // 除錯／驗證用（不會影響正常遊玩）
-  globalThis.__slopHK = { scene, renderer, city, traffic, player, camera, HK };
+  globalThis.__slopHK = { scene, renderer, city, traffic, player, camera, HK, testPattern, gpuErrors };
   return { scene, renderer, city, traffic, player };
 }

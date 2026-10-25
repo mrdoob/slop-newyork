@@ -496,7 +496,31 @@ node --test "tests/hk-*.test.*"
 
 **操作**：`W/S` 前進倒車、`A/D` 轉向、`Shift` 加速、`Space` 剎車、`G` 切換光線、`1`–`9` 傳送到九個真實地點、拖曳環繞、滾輪縮放。
 
-**診斷**：`?world=hk&debug=1` 顯示即時診斷面板（按 `D` 亦可）；`&low=1` 跳過樓宇；`&post=1` 試 TSL 後處理；`&sky=1` 試完整大氣天空；啟動失敗時載入畫面會顯示錯誤訊息與已完成階段。
+**診斷**（黑畫面期間預設就開，按 `D` 或 `&debug=0` 可關）：
+
+| 參數 | 作用 |
+|---|---|
+| `&debug=1` | 診斷面板（現在預設已開；`&debug=0` 關掉） |
+| `&test=1` | 鏡頭前加一個**唔受燈光影響**的紅色方塊，並在 1.5 秒後**離屏渲染一次再讀回中央像素** |
+| `&webgl=1` | 強制用 WebGL2 後端（用來排除 WebGPU 後端問題） |
+| `&low=1` | 跳過樓宇 |
+| `&post=1` | 試 TSL 後處理管線 |
+| `&sky=1` | 試完整大氣天空（Preetham + PMREM） |
+
+**怎樣一次過判斷黑畫面是誰的錯**
+
+| 你見到 | 結論 |
+|---|---|
+| 全黑，但面板寫 `畫面中央最上層：div… ← 蓋住咗 canvas！` | **CSS／DOM 問題**：3D 畫面被 HTML 蓋住，同渲染無關 |
+| 全黑，紅色方塊都冇，讀回像素係 `#000000` | 繪製本身是黑：材質／燈光／clearing |
+| 全黑，但有紅色方塊（或讀回 `#8fb2d8` 天空藍） | 場景畫得出來 → 問題在 **canvas 呈現**（後端 / CSS / 尺寸） |
+| `canvas 0×0` 或 `唔在 DOM！` | canvas 尺寸／掛載問題 |
+| 面板出現 `GPU 錯誤：…` 或 `DEVICE LOST` | WebGPU 裝置層問題 → 試 `&webgl=1` |
+| `adapter：… （軟件模擬）` | 用緊軟件 GPU（WARP/SwiftShader）→ 試 `&webgl=1` |
+
+面板內容：`three r…`、後端名稱（`WebGPUBackend` / `WebGLBackend`）、canvas 像素與 CSS 尺寸、**canvas 是否在 DOM／opacity／display**、**畫面中央最上層係邊個元素**、draw calls／三角形／frames、場景數與燈光數、`background` 色值、相機位置與 near/far、所在區、繪製路徑、`navigator.gpu` 與 adapter 資訊、`uncapturederror` 與 `device.lost` 訊息、離屏讀回像素。同一段文字亦會 `console.log('[hk diag] …')` 一次，方便直接複製。
+
+> `?world=ny` 可以直接做對照實驗：如果紐約也是全黑，問題就不在香港的移植，而在瀏覽器／WebGPU 本身。
 
 **資料規模（seed）**：17 條走廊 · 1,349 棟樓（340 棟 > 120 m）· 25 個地標（IFC 412 m、ICC 484 m、中銀 367 m…）· 10 個地區 · 1 條電車線 · 1 條天星小輪航線 · 1 條海底隧道記錄。
 
@@ -595,6 +619,22 @@ __BOOT_REPORT__ {"world":"hk","title":"Slop Hong Kong","hud":"Slop Hong Kong ←
 1. 開 `http://127.0.0.1:8082/?world=hk&debug=1`（**Ctrl+Shift+R** 強制重新載入，避免舊快取）。
 2. 若載入畫面卡住 → 現在一定會顯示紅色錯誤卡（唔會再靜靜卡住）。把紅色那段貼回來。
 3. 若入到場景但黑 → 睇診斷面板的 `draw calls`：`0` = 冇畫任何東西（culling／相機）；大數字 = 畫了但材質／燈光問題；`path` 應該顯示 `direct render`。
+
+**第五輪（香港 HUD 正常、車速 42 km/h、位置正確，但 3D 畫面仍然全黑）**
+
+這一輪的特徵很有價值：**模擬層、DOM 層、世界切換、品牌全部正常**（右下角顯示 `中環 Central · 干諾道中 Connaught Road Central`、`靠左行駛 KEEP LEFT`、60 fps）。`scene.background` 是 `#8fb2d8`（天空藍），所以「全黑」不可能只是材質太暗 —— 一定是**畫面完全沒有輸出到 canvas**，或者 **canvas 被蓋住**。
+
+因為 sandbox 沒有 GPU／瀏覽器（Playwright 的 Chromium 下載被防火牆擋），我把「猜」變成「量度」，加了三個可以在你部機 10 秒內跑完的二分工具：
+
+| 工具 | 用途 |
+|---|---|
+| 診斷面板（現時**預設開啟**） | `elementFromPoint` 報出**畫面中央最上層的元素**（如果唔係 canvas → 純 CSS 問題）；canvas 的 `isConnected`／`opacity`／`display`；後端名稱；`navigator.gpu` 與 adapter（分得出真假 GPU）；`uncapturederror`／`device.lost`；`scene.background` 色值 |
+| `&test=1` | 鏡頭前放一個 `MeshBasicMaterial` 紅色方塊（唔受燈光、`depthTest:false`）＋ 1.5 秒後**離屏渲染一次並讀回中央像素**。見到紅方塊 = 管線通；讀回 `#8fb2d8` = 場景真係畫得出，問題只在 canvas 呈現 |
+| `&webgl=1` | 強制 WebGL2 後端，一步排除 WebGPU 後端／裝置問題 |
+
+另外補了：`resize` 時同步 canvas 與投影、把 WebGPU 的**靜默錯誤**（`uncapturederror` / `device.lost`）接住並顯示在面板（WebGPU 的 validation error 唔會 throw，畫面只會一直黑）。
+
+這些診斷本身也有測試：`tools/boot-hk.mjs` 會用 `?world=hk&test=1` 再跑一次，斷言探針方塊存在、離屏讀回碼路徑真係執行過而唔會拋錯、面板包含 canvas／最上層元素／GPU 資訊。
 
 ### 15.1 先講結論
 
