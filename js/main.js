@@ -141,6 +141,10 @@ async function initApp() {
   trafficSystem.setSolidQuery(solidAt);
   // (the walls the sidewalks' walkers turn back at: the buildings', not the poles' they pass by)
   trafficSystem.setWallQuery((x, z) => controllerManager.isSolidAt(x, z, 1.5, groundHeight(x, z), 2));
+  // A camión or combi the player takes is built from the traffic's own parts, its route and all
+  controllerManager.setLookKits((look) => trafficSystem.lookKit(look));
+  // The traffic's damaged engines smoke with the player's car's smoke
+  trafficSystem.setSmokeEmitter((x, y, z, vx, vz, count, shade, size) => controllerManager.puffSmoke(x, y, z, vx, vz, count, shade, size));
   streetDetails.breaker?.setSolidQuery(solidAt);
   streetDetails.breaker?.setGroundQuery(groundHeight);
   // Saved positions belong to one city's frame: the key carries the city's name
@@ -159,7 +163,7 @@ async function initApp() {
         controllerManager.teleportActiveTo(p.x, p.z, p.heading, p.y);
       }
       const car = saved.looks?.car;
-      if (car && Number.isFinite(car.paint)) controllerManager.setCarLook(car.bodyType, car.paint, car.police, car.model);
+      if (car && Number.isFinite(car.paint)) controllerManager.setCarLook(car.bodyType, car.paint, car.police, car.model, car.route);
       if (Number.isFinite(saved.looks?.cyclist?.color)) controllerManager.setBikeColor(saved.looks.cyclist.color);
       savedMode = saved.activeMode;
       savedMoney = saved.stats?.money;
@@ -443,7 +447,7 @@ async function initApp() {
     const own = controllerManager.ownVehicleNear(BOARD_REACH);
     const taken = trafficSystem.vehicleNear(p.x, p.z, own ? Math.min(BOARD_REACH, own.distance) : BOARD_REACH);
     if (taken) return { taken };
-    return own ? { mode: own.mode } : null;
+    return own ? { mode: own.mode, left: own.left } : null;
   }
   function board() {
     if (mapSystem.isFullMapOpen || crimeSystem.state !== 'play') return;
@@ -455,11 +459,14 @@ async function initApp() {
     if (!target) return;
     if (target.taken) {
       const taken = trafficSystem.hijack(target.taken);
+      if (taken.kind === 'car') controllerManager.leaveCarBehind(); // (the player's own car stays where it is)
       controllerManager.enterVehicle(taken.kind, taken);
       // taking a patrol car is always a crime; any other car, if the police see it
       const p = controllerManager.entities.person.position;
       if (taken.police) crimeSystem.report('stealCop');
       else crimeSystem.report('carjack', crimeSystem.copNear(p.x, p.z, 40));
+    } else if (target.left) {
+      controllerManager.takeLeftCar(target.left);
     } else {
       controllerManager.enterVehicle(target.mode);
     }
@@ -472,7 +479,10 @@ async function initApp() {
     let text = '';
     if (controllerManager.activeMode === 'person') {
       const target = boardTarget();
-      if (target?.taken) text = target.taken.bike ? 'Robar la bici' : target.taken.isPolice ? 'Robar la patrulla' : 'Robar el coche';
+      if (target?.taken) {
+        const v = target.taken;
+        text = v.bike ? 'Robar la bici' : v.isPolice ? 'Robar la patrulla' : v.bus ? 'Robar el camión' : v.fleet === 'combi' ? 'Robar la combi' : 'Robar el coche';
+      }
       else if (target) text = promptNames[target.mode];
     } else if (controllerManager.activeMode === 'helicopter') {
       const h = controllerManager.entities.helicopter;

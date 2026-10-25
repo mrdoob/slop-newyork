@@ -9,6 +9,7 @@ import {
 import { cityUniforms, createCarPaintMaterial, createContactShadowMaterial, createSmokeMaterial } from '../render/tsl-materials.js';
 import {
   BODY_SPECS,
+  BUS_SPEC,
   bodyDims,
   buildCarGeometry,
   buildCarSidePatch,
@@ -22,7 +23,7 @@ import {
 import { PersonCrowd, PersonRig } from '../sim/pedestrians.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from '../actors/vehicle-lights.js';
 import { buildSpec, createDriveState, stepDrive } from './drivetrain.js';
-import { CAR_MODEL_BY_ID, TAXI_MODEL, POLICE_MODEL, pickModel } from '../models/cars/index.js';
+import { CAR_MODEL_BY_ID, TAXI_MODEL, POLICE_MODEL, BUS_MODEL, pickModel } from '../models/cars/index.js';
 import { PLAYER_MOTO } from '../models/motos/index.js';
 import { MIN_IMPACT, createDamage, applyImpact, enginePower, deformBody } from './vehicle-damage.js';
 
@@ -53,6 +54,8 @@ const SPAWN = {
   helicopter: spawnAt(-60, -110, -110, SPAWN_Z - 60)
 };
 // HUD names of the player's characters & vehicles, in the city's language
+const NO_CARS = [];
+const LEFT_CARS = 4; // cars the player left for another kept where they stood (leaveCarBehind), the oldest going first
 const LABELS = { person: 'Peatón', car: 'Taxi de Tepic', cyclist: 'Ciclista', helicopter: 'Helicóptero turístico', moto: PLAYER_MOTO.name };
 const groundCollider = { type: 'ground' };
 // The car model (js/models/cars) a saved or taken car's look is: by id, else the police car, the taxi, or a common
@@ -224,6 +227,7 @@ class ThirdPersonControllerManager {
     this.scene = scene;
     this.colliders = colliders;
     this._colliderCells = null; // built on first use, see nearColliders()
+    this.leftCars = []; // the player's cars left behind for another one (leaveCarBehind)
     this.activeMode = 'person'; // 'person' | 'car' | 'cyclist' | 'helicopter' | 'moto': on foot until getting into something (F)
     this.rotorSpin = 0; // rad/s of the helicopter's main rotor: winds up with the pilot aboard, down once parked
 
@@ -411,7 +415,7 @@ class ThirdPersonControllerManager {
   }
 
   // GTA-style boarding (F, main.js): the player's own vehicle the pedestrian could get into, the nearest whose body
-  // is within `reach` metres; { mode, distance } or null
+  // is within `reach` metres; { mode, distance } (and `left`: one of the cars left behind, leaveCarBehind) or null
   ownVehicleNear(reach) {
     const p = this.entities.person.position;
     let best = null;
@@ -427,7 +431,70 @@ class ThirdPersonControllerManager {
       const distance = Math.hypot(Math.max(0, Math.abs(dx * fx + dz * fz - mid) - halfL), Math.max(0, Math.abs(dz * fx - dx * fz) - halfW));
       if (distance <= reach && (!best || distance < best.distance)) best = { mode, distance };
     }
+    for (const left of this.leftCars || NO_CARS) {
+      if (Math.abs(left.y - p.y) > 2.5) continue;
+      const dx = p.x - left.x, dz = p.z - left.z;
+      const fx = Math.sin(left.heading), fz = Math.cos(left.heading);
+      const distance = Math.hypot(Math.max(0, Math.abs(dx * fx + dz * fz) - left.halfL), Math.max(0, Math.abs(dz * fx - dx * fz) - left.halfW));
+      if (distance <= reach && (!best || distance < best.distance)) best = { mode: 'car', distance, left };
+    }
     return best;
+  }
+
+  // The player takes another car (main.js board) and leaves theirs where it stands: a still copy of it as it is (its
+  // model, paint, dents, a camión's parts), which the traffic stops behind, the player bumps into and can get back into
+  // (takeLeftCar). The copy keeps the car's dented body and camión parts: the car is given new ones with its next look
+  leaveCarBehind() {
+    const c = this.entities.car;
+    const mesh = c.mesh.clone(true); // (sharing the geometries & materials)
+    const lights = [];
+    mesh.traverse((o) => { if (o.isLight) lights.push(o); });
+    for (const light of lights) light.removeFromParent();
+    mesh.name = 'LeftCar';
+    this.scene.add(mesh);
+    const { x, y, z } = c.position;
+    // its box for the collisions, the length along its heading (as bridges.js builds its walls' boxes)
+    const yaw = Math.atan2(-Math.cos(c.heading), Math.sin(c.heading));
+    const cs = Math.cos(yaw), sn = Math.sin(yaw), hx = c.halfL, hz = c.halfW;
+    const ex = Math.abs(cs) * hx + Math.abs(sn) * hz, ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
+    this.leftCars.push({
+      mesh, x, y, z, heading: c.heading, halfW: c.halfW, halfL: c.halfL, look: { ...c.look }, damage: c.damage,
+      dented: c.dented, kit: c.kit,
+      collider: { minX: x - ex, maxX: x + ex, minZ: z - ez, maxZ: z + ez, minY: y - 0.3, maxY: y + (c.kit && c.kit.wheels ? 3.0 : 1.5), obb: { cx: x, cz: z, hx, hz, cs, sn }, _order: 1e15 }
+    });
+    c.dented = null;
+    c.damage = createDamage();
+    this.dropLookKit(c, false);
+    if (this.leftCars.length > LEFT_CARS) this.forgetLeftCar(this.leftCars[0]);
+  }
+
+  forgetLeftCar(left, dispose = true) {
+    const i = this.leftCars.indexOf(left);
+    if (i >= 0) this.leftCars.splice(i, 1);
+    left.mesh.removeFromParent();
+    if (left.kit) for (const m of left.kit.chassis) m.geometry.dispose();
+    if (dispose && left.dented) left.dented.geometry.dispose();
+  }
+
+  // Back into a car left behind: the one the player had is left where it is in its place, and the car becomes this
+  // one again, dents and all
+  takeLeftCar(left) {
+    if (this.activeMode !== 'person') return false;
+    const c = this.entities.car;
+    this.leaveCarBehind();
+    this.forgetLeftCar(left, false);
+    const { look } = left;
+    this.setCarLook(look.bodyType, look.paint, look.police, look.model, look.route);
+    c.position.set(left.x, left.y, left.z);
+    c.heading = left.heading;
+    c.damage = left.damage;
+    if (left.dented) {
+      c.dented = left.dented;
+      c.bodyMesh.geometry = left.dented.geometry;
+    }
+    for (const wheel of c.wheels) wheel.steerPivot.rotation.z = c.kit ? 0 : c.damage.camber[(wheel.isFront ? 0 : 2) + (wheel.side > 0 ? 0 : 1)];
+    this.settle(c);
+    return this.enterVehicle('car');
   }
 
   // Get in: one of the player's own vehicles where it stands, or `taken`, a car or bicycle taken from the traffic
@@ -436,7 +503,7 @@ class ThirdPersonControllerManager {
     if (this.activeMode !== 'person' || mode === 'person' || !this.entities[mode]) return false;
     const ent = this.entities[mode];
     if (taken) {
-      if (mode === 'car') this.setCarLook(taken.bodyType, taken.paint, taken.police, taken.model);
+      if (mode === 'car') this.setCarLook(taken.bodyType, taken.paint, taken.police, taken.model, taken.route);
       else if (mode === 'cyclist') this.setBikeColor(taken.color);
       ent.position.set(taken.x, this.getGroundHeight(taken.x, taken.z, mode), taken.z); // just where it was
       ent.heading = taken.heading;
@@ -458,8 +525,9 @@ class ThirdPersonControllerManager {
     if (mode === 'helicopter') v.position.y = ground + 0.25;
     this.settle(v);
     if (v.carState) v.carState.value.x = 0; // (no brake lights on a parked car)
-    const side = mode === 'car' ? 1.5 : mode === 'cyclist' ? 0.75 : mode === 'moto' ? 0.85 : 2.4;
-    const end = mode === 'car' ? 3.0 : mode === 'cyclist' ? 1.6 : mode === 'moto' ? 1.7 : 6.6;
+    // (beside a car or camión by its own size)
+    const side = mode === 'car' ? (v.halfW || 0.86) + 0.64 : mode === 'cyclist' ? 0.75 : mode === 'moto' ? 0.85 : 2.4;
+    const end = mode === 'car' ? (v.halfL || 2.18) + 0.82 : mode === 'cyclist' ? 1.6 : mode === 'moto' ? 1.7 : 6.6;
     const lx = Math.cos(v.heading), lz = -Math.sin(v.heading); // left (heading 0 faces +z, left is +x)
     const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
     const spots = [[lx * side, lz * side], [-lx * side, -lz * side], [-fx * end, -fz * end], [fx * end, fz * end]];
@@ -479,10 +547,24 @@ class ThirdPersonControllerManager {
     return true;
   }
 
+  // The traffic's parts for a camión or a combi the player takes (traffic.js lookKit: the camión's body & wheels, the
+  // combi's roof sign, each with its route), given the look { bodyType, route }
+  setLookKits(make) {
+    this.lookKits = typeof make === 'function' ? make : null;
+  }
+
   // The player's car becomes the one it was taken from: its model (js/models/cars) with its body shape stretched to
-  // the model's size, its paint, its police livery, and the model's own engine & gearbox (drivetrain.js)
-  setCarLook(bodyType = 'taxi', paint = 0xffbe14, police = false, modelId = null) {
+  // the model's size, its paint, its police livery, and the model's own engine & gearbox (drivetrain.js). A camión
+  // or a combi keeps its route ({ sign, livery }: its name on the glass or the roof, the camión's livery)
+  setCarLook(bodyType = 'taxi', paint = 0xffbe14, police = false, modelId = null, route = null) {
     const c = this.entities.car;
+    this.dropLookKit(c);
+    const kit = (route || bodyType === 'bus') && this.lookKits ? this.lookKits({ bodyType, route }) : null;
+    if (bodyType === 'bus') {
+      if (kit) return this.setBusLook(c, kit, route);
+      bodyType = 'taxi'; // (no traffic to build a camión from: the taxi)
+      modelId = null;
+    }
     const model = modelFor({ bodyType, police, model: modelId });
     const spec = BODY_SPECS[bodyType] || BODY_SPECS[model.body] || BODY_SPECS.taxi;
     const mat = createLoftedCarMaterial(spec, paint);
@@ -515,11 +597,67 @@ class ThirdPersonControllerManager {
     c.carState = mat.userData.carState;
     if (c.carState) c.carState.value.set(0, 0, 0, police ? 1 : 0); // (livery: 1 = police)
     c.label = spec.name === 'taxi' ? LABELS.car : police ? 'Patrulla' : model.name;
-    c.look = { bodyType: spec.name, paint, police: Boolean(police), model: model.id };
+    c.look = { bodyType: spec.name, paint, police: Boolean(police), model: model.id, route: kit ? route : null };
+    if (kit) {
+      // a combi's route sign on its roof (in the body shape's frame, stretched with it)
+      for (const m of kit.chassis) c.chassisPivot.add(m);
+      c.kit = kit;
+      c.label = kit.label;
+    }
     c.zFront = spec.zFront * sz;
     c.spec = buildSpec(model);
     c.drive = createDriveState(c.spec);
     this.repairCar(c);
+  }
+
+  // ...or the camión itself: the traffic's bus body, route sign & wheels instead of the car's, its size, its lamps,
+  // the bus's engine & gearbox (BUS_MODEL), and the chase camera further back and up
+  setBusLook(c, kit, route) {
+    c.bodyMesh.visible = false;
+    for (const decal of c.taxiDecals) decal.visible = false;
+    for (const plate of c.plates) plate.visible = false;
+    for (const wheel of c.carWheels) wheel.steerPivot.visible = false;
+    c.chassisPivot.scale.set(1, 1, 1);
+    c.scale = { x: 1, y: 1, z: 1 };
+    for (const m of kit.chassis) c.chassisPivot.add(m);
+    for (const wheel of kit.wheels) c.mesh.add(wheel.steerPivot);
+    c.wheels = kit.wheels;
+    c.kit = kit;
+    c.bodyHalf = { w: BUS_SPEC.halfWidth[0][1], l: BUS_SPEC.zFront };
+    c.halfW = BUS_SPEC.halfWidth[0][1];
+    c.halfL = BUS_SPEC.zFront;
+    c.headLights.forEach((spot, i) => placeVehicleHeadlight(spot, BUS_SPEC, i === 0 ? -1 : 1));
+    c.carState = null;
+    c.label = kit.label;
+    c.look = { bodyType: 'bus', paint: 0xffffff, police: false, model: BUS_MODEL.id, route };
+    c.zFront = BUS_SPEC.zFront;
+    c.spec = buildSpec(BUS_MODEL);
+    c.drive = createDriveState(c.spec);
+    c.shadow.scale.set(2.92 / 2.22, 1, 12.1 / 5.05);
+    c.chaseDistance = 12.5;
+    c.chaseHeight = 4.1;
+    c.cameraTargetOffset.y = 1.9;
+    this.repairCar(c);
+  }
+
+  // Takes the last camión's or combi's parts off the player's car, and gives it back its own
+  dropLookKit(c, dispose = true) {
+    const kit = c.kit;
+    if (!kit) return;
+    for (const m of kit.chassis) {
+      m.removeFromParent();
+      if (dispose) m.geometry.dispose(); // (unless a car left behind still shows it)
+    }
+    if (kit.wheels) for (const wheel of kit.wheels) wheel.steerPivot.removeFromParent();
+    c.kit = null;
+    c.wheels = c.carWheels;
+    c.bodyMesh.visible = true;
+    for (const plate of c.plates) plate.visible = true;
+    for (const wheel of c.carWheels) wheel.steerPivot.visible = true;
+    c.shadow.scale.set(1, 1, 1);
+    c.chaseDistance = 6.9;
+    c.chaseHeight = 2.12;
+    c.cameraTargetOffset.y = 0.96;
   }
 
   // The car like new: no damage, the shared undented body mesh back, the wheels true
@@ -560,6 +698,7 @@ class ThirdPersonControllerManager {
       slots[mode].heading = e.heading || 0;
       out.push(slots[mode]);
     }
+    for (const left of this.leftCars || NO_CARS) out.push(left);
     return out;
   }
 
@@ -865,6 +1004,9 @@ class ThirdPersonControllerManager {
       carState,
       headLights,
       wheels,
+      carWheels: wheels, // (its own: a camión taken has the bus's, setBusLook)
+      kit: null, // a camión's or combi's parts from the traffic (setCarLook)
+      shadow: carShadow,
       position: new THREE.Vector3(SPAWN.car.x, 0.0, SPAWN.car.z),
       heading: SPAWN.car.heading,
       speed: 0,
@@ -1386,6 +1528,10 @@ class ThirdPersonControllerManager {
         }
       }
     }
+    for (const left of this.leftCars || NO_CARS) {
+      const k = left.collider;
+      if (k.maxX >= x - r && k.minX <= x + r && k.maxZ >= z - r && k.minZ <= z + r) out.push(k);
+    }
     if (out.length > 1) out.sort((a, b) => a._order - b._order);
     return out;
   }
@@ -1773,13 +1919,17 @@ class ThirdPersonControllerManager {
     c.heaveY = Math.max(-0.08, Math.min(0.14, c.heaveY + c.heaveVel * dt));
     c.chassisPivot.position.y = c.heaveY;
 
-    if (c.carState) {
-      c.carState.value.x = d.braking || (c.speed === 0 && !throttle) ? 1 : 0;
+    const braking = d.braking || (c.speed === 0 && !throttle) ? 1 : 0;
+    if (c.carState) c.carState.value.x = braking;
+    const lamps = c.kit && c.kit.lamps;
+    if (lamps && lamps.array[0] !== braking) {
+      lamps.array[0] = braking;
+      lamps.needsUpdate = true;
     }
 
     const forwardDist = (c.position.x - prevX) * Math.sin(c.heading) + (c.position.z - prevZ) * Math.cos(c.heading);
     // the driven wheels spin faster than the car moves when they break loose
-    const rawWheelStep = forwardDist / 0.35 + (d.wheelspin ? 0.35 : 0);
+    const rawWheelStep = forwardDist / (c.kit && c.kit.wheels ? BUS_SPEC.wheelRadius : 0.35) + (d.wheelspin ? 0.35 : 0);
     const wheelStep = Math.sign(rawWheelStep) * Math.min(Math.abs(rawWheelStep), 0.48);
     c.wheelSpin = (c.wheelSpin + wheelStep) % (Math.PI * 2);
     for (const w of c.wheels) {
@@ -1888,18 +2038,24 @@ class ThirdPersonControllerManager {
 
   // `count` (fractional: carried over to the next frame) puffs of grey `shade` and `size` from the car's local point
   emitSmoke(c, lx, ly, lz, count, shade, size) {
-    const sm = this.smoke;
-    sm.carry += count;
     const sn = Math.sin(c.heading), cs = Math.cos(c.heading);
-    const x = c.position.x + cs * lx + sn * lz, z = c.position.z - sn * lx + cs * lz;
-    const vx = sn * c.speed + c.vx, vz = cs * c.speed + c.vz;
+    this.puffSmoke(c.position.x + cs * lx + sn * lz, c.position.y + ly, c.position.z - sn * lx + cs * lz,
+      sn * c.speed + c.vx, cs * c.speed + c.vz, count, shade, size);
+  }
+
+  // `count` puffs at (x, y, z) from something moving at (vx, vz): the player's car, or a damaged one in the traffic
+  // (traffic.js setSmokeEmitter, main.js)
+  puffSmoke(x, y, z, vx, vz, count, shade, size) {
+    const sm = this.smoke;
+    if (!sm) return;
+    sm.carry += count;
     while (sm.carry >= 1) {
       sm.carry -= 1;
       const p = sm.puffs[sm.cursor];
       const i = sm.cursor;
       sm.cursor = (sm.cursor + 1) % SMOKE_PUFFS;
       p.x = x + (Math.random() - 0.5) * 0.3;
-      p.y = c.position.y + ly;
+      p.y = y;
       p.z = z + (Math.random() - 0.5) * 0.3;
       // left behind by the car (a little of its speed), rising and spreading
       p.vx = vx * 0.15 + (Math.random() - 0.5) * 1.2;
