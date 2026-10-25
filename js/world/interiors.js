@@ -17,15 +17,15 @@ import { Bystanders } from '../sim/bystanders.js';
 
 const POCKET = { x: 10150, z: 9850, y: 2600 }; // over the box's empty south-east corner, 2.6 km up
 const KINDS = {
-  restaurant: { w: 12, d: 10, h: 3.3, music: 'cumbia', price: 80, heal: 50, item: 'una orden de comida' },
-  bar: { w: 12, d: 9, h: 3.4, music: 'banda', price: 40, heal: 10, item: 'una cerveza' },
-  disco: { w: 16, d: 15, h: 6.4, music: 'reggaeton', price: 70, heal: 5, item: 'una cuba' }
+  restaurant: { w: 12, d: 10, h: 3.3, music: 'cumbia', price: 80, heal: 50, item: 'una orden de comida', light: 1.2 },
+  bar: { w: 12, d: 9, h: 3.4, music: 'banda', price: 40, heal: 10, item: 'una cerveza', light: 1.3 },
+  disco: { w: 16, d: 15, h: 6.4, music: 'reggaeton', price: 70, heal: 5, item: 'una cuba', light: 8 }
 };
+// (`light`: the lamps' intensities below scaled for the room: the antro's dark walls take much more than a dining room's)
 const ROOM_OF = { restaurant: 'restaurant', seafood: 'restaurant', tacos: 'restaurant', burger: 'restaurant', bar: 'bar', disco: 'disco' };
 const MEZZ_Y = 3.0; // the tapanco's floor over the hall's
 const MEZZ_D = 4.5; // its depth from the back wall
 const DOOR_REACH = 1.8; // m from a door the player goes in or out by
-const LIGHT = 8; // (the lamps' intensities below, scaled up to light the rooms under the night's exposure)
 
 const hash = (x, z, k = 0) => {
   const s = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453;
@@ -159,7 +159,7 @@ class Interiors {
     const signMesh = add(new THREE.PlaneGeometry(3.2, 0.8), new THREE.MeshBasicNodeMaterial({ map: sign.tex }), false);
     const lights = [];
     const light = (x, y, z, c, intensity, dist) => {
-      const l = new THREE.PointLight(c, intensity * LIGHT, dist, 1.6);
+      const l = new THREE.PointLight(c, intensity * K.light, dist, 1.6);
       l.position.set(x, y, z);
       l.visible = false; // (on only while the player is in the room: the clustered lighting takes 256 lights at most)
       group.add(l);
@@ -183,7 +183,7 @@ class Interiors {
       // tables with their red plastic chairs (the brewery's), in two rows
       const tables = [], chairs = [];
       for (const tx of [-3.8, 0, 3.8]) {
-        for (const tz of [0.3, 3.0]) {
+        for (const tz of [-0.6, 2.0]) { // (clear of the way in at the door)
           tables.push(box(1.0, 0.04, 1.0, tx, 0.74, tz), cyl(0.04, 0.04, 0.74, tx, 0, tz, 6), cyl(0.3, 0.3, 0.03, tx, 0, tz, 12));
           for (const [cx, cz] of [[-0.75, 0], [0.75, 0], [0, -0.75], [0, 0.75]]) {
             chairs.push(box(0.42, 0.04, 0.42, tx + cx, 0.44, tz + cz), box(0.42, 0.42, 0.04, tx + cx * 1.25, 0.46, tz + cz * 1.25 + (cx ? 0 : 0)));
@@ -231,7 +231,7 @@ class Interiors {
       solid(1.0, 3.8, -2.0, -0.4, 0, 0.9);
       // high tables
       const tops = [];
-      for (const [tx, tz] of [[0, 2.4], [3.6, 2.6], [-1.2, -2.8]]) {
+      for (const [tx, tz] of [[0.8, 1.4], [3.6, 2.6], [-1.2, -2.8]]) {
         tops.push(cyl(0.38, 0.38, 0.04, tx, 1.05, tz, 14), cyl(0.04, 0.04, 1.05, tx, 0, tz, 6));
         solid(tx - 0.4, tx + 0.4, tz - 0.4, tz + 0.4, 0, 1.1);
         spots.guests.push([tx + 0.6, tz, -Math.PI / 2], [tx - 0.55, tz + 0.2, Math.PI / 2]);
@@ -337,8 +337,10 @@ class Interiors {
       minX: room.ox - room.w / 2 - 1, maxX: room.ox + room.w / 2 + 1, minZ: room.oz - room.d / 2 - 1, maxZ: room.oz + room.d / 2 + 1.5,
       floorAt: room.floorAt, colliders: room.colliders
     });
+    // (just inside the door, wherever the teleport's search for a clear spot would rather put it)
     c.teleportActiveTo(room.ox, room.oz + room.d / 2 - 1.2, Math.PI);
-    c.entities.person.position.y = room.y0;
+    c.entities.person.position.set(room.ox, room.y0, room.oz + room.d / 2 - 1.2);
+    c.settle(c.entities.person);
     this.cameras.setInterior({ minX: room.ox - room.w / 2 + 0.35, maxX: room.ox + room.w / 2 - 0.35, minZ: room.oz - room.d / 2 + 0.35, maxZ: room.oz + room.d / 2 - 0.35, maxY: room.y0 + room.h - 0.3 });
     this.cameras.resetForTeleport();
     this.crime.toast(venue.tapanco ? `${venue.name}: sube al tapanco por la escalera` : venue.name);
@@ -387,7 +389,7 @@ class Interiors {
           const a = this.time * 1.3 + i * 1.7;
           l.position.set(Math.sin(a) * 5, room.h - 0.5, Math.cos(a * 0.8) * 4 + 1);
           l.color.setHSL((this.time * 0.15 + i * 0.25) % 1, 1, 0.55);
-          l.intensity = (40 + 30 * Math.max(0, Math.cos(this.time * Math.PI * 2 * (92 / 60)))) * LIGHT;
+          l.intensity = (40 + 30 * Math.max(0, Math.cos(this.time * Math.PI * 2 * (92 / 60)))) * room.K.light;
         });
       }
     } else if (c.activeMode === 'person') {
