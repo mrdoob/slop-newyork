@@ -119,6 +119,7 @@ export const HK_TAXI_SPEC = (() => {
     // 香港的士塗裝：黑色橡膠泵把、鍍鉻橫間鬼面罩 + 綠色「TAXI 5 SEATS」牌、白前牌 / 黃後牌、
     // 車門車隊證、車頂白底紅字「TAXI」燈箱（全部由 TSL 材質在同一個 draw call 內畫）
     livery: 'hk-taxi',
+    headlampsOn: true, // 香港的士日夜開燈（玩家車頭燈因此長着）
     hk: { badgeX: 0.155 }
   };
   // 由 sedan 展開：唔可以帶走 sedan 已計算好的曲線／玻璃艙快取，否則會畫成 sedan。

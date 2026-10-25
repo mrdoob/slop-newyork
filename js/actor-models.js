@@ -1427,12 +1427,15 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   // ---- Emissive: running lights, tail / brake lights & CHMSL, turn signals, taxi roof light -----------------------
   const brake = state.x;
   const blink = max(state.y.mul(step(0.0, p.x)), state.z.mul(step(p.x, 0.0)));
-  const nightHeadlamp = smoothstep(0.60, 1.15, cityUniforms.uInteriorGlow);
+  // 玩家的士（fixed 材質）如果係香港車，頭燈長開 —— 香港的士日夜都開燈，而且
+  // 「車燈唔着」是玩家實際回報過的問題。車流仍然跟日夜（nightFactor）。
+  const nightFactor = smoothstep(0.60, 1.15, cityUniforms.uInteriorGlow);
+  const nightHeadlamp = fixed && spec.headlampsOn ? one : nightFactor;
   const headlamps = color(0xfff8ec)
     .mul(headlightLens.mul(2.2).add(drl.mul(0.65)))
     .mul(nightHeadlamp)
     .mul(one.sub(turnFront.mul(blink)));
-  const tail = color(0xff0a12).mul(redLens.mul(tailShade).mul(brake.mul(2.1).add(nightHeadlamp.mul(0.4))));
+  const tail = color(0xff0a12).mul(redLens.mul(tailShade).mul(brake.mul(2.1).add(nightFactor.mul(0.4))));
   const stop = color(0xff0a12).mul(chmsl.mul(brake).mul(2.1));
   const turn = color(0xff9a14).mul(max(turnFront, turnRear).mul(blink).mul(2.2));
   const sign = (isHK ? color(0xfff3d6) : color(0xffe28a)).mul(signFace.mul(one.sub(signGlyph.mul(0.75))).mul(isHK ? 2.1 : 1.65));

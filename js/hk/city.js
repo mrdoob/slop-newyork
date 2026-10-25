@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createCurtainWallMaterial, createPreWarBuildingMaterial, createFacadeBoxes, WALL_KINDS } from '../tsl-materials.js';
 import * as HK from './config.js';
 import { buildRoadMarkings, dedupe } from './markings.js';
+import * as cityHelpers from './csdi.js';
 
 // js/hk/city.js
 // 香港城市場景：維港水面、填海陸地與海堤、道路走廊（路面＋行人道＋路緣）、行車標線、沿街樓宇、地標、街燈、電車軌。
@@ -180,10 +181,10 @@ function buildRoads(group) {
 
 // --- 樓宇 -------------------------------------------------------------------------------------------------
 
-function buildBuildings(group) {
+function buildBuildings(group, list = HK.BUILDINGS) {
   const towers = [];
   const midRise = [];
-  for (const b of HK.BUILDINGS) {
+  for (const b of list) {
     const street = WALL_KINDS.shop;
     const entry = WALL_KINDS.entry;
     const side = WALL_KINDS.lotLine;
@@ -344,7 +345,26 @@ function buildStreetFurniture(group) {
 
 // --- 組裝 -------------------------------------------------------------------------------------------------
 
-export async function buildHongKongCity(scene, { onProgress = async () => {} } = {}) {
+export async function buildHongKongCity(scene, { onProgress = async () => {}, buildings: realBuildings = null } = {}) {
+  // 有真實樓宇（地政總署 CSDI）就用真實的；冇就退回種子樓宇 —— 兩者走同一條渲染與碰撞管線。
+  let buildingList = Array.isArray(realBuildings) && realBuildings.length ? realBuildings : HK.BUILDINGS;
+  const usingRealBuildings = buildingList !== HK.BUILDINGS;
+  if (usingRealBuildings) {
+    // 真實輪廓 vs 我們簡化過的道路：剔走壓住行車道的樓，保證「見到的路一定開得通」。
+    // 亦剔走與手製地標重疊的樓（地標的形狀比盒好，唔想兩層樓疊在一起）。
+    const { dropBuildingsOnRoad } = cityHelpers;
+    const onRoad = dropBuildingsOnRoad(buildingList);
+    const kept = [];
+    let landmarkDrops = 0;
+    for (const b of onRoad.kept) {
+      const r = Math.hypot(b.w, b.d) / 2;
+      const overlaps = HK.LANDMARKS.some((lm) => Math.abs(b.x - lm.x) < lm.w / 2 + r * 0.55 && Math.abs(b.z - lm.z) < lm.d / 2 + r * 0.55);
+      if (overlaps) { landmarkDrops++; continue; }
+      kept.push(b);
+    }
+    buildingList = kept;
+    console.info(`[hk] 真實樓宇：保留 ${kept.length} 棟（壓路剔除 ${onRoad.dropped.length}、與地標重疊剔除 ${landmarkDrops}）`);
+  }
   const group = new THREE.Group();
   group.name = 'HongKongCity';
   scene.add(group);
@@ -354,20 +374,28 @@ export async function buildHongKongCity(scene, { onProgress = async () => {} } =
   await onProgress('道路、行人道與標線…');
   const roads = buildRoads(group);
   await onProgress('沿街樓宇…');
-  const buildings = buildBuildings(group);
+  const buildings = buildBuildings(group, buildingList);
   await onProgress('地標與街道家具…');
   const tallSet = [];
   const landmarks = buildLandmarks(group, tallSet);
   const furniture = buildStreetFurniture(group);
 
-  // 玩家碰撞：樓宇與地標的 AABB（只做粗略阻擋，夠用於駕駛）
+  // 玩家碰撞：樓宇用**旋轉矩形（OBB）**，地標用 AABB。
+  //
+  // 以前所有樓宇都用 AABB：香港的樓是按街道路向旋轉的，AABB 是「包住旋轉矩形」的軸對齊框，
+  // 30° 的樓會多出四隻角嘅空氣 —— 玩家撞到的其實是這些空氣（用戶原話：「有隱形建物阻住架車前進」）。
+  // 現在把 rot / 半寬 / 半深一併交給 drive.js，用真正的 OBB 推出；minX…maxZ 仍保留做快速剔除。
   const colliders = [];
-  for (const b of HK.BUILDINGS) {
+  for (const b of buildingList) {
     const c = Math.abs(Math.cos(b.rot));
     const s = Math.abs(Math.sin(b.rot));
     const hx = (b.w * c + b.d * s) / 2;
     const hz = (b.w * s + b.d * c) / 2;
-    colliders.push({ minX: b.x - hx, maxX: b.x + hx, minZ: b.z - hz, maxZ: b.z + hz, minY: 0, maxY: b.h });
+    colliders.push({
+      minX: b.x - hx, maxX: b.x + hx, minZ: b.z - hz, maxZ: b.z + hz,
+      minY: 0, maxY: b.h,
+      x: b.x, z: b.z, rot: b.rot, hw: b.w / 2, hd: b.d / 2, kind: 'building'
+    });
   }
   for (const lm of HK.LANDMARKS) {
     colliders.push({ minX: lm.x - lm.w / 2, maxX: lm.x + lm.w / 2, minZ: lm.z - lm.d / 2, maxZ: lm.z + lm.d / 2, minY: 0, maxY: lm.h });
@@ -377,7 +405,14 @@ export async function buildHongKongCity(scene, { onProgress = async () => {} } =
     group,
     colliders,
     // landmarks 數的是**地標數量**（不是 mesh 數）：塔樓／civic 合併成 2 個 facade mesh + 1 個冠
-    counts: { buildings: buildings.count, landmarks: HK.LANDMARKS.length, landmarkMeshes: landmarks.length, lamps: furniture.lampCount, roads: HK.ROADS.length },
+    counts: {
+      buildings: buildings.count,
+      realBuildings: usingRealBuildings,
+      landmarks: HK.LANDMARKS.length,
+      landmarkMeshes: landmarks.length,
+      lamps: furniture.lampCount,
+      roads: HK.ROADS.length
+    },
     setNight(night) {
       // 街燈燈頭在夜間才亮（MeshBasic 不看光照，但可以整體調暗）
       furniture.lampHeads.visible = night > 0.15;

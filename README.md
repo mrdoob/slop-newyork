@@ -782,6 +782,28 @@ TypeError: traffic.collidePlayer is not a function
 
 > **仍然未被驗證的**：沙盒冇 GPU，所以我只可以證明「材質節點圖的數值對」同「軟件光柵化器畫出來似」。真機 WebGPU 的光照、反射、發光強度，要你在瀏覽器睇（`?world=hk&debug=1`，右上角版本應顯示 `2026-10-25.10`）。軟件渲染器亦畫唔出真文字，車牌／綠牌上的字只是條紋示意。
 
+**第十二輪（車浮空／輪唔轉／燈唔着／冇 chok、隱形建築物、真實樓宇資料）**
+
+你講的三件事，三種完全不同的根因：
+
+| 你見到 | 根因 | 修正 |
+|---|---|---|
+| **架車離地、車輪不動、車燈不着、起動同停冇 chok** | 香港版的 `createPlayer()` 只是把**一個合併好的 mesh** 搬來搬去。原版紐約的 `createCarEntity()` 有五層：`chassisPivot`（彈簧-阻尼懸掛）、四條獨立可轉向車輪、車底 contact shadow、兩盞 SpotLight 頭燈、由 `material.userData.carState` 驅動的剎車燈。香港版全部冇 —— 所以架車「有影但冇反應」 | 按原版重寫 `js/hk/drive.js`：**① 懸掛樞軸**（pitch 起步後仰／剎車前傾、roll 過彎側傾、heave 浮沉，彈簧常數沿用紐約調過的 68 / 11.2）；**② 四條 `buildSteerableWheelGeo` 輪胎**，前輪跟方向盤轉、四輪按真實滾動距離自轉；**③ 車底軟影**（`createContactShadowMaterial`），車唔再看落浮空；**④ 兩盞頭燈 SpotLight**，香港的士日夜開燈（`spec.headlampsOn`，材質裡把 `nightHeadlamp` 由日夜曲線改成 constant 1）；**⑤ 剎車燈／指揮燈**經 `carState` uniform 亮起 |
+| **隱形建築物阻住架車** | 樓宇碰撞用**軸對齊盒（AABB）**包住旋轉過的樓。香港的樓按街道路向轉 20–40°，AABB 會多出四隻角的「空氣」：30° 的 20×15 m 樓，包圍盒變成 24.8×23.3 m —— 每個角多 4–5 m 的隱形牆。實測：**全港車道 2 m 取樣 64,337 點，其中 1,710 點（2.7%）被這些空氣擋住** | `js/hk/city.js` 的碰撞體改為交出身兼 `rot / hw / hd`，`drive.js` 用**旋轉矩形（OBB）**推出。同一批取樣：**AABB 誤中 1,710 點 → OBB 0 點**。新測試 `tests/hk-drive.test.mjs` 把這件事釘死（同時保留 AABB 的對照數字，講明根因） |
+| **用 3d.map.gov.hk 的建築物／道路** | 3D 視覺化地圖發佈的是 Cesium **3D Tiles（.b3dm）**，全港幾百 GB，而且我們只想要量體；但同一個政府來源（地政總署 CSDI「Building」圖層，`landsd_rcd_1637211194312_35158`）有 REST/GeoJSON 端點，帶 **真實輪廓 + TopHeight/BaseHeight** | 新增 `js/hk/csdi.js`：瀏覽器按玩樂範圍切 3×4 格查 CSDI（`f=geojson`、`resultOffset` 分頁、`maxAllowableOffset` 伺服器端簡化），每個輪廓取**最小外接旋轉矩形**→ 直接餵現有的盒式立面管線（x, z, w, d, h, rot）。另外：壓住行車道的真實樓會被剔走（`dropBuildingsOnRoad`），保證「見到的路一定開得通」；拉唔到就**自動退回種子樓宇**（`?geo=0` 可以手動關）。`?debug=1` 會寫明樓宇來源 |
+
+**證據**：
+
+- `node --test tests/*.test.*` → **184 pass / 0 fail**（新增 `tests/hk-drive.test.mjs` 3 個、`tests/hk-csdi.test.mjs` 7 個）。
+- `tools/boot-hk.mjs` 21 項檢查全過，GPU 錯誤 0（build `2026-10-25.11`）。
+- 「隱形牆」的量化對照（車道 2 m 取樣、玩家半徑 1.35 m）：**AABB 1,710 點受阻 / OBB 0 點**。
+- `tests/fixtures/csdi-central.geojson` 是**真實政府資料**（2026-10-25 從 CSDI 查中環 114.1590,22.2820–114.1600,22.2830 取 3 棟），測試直接解析它：182 m / 85.2 m / 83.4 m 三棟樓，減 BaseHeight 3.7 m 之後高度 178.3 / 81.5 / 79.7 m。
+
+> **仍然未被驗證的**：
+> · 沙盒**出唔到互聯網**（只准 GitHub），所以我**不能**在沙盒裡真的打 CSDI 一次；CSDI 的 JSON 格式是用 `tests/fixtures/` 的真實樣本驗證的，但**瀏覽器跨域（CORS）能不能成功仍未驗證**。如果失敗，主控台會有 `[hk] 真實樓宇拉唔到…` 並自動用種子樓宇（即是你見到的一樣，不會爛）。你開 `?debug=1` 可以即時見到「樓宇來源：地政總署 CSDI…」定「種子樓宇…」。
+> · 3D Tiles（.b3dm）我**沒有**用 —— 那是另一個格式，需要 Cesium 的解碼器，而且全港幾百 GB。
+> · 物理手感（彈簧、車輪轉速、頭燈亮度）在軟件測試裡只能證明數值與方向正確，**真機觀感要你自己睇**。
+
 ### 15.1 先講結論
 
 **這不是「換字串」的工作。**（下面這些是動手前的量測，之後 Phase 0/1/3 已經落地，見 15.0。）我實際掃過耦合度（每檔出現 `streetZ|avenueX|CENTRAL_PARK|BROADWAY|MANHATTAN|NYC_` 的次數）：

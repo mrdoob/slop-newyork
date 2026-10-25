@@ -176,8 +176,35 @@ export async function startHongKong() {
   }
   mark('lighting');
 
+  // 真實樓宇（地政總署 CSDI）：`?geo=0` 可以關掉，失敗會自動退回種子樓宇。
+  let realBuildings = null;
+  let realBuildingsInfo = { ok: false, reason: 'disabled' };
+  if (params.get('geo') !== '0') {
+    await yieldToBrowser('由地政總署 CSDI 拉真實樓宇輪廓…');
+    try {
+      const { loadRealBuildings } = await import('./csdi.js');
+      realBuildingsInfo = await loadRealBuildings({
+        onProgress: ({ cell, cells, found }) => {
+          const status = document.getElementById('loading-status');
+          if (status) status.textContent = `真實樓宇（地政總署）：第 ${cell}/${cells} 格 · 已有 ${found} 棟`;
+        }
+      });
+      if (realBuildingsInfo.ok) {
+        realBuildings = realBuildingsInfo.buildings;
+        console.info(`[hk] 地政總署 CSDI 真實樓宇：${realBuildings.length} 棟（${realBuildingsInfo.requests} 次查詢）`);
+      } else {
+        console.warn('[hk] 真實樓宇拉唔到，用返種子樓宇：', realBuildingsInfo.reason);
+      }
+    } catch (error) {
+      realBuildingsInfo = { ok: false, reason: String(error?.message ?? error) };
+      console.warn('[hk] CSDI 載入失敗，用返種子樓宇', error);
+    }
+  }
+  mark('buildings-src');
+
   await yieldToBrowser('興建維港與樓宇…');
   const city = await buildHongKongCity(scene, {
+    buildings: realBuildings,
     onProgress: async (label) => {
       await yieldToBrowser(label);
       mark(label);
@@ -515,6 +542,7 @@ export async function startHongKong() {
       `background ${scene.background && scene.background.getHexString ? `#${scene.background.getHexString()}` : String(scene.background)}`,
       `camera ${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)} · near ${camera.near} far ${camera.far}`,
       `player ${player.state.x.toFixed(0)}, ${player.state.z.toFixed(0)} · ${HK.districtAt(player.state.x, player.state.z).zh}`,
+      `樓宇來源：${city.counts.realBuildings ? `地政總署 CSDI 真實輪廓（${city.counts.buildings} 棟）` : `種子樓宇（${city.counts.buildings} 棟）${realBuildingsInfo?.reason ? ` · CSDI：${realBuildingsInfo.reason}` : ''}`} · 車輪 ${player.state.wheelSpin.toFixed(1)} rad · 懸掛 pitch ${player.state.pitch.toFixed(3)}`,
       `path ${postPipeline ? 'post pipeline' : 'direct render'}${skyLighting ? ' + full sky' : ''} · test pattern ${testPattern ? 'ON' : 'off'}`,
       `light ${lighting.activeId} · shadow ${shadows ? 'on' : 'off'} · exposure ${renderer.toneMappingExposure?.toFixed?.(2) ?? '?'} · env ${lighting.hasEnvironment ? 'PMREM' : `冇（${lighting.envError || 'renderer 未提供'}）`}`,
       `${gpuDetail}`,
@@ -609,6 +637,6 @@ export async function startHongKong() {
   });
 
   // 除錯／驗證用（不會影響正常遊玩）
-  globalThis.__slopHK = { build: BUILD, scene, renderer, city, traffic, pedestrians, player, camera, HK, lighting, map, teleportTo, testPattern, gpuErrors };
+  globalThis.__slopHK = { build: BUILD, scene, renderer, city, traffic, pedestrians, player, camera, HK, lighting, map, teleportTo, testPattern, gpuErrors, realBuildings: realBuildingsInfo };
   return { scene, renderer, city, traffic, player };
 }

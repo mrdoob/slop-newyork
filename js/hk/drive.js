@@ -1,13 +1,24 @@
 import * as THREE from 'three/webgpu';
 import * as HK from './config.js';
-import { buildTaxi } from './vehicles.js';
+import { HK_TAXI_SPEC } from './vehicles.js';
+import { buildCarGeometry, buildSteerableWheelGeo, createLoftedCarMaterial } from '../actor-models.js';
+import { createContactShadowMaterial } from '../tsl-materials.js';
+import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from '../vehicle-lights.js';
 
 // js/hk/drive.js
 // 玩家：駕駛紅的士（香港市區的士）＋ 追尾鏡頭。
-// 物理是街機式（與紐約那邊的 controllers.js 同一個思路，數值按香港路面重調）：
-//   · 油門／剎車／滾阻／風阻；
-//   · 速度越低，轉向越弱（不會原地打轉）；
-//   · 以 AABB 推出處理樓宇與地標碰撞，撞到會減速而不是穿牆。
+//
+// 這裡刻意重用紐約原版的整套「手感」設計（`js/controllers.js` 的 createCarEntity /
+// updateCar），唔係自己另寫一套簡化版 —— 用戶的原話是「你看看原來的設計, 樣樣都有架人地」。
+// 具體借了五樣東西：
+//   1. chassisPivot：一個獨立於車輪的車廂樞軸，用彈簧-阻尼做三自由度懸掛
+//      （pitch 起步後仰／剎車前傾、roll 過彎側傾、heave 上下浮沉）—— 這就是「起步同停車有 chok」；
+//   2. 四條可轉向、可自轉的輪胎（buildSteerableWheelGeo），前輪跟方向盤轉、四輪按里程滾動；
+//   3. 車底 contact shadow（貼地的軟影），車唔會再看落像浮在半空；
+//   4. 兩盞 SpotLight 頭燈（clustered lighting），照亮前面 40 m 路面；
+//   5. 由 material.userData.carState 驅動的剎車燈／指揮燈（同車流用同一個材質 uniform）。
+//
+// 物理本身仍是街機式（與紐約 controllers.js 同一思路，數值按香港路面重調）。
 
 const CAR = {
   maxSpeed: 22, // m/s ≈ 79 km/h（市區）
@@ -18,12 +29,70 @@ const CAR = {
   rolling: 1.4,
   drag: 0.0032,
   steerRate: 1.9, // rad/s at full lock
+  steerLock: 0.52, // 前輪最大轉角（rad）
   wheelBase: 2.9
 };
 
+// 懸掛：數值直接沿用紐約玩家車（springK 68 / dampC 11.2），因為那個手感是調過的。
+const SPRING = { k: 68, c: 11.2, pitchMax: 0.09, rollMax: 0.13, heaveK: 85, heaveC: 12, heaveMin: -0.07, heaveMax: 0.07 };
+
 export function createPlayer(scene, colliders) {
-  const taxi = buildTaxi();
-  scene.add(taxi);
+  const spec = HK_TAXI_SPEC;
+  const root = new THREE.Group();
+  root.name = 'PlayerTaxi';
+
+  // 車廂樞軸：只有它會 pitch / roll / heave，車輪貼住地面唔跟住跳（同原版一樣）
+  const chassisPivot = new THREE.Group();
+  root.add(chassisPivot);
+
+  const paint = createLoftedCarMaterial(spec, HK.HK_TAXI_COLOR ?? 0xb5121b);
+  const body = new THREE.Mesh(buildCarGeometry(spec, false), paint);
+  body.castShadow = true;
+  body.receiveShadow = true;
+  body.name = 'PlayerTaxiBody';
+  chassisPivot.add(body);
+
+  // --- 車輪：四條獨立輪胎（前輪可轉向）--------------------------------------------------------------
+  const wheelGeoLeft = buildSteerableWheelGeo(spec, -1);
+  const wheelGeoRight = buildSteerableWheelGeo(spec, 1);
+  const wheels = [];
+  for (const wc of [
+    { side: -1, z: spec.wheelZ, isFront: true },
+    { side: 1, z: spec.wheelZ, isFront: true },
+    { side: -1, z: -spec.wheelZ, isFront: false },
+    { side: 1, z: -spec.wheelZ, isFront: false }
+  ]) {
+    const steerPivot = new THREE.Group();
+    steerPivot.name = wc.isFront ? 'PlayerTaxiWheelFront' : 'PlayerTaxiWheelRear';
+    steerPivot.position.set(wc.side * spec.wheelX, spec.wheelRadius, wc.z);
+    const tire = new THREE.Mesh(wc.side < 0 ? wheelGeoLeft : wheelGeoRight, paint);
+    tire.castShadow = true;
+    tire.receiveShadow = true;
+    steerPivot.add(tire);
+    root.add(steerPivot);
+    wheels.push({ steerPivot, tire, isFront: wc.isFront });
+  }
+
+  // --- 車底軟影（contact shadow）：車「貼地」的關鍵 -------------------------------------------------
+  const shadowGeo = new THREE.PlaneGeometry(spec.halfWidth?.[2]?.[1] * 2.5 || 2.2, 5.05);
+  shadowGeo.rotateX(-Math.PI * 0.5);
+  const carShadow = new THREE.Mesh(shadowGeo, createContactShadowMaterial());
+  carShadow.position.y = 0.02;
+  carShadow.renderOrder = 998;
+  root.add(carShadow);
+
+  // --- 頭燈（兩盞 SpotLight）＋ 由材質 uniform 控制的燈罩自發光 --------------------------------------
+  const headLights = [];
+  for (const side of [-1, 1]) {
+    const spot = createVehicleHeadlight();
+    placeVehicleHeadlight(spot, spec, side);
+    spot.intensity = HEADLIGHTS.intensity;
+    chassisPivot.add(spot, spot.target);
+    headLights.push(spot);
+  }
+  const carState = paint.userData?.carState ?? null;
+
+  scene.add(root);
 
   const state = {
     x: HK.SPAWN.x,
@@ -32,15 +101,67 @@ export function createPlayer(scene, colliders) {
     heading: HK.SPAWN.heading,
     speed: 0,
     steer: 0,
+    steerAngle: 0,
+    wheelSpin: 0,
+    pitch: 0,
+    pitchVel: 0,
+    roll: 0,
+    rollVel: 0,
+    heaveY: 0,
+    heaveVel: 0,
+    braking: false,
     radius: 1.35
   };
 
   const keys = { forward: false, backward: false, left: false, right: false, boost: false, brake: false };
 
+  /**
+   * 樓宇碰撞：用**旋轉矩形（OBB）**而唔係 AABB。
+   *
+   * 為什麼要改：香港的樓宇是按街道方位角旋轉的（例如 30°），而 AABB 是最終包住旋轉矩形的軸對齊框 ——
+   * 30° 旋轉的 20×15 m 樓，AABB 會變成 24.8×23.3 m，四個角各多出 4–5 m 的**空氣**。
+   * 玩家的圓形碰撞半徑一碰到那些角就「撞牆」，但畫面裡根本冇牆 —— 這就是用戶講的「隱形建築物」。
+   * 改成 OBB：先把點轉回樓宇的本地座標，再用矩形推出，最後轉回世界座標。
+   */
   function collide() {
-    // 以車的圓形半徑對 AABB 推出（樓宇很多，用簡單掃描；近 30 m 內才考慮）
     for (const c of colliders) {
-      if (state.x < c.minX - 3 || state.x > c.maxX + 3 || state.z < c.minZ - 3 || state.z > c.maxZ + 3) continue;
+      if (state.x < c.minX - 4 || state.x > c.maxX + 4 || state.z < c.minZ - 4 || state.z > c.maxZ + 4) continue;
+      if (c.rot) {
+        const cos = Math.cos(-c.rot);
+        const sin = Math.sin(-c.rot);
+        const dx0 = state.x - c.x;
+        const dz0 = state.z - c.z;
+        const lx = dx0 * cos - dz0 * sin;
+        const lz = dx0 * sin + dz0 * cos;
+        const nx = Math.max(-c.hw, Math.min(lx, c.hw));
+        const nz = Math.max(-c.hd, Math.min(lz, c.hd));
+        const ddx = lx - nx;
+        const ddz = lz - nz;
+        const d2 = ddx * ddx + ddz * ddz;
+        if (d2 > state.radius * state.radius) continue;
+        let px;
+        let pz;
+        if (d2 < 1e-8) {
+          // 圓心在矩形內：沿最淺的一條邊推出去
+          const pushX = c.hw - Math.abs(lx);
+          const pushZ = c.hd - Math.abs(lz);
+          if (pushX < pushZ) { px = Math.sign(lx || 1) * (pushX + state.radius); pz = 0; }
+          else { px = 0; pz = Math.sign(lz || 1) * (pushZ + state.radius); }
+        } else {
+          const d = Math.sqrt(d2);
+          const push = state.radius - d;
+          px = (ddx / d) * push;
+          pz = (ddz / d) * push;
+        }
+        // 本地 → 世界（旋轉回 +c.rot）
+        const cosB = Math.cos(c.rot);
+        const sinB = Math.sin(c.rot);
+        state.x += px * cosB - pz * sinB;
+        state.z += px * sinB + pz * cosB;
+        state.speed *= 0.35;
+        continue;
+      }
+      // 舊式 AABB（地標等）保持不變
       const nx = Math.max(c.minX, Math.min(state.x, c.maxX));
       const nz = Math.max(c.minZ, Math.min(state.z, c.maxZ));
       const dx = state.x - nx;
@@ -56,6 +177,7 @@ export function createPlayer(scene, colliders) {
   }
 
   function update(dt) {
+    const prevSpeed = state.speed;
     const throttle = (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0);
     const top = keys.boost ? CAR.boostSpeed : CAR.maxSpeed;
 
@@ -70,7 +192,8 @@ export function createPlayer(scene, colliders) {
     // 空氣阻力與上限
     state.speed -= state.speed * Math.abs(state.speed) * CAR.drag * dt;
     state.speed = Math.max(-CAR.reverseSpeed, Math.min(top, state.speed));
-    if (keys.brake) state.speed *= Math.max(0, 1 - 4 * dt);
+    state.braking = false;
+    if (keys.brake) { state.speed *= Math.max(0, 1 - 4 * dt); state.braking = true; }
 
     // 轉向：與速度相關（靜止不能轉），並有回中
     const steerInput = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
@@ -79,17 +202,50 @@ export function createPlayer(scene, colliders) {
     if (state.speed !== 0) {
       state.heading += state.steer * CAR.steerRate * speedFactor * dt * Math.sign(state.speed);
     }
+    state.steerAngle = state.steer * CAR.steerLock;
 
+    const prevX = state.x;
+    const prevZ = state.z;
     state.x += Math.sin(state.heading) * state.speed * dt;
     state.z += Math.cos(state.heading) * state.speed * dt;
     collide();
 
-    taxi.position.set(state.x, state.y, state.z);
-    taxi.rotation.set(0, state.heading, 0);
+    // --- 懸掛：三自由度彈簧-阻尼（起步後仰、剎車前傾、過彎側傾、路面浮沉）----------------------------
+    const accel = (state.speed - prevSpeed) / Math.max(dt, 1e-4);
+    const targetPitch = -Math.max(-1, Math.min(1, accel / CAR.accel)) * 0.055;
+    const targetRoll = -state.steerAngle * (state.speed / CAR.maxSpeed) * 0.55;
+    state.pitchVel += ((targetPitch - state.pitch) * SPRING.k - state.pitchVel * SPRING.c) * dt;
+    state.rollVel += ((targetRoll - state.roll) * SPRING.k - state.rollVel * SPRING.c) * dt;
+    state.pitch = Math.max(-SPRING.pitchMax, Math.min(SPRING.pitchMax, state.pitch + state.pitchVel * dt));
+    state.roll = Math.max(-SPRING.rollMax, Math.min(SPRING.rollMax, state.roll + state.rollVel * dt));
+    state.heaveVel += (-state.heaveY * SPRING.heaveK - state.heaveVel * SPRING.heaveC) * dt;
+    state.heaveY = Math.max(SPRING.heaveMin, Math.min(SPRING.heaveMax, state.heaveY + state.heaveVel * dt));
+
+    // --- 車輪：按真實滾動距離自轉，前輪跟方向盤 ------------------------------------------------------
+    const forwardDist = (state.x - prevX) * Math.sin(state.heading) + (state.z - prevZ) * Math.cos(state.heading);
+    const step = forwardDist / Math.max(0.05, spec.wheelRadius);
+    state.wheelSpin = (state.wheelSpin + step) % (Math.PI * 2);
+    for (const w of wheels) {
+      w.tire.rotation.x = state.wheelSpin;
+      if (w.isFront) w.steerPivot.rotation.y = state.steerAngle;
+    }
+
+    // --- 車燈：剎車燈 + 指揮燈（同車流共用 carState uniform）----------------------------------------
+    if (carState) {
+      carState.value.x = state.braking || (state.speed === 0 && !throttle) ? 1 : 0;
+      carState.value.y = keys.left ? 1 : 0;
+      carState.value.z = keys.right ? 1 : 0;
+    }
+
+    root.position.set(state.x, state.y, state.z);
+    root.rotation.set(0, state.heading, 0);
+    chassisPivot.rotation.x = state.pitch;
+    chassisPivot.rotation.z = state.roll;
+    chassisPivot.position.y = state.heaveY;
     return state;
   }
 
-  return { taxi, state, keys, update };
+  return { root, taxi: root, chassisPivot, body, wheels, headLights, carShadow, state, keys, update, material: paint };
 }
 
 /** 追尾鏡頭（滑鼠／觸控拖曳 orbit、滾輪縮放） */

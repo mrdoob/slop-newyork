@@ -61,7 +61,7 @@
 
       // 只預載會用到的那個世界。
       var NY_MODULES = ['js/nyc-geodata.js','js/city-config.js','js/tsl-materials.js','js/trees.js','js/actor-models.js','js/vehicle-lights.js','js/pedestrians.js','js/lighting.js','js/city-grid.js','js/boroughs.js','js/buildings.js','js/fire-escapes.js','js/landmarks.js','js/street-details.js','js/road-network.js','js/road-paint.js','js/traffic.js','js/pedestrian-system.js','js/pedestrian-routes.js','js/controllers.js','js/touch-controls.js','js/gamepad-controls.js','js/cameras.js','js/nyc-map.js','js/scene-culling.js','js/post-processing.js','js/audio-synthesis.js','js/audio-events.js','js/audio-sources.js','js/audio-acoustics.js','js/audio-system.js','js/world.js','js/main.js'];
-      var HK_MODULES = ['js/world.js','js/hk/main.js?v=2026-10-25.10','js/hk/build.js','js/hk/config.js','js/hk/city.js','js/hk/markings.js','js/hk/lighting.js','js/hk/traffic.js','js/hk/pedestrians.js','js/hk/map.js','js/hk/fleet.js','js/hk/vehicles.js','js/hk/drive.js','js/hk-geodata.js','js/hk-coastline.js'];
+      var HK_MODULES = ['js/world.js','js/hk/main.js?v=2026-10-25.11','js/hk/build.js','js/hk/config.js','js/hk/city.js','js/hk/markings.js','js/hk/lighting.js','js/hk/traffic.js','js/hk/pedestrians.js','js/hk/map.js','js/hk/csdi.js','js/hk/fleet.js','js/hk/vehicles.js','js/hk/drive.js','js/hk-geodata.js','js/hk-coastline.js'];
       for (var i = 0; i < (isHK ? HK_MODULES : NY_MODULES).length; i++) {
         var link = document.createElement('link');
         link.rel = 'modulepreload';
@@ -97,7 +97,7 @@
 
     // 建置版本：同時寫在 js/hk/build.js（有測試保證兩邊一致）。
     // 入口模組帶 ?v= 可以強制瀏覽器重新抓取，唔會出現「新 main.js + 舊 traffic.js」這種混用。
-    const HK_BUILD = '2026-10-25.10';
+    const HK_BUILD = '2026-10-25.11';
     window.__SLOP_HK_BUILD = HK_BUILD;
 
     const world = getWorldId();
