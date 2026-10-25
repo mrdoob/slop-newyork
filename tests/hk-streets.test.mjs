@@ -106,6 +106,26 @@ test('行人道由走廊推導，而且全部喺行車道以外', { skip }, asyn
   assert.ok(checked > 50);
 });
 
+test('行人唔會行落海：行人道只保留真實陸地上的部分', { skip }, async () => {
+  const { buildSidewalks, walkPose } = await import('../js/hk/pedestrians.js');
+  const paths = buildSidewalks();
+  assert.ok(paths.length >= 20, `只有 ${paths.length} 條行人道`);
+  // 回歸測試：手繪種子陸地與地政總署海岸線有差異，實測有 8 位行人行落維港（onCoastLand = false）。
+  let checked = 0;
+  const wet = [];
+  for (const path of paths) {
+    for (let s = 0; s <= path.len; s += 3) {
+      const pose = walkPose(path, s, 0);
+      checked++;
+      if (!HK.onCoastLand(pose.x, pose.z)) wet.push(`(${pose.x.toFixed(0)}, ${pose.z.toFixed(0)})`);
+      if (wet.length > 4) break;
+    }
+    if (wet.length > 4) break;
+  }
+  assert.ok(checked > 500, `取樣太少（${checked}）`);
+  assert.deepEqual(wet, [], `行人道伸到海面：${wet.join(' · ')}`);
+});
+
 test('行人實例：位置有限、貼住地面、唔會走出馬路', { skip }, async () => {
   const { createHongKongPedestrians } = await import('../js/hk/pedestrians.js');
   const scene = { children: [], add(o) { this.children.push(o); } };

@@ -9,4 +9,4 @@
 // ① index.html 用 `?v=<BUILD>` 載入入口模組（入口強制更新）；
 // ② 診斷面板顯示版本，一眼看出係唔係新舊混用；
 // ③ main.js 對所有「可能未存在」的方法用 optional call（見下），舊模組頂多冇功能，唔會炸死世界。
-export const BUILD = '2026-10-25.12';
+export const BUILD = '2026-10-25.13';

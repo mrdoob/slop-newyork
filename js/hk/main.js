@@ -568,6 +568,7 @@ export async function startHongKong() {
   })();
 
   let diagLogged = false;
+  let frameCount = 0;
   function updateDiagnostics() {
     if (!diagVisible) return;
     const info = renderer.info || {};
@@ -582,7 +583,9 @@ export async function startHongKong() {
       `canvas ${canvas.width}×${canvas.height} @ ${Math.round(rect.width)}×${Math.round(rect.height)} css · ${canvas.isConnected ? 'in DOM' : '唔在 DOM！'}`,
       `canvas style opacity ${style.opacity} · display ${style.display} · visibility ${style.visibility}`,
       `畫面中央最上層：${top}${covered ? '  ← 蓋住咗 canvas！' : ''}`,
-      `draw calls ${r.drawCalls ?? r.calls ?? '?'} · tris ${r.triangles ?? '?'} · frames ${r.frame ?? '?'}${blackDetected ? ' · 讀到全黑！' : ''}`,
+      `${r.drawCalls === undefined && r.calls === undefined && r.triangles === undefined
+        ? 'draw calls / tris：（WebGPU 後端未提供計數）'
+        : `draw calls ${r.drawCalls ?? r.calls ?? '?'} · tris ${r.triangles ?? '?'}${(r.drawCalls ?? r.calls ?? 0) === 0 ? '（後端回報 0，唔代表冇畫）' : ''}`} · frames ${r.frame ?? frameCount}${blackDetected ? ' · 讀到全黑！' : ''}`,
       `scene children ${scene.children.length} · lights ${scene.children.filter((o) => o.isLight).length} · pedestrians ${pedestrians.counts.pedestrians}（${pedestrians.counts.model}）`,
       `background ${scene.background && scene.background.getHexString ? `#${scene.background.getHexString()}` : String(scene.background)}`,
       `camera ${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)} · near ${camera.near} far ${camera.far}`,
@@ -666,12 +669,20 @@ export async function startHongKong() {
     const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
     last = now;
     elapsed += dt;
+    frameCount++;
 
     player.update(dt);
-    const bump = typeof traffic.collidePlayer === 'function' ? traffic.collidePlayer(player.state) : { hit: false };
-    if (bump.hit) bumpCount++;
-    chase.update(dt, player.state);
+    // 次序很重要：先讓 AI 車行（它們會因為玩家在前方而收油），再解玩家 vs 車身的碰撞，
+    // 最後才把 state 寫回車身 —— 否則被推開的那一幀，畫面上的車仍然在巴士裡面。
     traffic.update(dt, camera.position, player.state);
+    const bump = typeof traffic.collidePlayer === 'function' ? traffic.collidePlayer(player.state) : { hit: false };
+    if (bump.hit) {
+      bumpCount++;
+      // 被車推開之後可能被推入樓宇：再解一次樓宇碰撞（OBB）才同步車身
+      if (player.resolve) player.resolve();
+      else player.sync?.();
+    }
+    chase.update(dt, player.state);
     pedestrians.update?.(dt);
     lighting.update(player.state);
     if (skyLighting) skyLighting.update(player.state);

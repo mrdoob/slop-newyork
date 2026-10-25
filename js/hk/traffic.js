@@ -20,6 +20,47 @@ import { AI_FLEET, createAiMaterial, buildDoubleDecker, buildTram, buildMinibus,
 //   · 玩家（紅的士）會當成路障：後車會收油，撞到會被推開同大幅減速（以前係直接穿過去）。
 
 const NUM_AI_CARS = 96;
+
+/** 點到折線的最短距離（電車軌用）。 */
+function distanceToPolyline(x, z, pts) {
+  let best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const l2 = dx * dx + dz * dz || 1e-9;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / l2));
+    const d = Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/**
+ * 剔走「壓住電車軌」的車道。
+ *
+ * Bug（實測）：電車線是地政總署的真實折線（行車道中間），而汽車車道是中心線向左偏移
+ * (i + 0.5) × 3.4 m。兩者一疊，實測 25,766 個取樣點之中有 1,249 個距離電車軌 < 2 m（最近 0.04 m）——
+ * 即係話汽車會**穿過電車**。真實的香港：電車有自己的一對軌，汽車行旁邊的車道。
+ * 這裡把「大部分長度都貼住電車軌」的車道從 AI 車流剔走（玩家仍然可以照樣駛上去）。
+ */
+export function filterTramLanes(lanes, tram = HK.TRAM, clearance = 2.6) {
+  const kept = [];
+  const dropped = [];
+  for (const lane of lanes) {
+    let near = 0;
+    let samples = 0;
+    for (let s = 0; s <= lane.len; s += 6) {
+      const p = poseAt(lane, s);
+      samples++;
+      if (distanceToPolyline(p.x, p.z, tram) < clearance) near++;
+    }
+    if (samples && near / samples > 0.25) dropped.push({ lane, fraction: near / samples });
+    else kept.push(lane);
+  }
+  return { lanes: kept, dropped };
+}
 const NUM_BUSES = 8;
 const NUM_MINIBUSES = 10;
 const NUM_TRAMS = 3;
@@ -52,7 +93,8 @@ function spreadOverLanes(vehicles) {
 }
 
 export function createHongKongTraffic(scene) {
-  const lanes = HK.buildLanes();
+  // 汽車唔會行電車軌（見 filterTramLanes 的註解）
+  const { lanes, dropped } = filterTramLanes(HK.buildLanes());
   const group = new THREE.Group();
   group.name = 'HongKongTraffic';
   scene.add(group);
@@ -186,8 +228,14 @@ export function createHongKongTraffic(scene) {
         const pg = playerGap(lane, cur.s, playerState);
         if (pg < gap) gap = Math.max(0, pg - 4.5);
         const desired = HK.followSpeed(gap, cur.length, cur.vmax ?? 14);
-        cur.speed += Math.max(-6.5 * dt, Math.min(3.2 * dt, desired - cur.speed));
-        cur.speed = Math.max(0, Math.min(cur.vmax ?? 14, cur.speed));
+        if (cur.hitCooldown > 0) {
+          // 剛剛撞到玩家：停 1.2 秒，唔好一路頂住佢推
+          cur.hitCooldown -= dt;
+          cur.speed = 0;
+        } else {
+          cur.speed += Math.max(-6.5 * dt, Math.min(3.2 * dt, desired - cur.speed));
+          cur.speed = Math.max(0, Math.min(cur.vmax ?? 14, cur.speed));
+        }
         const prevS = cur.s;
         cur.s += cur.speed * dt;
         // 只在自己條車道內繞返起點：唔會再「棋子跳」去第二條街。
@@ -257,32 +305,72 @@ export function createHongKongTraffic(scene) {
     place(ferry, fp.x, fp.y, fp.z, heading);
   }
 
+  // 各車種的半闊（m）—— 用來做「車身矩形」碰撞，唔係用一個中心點
+  const HALF_WIDTH = { car: 0.92, bus: 1.28, minibus: 1.05, tram: 1.05 };
+  const PLAYER_RADIUS = 1.35;
+
   /**
-   * 玩家撞車：把玩家推出車身 + 大幅減速。回傳 { hit, x, z, speed, other }。
-   * （以前完全冇這一層，所以「撞車無反應」。）
+   * 玩家撞車：用**車身矩形（OBB）**而唔係車輛中心點。
+   *
+   * 為什麼要改：以前只在「玩家 vs 車輛中心」距離小於 reach 時才推開。雙層巴士長 11.8 m，
+   * 玩家在巴士中段旁邊（例如貼住車身超車）時，距中心可以 >5.6 m，於是**完全唔會觸發** ——
+   * 這就是用戶截圖裡「巴士穿過我架車」的原因。現在改用長 × 闊的矩形，任何一部分碰到都會推開。
+   *
+   * 同時：撞到的 AI 車即刻收油（並且 1.2 秒內唔准加速），唔會一路頂住玩家推。
    */
   function collidePlayer(player) {
     if (!player) return { hit: false };
-    const reach = 3.2;
+    const R = player.radius ?? PLAYER_RADIUS;
     let hit = null;
-    for (const v of movers) {
-      if (!v.lane) continue;
-      const p = poseAt(v.lane, v.s);
-      const dx = player.x - p.x;
-      const dz = player.z - p.z;
-      if (Math.abs(dx) > 14 || Math.abs(dz) > 14) continue;
-      const d = Math.hypot(dx, dz);
-      if (d > reach + (v.kind === 'car' ? 1.2 : 2.4)) continue;
-      hit = { p, d, kind: v.kind };
-      break;
+
+    const candidates = [];
+    for (const v of movers) if (v.lane) candidates.push({ pose: poseAt(v.lane, v.s), halfLen: (v.length ?? 4.6) / 2, kind: v.kind, v });
+    for (const tram of trams) {
+      const pose = poseAt(tramLine, tram.s);
+      candidates.push({ pose, halfLen: 6.3, kind: 'tram', v: tram });
     }
+
+    for (const { pose, halfLen, kind, v } of candidates) {
+      const dx = player.x - pose.x;
+      const dz = player.z - pose.z;
+      if (Math.abs(dx) > halfLen + R + 2 || Math.abs(dz) > halfLen + R + 2) continue;
+      const sin = Math.sin(pose.heading);
+      const cos = Math.cos(pose.heading);
+      const lf = dx * sin + dz * cos; // 沿車頭方向
+      const ll = dx * cos - dz * sin; // 橫向
+      const ex = halfLen;
+      const ey = HALF_WIDTH[kind] ?? 0.95;
+      const nf = Math.max(-ex, Math.min(lf, ex));
+      const nl = Math.max(-ey, Math.min(ll, ey));
+      const of = lf - nf;
+      const ol = ll - nl;
+      const d = Math.hypot(of, ol);
+      if (d > R) continue;
+
+      let pushF;
+      let pushL;
+      if (d < 1e-4) {
+        // 圓心在車身內部：沿最淺的一條邊推出去（唔可以穿入車底再彈出嚟）
+        const pf = ex - Math.abs(lf);
+        const pl = ey - Math.abs(ll);
+        if (pf <= pl) { pushF = Math.sign(lf || 1) * (pf + R); pushL = 0; }
+        else { pushF = 0; pushL = Math.sign(ll || 1) * (pl + R); }
+      } else {
+        const k = (R - d) / d;
+        pushF = of * k;
+        pushL = ol * k;
+      }
+      player.x += pushF * sin + pushL * cos;
+      player.z += pushF * cos - pushL * sin;
+      player.speed *= 0.12;
+      if (v) {
+        v.speed = 0;
+        v.hitCooldown = 1.2;
+      }
+      if (!hit) hit = { kind, halfLen };
+    }
+
     if (!hit) return { hit: false };
-    const nx = hit.d > 1e-3 ? (player.x - hit.p.x) / hit.d : 1;
-    const nz = hit.d > 1e-3 ? (player.z - hit.p.z) / hit.d : 0;
-    const push = reach + 0.6 - hit.d;
-    player.x += nx * Math.max(0.2, push);
-    player.z += nz * Math.max(0.2, push);
-    player.speed *= 0.15;
     return { hit: true, kind: hit.kind };
   }
 
@@ -293,7 +381,7 @@ export function createHongKongTraffic(scene) {
     heavy,
     trams,
     ferry,
-    counts: { cars: cars.length, buses: NUM_BUSES, minibuses: NUM_MINIBUSES, trams: NUM_TRAMS, lanes: lanes.length },
+    counts: { cars: cars.length, buses: NUM_BUSES, minibuses: NUM_MINIBUSES, trams: NUM_TRAMS, lanes: lanes.length, lanesOnTramTracks: dropped.length },
     update,
     collidePlayer,
     /** 車道幾何（測試與除錯用） */

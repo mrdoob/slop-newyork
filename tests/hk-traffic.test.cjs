@@ -33,6 +33,15 @@ test('the traffic system builds and simulates without hanging', () => {
   assert.equal(report.bumpHit, true, '玩家貼住一架車都冇碰撞反應');
   assert.ok(report.bumpedSpeed < 3, `撞車之後速度仍然係 ${report.bumpedSpeed} m/s`);
   assert.ok(report.pushedBy > 1, `撞車之後只推開 ${report.pushedBy} m`);
+  // 用戶截圖「巴士穿過我架車」：玩家貼在 11.8 m 長的巴士中段旁邊（距中心 4.7 m）也要偵測到，
+  // 而且要推到完全離開車身矩形（半闊 1.28 m）＋玩家半徑 1.35 m。
+  assert.equal(report.busSideHit, true, '玩家貼住巴士中段旁邊竟然冇碰撞 —— 舊版用「中心點距離」就是這個 bug');
+  assert.ok(report.busClearance > 1.3, `推開之後仍然在巴士車身內（離車身只有 ${report.busClearance} m）`);
+  assert.equal(report.busStopped, 0, '撞到玩家的巴士要即刻停車，唔可以一路頂住推');
+  assert.ok(report.busSlowed < 11, `玩家在前方 12 m 時巴士應該收油（仍然 ${report.busSlowed} m/s）`);
+  // 「汽車穿過電車」的回歸測試：AI 車道唔可以疊在電車軌上
+  assert.ok(report.lanesOnTramTracks >= 1, `應該有車道因為壓住電車軌而被剔走（實際 ${report.lanesOnTramTracks}）`);
+  assert.ok(report.tramNear / report.tramSamples < 0.01, `${report.tramNear}/${report.tramSamples} 個車道取樣點仍然貼住電車軌 —— 汽車會穿過電車`);
 });
 
 test('fleet allocation always adds up to the number of cars requested', () => {

@@ -36,13 +36,34 @@ export function buildSidewalks(roads = HK.ROADS) {
         const p = road.pts[i];
         pts.push({ x: p.x + left.x * offset * side, z: p.z + left.z * offset * side });
       }
-      const cum = [0];
-      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
-      const len = cum[cum.length - 1];
-      if (len > 20) paths.push({ road, side, pts, cum, len });
+      // 只保留在**真實陸地**上的行人道。
+      // Bug（實測）：手繪種子陸地與地政總署真實海岸線有差異，34 條行人道段之中有 8 位行人
+      // 行落海（onCoastLand = false）。這裡把行人道按陸地切開，唔會再有人行落維港。
+      for (const run of splitOnLand(pts)) {
+        const cum = [0];
+        for (let i = 1; i < run.length; i++) cum.push(cum[i - 1] + Math.hypot(run[i].x - run[i - 1].x, run[i].z - run[i - 1].z));
+        const len = cum[cum.length - 1];
+        if (len > 20) paths.push({ road, side, pts: run, cum, len });
+      }
     }
   }
   return paths;
+}
+
+/** 把折線按「是否在真實陸地上」切成幾段（海面那幾段直接丟棄）。 */
+function splitOnLand(pts) {
+  const runs = [];
+  let cur = [];
+  for (const p of pts) {
+    if (HK.onCoastLand(p.x, p.z)) {
+      cur.push(p);
+    } else if (cur.length) {
+      if (cur.length > 1) runs.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length > 1) runs.push(cur);
+  return runs;
 }
 
 /** 行人道上的位置（s 為沿線距離，lateral 為再向內／外的偏移）。 */

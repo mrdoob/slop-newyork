@@ -239,15 +239,27 @@ export function createPlayer(scene, colliders) {
       carState.value.z = keys.right ? 1 : 0;
     }
 
+    sync();
+    return state;
+  }
+
+  /** 把 state 寫入 3D 物件（碰撞推開之後要即刻同步，否則車身會慢一幀）。 */
+  function sync() {
     root.position.set(state.x, state.y, state.z);
     root.rotation.set(0, state.heading, 0);
     chassisPivot.rotation.x = state.pitch;
     chassisPivot.rotation.z = state.roll;
     chassisPivot.position.y = state.heaveY;
+  }
+
+  /** 被外力（例如 AI 車）推開之後，再解一次樓宇碰撞，然後同步車身。 */
+  function resolve() {
+    collide();
+    sync();
     return state;
   }
 
-  return { root, taxi: root, chassisPivot, body, wheels, headLights, carShadow, state, keys, update, material: paint };
+  return { root, taxi: root, chassisPivot, body, wheels, headLights, carShadow, state, keys, update, sync, resolve, colliders, material: paint };
 }
 
 /**

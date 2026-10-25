@@ -89,6 +89,57 @@ const { pathToFileURL } = require('node:url');
   const bump = traffic.collidePlayer(player);
   const pushed = Math.hypot(player.x - pose.x, player.z - pose.z);
 
+  // 長車身的回歸測試（用戶截圖：巴士穿過紅的士）。
+  // 把玩家放在巴士**中段旁邊**：距巴士中心 ~4.7 m，舊的「中心點距離 < 5.6 m 才算撞」仍然會漏，
+  // 而且玩家其實已經在 1.28 m 半闊的車身裡面。
+  const bus = traffic.heavy.find((v) => v.kind === 'bus');
+  const busPose = HK.poseAt(bus.lane, bus.s);
+  const sideX = Math.cos(busPose.heading);
+  const sideZ = -Math.sin(busPose.heading);
+  const fwdX = Math.sin(busPose.heading);
+  const fwdZ = Math.cos(busPose.heading);
+  const beside = { x: busPose.x + fwdX * 4.6 + sideX * 0.9, z: busPose.z + fwdZ * 4.6 + sideZ * 0.9, speed: 9 };
+  const busBump = traffic.collidePlayer(beside);
+  // 推開之後，玩家應該完全離開巴士車身矩形（半長 5.9、半闊 1.28）＋ 玩家半徑
+  const lf = (beside.x - busPose.x) * fwdX + (beside.z - busPose.z) * fwdZ;
+  const ll = (beside.x - busPose.x) * sideX + (beside.z - busPose.z) * sideZ;
+  const outF = Math.max(0, Math.abs(lf) - 5.9);
+  const outL = Math.max(0, Math.abs(ll) - 1.28);
+  const busClearance = Math.hypot(outF, outL);
+  const busStopped = bus.speed;
+
+  // 迎面而來的巴士會因為玩家在前方而收油
+  const ahead = traffic.heavy.find((v) => v.kind === 'bus');
+  const poseAhead = HK.poseAt(ahead.lane, ahead.s);
+  const playerAhead = { x: poseAhead.x + Math.sin(poseAhead.heading) * 12, z: poseAhead.z + Math.cos(poseAhead.heading) * 12, speed: 0 };
+  for (let i = 0; i < 30; i++) traffic.update(1 / 30, camera, playerAhead);
+  const busSlowed = ahead.speed;
+
+  // 電車軌：AI 車道唔可以壓住電車線（實測舊版 1,249 個取樣點 < 2 m，最近 0.04 m = 汽車穿過電車）
+  function distanceToTram(x, z) {
+    let best = Infinity;
+    for (let i = 1; i < HK.TRAM.length; i++) {
+      const a = HK.TRAM[i - 1];
+      const b = HK.TRAM[i];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const l2 = dx * dx + dz * dz || 1e-9;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / l2));
+      const d = Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+  let tramSamples = 0;
+  let tramNear = 0;
+  for (const lane of traffic.lanes) {
+    for (let s = 0; s <= lane.len; s += 6) {
+      const p = HK.poseAt(lane, s);
+      tramSamples++;
+      if (distanceToTram(p.x, p.z) < 2.6) tramNear++;
+    }
+  }
+
   const positions = traffic.cars.map((c) => c.s);
   const finite = positions.every((s) => Number.isFinite(s));
   console.log(JSON.stringify({
@@ -106,6 +157,13 @@ const { pathToFileURL } = require('node:url');
     buildMs,
     frameMs: +frameMs.toFixed(3),
     finite,
+    busSideHit: busBump.hit,
+    busClearance: +busClearance.toFixed(2),
+    busStopped: +busStopped.toFixed(2),
+    busSlowed: +busSlowed.toFixed(2),
+    tramNear,
+    tramSamples,
+    lanesOnTramTracks: traffic.counts.lanesOnTramTracks,
     perFleet: traffic.cars.length
   }));
   if (traffic.counts.cars !== 96) throw new Error(`expected 96 cars, got ${traffic.counts.cars}`);
