@@ -18,45 +18,122 @@
       }
     }
   </script>
-  <!-- Fetch the city modules in parallel before stylesheets; the module graph controls evaluation order. -->
-  <link rel="modulepreload" href="./js/nyc-geodata.js" />
-  <link rel="modulepreload" href="./js/city-config.js" />
-  <link rel="modulepreload" href="./js/tsl-materials.js" />
-  <link rel="modulepreload" href="./js/trees.js" />
-  <link rel="modulepreload" href="./js/actor-models.js" />
-  <link rel="modulepreload" href="./js/vehicle-lights.js" />
-  <link rel="modulepreload" href="./js/pedestrians.js" />
-  <link rel="modulepreload" href="./js/lighting.js" />
-  <link rel="modulepreload" href="./js/city-grid.js" />
-  <link rel="modulepreload" href="./js/boroughs.js" />
-  <link rel="modulepreload" href="./js/buildings.js" />
-  <link rel="modulepreload" href="./js/fire-escapes.js" />
-  <link rel="modulepreload" href="./js/landmarks.js" />
-  <link rel="modulepreload" href="./js/street-details.js" />
-  <link rel="modulepreload" href="./js/road-network.js" />
-  <link rel="modulepreload" href="./js/road-paint.js" />
-  <link rel="modulepreload" href="./js/traffic.js" />
-  <link rel="modulepreload" href="./js/pedestrian-system.js" />
-  <link rel="modulepreload" href="./js/pedestrian-routes.js" />
-  <link rel="modulepreload" href="./js/controllers.js" />
-  <link rel="modulepreload" href="./js/touch-controls.js" />
-  <link rel="modulepreload" href="./js/gamepad-controls.js" />
-  <link rel="modulepreload" href="./js/cameras.js" />
-  <link rel="modulepreload" href="./js/nyc-map.js" />
-  <link rel="modulepreload" href="./js/scene-culling.js" />
-  <link rel="modulepreload" href="./js/post-processing.js" />
-  <link rel="modulepreload" href="./js/audio-synthesis.js" />
-  <link rel="modulepreload" href="./js/audio-events.js" />
-  <link rel="modulepreload" href="./js/audio-sources.js" />
-  <link rel="modulepreload" href="./js/audio-acoustics.js" />
-  <link rel="modulepreload" href="./js/audio-system.js" />
-  <link rel="modulepreload" href="./js/main.js" />
-  <script type="module" src="./js/main.js"></script>
+  <!-- ── Phase 0：世界切換（world switch）───────────────────────────────────────────────────────
+       以前的寫法是「靜態載入紐約的 main.js，再由它動態 import 香港」——
+       問題係 static import 會先下載／評估三十幾個紐約模組（連 dev 分支 CDN 上的 addon），
+       只要其中任何一個壞掉，香港就永遠停在 loading 畫面，而且一句錯誤都唔會講。
+       現在改成：先決定世界 → 只 import 那一個世界。香港唔再經過紐約的模組圖。 -->
+  <script>
+    // 開機失敗一定要「看得見」。這個函式在 module 之前就註冊好，
+    // 所以就算 hk/main.js 有語法錯誤（連模組都評估唔到），都會在畫面上顯示紅字，而唔係靜靜卡住。
+    window.__slopBootFail = function (title, detail) {
+      var overlay = document.getElementById('loading-overlay');
+      if (!overlay) return;
+      var raw = detail && (detail.stack || detail.message) ? String(detail.stack || detail.message) : String(detail || '未知錯誤');
+      if (raw.length > 1400) raw = raw.slice(0, 1400) + '…';
+      var box = document.createElement('div');
+      box.className = 'hk-boot-error';
+      var head = document.createElement('div');
+      head.className = 'hk-boot-error-title';
+      head.textContent = title;
+      var pre = document.createElement('pre');
+      pre.className = 'hk-boot-error-stack';
+      pre.textContent = raw;
+      var hint = document.createElement('div');
+      hint.className = 'hk-boot-error-hint';
+      hint.textContent = '上面這段請連同 F12 Console 的紅色錯誤一齊貼返去。載入階段：' + (window.__slopBootPhase || '（未開始）');
+      box.appendChild(head); box.appendChild(pre); box.appendChild(hint);
+      overlay.classList.remove('hidden');
+      overlay.innerHTML = '';
+      overlay.appendChild(box);
+      console.error('[slop boot]', title, detail);
+    };
+
+    (function () {
+      var raw = '';
+      try {
+        var q = new URLSearchParams(location.search);
+        raw = (q.get('world') || q.get('city') || '').toString().toLowerCase();
+      } catch (e) { raw = ''; }
+      var stored = null;
+      try { stored = localStorage.getItem('slop-world'); } catch (e) { /* 私隱模式 */ }
+      var isHK = raw ? /^(hk|hong-?kong|香港)$/.test(raw) : stored === 'hk';
+
+      // 只預載會用到的那個世界。
+      var NY_MODULES = ['js/nyc-geodata.js','js/city-config.js','js/tsl-materials.js','js/trees.js','js/actor-models.js','js/vehicle-lights.js','js/pedestrians.js','js/lighting.js','js/city-grid.js','js/boroughs.js','js/buildings.js','js/fire-escapes.js','js/landmarks.js','js/street-details.js','js/road-network.js','js/road-paint.js','js/traffic.js','js/pedestrian-system.js','js/pedestrian-routes.js','js/controllers.js','js/touch-controls.js','js/gamepad-controls.js','js/cameras.js','js/nyc-map.js','js/scene-culling.js','js/post-processing.js','js/audio-synthesis.js','js/audio-events.js','js/audio-sources.js','js/audio-acoustics.js','js/audio-system.js','js/world.js','js/main.js'];
+      var HK_MODULES = ['js/world.js','js/hk/main.js?v=2026-10-25.13','js/hk/build.js','js/hk/config.js','js/hk/city.js','js/hk/markings.js','js/hk/lighting.js','js/hk/traffic.js','js/hk/pedestrians.js','js/hk/map.js','js/hk/csdi.js','js/hk/fleet.js','js/hk/vehicles.js','js/hk/drive.js','js/hk-geodata.js','js/hk-coastline.js'];
+      for (var i = 0; i < (isHK ? HK_MODULES : NY_MODULES).length; i++) {
+        var link = document.createElement('link');
+        link.rel = 'modulepreload';
+        link.href = './' + (isHK ? HK_MODULES : NY_MODULES)[i];
+        document.head.appendChild(link);
+      }
+
+      var booted = false;
+      window.addEventListener('slop-boot', function () { booted = true; });
+      // 20 秒都未有任何模組開始執行 → 幾乎肯定是 CDN 或本機檔案拉不到。
+      setTimeout(function () {
+        if (booted) return;
+        window.__slopBootFail(
+          (isHK ? '香港' : '紐約') + '世界連模組都未載入（超時 20 秒）',
+          '可能原因：① jsDelivr 上的 three.js dev 分支拉不到（離線／被防火牆擋）② 本機 http.server 冇開 ③ 主控台有 404。\n目前 URL：' + location.href
+        );
+      }, 20000);
+    })();
+
+    window.addEventListener('error', function (event) {
+      if (event.target && event.target !== window && event.target.tagName === 'SCRIPT') {
+        window.__slopBootFail('腳本載入失敗', event.target.src || '(inline)');
+      }
+    }, true);
+    window.addEventListener('unhandledrejection', function (event) {
+      window.__slopBootFail('未處理的非同步錯誤', event.reason);
+    });
+  </script>
+
+  <!-- 真正載入世界：一次只 import 一個。 -->
+  <script type="module">
+    import { getWorldId, getWorld, applyBranding } from './js/world.js';
+
+    // 建置版本：同時寫在 js/hk/build.js（有測試保證兩邊一致）。
+    // 入口模組帶 ?v= 可以強制瀏覽器重新抓取，唔會出現「新 main.js + 舊 traffic.js」這種混用。
+    const HK_BUILD = '2026-10-25.13';
+    window.__SLOP_HK_BUILD = HK_BUILD;
+
+    const world = getWorldId();
+    // 先把品牌換掉：即使之後的世界載入失敗，畫面上都會寫住「Slop Hong Kong」＋錯誤，
+    // 而唔會出現「Slop New York 卡住」這種最令人誤會的狀態。
+    applyBranding(getWorld(world));
+
+    const status = document.getElementById('loading-status');
+    // 版本號一定要在畫面上出現：載入時就在狀態列寫住，之後 HUD 左上角亦長期顯示。
+    if (status) status.textContent = (world === 'hk' ? '載入香港世界（js/hk/main.js）…' : '載入紐約世界…') + ' · v' + (world === 'hk' ? HK_BUILD : 'NY');
+    // 載入畫面上長期顯示版本，唔需要開診斷面板都見到。
+    var loadingBuild = document.getElementById('loading-build');
+    if (loadingBuild) loadingBuild.textContent = world === 'hk' ? '版本 v' + HK_BUILD : 'build v' + HK_BUILD;
+
+    try {
+      if (world === 'hk') {
+        const { startHongKong } = await import(`./js/hk/main.js?v=${HK_BUILD}`);
+        window.__slopBootPhase = 'hk/main.js 已載入';
+        window.dispatchEvent(new Event('slop-boot'));
+        await startHongKong();
+      } else {
+        window.__slopBootPhase = 'ny/main.js 載入中';
+        await import('./js/main.js');
+        window.dispatchEvent(new Event('slop-boot'));
+      }
+    } catch (error) {
+      window.__slopBootFail(world === 'hk' ? '香港世界載入失敗 · Hong Kong failed to load' : '紐約世界載入失敗', error);
+    }
+  </script>
+
   <!-- Inter (UI) & Overpass (street-name signs: modelled on Highway Gothic, the US road sign typeface) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&amp;family=Overpass:wght@600;700&amp;display=swap" />
   <link rel="stylesheet" href="./css/style.css?v=20261022-repo-link" />
+  <link rel="stylesheet" href="./css/hk.css?v=20261025h" />
 </head>
 <body>
   <!-- Icon sprite (24 × 24 stroke icons, drawn in currentColor) -->
@@ -96,6 +173,7 @@
       <div class="loader-title">Slop New York</div>
       <div class="loader-track is-indeterminate" aria-hidden="true"><span id="loading-progress" class="loader-fill"></span></div>
       <div id="loading-status">Initializing WebGPURenderer &amp; TSL Shaders...</div>
+      <div id="loading-build" class="loader-build">版本 –</div>
     </div>
   </div>
 
@@ -110,6 +188,7 @@
         <div class="brand-heading">
           <h1>Slop New York</h1>
           <a class="repo-link" href="https://github.com/mrdoob/slop-newyork/" target="_blank" rel="noopener noreferrer" aria-label="Slop New York on GitHub (opens in a new tab)">GitHub <span aria-hidden="true">↗</span></a>
+          <a class="repo-link" href="?world=hk" aria-label="Switch to Slop Hong Kong">香港 →</a>
         </div>
         <div class="brand-subtitle">three.js · WebGPU · TSL · <span id="hud-fps" class="fps-ok">60</span> fps</div>
       </div>

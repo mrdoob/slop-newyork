@@ -1,0 +1,497 @@
+/* css/hk.css — Slop Hong Kong 的 HUD（Phase 0 世界切換：body[data-world="hk"]） */
+
+/* 香港世界用有自己的 HUD；紐約那套（含觸控層與全螢幕地圖）先隱藏，避免兩套 UI 疊在一起 */
+body[data-world="hk"] .hud,
+body[data-world="hk"] #touch-controls,
+body[data-world="hk"] #fullmap-modal,
+body[data-world="hk"] .popover {
+  display: none !important;
+}
+
+body[data-world="hk"] #canvas-container {
+  z-index: 0;
+}
+
+.hk-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  font-family: Inter, "Noto Sans HK", "PingFang HK", "Microsoft JhengHei", system-ui, sans-serif;
+  color: #f3f5f7;
+  --hk-red: #d3242c;
+  --hk-panel: rgba(12, 15, 19, 0.78);
+  --hk-line: rgba(255, 255, 255, 0.14);
+}
+
+.hk-hud > * {
+  position: absolute;
+}
+
+.hk-brand {
+  top: max(16px, env(safe-area-inset-top));
+  left: max(16px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 10px 12px;
+  background: var(--hk-panel);
+  border: 1px solid var(--hk-line);
+  border-radius: 14px;
+  backdrop-filter: blur(14px) saturate(120%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.hk-bullet {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--hk-red);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+}
+
+.hk-brand-text h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.hk-world-link {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffb3b6;
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.hk-world-link:hover,
+.hk-world-link:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.hk-brand-text p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  opacity: 0.72;
+  letter-spacing: 0.02em;
+}
+
+.hk-telemetry {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  min-width: 210px;
+  padding: 14px 18px;
+  background: var(--hk-panel);
+  border: 1px solid var(--hk-line);
+  border-radius: 16px;
+  backdrop-filter: blur(14px) saturate(120%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  text-align: right;
+}
+
+.hk-speed {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hk-speed #hk-speed {
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.hk-unit {
+  font-size: 12px;
+  opacity: 0.7;
+  letter-spacing: 0.08em;
+}
+
+.hk-location {
+  margin-top: 6px;
+  font-size: 12.5px;
+  opacity: 0.9;
+}
+
+.hk-rule {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hk-line);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff8f93;
+}
+
+.hk-hints {
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  max-width: min(680px, 92vw);
+  padding: 9px 16px;
+  font-size: 11.5px;
+  background: var(--hk-panel);
+  border: 1px solid var(--hk-line);
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+  opacity: 0.92;
+}
+
+.hk-hints kbd {
+  display: inline-block;
+  min-width: 17px;
+  padding: 1px 5px;
+  margin-right: 3px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font: inherit;
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.hk-teleports {
+  left: max(16px, env(safe-area-inset-left));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 42vw;
+  pointer-events: auto;
+}
+
+.hk-teleports button {
+  padding: 7px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--hk-line);
+  background: var(--hk-panel);
+  color: inherit;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.hk-teleports button:hover,
+.hk-teleports button:focus-visible {
+  background: rgba(211, 36, 44, 0.85);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+/* 視角／光線選擇器（用戶：「視角人地有幾個揀架，包括車箱內」、「光線人地有幾個揀架」） */
+.hk-modes {
+  position: fixed;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: var(--hk-panel);
+  border: 1px solid var(--hk-line);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+}
+
+.hk-cameras {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 122px);
+}
+
+.hk-lights {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 174px);
+}
+
+.hk-modes-label {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  opacity: 0.62;
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+
+.hk-modes-label kbd {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font: inherit;
+  font-size: 9.5px;
+}
+
+.hk-modes button {
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.hk-modes button:hover,
+.hk-modes button:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+}
+
+.hk-modes button.is-active {
+  background: rgba(211, 36, 44, 0.9);
+  border-color: rgba(255, 255, 255, 0.28);
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .hk-hints { display: none; }
+  .hk-teleports { max-width: 60vw; }
+  .hk-speed #hk-speed { font-size: 32px; }
+  .hk-telemetry { min-width: 150px; }
+  .hk-modes { right: auto; left: max(12px, env(safe-area-inset-left)); }
+  .hk-cameras { bottom: auto; top: 76px; }
+  .hk-lights { bottom: auto; top: 124px; }
+}
+
+/* 診斷面板（按 D 開關）：黑畫面時用來分辨「冇畫東西 / 畫了但全黑 / 後處理輸出黑」 */
+.hk-diagnostics {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  top: 76px;
+  z-index: 40;
+  margin: 0;
+  padding: 10px 12px;
+  max-width: 46ch;
+  white-space: pre-wrap;
+  font: 500 11px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #d8f0e0;
+  background: rgba(6, 12, 10, 0.86);
+  border: 1px solid rgba(120, 255, 190, 0.28);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.hk-diagnostics[hidden] {
+  display: none;
+}
+
+/* 開機失敗的紅色診斷卡（index.html 的 __slopBootFail 與 js/hk/main.js 的 showBootError 共用）。
+   一定要寫在 hk 的 scope 以外：世界都未載入成功時，body[data-world] 可能仍是預設值。 */
+.hk-boot-error {
+  max-width: min(820px, 92vw);
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: rgba(24, 6, 8, 0.92);
+  border: 1px solid rgba(255, 120, 125, 0.45);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.hk-boot-error-title {
+  font: 700 15px/1.4 Inter, system-ui, sans-serif;
+  color: #ff8f93;
+  margin-bottom: 10px;
+}
+
+.hk-boot-error-stack {
+  margin: 0 0 10px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 500 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #ffd7d8;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
+}
+
+.hk-boot-error-hint {
+  font: 12px/1.6 Inter, system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* 診斷面板的警告狀態：canvas 被 HTML 蓋住，或者一個 draw call 都冇 */
+.hk-diagnostics.is-warning {
+  color: #ffd7d8;
+  border-color: rgba(255, 107, 107, 0.7);
+  background: rgba(38, 6, 8, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.25), 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* 黑畫面自救失敗時的提示條 */
+.hk-black-warning {
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: min(680px, 92vw);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font: 600 13px/1.5 Inter, system-ui, sans-serif;
+  color: #ffd7d8;
+  background: rgba(120, 12, 18, 0.92);
+  border: 1px solid rgba(255, 120, 125, 0.55);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* 香港地圖（M 開關） */
+.hk-map-toggle {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: 132px;
+  z-index: 22;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--hk-line);
+  background: var(--hk-panel);
+  color: #f3f5f7;
+  font: 600 12px/1 Inter, system-ui, sans-serif;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+}
+
+.hk-map-toggle kbd {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  font: 600 10px/1.4 ui-monospace, monospace;
+}
+
+.hk-map {
+  position: fixed;
+  right: 18px;
+  bottom: 150px;
+  z-index: 40;
+  width: min(560px, 46vw);
+  padding: 10px 10px 8px;
+  border-radius: 16px;
+  background: rgba(7, 12, 16, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.6);
+  color: #e8eef4;
+  font-family: Inter, "Noto Sans HK", system-ui, sans-serif;
+}
+
+.hk-map-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hk-map-head strong {
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+}
+
+.hk-map-hint {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.hk-map-close {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.hk-map-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.hk-map-body {
+  position: relative;
+}
+
+.hk-map-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  cursor: crosshair;
+  background: #071820;
+}
+
+.hk-map-legend {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: rgba(4, 10, 14, 0.72);
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  color: rgba(232, 238, 244, 0.85);
+}
+
+.hk-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hk-map-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.hk-map-foot {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 建置版本：載入畫面同 HUD 左上角都要見到（唔使開診斷面板） */
+.loader-build {
+  margin-top: 0.6rem;
+  font: 500 0.72rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.62;
+}
+.hk-build {
+  font: 600 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
+  padding: 0.1rem 0.34rem;
+  border-radius: 999px;
+  color: #0b1720;
+  background: rgba(255, 214, 120, 0.85);
+  vertical-align: 0.06rem;
+}
