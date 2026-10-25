@@ -362,6 +362,14 @@ class CameraSystem {
       const g = Math.max(this.groundAt(p.x, p.z), this.groundAt((p.x + t.x) / 2, (p.z + t.z) / 2) - 0.5);
       if (p.y < g + 1.2) p.y = g + 1.2;
     }
+    // inside a room (interiors.js): the camera stays between its walls and under its ceiling
+    const room = this.interior;
+    if (room) {
+      const p = this.currentPos;
+      p.x = Math.max(room.minX, Math.min(room.maxX, p.x));
+      p.z = Math.max(room.minZ, Math.min(room.maxZ, p.z));
+      p.y = Math.min(room.maxY, p.y);
+    }
     // aiming on foot: eased from the follow camera's own framing (which goes on following meanwhile) to the shoulder's,
     // a little zoomed in
     const preset = this.getActivePreset();
@@ -450,6 +458,11 @@ class CameraSystem {
       this.orbitBaseY + this.orbitLookFrom.y * (1 - b) + this._chaseLookY * b,
       p.z + this.orbitLookFrom.z * (1 - b) + cos * 5.2 * b
     );
+  }
+
+  // Inside a room ({ minX, maxX, minZ, maxZ, maxY }, interiors.js) or out of it (null)
+  setInterior(room) {
+    this.interior = room || null;
   }
 
   // Height of the ground (the hills over the flat city) at (x, z): the cameras keep above it

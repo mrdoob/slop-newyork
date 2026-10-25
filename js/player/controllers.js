@@ -254,6 +254,8 @@ class ThirdPersonControllerManager {
     // A flood's water (m deep) at (x, z) (floods.js, main.js): wading slows the walk, a car pushes the water aside,
     // and deep enough it drowns the engine
     this.waterAt = null;
+    // Inside a restaurant, bar or antro (interiors.js setInterior): its room's own floor & walls
+    this.interior = null;
     // Taking aim on foot (player/aim.js sets it every frame): the player walks and strafes instead of turning
     this.aiming = false;
 
@@ -1441,7 +1443,14 @@ class ThirdPersonControllerManager {
     return !!b && !(b.park > 0.6 && !b.median);
   }
 
+  // Into (a room: { minX, maxX, minZ, maxZ, floorAt(x, z, fromY), colliders }) or out of (null) an interior
+  setInterior(room) {
+    this.interior = room || null;
+  }
+
   getGroundHeight(x, z, mode = 'person', fromY = undefined) {
+    const room = this.interior;
+    if (room && x >= room.minX && x <= room.maxX && z >= room.minZ && z <= room.maxZ) return room.floorAt(x, z, fromY);
     // the ground (ground.js): the town's floor, the hills over it & the river channels cut into it (under a bridge
     // for a body coming from `fromY` down in the channel); everyone stands on it, a walker on the curbs over the
     // town's floor (unless a hill rises above them, or it is down in a channel). With `fromY`, a road bridge's deck
@@ -1538,6 +1547,15 @@ class ThirdPersonControllerManager {
     for (const left of this.leftCars || NO_CARS) {
       const k = left.collider;
       if (k.maxX >= x - r && k.minX <= x + r && k.maxZ >= z - r && k.minZ <= z + r) out.push(k);
+    }
+    // (an interior's walls & furniture: after the city's, which never come near it)
+    if (this.interior) {
+      for (const k of this.interior.colliders) {
+        if (k.maxX >= x - r && k.minX <= x + r && k.maxZ >= z - r && k.minZ <= z + r) {
+          k._order ??= 1e9;
+          out.push(k);
+        }
+      }
     }
     if (out.length > 1) out.sort((a, b) => a._order - b._order);
     return out;

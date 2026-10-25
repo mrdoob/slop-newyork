@@ -72,6 +72,7 @@ class StreetFood {
     for (let i = 0; i < MAX_LIGHTS; i++) {
       const light = new THREE.PointLight(0xffb366, 0, 11, 1.6);
       light.position.set(0, -1000, 0);
+      light.visible = false;
       this.group.add(light);
       this.lights.push(light);
     }
@@ -243,10 +244,9 @@ class StreetFood {
     const dark = hour < 6.5 || hour > 18.6 ? 1 : 0;
     this.lights.forEach((light, i) => {
       const s = near[i];
-      if (!s || !dark) {
-        light.intensity = 0;
-        return;
-      }
+      // (an unlit light is hidden: the clustered lighting takes 256 lights at most)
+      light.visible = !!s && !!dark;
+      if (!light.visible) return;
       const hx = Math.sin(s.heading), hz = Math.cos(s.heading);
       light.position.set(s.x + hx * 0.1, s.y + (s.cart ? 2.5 : 1.95), s.z + hz * 0.1);
       light.intensity = 9;

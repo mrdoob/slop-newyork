@@ -177,6 +177,64 @@ function floodDepth(hollow, low, level, river = 0) {
 }
 
 /**
+ * The places Tepic floods every rainy season, by the local news (Meridiano, Meganoticias, NTV: 2023-2026) and the
+ * municipal Atlas de Riesgo, placed on the city data. Most lie low: the town's floor (ground.js, ~37 m cells) has the
+ * colonia Gobernadores, Caja de Agua, Independencia at Gobernadores and Rey Nayar at Av. de la Cultura 1-2.5 m under
+ * the ground 400 m round them (the town's average: 0.5 m over it), most beside a canal or a drain. Two don't: Insurgentes
+ * at Gobernadores and Av. Tecnológico stand a little over theirs, and flood because the drains choke (the city's
+ * public works blame the trash and the rubble thrown in the street: furniture, tyres, a fridge's door) and the El
+ * Sabino canal overflows. `r` m round a spot (or along a stretch, x0 z0 to x1 z1) the water stands however the
+ * ground lies; `cause` as reported.
+ */
+const FLOOD_SPOTS = [
+  { name: 'Av. Tecnológico, del Tec a Av. Xalisco', x0: 4048, z0: 2435, x1: 3887, z1: 2453, r: 28, cause: 'drains' },
+  { name: 'Insurgentes y Gobernadores', x: 2176, z: 1610, r: 70, cause: 'drains' },
+  { name: 'Paseo de Hamburgo, Clínica 24 del IMSS', x: 2541, z: 1985, r: 90, cause: 'canal' },
+  { name: 'Rey Nayar y Av. de la Cultura', x: 2481, z: 2317, r: 90, cause: 'low' },
+  { name: 'Independencia y Gobernadores', x: 2511, z: 1735, r: 80, cause: 'low' },
+  { name: 'Colonia Gobernadores', x: 3021, z: 1738, r: 120, cause: 'low' },
+  { name: 'Caja de Agua', x: 465, z: 1791, r: 100, cause: 'low' }
+];
+
+// How much (0..1) of a flood spot (x, z) is in, and which: { weight, spot }
+function floodSpotAt(x, z, out = { weight: 0, spot: null }) {
+  out.weight = 0;
+  out.spot = null;
+  for (const s of FLOOD_SPOTS) {
+    let d;
+    if (s.x0 !== undefined) {
+      const ux = s.x1 - s.x0, uz = s.z1 - s.z0;
+      const t = Math.max(0, Math.min(1, ((x - s.x0) * ux + (z - s.z0) * uz) / (ux * ux + uz * uz)));
+      d = Math.hypot(x - s.x0 - ux * t, z - s.z0 - uz * t);
+    } else d = Math.hypot(x - s.x, z - s.z);
+    if (d >= s.r) continue;
+    const k = 1 - (d / s.r) ** 2;
+    if (k > out.weight) {
+      out.weight = k;
+      out.spot = s;
+    }
+  }
+  return out;
+}
+
+/**
+ * The water a choked drain or a reported spot leaves standing (m), `weight` (floodSpotAt) into it, at `level`
+ */
+function spotWater(weight, level) {
+  return weight > 0 ? Math.min(1.1, level * 0.85 * weight) : 0;
+}
+
+/**
+ * A canal's or a drain's spill (m of water) at a point `above` m over the ground at the canal and `distance` m from
+ * it: past ~0.3 of the level (a hard storm) the city's canals overflow (the El Sabino by the Clínica 24, the drains
+ * full of trash), onto the ground beside them that lies no higher
+ */
+function canalSpill(level, above, distance) {
+  if (distance > 120 || level <= 0.3) return 0;
+  return Math.max(0, (level - 0.3) * 1.1 - Math.max(0, above) * 0.6 - distance * 0.008);
+}
+
+/**
  * The river's spill (m of water) at a point `above` m over the river's bank there and `distance` m from its channel,
  * when it stands `stage` m high (riverStage): over its ~3 m channel it floods the ground beside it that lies low
  * enough, less the further it has to spread
@@ -186,4 +244,4 @@ function riverSpill(stage, above, distance) {
   return distance > 160 ? 0 : Math.max(0, over);
 }
 
-export { FloodLevel, rainRate, riverStage, hollows, lowness, floodTerrain, floodDepth, riverSpill };
+export { FloodLevel, rainRate, riverStage, hollows, lowness, floodTerrain, floodDepth, riverSpill, FLOOD_SPOTS, floodSpotAt, spotWater, canalSpill };

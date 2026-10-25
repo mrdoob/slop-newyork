@@ -122,7 +122,8 @@ class GunfireFX {
     const glowMat = new THREE.MeshBasicNodeMaterial({ toneMapped: true });
     this.glow = new ParticlePool(scene, new THREE.BoxGeometry(1, 1, 1), glowMat, GLOW_MAX, 'GunfireGlow');
     const puffMat = new THREE.MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
-    this.puff = new ParticlePool(scene, new THREE.IcosahedronGeometry(0.5, 0), puffMat, PUFF_MAX, 'GunfireSmoke');
+    // (rounder than a plain icosahedron: a fire's smoke column is made of puffs metres across)
+    this.puff = new ParticlePool(scene, new THREE.IcosahedronGeometry(0.5, 1), puffMat, PUFF_MAX, 'GunfireSmoke');
     this.puff.mesh.castShadow = false;
     this.puff.mesh.receiveShadow = true;
 

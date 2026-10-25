@@ -23,9 +23,9 @@ const FOLDERS = {
   render: ['lighting.js', 'rain.js', 'post-processing.js', 'tsl-materials.js', 'scene-culling.js'],
   world: [
     'city-config.js', 'city-geodata.js', 'city-grid.js', 'buildings.js', 'tepic-landmarks.js', 'cotos.js', 'street-details.js',
-    'storefronts', 'terrain.js', 'ground.js', 'drape.js', 'waterways.js', 'river-channels.js', 'trees.js', 'lot-greenery.js', 'medians.js', 'venues.js', 'street-food.js', 'flood-model.js', 'floods.js', 'road-network.js', 'road-paint.js', 'pavements.js', 'pavement-data.js', 'bridges.js', 'airport.js', 'weather.js'
+    'storefronts', 'terrain.js', 'ground.js', 'drape.js', 'waterways.js', 'river-channels.js', 'trees.js', 'lot-greenery.js', 'medians.js', 'venues.js', 'street-food.js', 'flood-model.js', 'floods.js', 'nightlife.js', 'interiors.js', 'road-network.js', 'road-paint.js', 'pavements.js', 'pavement-data.js', 'bridges.js', 'airport.js', 'weather.js'
   ],
-  sim: ['traffic.js', 'traffic-demand.js', 'pedestrians.js', 'pedestrian-routes.js', 'transit.js', 'mayhem.js', 'weapons.js', 'crime-rules.js', 'gunfire-fx.js', 'crime.js', 'bystanders.js'],
+  sim: ['traffic.js', 'traffic-demand.js', 'pedestrians.js', 'pedestrian-routes.js', 'transit.js', 'mayhem.js', 'weapons.js', 'crime-rules.js', 'gunfire-fx.js', 'crime.js', 'bystanders.js', 'fires.js'],
   actors: ['actor-models.js', 'vehicle-lights.js'],
   player: ['controllers.js', 'cameras.js', 'drivetrain.js', 'vehicle-damage.js', 'stats.js', 'aim.js'],
   input: ['touch-controls.js', 'gamepad-controls.js'],

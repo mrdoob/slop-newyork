@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { FloodLevel, rainRate, riverStage, hollows, lowness, floodDepth, riverSpill } from '../js/world/flood-model.js';
+import { FloodLevel, rainRate, riverStage, hollows, lowness, floodDepth, riverSpill, FLOOD_SPOTS, floodSpotAt, spotWater, canalSpill } from '../js/world/flood-model.js';
+
+test('the places Tepic floods every year: water stands there whatever the ground', () => {
+  const clinica = FLOOD_SPOTS.find((s) => /Clínica 24/.test(s.name));
+  assert.equal(floodSpotAt(clinica.x, clinica.z).spot, clinica);
+  assert.equal(floodSpotAt(clinica.x, clinica.z).weight, 1);
+  assert.equal(floodSpotAt(clinica.x + 500, clinica.z).spot, null);
+  // a stretch: anywhere along Av. Tecnológico between the Tec and Av. Xalisco
+  const tec = FLOOD_SPOTS.find((s) => /Tecnológico/.test(s.name));
+  assert.equal(floodSpotAt((tec.x0 + tec.x1) / 2, (tec.z0 + tec.z1) / 2).spot, tec);
+  assert.equal(spotWater(1, 0), 0);
+  assert.ok(spotWater(1, 0.6) > 0.5);
+  // the canals spill in a hard storm, onto the ground no higher than theirs
+  assert.equal(canalSpill(0.25, 0, 5), 0);
+  assert.ok(canalSpill(0.8, 0, 5) > 0.4);
+  assert.equal(canalSpill(0.8, 2, 5), 0);
+});
 
 test('a storm past the drains raises the water, dry weather takes it away', () => {
   const f = new FloodLevel();

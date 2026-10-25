@@ -898,6 +898,7 @@ class CrimeSystem {
   // An explosion at (x, y, z) of `radius` m: fire & smoke, people thrown, cars shoved, patrol cars and the player hurt
   explode(x, y, z, radius, damage, byPlayer) {
     this.fx.explosion(x, y, z, radius);
+    this.onExplosion?.(x, y, z, radius); // (a burning wreck, a house catching: fires.js)
     this.audio?.gunfire?.('explosion', x, y, z);
     const near = Math.hypot(this.camera ? this.camera.position.x - x : 0, this.camera ? this.camera.position.z - z : 0);
     this.shake = Math.min(1.6, this.shake + clamp(1.6 - near / 40, 0, 1.6));

@@ -40,6 +40,9 @@ import { GEO } from './world/city-geodata.js';
 import { findVenues } from './world/venues.js';
 import { StreetFood } from './world/street-food.js';
 import { Floods } from './world/floods.js';
+import { Nightlife } from './world/nightlife.js';
+import { Interiors } from './world/interiors.js';
+import { Fires } from './sim/fires.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -192,11 +195,14 @@ async function initApp() {
   // Sprinting runs out of breath (player/stats.js)
   const stamina = new Stamina();
 
+  let interiors = null; // (interiors.js, below: inside a room, the player is saved at its venue's door)
   function savePlayerState() {
     try {
       const entities = Object.fromEntries(Object.entries(controllerManager.entities).map(([mode, entity]) => [mode, {
         x: entity.position.x, y: entity.position.y, z: entity.position.z, heading: entity.heading
       }]));
+      const door = interiors?.inside?.venue;
+      if (door) entities.person = { x: door.x + door.nx * 1.2, y: 0, z: door.z + door.nz * 1.2, heading: door.heading };
       const looks = { car: controllerManager.entities.car.look, cyclist: controllerManager.entities.cyclist.look };
       localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify({
         version: 1, activeMode: controllerManager.activeMode, entities, looks, stats: { money: crimeSystem.money }
@@ -259,7 +265,15 @@ async function initApp() {
   const floodParam = Number.parseFloat(new URLSearchParams(location.search).get('flood'));
   const floods = new Floods({ scene, rivers, hold: Number.isFinite(floodParam) ? floodParam : null });
   controllerManager.waterAt = (x, z) => floods.depthAt(x, z);
+  // The bars & antros open at night and the colonias' weekend parties (nightlife.js)
+  const nightlife = new Nightlife({ scene, venues, houses: GEO.houses || [], stride: GEO.houseStride || 8, controllers: controllerManager, audio: audioSystem });
+  // In through their doors (F): the restaurants', bars' and antros' rooms, the Tapanko's tapanco and all (interiors.js)
+  interiors = new Interiors({ scene, venues, controllers: controllerManager, cameras: cameraSystem, crime: crimeSystem });
+  // Burning wrecks, house fires, the dry season's quemas, and the bomberos who come for them (fires.js)
+  const fires = new Fires({ scene, crime: crimeSystem, controllers: controllerManager, houses: GEO.houses || [], stride: GEO.houseStride || 8 });
+  crimeSystem.onExplosion = (x, y, z, radius) => fires.onExplosion(x, y, z, radius);
   let floodWarned = false;
+  let floodSpot = null;
   audioSystem.sources.pursuers = crimeSystem.cruisers;
   const crimeHud = new CrimeHud();
   // The weapon wheel, held open with Tab (ui/weapon-wheel.js): the game runs slowed meanwhile
@@ -478,9 +492,14 @@ async function initApp() {
       if (controllerManager.exitVehicle()) syncMode();
       return;
     }
+    if (interiors.active) {
+      interiors.act(); // (inside: the counter, or out of the door)
+      return;
+    }
     const target = boardTarget();
     if (!target) {
-      streetFood.buy(); // (on foot at a taco stand: something to eat)
+      // on foot at a taco stand: something to eat; at a restaurant's, bar's or antro's door: in
+      if (!streetFood.buy()) interiors.act();
       return;
     }
     if (target.taken) {
@@ -510,7 +529,7 @@ async function initApp() {
         text = v.bike ? 'Robar la bici' : v.isPolice ? 'Robar la patrulla' : v.bus ? 'Robar el camión' : v.fleet === 'combi' ? 'Robar la combi' : 'Robar el coche';
       }
       else if (target) text = promptNames[target.mode];
-      else text = streetFood.prompt();
+      else text = (interiors.active ? '' : streetFood.prompt()) || interiors.prompt();
     } else if (controllerManager.activeMode === 'helicopter') {
       const h = controllerManager.entities.helicopter;
       const air = h.position.y - controllerManager.getGroundHeight(h.position.x, h.position.z, 'helicopter');
@@ -524,7 +543,7 @@ async function initApp() {
       // the touch button: get in or take what is at hand, or get out
       boardButton.hidden = onFoot && !text;
       const label = boardButton.querySelector('[data-board-label]');
-      if (label) label.textContent = !onFoot ? 'Bajar' : text.startsWith('Robar') ? 'Robar' : text.startsWith('Comprar') ? 'Comprar' : 'Subir';
+      if (label) label.textContent = !onFoot ? 'Bajar' : text.startsWith('Robar') ? 'Robar' : text.split(' ')[0] === 'Subir' || !text ? 'Subir' : text.split(' ')[0];
     }
     if (!elPrompt) return;
     elPrompt.hidden = !text;
@@ -720,7 +739,7 @@ async function initApp() {
   });
 
   const openMapBtn = document.getElementById('btn-open-map');
-  mapSystem.setBlipSource(() => crimeSystem.blips()); // (the police, gangs & pickups on the radar)
+  mapSystem.setBlipSource(() => fires.blips(crimeSystem.blips())); // (the police, gangs, pickups & fires on the radar)
   if (openMapBtn) openMapBtn.addEventListener('click', () => mapSystem.toggleFullMap(true));
 
   if (hudToggleBtn) {
@@ -808,7 +827,7 @@ async function initApp() {
   markInit('ui');
   // Debugging handle for the console, only with ?debug in the URL
   if (new URLSearchParams(location.search).has('debug')) {
-    window.__slop = { scene, renderer, streetFood, venues, floods, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, crimeSystem, stamina, aimControl, weaponWheel };
+    window.__slop = { scene, renderer, streetFood, venues, floods, nightlife, interiors, fires, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, crimeSystem, stamina, aimControl, weaponWheel };
   }
 
   // The loading screen stays up while the shaders compile (precompileShaders() & the warm-up frame, see the loop) and
@@ -909,14 +928,21 @@ async function initApp() {
     // word of a flood once it is deep
     if (floods.level > 0.3 && !floodWarned) crimeSystem.toast('¡Se inunda la ciudad! Cuidado con los bajos y el Mololoa');
     floodWarned = floods.level > 0.3 || (floodWarned && floods.level > 0.15);
+    // ...and of the places that flood every year as the player comes into one (flood-model.js FLOOD_SPOTS)
+    const here = controllerManager.getActiveEntity().position;
+    const spot = floods.spotAt(here.x, here.z);
+    if (spot && spot !== floodSpot) crimeSystem.toast(`Se inunda: ${spot.name}`);
+    floodSpot = spot;
     // wind blows from windDirection (° clockwise from true north): toward the opposite bearing, in the grid frame
     const toward = (w.windDirection + 180 - (CITY.bearingDeg || 0)) * Math.PI / 180;
     const wind = (w.windSpeed || 0) / 3.6;
-    rain.update(roadWater.rain, Math.sin(toward) * wind, -Math.cos(toward) * wind, elapsed, cameraSystem.camera);
+    // (indoors, no rain falls round the camera nor drums on the roof over it)
+    const falling = interiors.active ? 0 : roadWater.rain;
+    rain.update(falling, Math.sin(toward) * wind, -Math.cos(toward) * wind, elapsed, cameraSystem.camera);
     controllerManager.roadWet = floods.level > 0.05 ? 1 : roadWater.wet; // (a flood soaks every street)
     controllerManager.roadGrip = wetGrip(roadWater.wet);
     trafficSystem.setRoadWater(roadWater.wet, roadWater.rain, controllerManager.roadGrip);
-    audioSystem.setRain(roadWater.rain);
+    audioSystem.setRain(falling);
     if (w.code >= 95 && roadWater.rain > 0.3) {
       if (!nextLightning) nextLightning = elapsed + 4 + Math.random() * 10;
       if (elapsed >= nextLightning) {
@@ -930,6 +956,9 @@ async function initApp() {
   }
 
   const ambience = [];
+  let weekday = new Date().getDay();
+  const sceneLights = [];
+  scene.traverse((o) => { if (o.isPointLight || o.isSpotLight) sceneLights.push(o); });
   let lastTime = performance.now();
   let elapsed = 0;
   let frameCount = 0;
@@ -980,9 +1009,15 @@ async function initApp() {
     // Gunfire, the police, gangs & thieves (crime.js), and a blast's shake of the camera
     crimeSystem.update(dt, elapsed, cameraSystem.camera);
     streetFood.update(dt, lightingSystem.hourOfDay, cameraSystem.camera);
+    nightlife.update(dt, lightingSystem.hourOfDay, weekday, cameraSystem.camera);
+    interiors.update(dt, lightingSystem.hourOfDay);
+    if (!interiors.active) fires.update(dt, cityUniforms.uDryness.value, cameraSystem.camera);
     // the sounds that stay put (audio-ambience.js): the planchas, the antros' & parties' music, the fires
     ambience.length = 0;
     streetFood.sounds(ambience);
+    nightlife.sounds(ambience);
+    interiors.sounds(ambience);
+    fires.sounds(ambience);
     audioSystem.setAmbience(ambience);
     crimeSystem.shakeCamera(cameraSystem.camera);
     stamina.update(dt, crimeSystem.state === 'play' ? controllerManager.sprintingMode() : null);
@@ -1001,6 +1036,17 @@ async function initApp() {
     mapSystem.update();
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.isNight);
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk
+    // The clustered lighting takes the first 256 point & spot lights it finds: those switched off (intensity 0: the
+    // traffic's by day, the pools waiting) are hidden, so they don't take the places of the ones on
+    for (const l of sceneLights) {
+      if (l.intensity <= 0 && l.visible) {
+        l.visible = false;
+        l.userData.switchedOff = true;
+      } else if (l.intensity > 0 && l.userData.switchedOff) {
+        l.visible = true;
+        l.userData.switchedOff = false;
+      }
+    }
 
     // Render frame via TSL RenderPipeline (SSR + Bloom)
     if (!warmedUp) {
@@ -1062,6 +1108,7 @@ async function initApp() {
       // the grass greens in the rains & browns in the dry season (lot-greenery.js), by the month shown
       cityUniforms.uDryness.value = grassDryness(lightingSystem.liveClock().getMonth());
       cityUniforms.uHour.value = lightingSystem.hourOfDay; // (the lit rooms & the shops' shutters)
+      weekday = lightingSystem.liveClock().getDay(); // (the weekend's parties)
       if (elSpeed) elSpeed.textContent = String(kmh);
       if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, kmh / (topSpeedKmh[mode] || 130))})`;
       document.body.classList.toggle('is-boosting', controllerManager.keys.boost && kmh > 0);

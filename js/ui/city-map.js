@@ -56,7 +56,8 @@ const BLIP_STYLES = {
   cop: ['#4d8dff', 3], cruiser: ['#4d8dff', 4.2], rojos: ['#ff4d4d', 3], verdes: ['#45d16b', 3], thief: ['#f2f2f2', 3.4],
   narcos: ['#c9a24a', 3.2], truck: ['#c9a24a', 4.4],
   money: ['#6fe39a', 2.6], health: ['#ff6b6b', 3], armor: ['#7fb0ff', 3], pistol: ['#ffd24a', 2.6], smg: ['#ffa53a', 2.6],
-  rifle: ['#d6e04a', 2.8], bazooka: ['#ff7a2a', 3.4]
+  rifle: ['#d6e04a', 2.8], bazooka: ['#ff7a2a', 3.4],
+  fire: ['#ff5a1f', 5] // (a fire burning, sim/fires.js)
 };
 const MAP_BASE = '#101511';
 
