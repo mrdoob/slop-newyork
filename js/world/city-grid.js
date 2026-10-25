@@ -8,18 +8,24 @@ import {
   createParkLawnMaterial,
   createParkPavingMaterial,
   createParkLampGlobeMaterial,
-  createParkLampPoolMaterial
+  createParkLampPoolMaterial,
+  createLotGroundMaterial,
+  createPitchMaterial,
+  createCyclewayMaterial
 } from '../render/tsl-materials.js';
 import { GEO } from './city-geodata.js';
 import { SLOPES, liftAt, groundSlope } from './ground.js';
 import { drapeMeshes } from './drape.js';
 import { cutRiverHoles } from './river-channels.js';
+import { openness } from './lot-greenery.js';
+import { cyclewayRuns, CYCLEWAY_HALF } from './medians.js';
 
 // Live construction data consumed by the building and street-detail builders after buildCityGrid().
 let parkTreeSites;
 let parkLampSites;
 let pavedPlazaRects;
 let sidewalkBlocks;
+let medianRuns; // the Libramiento's cycleway (medians.js cyclewayRuns), for its trees (street-details.js)
 
 // js/world/city-grid.js
 // Builds the city's ground: the valley floor, the roadway deck over the city outline, the raised sidewalks &
@@ -338,6 +344,72 @@ function buildCityGrid(scene) {
   curbInstanced.instanceMatrix.needsUpdate = true;
   if (rectSlabs.length) group.add(swInstanced, curbInstanced); // (none left on the slopes: an empty buffer can't bind)
 
+  // 5. THE OPEN GROUND INSIDE THE BLOCKS: inside the sidewalk band, everything between the houses is ground as the
+  //    satellite shows it (lot-greenery.js): grass, weeds & bare earth on the vacant lots and fields, patios in the
+  //    built-up blocks. Just over the sidewalk's top; the houses standing on it hide the rest
+  const lotMat = createLotGroundMaterial();
+  const SIDEWALK = (GEO.frame && GEO.frame.sidewalk) || 2.2;
+  const open = openness(BLOCKS, GEO.houses || [], blockAt, { stride: GEO.houseStride || 8, sidewalk: SIDEWALK });
+  {
+    const lotGeos = [];
+    for (const b of BLOCKS) {
+      if (b.park > 0.6 || b.median || b.area < 60) continue;
+      const lot = offsetPolygonInward(b.poly, SIDEWALK + 0.25);
+      if (!lot) continue;
+      const geo = createFlatPolygonMesh(lot, SW_TOP + 0.012, lotMat).geometry;
+      geo.setAttribute('open', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count).fill(open.get(b) ?? 1), 1));
+      lotGeos.push(geo);
+    }
+    for (let i = 0; i < lotGeos.length; i += 400) {
+      const m = new THREE.Mesh(mergeGeometries(lotGeos.slice(i, i + 400), false), lotMat);
+      m.receiveShadow = true;
+      group.add(m);
+    }
+  }
+
+  // 5b. THE LIBRAMIENTO'S CICLOVÍA: down the middle of the wide camellón between the Periférico's two carriageways
+  //     (medians.js), a two-way bike path in red concrete with its white lines, over the median's ground
+  const cyclewayMat = createCyclewayMaterial();
+  {
+    const inMedian = (x, z) => {
+      const b = blockAt(x, z);
+      return !!b && !b.rural && !(b.park > 0.6) && (open.get(b) ?? 0) > 0.97;
+    };
+    medianRuns = cyclewayRuns(GEO.roads || [], { inMedian });
+    const position = [], normal = [], uvs = [];
+    // a triangle facing up whichever way the run goes (three's front faces wind counter-clockwise: (b−a)×(c−a) up)
+    const tri = (a, b, c) => {
+      if ((b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) < 0) [b, c] = [c, b];
+      for (const [x, z, u, v] of [a, b, c]) {
+        position.push(x, SW_TOP + 0.024, z);
+        normal.push(0, 1, 0);
+        uvs.push(u, v);
+      }
+    };
+    for (const run of medianRuns) {
+      let along = 0;
+      for (let i = 1; i < run.length; i++) {
+        const a = run[i - 1], b = run[i];
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        // the path's edges: u 0 on the left, 1 on the right; v metres along it
+        const a0 = [a.x - a.tz * CYCLEWAY_HALF, a.z + a.tx * CYCLEWAY_HALF, 0, along], a1 = [a.x + a.tz * CYCLEWAY_HALF, a.z - a.tx * CYCLEWAY_HALF, 1, along];
+        const b0 = [b.x - b.tz * CYCLEWAY_HALF, b.z + b.tx * CYCLEWAY_HALF, 0, along + len], b1 = [b.x + b.tz * CYCLEWAY_HALF, b.z - b.tx * CYCLEWAY_HALF, 1, along + len];
+        tri(a0, b1, a1);
+        tri(a0, b0, b1);
+        along += len;
+      }
+    }
+    if (position.length) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      const m = new THREE.Mesh(geo, cyclewayMat);
+      m.receiveShadow = true;
+      group.add(m);
+    }
+  }
+
   // 6. Park furniture shared by the parks (section 7): paving, granite copings, lampposts & trees
   const pavingMat = createParkPavingMaterial();
   const graniteMat = new THREE.MeshStandardNodeMaterial({ color: 0x86837c, roughness: 0.8 }); // bed copings
@@ -377,6 +449,8 @@ function buildCityGrid(scene) {
       group.add(m);
     }
   }
+  const parkLawnMat = createParkLawnMaterial(false);
+  const parkLawnGeos = [];
   for (const b of genericParks) {
     const slab = offsetPolygonInward(b.poly, 0.1) || b.poly;
     group.add(createExtrudedPolygonMesh(b.poly, 0.0, PARK_Y - 0.04, curbMat, true, false));
@@ -388,9 +462,10 @@ function buildCityGrid(scene) {
     const bed = offsetPolygonInward(b.poly, Math.min(5, Math.min(b.maxX - b.minX, b.maxZ - b.minZ) * 0.2));
     if (!bed) continue;
     group.add(createExtrudedPolygonMesh(bed, 0.2, BED_Y - 0.21, graniteMat, true, false));
-    // (no lawn mesh in the bed: the New York code merged the park lawns inside its Battery block, which never ran
-    // here, so Tepic's parks have always shown the bare granite bed; adding the lawn would change how they look)
+    // the lawn inside the copings (the New York code merged its park lawns elsewhere, so Tepic's parks showed the bare
+    // granite bed until the satellite's green came in)
     const lawnTop = offsetPolygonInward(bed, 0.3);
+    if (lawnTop) parkLawnGeos.push(createFlatPolygonMesh(lawnTop, BED_Y + 0.006, parkLawnMat).geometry);
     // trees on a jittered grid inside the bed
     const SP = 11;
     for (let gx = b.minX + SP * 0.5; gx < b.maxX; gx += SP) {
@@ -417,6 +492,12 @@ function buildCityGrid(scene) {
         addLamp(px, PARK_Y, pz);
       }
     }
+  }
+
+  for (let i = 0; i < parkLawnGeos.length; i += 400) {
+    const m = new THREE.Mesh(mergeGeometries(parkLawnGeos.slice(i, i + 400), false), parkLawnMat);
+    m.receiveShadow = true;
+    group.add(m);
   }
 
   // Instanced park furniture: cast-iron lampposts with globes
@@ -527,6 +608,77 @@ function buildCityGrid(scene) {
     console.info(`[cityGrid] ${n} trees in the parks, cemeteries, orchards & woods of OpenStreetMap`);
   }
 
+  // 9. THE SPORTS PITCHES (OpenStreetMap's leisure=pitch: the colonias' canchas, the fútbol rápido pitches, the
+  //    schools' courts): a football field's mown turf & white lines with its goals, or under 700 m2 a painted concrete
+  //    court; laid as the smallest rectangle round the mapped outline, just over the ground it is on
+  const pitchMat = createPitchMaterial();
+  {
+    const pitchGeos = [];
+    const goals = [];
+    const parkSet = new Set(genericParks);
+    for (const p of GEO.parks || []) {
+      const r = p.cat === 'pitch' && p.rings && p.rings[0];
+      if (!r || r.length < 6) continue;
+      // the smallest rectangle round the outline: one of its sides lies along one of the outline's edges
+      let best = null;
+      for (let i = 0; i < r.length; i += 2) {
+        const j = (i + 2) % r.length;
+        const a = Math.atan2(r[j + 1] - r[i + 1], r[j] - r[i]);
+        const ux = Math.cos(a), uz = Math.sin(a);
+        let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+        for (let k = 0; k < r.length; k += 2) {
+          const u = r[k] * ux + r[k + 1] * uz, v = -r[k] * uz + r[k + 1] * ux;
+          u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v);
+        }
+        const area = (u1 - u0) * (v1 - v0);
+        if (!best || area < best.area) best = { area, a, ux, uz, u0, u1, v0, v1 };
+      }
+      let { a, ux, uz } = best;
+      let L = best.u1 - best.u0, W = best.v1 - best.v0;
+      const cu = (best.u0 + best.u1) / 2, cv = (best.v0 + best.v1) / 2;
+      const cx = cu * ux - cv * uz, cz = cu * uz + cv * ux;
+      if (W > L) { [L, W] = [W, L]; a += Math.PI / 2; ux = Math.cos(a); uz = Math.sin(a); } // (u along the length)
+      if (L < 12 || W < 6 || L > 140) continue;
+      const b = blockAt(cx, cz);
+      const y = !b || b.rural ? 0.05 : parkSet.has(b) ? BED_Y + 0.012 : b.park > 0.6 ? PARK_Y + 0.012 : SW_TOP + 0.024;
+      const court = L * W < 700 ? 1 : 0;
+      const geo = new THREE.PlaneGeometry(L, W).rotateX(-Math.PI / 2).rotateY(-a).translate(cx, y, cz).toNonIndexed();
+      const dims = new Float32Array(geo.attributes.position.count * 3);
+      for (let k = 0; k < dims.length; k += 3) dims.set([L, W, court], k);
+      geo.setAttribute('dims', new THREE.Float32BufferAttribute(dims, 3));
+      pitchGeos.push(geo);
+      if (court) continue;
+      // the goals on the goal lines, as wide as the field's scale has them (7.32 m on a full-size pitch)
+      const k = Math.max(0.25, Math.min(L / 105, W / 68));
+      const gw = Math.min(7.32, Math.max(3, 7.32 * k)), gh = gw < 5 ? 2 : 2.44;
+      for (const end of [-1, 1]) {
+        const gx = cx + ux * end * (L / 2 - 0.4), gz = cz + uz * end * (L / 2 - 0.4);
+        goals.push(new THREE.Matrix4().compose(new THREE.Vector3(gx, y + liftAt(gx, gz), gz),
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a + (end > 0 ? Math.PI : 0)), new THREE.Vector3(gw / 7.32, gh / 2.44, 1)));
+      }
+    }
+    for (let i = 0; i < pitchGeos.length; i += 200) {
+      const m = new THREE.Mesh(mergeGeometries(pitchGeos.slice(i, i + 200), false), pitchMat);
+      m.receiveShadow = true;
+      group.add(m);
+    }
+    if (goals.length) {
+      // a full-size goal (7.32 x 2.44 m, scaled to the pitch): two posts & the crossbar, the net's frame back to the ground
+      const goalGeo = mergeGeometries([
+        new THREE.CylinderGeometry(0.06, 0.06, 2.44, 6).translate(0, 1.22, 3.66),
+        new THREE.CylinderGeometry(0.06, 0.06, 2.44, 6).translate(0, 1.22, -3.66),
+        new THREE.CylinderGeometry(0.06, 0.06, 7.44, 6).rotateX(Math.PI / 2).translate(0, 2.44, 0),
+        new THREE.CylinderGeometry(0.025, 0.025, 2.9, 4).rotateZ(-0.97).translate(-0.98, 1.22, 3.66),
+        new THREE.CylinderGeometry(0.025, 0.025, 2.9, 4).rotateZ(-0.97).translate(-0.98, 1.22, -3.66)
+      ]);
+      const goalInst = new THREE.InstancedMesh(goalGeo, new THREE.MeshStandardNodeMaterial({ color: 0xf1f1ee, roughness: 0.5 }), goals.length);
+      goals.forEach((m, i) => goalInst.setMatrixAt(i, m));
+      goalInst.castShadow = true;
+      goalInst.computeBoundingSphere();
+      group.add(goalInst);
+    }
+  }
+
   // Park & plaza tree and lamp sites, read by street-details.js after the city grid is built
   parkTreeSites = treeSites;
   parkLampSites = lampMatrices.map((m) => ({ x: m.elements[12], y: m.elements[13] + 4.17, z: m.elements[14] }));
@@ -534,7 +686,7 @@ function buildCityGrid(scene) {
   sidewalkBlocks = blockSidewalks; // { cx, cz, w, d } raised sidewalk slabs (cross-street tree rows)
 
   // Batch static sub-meshes by material to reduce per-frame WebGPU draw calls
-  batchStaticGroupMeshes(group, new Set([roadMat, meadowMat]));
+  batchStaticGroupMeshes(group, new Set([roadMat, meadowMat, lotMat, parkLawnMat, pitchMat, cyclewayMat]));
   // ...and lay them on the town's slopes; the valley floor beyond the hills' grid stays flat
   drapeMeshes(group, new Set([valleyMesh]));
   // ...and open the deck over the river channels (river-channels.js draws them sunk into the ground)
@@ -553,5 +705,6 @@ export {
   parkTreeSites,
   parkLampSites,
   pavedPlazaRects,
-  sidewalkBlocks
+  sidewalkBlocks,
+  medianRuns
 };

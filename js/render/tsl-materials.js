@@ -79,7 +79,10 @@ const cityUniforms = {
   uSkySunDir: uniform(new THREE.Vector3(-0.66, 0.34, -0.67).normalize()),
   uInteriorGlow: uniform(0.78),
   uRoadWetness: uniform(0.38),
-  uCanyonBounce: uniform(0.52)
+  uCanyonBounce: uniform(0.52),
+  // How dry the grass is, 0 green (the rains, June-October) .. 1 straw (April-May): lot-greenery.js grassDryness of
+  // the month shown, set by main.js
+  uDryness: uniform(0.1)
 };
 
 // Fast deterministic 2D -> 1D hash in TSL
@@ -2124,9 +2127,9 @@ function createParkLawnMaterial(isMeadow = false) {
     roughness: 0.86
   });
 
-  const cGrassDeep = color(isMeadow ? 0x2c5c28 : 0x224c20);
-  const cGrassMid = color(isMeadow ? 0x457d36 : 0x36682c);
-  const cGrassSun = color(0x6b9c3e);
+  const cGrassDeep = color(isMeadow ? 0x2e5226 : 0x224c20);
+  const cGrassMid = color(isMeadow ? 0x41692f : 0x36682c);
+  const cGrassSun = color(isMeadow ? 0x587d36 : 0x6b9c3e);
 
   mat.colorNode = Fn(() => {
     const wp = positionWorld.xz;
@@ -2140,7 +2143,10 @@ function createParkLawnMaterial(isMeadow = false) {
       cGrassMid,
       macroPatch.mul(0.45).add(midClover.mul(0.35)).add(mowStripe.mul(0.20))
     );
-    return mix(baseLawn, cGrassSun, microBlade.mul(0.38));
+    const lawn = mix(baseLawn, cGrassSun, microBlade.mul(0.38));
+    // the dry season browns the open country's grass; the parks are watered, so only a little
+    const dry = cityUniforms.uDryness.mul(isMeadow ? 0.85 : 0.3).mul(macroPatch.mul(0.6).add(0.55)).min(1.0);
+    return mix(lawn, mix(color(0x9a8a52), color(0xb9a468), microBlade), dry);
   })();
 
   mat.normalNode = Fn(() => {
@@ -2159,6 +2165,140 @@ function createParkLawnMaterial(isMeadow = false) {
     specularF90.assign(0.3);
   };
 
+  return mat;
+}
+
+/**
+ * The open ground inside the house blocks (city-grid.js, lot-greenery.js): what the satellite shows between Tepic's
+ * houses. The `open` attribute is the block's share of open ground (lot-greenery.js openness): an empty block is a
+ * vacant lot or a field, rough grass & weeds in clumps worn to the red-brown earth along paths and in bare patches; a
+ * built-up one's yards are patios, concrete & tile with grass and potted green between. The grass greens in the rains
+ * and goes straw-yellow in the dry season (cityUniforms.uDryness). Detail finer than a pixel fades to its average,
+ * so the lots don't shimmer from the air.
+ */
+function createLotGroundMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.92 });
+  const open = attribute('open', 'float');
+  mat.colorNode = Fn(() => {
+    const p = positionWorld.xz;
+    const px = length(fwidth(p)); // metres per pixel
+    const fine = smoothstep(0.9, 0.12, px);
+    const mid = smoothstep(6.0, 1.5, px);
+    const grain = noise2D(p.mul(3.1)).sub(0.5).mul(fine).add(0.5);
+    const clump = noise2D(p.mul(0.45).add(3.7)).sub(0.5).mul(mid).add(0.5);
+    const patch = noise2D(p.mul(0.09).add(11.3)); // tens of metres: worn ground, wetter & drier hollows
+    const path = abs(noise2D(p.mul(0.035).add(41.0)).sub(0.5)); // foot-worn paths across a lot, a few across
+
+    // grass: deep green clumps of weeds in a lighter sward, browning with the season
+    const dryness = cityUniforms.uDryness.mul(patch.mul(0.7).add(0.5)).min(1.0);
+    const sward = mix(color(0x3d5624), color(0x4b652b), grain);
+    const weeds = mix(color(0x2d421b), color(0x374f20), grain);
+    let grass = mix(sward, weeds, smoothstep(0.45, 0.7, clump));
+    grass = mix(grass, mix(color(0xa08e55), color(0xbca66c), grain), dryness);
+
+    // bare earth: Tepic's red-brown soil, in patches where the grass is thin and along the paths
+    const earth = mix(color(0x7d6045), color(0x987656), grain);
+    const bare = max(smoothstep(0.62, 0.8, patch.add(clump.mul(0.25))), smoothstep(0.035, 0.012, path).mul(smoothstep(0.3, 0.6, open)))
+      .mul(mix(float(0.55), float(1.0), cityUniforms.uDryness));
+    const ground = mix(grass, earth, bare.min(1.0));
+
+    // patios: concrete & tile, more of them the more built-up the block; grass & plants between
+    const tile = mix(color(0x8f8a80), color(0xa8a196), grain).mul(mix(float(0.92), float(1.06), noise2D(p.mul(0.6))));
+    const terracotta = mix(color(0x9e5a3f), color(0xb26a4a), grain);
+    const paving = mix(tile, terracotta, step(0.72, noise2D(p.mul(0.12).add(7.0))));
+    const paved = smoothstep(0.7, 0.2, open).mul(smoothstep(0.35, 0.6, noise2D(p.mul(0.16).add(23.0)).add(0.15)));
+    return mix(ground, paving, paved.min(0.9));
+  })();
+  mat.normalNode = Fn(() => {
+    const camDist = length(positionWorld.sub(cameraPosition));
+    const detail = smoothstep(70.0, 8.0, camDist);
+    return bumpNormal(noise2D(positionWorld.xz.mul(5.5)).sub(0.5).mul(0.012).mul(detail));
+  })();
+  // a canopy of blades, not a flat dielectric (see createParkLawnMaterial)
+  mat.setupSpecular = function () {
+    specularColor.assign(vec3(0.025));
+    specularColorBlended.assign(vec3(0.025));
+    specularF90.assign(0.3);
+  };
+  return mat;
+}
+
+/**
+ * A sports pitch of OpenStreetMap (city-grid.js): a football field's mown grass in stripes along its length with its
+ * white lines, or (`court` > 0.5) a concrete court painted green & red with a basketball court's lines. uv run 0..1
+ * along & across; the `dims` attribute is its length & width (m) and whether it is a court. The lines scale with the
+ * field (a fútbol rápido pitch is a third of a stadium's), the goal mouths & centre spot are worn to the earth.
+ */
+function createPitchMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.85 });
+  const dims = attribute('dims', 'vec3'); // length, width, court
+  mat.colorNode = Fn(() => {
+    const L = dims.x, W = dims.y, court = step(0.5, dims.z);
+    const u = uv().x.sub(0.5).mul(L), v = uv().y.sub(0.5).mul(W); // metres from the centre spot, along & across
+    const k = min(L.div(105.0), W.div(68.0)).max(0.25); // the field's scale against a stadium's
+    const au = abs(u), av = abs(v);
+    const lw = max(k.mul(0.06), 0.05); // half a line's width
+    const hl = L.mul(0.5).sub(0.4), hw = W.mul(0.5).sub(0.4); // the touch & goal lines, just in from the edge
+    // football: touch & goal lines, halfway line & circle, penalty & goal areas, the spots
+    const boxD = k.mul(16.5), boxW = k.mul(20.15), goalD = k.mul(5.5), goalW = k.mul(9.16), r = k.mul(9.15);
+    const outline = max(lineAA(au.sub(hl), lw).mul(step(av, hw.add(lw))), lineAA(av.sub(hw), lw).mul(step(au, hl.add(lw))));
+    const halfway = lineAA(u, lw).mul(step(av, hw));
+    const circle = lineAA(length(vec2(u, v)).sub(r), lw);
+    const box = (d, w) => max(lineAA(au.sub(hl.sub(d)), lw).mul(step(av, w)), lineAA(av.sub(w), lw).mul(step(hl.sub(d), au)).mul(step(au, hl)));
+    const spots = smoothstep(lw.mul(2.5), lw.mul(1.5), length(vec2(au.sub(hl.sub(k.mul(11.0))), v))).max(smoothstep(lw.mul(2.5), lw.mul(1.5), length(vec2(u, v))));
+    const football = max(max(max(outline, halfway), max(circle, box(boxD, boxW))), max(box(goalD, goalW), spots));
+    // basketball: outline, centre line & circle, the keys & three-point arcs at each end
+    const key = max(lineAA(au.sub(hl.sub(5.8)), lw).mul(step(av, 2.45)), lineAA(av.sub(2.45), lw).mul(step(hl.sub(5.8), au)).mul(step(au, hl)));
+    const arc = lineAA(length(vec2(au.sub(hl.sub(1.6)), v)).sub(min(6.75, hw.sub(0.3))), lw).mul(step(au, hl.sub(1.6)));
+    const basket = max(max(outline, halfway), max(max(lineAA(length(vec2(u, v)).sub(1.8), lw), key), arc));
+
+    const p = positionWorld.xz;
+    const grain = noise2D(p.mul(3.0));
+    const stripes = step(0.5, fract(u.div(k.mul(5.5).max(2.0)))); // mown in bands across the length
+    let turf = mix(mix(color(0x4f7a2c), color(0x5f8c34), stripes), color(0x6e9a3e), grain.mul(0.35));
+    turf = mix(turf, mix(color(0xa3925a), color(0xb6a36a), grain), cityUniforms.uDryness.mul(0.8));
+    // the goal mouths & the centre circle worn to the earth
+    const worn = max(smoothstep(k.mul(7.0), k.mul(2.0), length(vec2(au.sub(hl.sub(k.mul(3.0))), v))), smoothstep(k.mul(6.0), 0.0, length(vec2(u, v))).mul(0.7))
+      .mul(noise2D(p.mul(0.5)).mul(0.6).add(0.5)).min(1.0);
+    turf = mix(turf, mix(color(0x86684b), color(0x9b7b59), grain), worn);
+    const slab = mix(mix(color(0x3f6e55), color(0x47785c), grain), color(0x9a4436), step(hw.sub(2.0), av).max(step(hl.sub(1.2), au)));
+    const surface = mix(turf, slab, court);
+    return mix(surface, color(0xf2f1ea), mix(football, basket, court).mul(0.92));
+  })();
+  mat.setupSpecular = function () {
+    specularColor.assign(vec3(0.03));
+    specularColorBlended.assign(vec3(0.03));
+    specularF90.assign(0.35);
+  };
+  return mat;
+}
+
+/**
+ * The Libramiento's ciclovía (city-grid.js, medians.js): a two-way bike path 3.2 m wide in red-ochre concrete, its
+ * edges lined white, a dashed white line down the middle and a bicycle painted in each lane every 40 m. uv: u 0..1
+ * across, v metres along.
+ */
+function createCyclewayMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.8 });
+  mat.colorNode = Fn(() => {
+    const a = uv().x.sub(0.5).mul(3.2); // m from the centre line
+    const s = uv().y; // m along
+    const grain = noise2D(positionWorld.xz.mul(2.7));
+    // concrete poured in 3 m slabs, the joints a little darker
+    const joint = lineAA(fract(s.div(3.0)).sub(0.5), 0.012);
+    let c = mix(color(0x8c3d2e), color(0x9e4a37), grain).mul(float(1.0).sub(joint.mul(0.25)));
+    c = mix(c, color(0x6f6a61), smoothstep(1.48, 1.56, abs(a))); // the concrete border
+    const edge = lineAA(abs(a).sub(1.32), 0.05);
+    const centre = lineAA(a, 0.05).mul(step(0.5, fract(s.div(4.0))));
+    // a bicycle every 40 m in each lane, facing its way: two wheels, the frame between them
+    const lane = sign(a); // -1 one way, +1 the other
+    const bs = fract(s.div(40.0)).sub(0.5).mul(40.0).mul(lane); // m from the bicycle's centre, along its lane's way
+    const bx = abs(a).sub(0.72); // m across from the lane's middle
+    const wheel = (off) => lineAA(length(vec2(bs.sub(off), bx)).sub(0.26), 0.035);
+    const frame = lineAA(bx, 0.035).mul(step(abs(bs), 0.3)).max(lineAA(bx.sub(bs.add(0.3).mul(0.6)), 0.03).mul(step(-0.3, bs)).mul(step(bs, 0.1)));
+    const bike = max(max(wheel(-0.42), wheel(0.42)), frame).mul(step(abs(bs), 1.0));
+    return mix(c, color(0xf0eee6), max(max(edge, centre), bike).mul(0.9));
+  })();
   return mat;
 }
 
@@ -2327,6 +2467,9 @@ export {
   createSidewalkMaterial,
   createCurbMaterial,
   createParkLawnMaterial,
+  createLotGroundMaterial,
+  createPitchMaterial,
+  createCyclewayMaterial,
   createRiverBankMaterial,
   createRiverWaterMaterial,
   createContactShadowMaterial,

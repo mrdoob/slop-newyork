@@ -5,8 +5,11 @@ import { SIGNAL_TIMING, blockAt, BLOCKS, nearestRoads } from './city-config.js';
 import { cityUniforms, createTreeGrateMaterial, atlasSlotUV, createWireMaterial, WIRE_FADE } from '../render/tsl-materials.js';
 import { PropBreaker } from '../sim/mayhem.js';
 import { createTreeField } from './trees.js';
-import { parkTreeSites, sidewalkBlocks, parkLampSites } from './city-grid.js';
+import { lotTrees } from './lot-greenery.js';
+import { medianTrees } from './medians.js';
+import { parkTreeSites, sidewalkBlocks, parkLampSites, medianRuns } from './city-grid.js';
 import { liftAt } from './ground.js';
+import { GEO } from './city-geodata.js';
 
 // js/world/street-details.js
 // Populates the city's streets with street furniture using InstancedMesh:
@@ -758,7 +761,21 @@ function buildStreetDetails(scene) {
       }
     }
   }
-  console.info(`[streetDetails] ${treePositions.length} trees (${sidewalkTreePositions.length} street trees)`);
+  // D. The yards & vacant lots: the mangos, laureles & tabachines standing over the open ground inside the blocks
+  //    (lot-greenery.js), clear of the walls, thick in the yards & round the lots, sparse out in a field's middle
+  //    The Libramiento's camellón has its own rows, either side of the ciclovía (medians.js)
+  const medianBlocks = new Set();
+  for (const run of medianRuns || []) for (const p of run) medianBlocks.add(blockAt(p.x, p.z));
+  for (const t of medianTrees(medianRuns || [])) {
+    t.y = SIDEWALK_Y + 0.012 + liftAt(t.x, t.z);
+    treePositions.push(t);
+  }
+  const yardTrees = lotTrees(allBlocks, GEO.houses || [], { stride: GEO.houseStride || 8, sidewalk: (GEO.frame && GEO.frame.sidewalk) || 2.2, skip: medianBlocks });
+  for (const t of yardTrees) {
+    t.y = SIDEWALK_Y + 0.012 + liftAt(t.x, t.z);
+    treePositions.push(t);
+  }
+  console.info(`[streetDetails] ${treePositions.length} trees (${sidewalkTreePositions.length} street trees, ${yardTrees.length} in the yards & lots)`);
 
   const grateMat = createTreeGrateMaterial();
   const pitCurbMat = new THREE.MeshStandardNodeMaterial({ color: 0x484642, roughness: 0.88 });

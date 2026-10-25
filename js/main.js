@@ -34,6 +34,8 @@ import { CrimeSystem } from './sim/crime.js';
 import { CrimeHud } from './ui/crime-hud.js';
 import { WeaponWheel } from './ui/weapon-wheel.js';
 import { AimControl } from './player/aim.js';
+import { cityUniforms } from './render/tsl-materials.js';
+import { grassDryness } from './world/lot-greenery.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -1029,6 +1031,8 @@ async function initApp() {
         elFps.textContent = String(currentFps);
         elFps.className = currentFps >= 50 ? 'fps-ok' : currentFps >= 30 ? 'fps-warn' : 'fps-bad';
       }
+      // the grass greens in the rains & browns in the dry season (lot-greenery.js), by the month shown
+      cityUniforms.uDryness.value = grassDryness(lightingSystem.liveClock().getMonth());
       if (elSpeed) elSpeed.textContent = String(kmh);
       if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, kmh / (topSpeedKmh[mode] || 130))})`;
       document.body.classList.toggle('is-boosting', controllerManager.keys.boost && kmh > 0);
