@@ -7,7 +7,7 @@ import { createHongKongTraffic } from './traffic.js';
 import { createHongKongPedestrians } from './pedestrians.js';
 import { BUILD } from './build.js';
 import { createHongKongMap } from './map.js';
-import { createPlayer, ChaseCamera } from './drive.js';
+import { createPlayer, ChaseCamera, CAMERA_MODES } from './drive.js';
 
 // js/hk/main.js
 // Slop Hong Kong 的進入點（Phase 0 世界切換 → Phase 1 香港資料 → Phase 3 靠左行駛的車流）。
@@ -17,6 +17,13 @@ import { createPlayer, ChaseCamera } from './drive.js';
 // 這樣任何一個紐約模組壞掉（或 dev 分支 CDN 上的 addon 改了路徑）都不會連帶令香港開唔到機。
 
 const TIME_CYCLE = ['golden', 'twilight', 'midnight', 'midday'];
+// 光線可以直接揀（用戶：「光線人地有幾個揀架」），G 仍然會循環。
+const LIGHT_PRESETS = [
+  { id: 'golden', zh: '黃昏', en: 'Golden hour' },
+  { id: 'midday', zh: '正午', en: 'Midday' },
+  { id: 'twilight', zh: '入夜', en: 'Twilight' },
+  { id: 'midnight', zh: '午夜', en: 'Midnight' }
+];
 
 function buildHud(world) {
   const hud = document.createElement('div');
@@ -40,10 +47,19 @@ function buildHud(world) {
       <span><kbd>A</kbd><kbd>D</kbd> 轉向</span>
       <span><kbd>Shift</kbd> 加速</span>
       <span><kbd>Space</kbd> 剎車</span>
+      <span><kbd>C</kbd> 視角</span>
       <span><kbd>G</kbd> 光線</span>
       <span><kbd>1</kbd>–<kbd>9</kbd> 傳送</span>
       <span>拖曳環繞 · 滾輪縮放</span>
     </div>
+    <nav class="hk-modes hk-cameras" aria-label="視角">
+      <span class="hk-modes-label">視角 <kbd>C</kbd></span>
+      ${CAMERA_MODES.map((m) => `<button type="button" data-cam="${m.id}" title="${m.en}">${m.zh}</button>`).join('')}
+    </nav>
+    <nav class="hk-modes hk-lights" aria-label="光線">
+      <span class="hk-modes-label">光線 <kbd>G</kbd></span>
+      ${LIGHT_PRESETS.map((p) => `<button type="button" data-light="${p.id}" title="${p.en}">${p.zh}</button>`).join('')}
+    </nav>
     <nav class="hk-teleports">${HK.TELEPORTS.map((t, i) => `<button type="button" data-tp="${i}">${i + 1} ${t.zh}</button>`).join('')}</nav>
     <button type="button" class="hk-map-toggle" aria-label="開關地圖 (M)">地圖 <kbd>M</kbd></button>
   `;
@@ -396,6 +412,32 @@ export async function startHongKong() {
     Space: 'brake'
   };
   let timeIndex = 0;
+
+  /** 套用光線預設（G 鍵循環、HUD 按鈕直接揀，兩者走同一條路）。 */
+  function applyLighting(id) {
+    lighting.applyPreset(id);
+    timeIndex = Math.max(0, TIME_CYCLE.indexOf(id));
+    if (Number.isFinite(exposureOverride)) renderer.toneMappingExposure = exposureOverride;
+    if (skyLighting) skyLighting.applyPreset(id);
+    if (colorGrade) colorGrade.applyPreset(id);
+    city.setNight(id === 'midnight' ? 1 : id === 'twilight' ? 0.5 : 0.1);
+    syncModeButtons();
+  }
+
+  /** 切換視角（C 鍵循環、HUD 按鈕直接揀）。 */
+  function applyCamera(id) {
+    chase.setMode(id);
+    syncModeButtons();
+    return chase.mode;
+  }
+
+  function syncModeButtons() {
+    const hud = document.getElementById('hk-hud');
+    if (!hud) return;
+    for (const btn of hud.querySelectorAll('[data-cam]')) btn.classList.toggle('is-active', btn.dataset.cam === chase.mode);
+    for (const btn of hud.querySelectorAll('[data-light]')) btn.classList.toggle('is-active', btn.dataset.light === (lighting.activeId ?? 'golden'));
+  }
+
   window.addEventListener('keydown', (e) => {
     const target = e.target;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
@@ -407,12 +449,10 @@ export async function startHongKong() {
     }
     if (e.code === 'KeyG') {
       timeIndex = (timeIndex + 1) % TIME_CYCLE.length;
-      const id = TIME_CYCLE[timeIndex];
-      lighting.applyPreset(id);
-      if (Number.isFinite(exposureOverride)) renderer.toneMappingExposure = exposureOverride;
-      if (skyLighting) skyLighting.applyPreset(id);
-      if (colorGrade) colorGrade.applyPreset(id);
-      city.setNight(id === 'midnight' ? 1 : id === 'twilight' ? 0.5 : 0.1);
+      applyLighting(TIME_CYCLE[timeIndex]);
+    }
+    if (e.code === 'KeyC') {
+      applyCamera(chase.nextMode());
     }
     if (/^Digit[1-9]$/.test(e.code)) {
       const index = Number(e.code.slice(5)) - 1;
@@ -435,6 +475,10 @@ export async function startHongKong() {
 
   const hud = buildHud(world);
   hud.addEventListener('click', (e) => {
+    const camBtn = e.target.closest('[data-cam]');
+    if (camBtn) { applyCamera(camBtn.dataset.cam); return; }
+    const lightBtn = e.target.closest('[data-light]');
+    if (lightBtn) { applyLighting(lightBtn.dataset.light); return; }
     const btn = e.target.closest('[data-tp]');
     if (!btn) return;
     const tp = HK.TELEPORTS[Number(btn.dataset.tp)];
@@ -444,6 +488,7 @@ export async function startHongKong() {
     player.state.heading = tp.heading;
     player.state.speed = 0;
   });
+  syncModeButtons();
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;

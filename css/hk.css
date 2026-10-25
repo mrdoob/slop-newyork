@@ -196,11 +196,81 @@ body[data-world="hk"] #canvas-container {
   outline: none;
 }
 
+/* 視角／光線選擇器（用戶：「視角人地有幾個揀架，包括車箱內」、「光線人地有幾個揀架」） */
+.hk-modes {
+  position: fixed;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: var(--hk-panel);
+  border: 1px solid var(--hk-line);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+}
+
+.hk-cameras {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 122px);
+}
+
+.hk-lights {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 174px);
+}
+
+.hk-modes-label {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  opacity: 0.62;
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+
+.hk-modes-label kbd {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font: inherit;
+  font-size: 9.5px;
+}
+
+.hk-modes button {
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.hk-modes button:hover,
+.hk-modes button:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+}
+
+.hk-modes button.is-active {
+  background: rgba(211, 36, 44, 0.9);
+  border-color: rgba(255, 255, 255, 0.28);
+  font-weight: 600;
+}
+
 @media (max-width: 720px) {
   .hk-hints { display: none; }
   .hk-teleports { max-width: 60vw; }
   .hk-speed #hk-speed { font-size: 32px; }
   .hk-telemetry { min-width: 150px; }
+  .hk-modes { right: auto; left: max(12px, env(safe-area-inset-left)); }
+  .hk-cameras { bottom: auto; top: 76px; }
+  .hk-lights { bottom: auto; top: 124px; }
 }
 
 /* 診斷面板（按 D 開關）：黑畫面時用來分辨「冇畫東西 / 畫了但全黑 / 後處理輸出黑」 */

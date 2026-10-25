@@ -21,13 +21,15 @@ import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from '../ve
 // 物理本身仍是街機式（與紐約 controllers.js 同一思路，數值按香港路面重調）。
 
 const CAR = {
-  maxSpeed: 22, // m/s ≈ 79 km/h（市區）
-  boostSpeed: 30,
-  reverseSpeed: 7,
-  accel: 7.5,
-  brake: 12,
+  // 用戶：「車速可再快D」。巡航 36 m/s ≈ 130 km/h，Shift 加速 52 m/s ≈ 187 km/h。
+  // 阻力調細（0.0008）＋ 加速度加大（15），確保真係踩得到接近上限，唔會永遠停在中速。
+  maxSpeed: 36,
+  boostSpeed: 52,
+  reverseSpeed: 9,
+  accel: 15,
+  brake: 16,
   rolling: 1.4,
-  drag: 0.0032,
+  drag: 0.0008,
   steerRate: 1.9, // rad/s at full lock
   steerLock: 0.52, // 前輪最大轉角（rad）
   wheelBase: 2.9
@@ -248,7 +250,24 @@ export function createPlayer(scene, colliders) {
   return { root, taxi: root, chassisPivot, body, wheels, headLights, carShadow, state, keys, update, material: paint };
 }
 
-/** 追尾鏡頭（滑鼠／觸控拖曳 orbit、滾輪縮放） */
+/**
+ * 多個視角（用戶：「視角人地有幾個揀架，包括車箱內」）。
+ *
+ *   chase   追尾 —— 原來的跟車鏡頭
+ *   close   近鏡 —— 貼近車尾，睇得到車頂燈箱同尾燈
+ *   bonnet  車頭冚 —— 鏡頭放喺引擎蓋前緣，第一人稱睇路
+ *   cockpit 車廂內 —— 鏡頭放喺司機位（香港右軚：x = −0.34），透過擋風玻璃睇路
+ *
+ * 兩種剛性視角（bonnet / cockpit）跟車身樞軸走，只保留很小的平滑，避免暈浪；
+ * 兩種追尾視角保留原本的彈性 lerp。
+ */
+export const CAMERA_MODES = [
+  { id: 'chase', zh: '追尾', en: 'Chase', rigid: false, dist: 9.5, height: 4.2, look: 1.6 },
+  { id: 'close', zh: '近鏡', en: 'Close', rigid: false, dist: 5.2, height: 2.0, look: 1.15 },
+  { id: 'bonnet', zh: '車頭冚', en: 'Bonnet', rigid: true, offset: [0, 1.16, 1.35], look: 1.0 },
+  { id: 'cockpit', zh: '車廂內', en: 'Cockpit', rigid: true, offset: [-0.34, 1.22, 0.02], look: 1.02 }
+];
+
 export class ChaseCamera {
   constructor(camera, domElement) {
     this.camera = camera;
@@ -256,11 +275,26 @@ export class ChaseCamera {
     this.yaw = 0;
     this.pitch = 0.16;
     this.zoom = 1;
+    this.mode = 'chase';
     this.dragging = false;
     this.last = { x: 0, y: 0 };
     this.smoothed = new THREE.Vector3(HK.SPAWN.x, 6, HK.SPAWN.z - 12);
     this.lookAt = new THREE.Vector3(HK.SPAWN.x, 1.5, HK.SPAWN.z);
     this.bind();
+  }
+
+  setMode(id) {
+    if (CAMERA_MODES.some((m) => m.id === id)) this.mode = id;
+    return this.mode;
+  }
+
+  nextMode() {
+    const i = CAMERA_MODES.findIndex((m) => m.id === this.mode);
+    return this.setMode(CAMERA_MODES[(i + 1) % CAMERA_MODES.length].id);
+  }
+
+  get modeInfo() {
+    return CAMERA_MODES.find((m) => m.id === this.mode) ?? CAMERA_MODES[0];
   }
 
   bind() {
@@ -286,18 +320,39 @@ export class ChaseCamera {
   }
 
   update(dt, target) {
-    const back = 9.5 * this.zoom;
-    const height = 4.2 * this.zoom + this.pitch * 10;
-    const yaw = target.heading + Math.PI + this.yaw;
+    const info = this.modeInfo;
+    const yaw = target.heading + this.yaw;
+    const fwdX = Math.sin(yaw);
+    const fwdZ = Math.cos(yaw);
+    const baseY = HK.KERB_HEIGHT + (target.heaveY ?? 0);
+
+    if (info.rigid) {
+      // 剛性視角：鏡頭直接綁在車身上（offset 用車身本地座標：x 左右、y 高、z 前後）
+      const [ox, oy, oz] = info.offset;
+      // 本地 +x 對應世界 (cos yaw, -sin yaw)（與樓宇旋轉同一個約定）
+      const desired = new THREE.Vector3(
+        target.x + Math.cos(yaw) * ox + fwdX * oz,
+        baseY + oy + (target.pitch ?? 0) * 0.6,
+        target.z - Math.sin(yaw) * ox + fwdZ * oz
+      );
+      this.smoothed.copy(desired);
+      this.camera.position.copy(this.smoothed);
+      const lookY = baseY + info.look + this.pitch * 4;
+      this.camera.lookAt(new THREE.Vector3(target.x + fwdX * 14, lookY, target.z + fwdZ * 14));
+      return;
+    }
+
+    const back = info.dist * this.zoom;
+    const height = info.height * this.zoom + this.pitch * 10;
     const desired = new THREE.Vector3(
-      target.x + Math.sin(yaw) * back,
+      target.x - Math.sin(yaw) * back,
       HK.KERB_HEIGHT + height,
-      target.z + Math.cos(yaw) * back
+      target.z - Math.cos(yaw) * back
     );
     const k = 1 - Math.pow(0.0025, dt);
     this.smoothed.lerp(desired, k);
     this.smoothed.y = Math.max(1.2, this.smoothed.y);
-    this.lookAt.lerp(new THREE.Vector3(target.x, HK.KERB_HEIGHT + 1.6, target.z), k);
+    this.lookAt.lerp(new THREE.Vector3(target.x, HK.KERB_HEIGHT + info.look, target.z), k);
     this.camera.position.copy(this.smoothed);
     this.camera.lookAt(this.lookAt);
   }

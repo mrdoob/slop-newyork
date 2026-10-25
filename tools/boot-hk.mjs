@@ -217,6 +217,16 @@ check('舊快取模組（缺 collidePlayer）唔會炸死世界', () => {
   assert.equal(bootFailures.length, 0, '缺少一個方法就觸發了全屏開機錯誤卡');
   assert.equal(window.document.querySelector('.hk-black-warning'), null, '唔應該出現紅色提示條');
 });
+check('視角／光線選擇器都在 HUD 上（唔止靠鍵盤）', () => {
+  const cams = [...doc.querySelectorAll('[data-cam]')].map((b) => b.dataset.cam);
+  const lights = [...doc.querySelectorAll('[data-light]')].map((b) => b.dataset.light);
+  assert.deepEqual(cams, ['chase', 'close', 'bonnet', 'cockpit'], `視角按鈕：${cams.join(',')}`);
+  assert.deepEqual(lights, ['golden', 'midday', 'twilight', 'midnight'], `光線按鈕：${lights.join(',')}`);
+  assert.ok(doc.querySelector('[data-cam="chase"]').classList.contains('is-active'), '預設視角要有 active 狀態');
+  const hk = globalThis.__slopHK;
+  assert.ok(hk.player.headLights.length === 2 && hk.player.headLights.every((l) => l.intensity > 0), '玩家車頭燈要着');
+});
+
 check('診斷面板有內容（?debug=1）', () => {
   const diag = doc.querySelector('.hk-diagnostics');
   assert.ok(diag, '.hk-diagnostics 唔存在');
