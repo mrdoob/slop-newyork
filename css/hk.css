@@ -1,0 +1,204 @@
+/* css/hk.css — Slop Hong Kong 的 HUD（Phase 0 世界切換：body[data-world="hong-kong"]） */
+
+/* 香港世界用有自己的 HUD；紐約那套（含觸控層與全螢幕地圖）先隱藏，避免兩套 UI 疊在一起 */
+body[data-world="hong-kong"] .hud,
+body[data-world="hong-kong"] #touch-controls,
+body[data-world="hong-kong"] #fullmap-modal,
+body[data-world="hong-kong"] .popover {
+  display: none !important;
+}
+
+body[data-world="hong-kong"] #canvas-container {
+  z-index: 0;
+}
+
+.hk-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  font-family: Inter, "Noto Sans HK", "PingFang HK", "Microsoft JhengHei", system-ui, sans-serif;
+  color: #f3f5f7;
+  --hk-red: #d3242c;
+  --hk-panel: rgba(12, 15, 19, 0.78);
+  --hk-line: rgba(255, 255, 255, 0.14);
+}
+
+.hk-hud > * {
+  position: absolute;
+}
+
+.hk-brand {
+  top: max(16px, env(safe-area-inset-top));
+  left: max(16px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 10px 12px;
+  background: var(--hk-panel);
+  border: 1px solid var(--hk-line);
+  border-radius: 14px;
+  backdrop-filter: blur(14px) saturate(120%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.hk-bullet {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--hk-red);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+}
+
+.hk-brand-text h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.hk-world-link {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffb3b6;
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.hk-world-link:hover,
+.hk-world-link:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.hk-brand-text p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  opacity: 0.72;
+  letter-spacing: 0.02em;
+}
+
+.hk-telemetry {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  min-width: 210px;
+  padding: 14px 18px;
+  background: var(--hk-panel);
+  border: 1px solid var(--hk-line);
+  border-radius: 16px;
+  backdrop-filter: blur(14px) saturate(120%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  text-align: right;
+}
+
+.hk-speed {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hk-speed #hk-speed {
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.hk-unit {
+  font-size: 12px;
+  opacity: 0.7;
+  letter-spacing: 0.08em;
+}
+
+.hk-location {
+  margin-top: 6px;
+  font-size: 12.5px;
+  opacity: 0.9;
+}
+
+.hk-rule {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hk-line);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff8f93;
+}
+
+.hk-hints {
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  max-width: min(680px, 92vw);
+  padding: 9px 16px;
+  font-size: 11.5px;
+  background: var(--hk-panel);
+  border: 1px solid var(--hk-line);
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+  opacity: 0.92;
+}
+
+.hk-hints kbd {
+  display: inline-block;
+  min-width: 17px;
+  padding: 1px 5px;
+  margin-right: 3px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font: inherit;
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.hk-teleports {
+  left: max(16px, env(safe-area-inset-left));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 42vw;
+  pointer-events: auto;
+}
+
+.hk-teleports button {
+  padding: 7px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--hk-line);
+  background: var(--hk-panel);
+  color: inherit;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.hk-teleports button:hover,
+.hk-teleports button:focus-visible {
+  background: rgba(211, 36, 44, 0.85);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+@media (max-width: 720px) {
+  .hk-hints { display: none; }
+  .hk-teleports { max-width: 60vw; }
+  .hk-speed #hk-speed { font-size: 32px; }
+  .hk-telemetry { min-width: 150px; }
+}

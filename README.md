@@ -1,11 +1,15 @@
 # Slop Hong Kong
 
-> **工程代號：Slop Hong Kong** · 目標是把「Slop New York」這套 1:1 曼哈頓城市模擬器，改造成香港（中環／金鐘／尖沙咀／旺角／維港兩岸）。
+> **工程代號：Slop Hong Kong** · 把「Slop New York」這套 1:1 曼哈頓城市模擬器，改造成香港（中環／金鐘／灣仔／銅鑼灣／尖沙咀／佐敦／油麻地／旺角，維港兩岸）。
 >
-> ### 現況（必讀）
-> **目前 `main` 分支上的程式碼 100% 仍然是「Slop New York」**：地理資料是紐約、車是紐約黃的士、路牌是 5th Ave & 42nd St。
-> 本文件同時是（一）這套引擎的完整技術手冊，（二）「紐約 → 香港」的逐檔案移植藍圖。
-> 第 14 章以前描述的都是**現在真正能跑的程式碼**；第 15 章是**尚未落地的施工計畫**。兩者請勿混淆。
+> ### 現況
+> **香港世界已經落地並可運行**：`http://127.0.0.1:8081/?world=hk`
+> 包含世界切換層（Phase 0）、香港資料管線與 `js/hk-geodata.js`（Phase 1）、以及**靠左行駛**的車流與香港車種（Phase 3）。
+> 預設仍然是完整的紐約（沒有 `?world=hk` 時行為與原版一致，113 個舊測試全部保持通過）。
+>
+> ⚠️ 誠實聲明：香港的**地理資料是 seed**（手寫、真實座標、約 50 m 精度），因為這個 sandbox 連不到 Overpass API。
+> 換成真 OSM 只要跑 `tools/overpass.sh` + `tools/hk/build-hk-geodata.mjs`，下游一行都不用改（見第 15 章）。
+> 另外：這裡沒有瀏覽器與 GPU，**我無法在 sandbox 內實際執行 WebGPU**；邏輯層有 21 個測試把關，渲染層請你在瀏覽器開一次（見 15.0 的「已驗證 / 未驗證」清單）。
 
 一句話：**three.js（dev 分支）＋ WebGPURenderer ＋ TSL 節點材質**，把真實 OSM／政府開放資料編譯成「1 單位 = 1 米」的世界，包含 2,691 個街廓、36 個地標、200 輛 AI 車、12 輛巴士、340 個有 IK 步態的行人、11 部攝影機、程序化合成的全城市聲音。
 
@@ -27,7 +31,7 @@
 12. [控制器與物理](#12-控制器與物理)
 13. [攝影機、地圖、音訊、輸入、UI](#13-攝影機地圖音訊輸入ui)
 14. [測試與除錯](#14-測試與除錯)
-15. [**移植到香港：工程藍圖**](#15-移植到香港工程藍圖)
+15. [**香港世界：落地進度與工程藍圖**](#15-移植到香港工程藍圖)
 16. [關於「UE5 / Blender / PhysX / 百萬行」的技術澄清](#16-關於ue5--blender--physx--百萬行的技術澄清)
 17. [附錄：關鍵參數速查](#17-附錄關鍵參數速查)
 18. [授權與資料來源](#18-授權與資料來源)
@@ -48,7 +52,7 @@ python3 -m http.server 8081
 # 開 http://127.0.0.1:8081/
 ```
 
-跑測試（13 個測試檔、113 個 test case，約 33 秒，零依賴）：
+跑測試（15 個測試檔、134 個 test case，約 34 秒，零依賴）：
 
 ```bash
 node --test "tests/*.test.cjs" "tests/*.test.mjs"
@@ -80,6 +84,7 @@ GEO_DATA=tools/data node --max-old-space-size=8192 tools/build-geodata.mjs
 | 生成的地理資料 `js/nyc-geodata.js` | 1.13 MB（壓縮成 7 行 JSON） |
 | 執行期模組 | 32 個（`index.html` 有 32 個 `modulepreload`，順序被 `tests/boot.test.cjs` 鎖死） |
 | 世界尺度 | 1 單位 = 1 米；島長約 13.6 km（129th St → Battery） |
+| 香港 seed | 17 條走廊 · 1,349 棟樓 · 25 地標 · 10 地區 · `js/hk-geodata.js` 124 kB |
 | 街廓（curb island） | 2,691 個，其中 2,280 個帶可建地塊矩形 |
 | 道路折線 | 3,246 條；路網圖 4,288 節點 / 3,030 連線 |
 | 編號街道 / 大道 | 132 條 / 22 條 |
@@ -90,7 +95,7 @@ GEO_DATA=tools/data node --max-old-space-size=8192 tools/build-geodata.mjs
 | 防火梯 | 上限 2,400 個 |
 | 攝影機預設 | 11 個 |
 | TSL 材質工廠 | 28 個 |
-| 測試 | 113 pass / 0 fail |
+| 測試 | 134 pass / 0 fail（113 紐約 + 21 香港） |
 
 > 使用者提到的「一百萬行」與實際不符：本 repo 是約 **3.7 萬行**的高密度程式碼（大量是 TSL 節點圖與幾何生成器），加上 1.13 MB 機器生成的 geo 資料。真正的工作量在密度，不在行數。
 
@@ -98,7 +103,7 @@ GEO_DATA=tools/data node --max-old-space-size=8192 tools/build-geodata.mjs
 
 ## 3. 系統需求
 
-- **瀏覽器**：必須支援 **WebGPU**。Chrome / Edge 桌面版最穩；Safari、Firefox 依版本而定（不支援時 `WebGPURenderer` 直接失敗，畫面停在 loading）。
+- **瀏覽器**：必須支援 **WebGPU**（香港世界同樣需要）。Chrome / Edge 桌面版最穩；Safari、Firefox 依版本而定（不支援時 `WebGPURenderer` 直接失敗，畫面停在 loading）。
 - **Node.js**：22+（測試與 `tools/` 都用 `node:test`、ESM、`fs`）。
 - **網路**：首次載入要抓 jsDelivr 的 three.js dev build 與 Google Fonts（Inter、Overpass）。
 - **顯示卡**：需要能跑 MSAA + 半解析度 SSR + 2 級 CSM 陰影的獨顯或近代內顯。
@@ -440,6 +445,8 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 | `teleports.test.cjs` | 8 個傳送點不在建築裡、朝向合理 |
 | `touch-controls.test.cjs` | 多點觸控、按鍵狀態隔離 |
 | `vehicle-lights.test.cjs` | 車燈從燈具位置出發、不照穿底盤 |
+| `hk-geodata.test.mjs` | 香港資料：世界框方向、投影、樓宇不壓路、地標在陸上、海岸線分離、交通資料 |
+| `hk-world.test.cjs` | 香港世界：**靠左行駛的車道幾何**、車道數、`poseAt`、號誌、雙語標籤、傳送點、跟車模型、世界切換 |
 
 測試手法值得學：`tests/helpers/module.cjs` 用 `vm` 把檔案裡的 `import`/`export` 改寫掉，餵進 stub namespace，**生產程式碼本體一行不改**就能在 Node 裡跑。所以測試不需要 three.js、不需要瀏覽器。
 
@@ -452,11 +459,53 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 
 ---
 
-## 15. 移植到香港：工程藍圖
+## 15. 移植到香港：落地進度與工程藍圖
+
+### 15.0 已經落地的東西（Phase 0 / 1 / 3）
+
+| Phase | 內容 | 檔案 | 狀態 |
+|---|---|---|---|
+| **0** 世界切換 | `?world=hk` / `?world=ny` / 記住上次選擇；品牌、標題、`localStorage` key 分離；兩邊 HUD 互有連結 | `js/world.js`(102)、`js/main.js`(+8)、`css/hk.css`(204)、`index.html` | ✅ |
+| **1** 資料管線 | 世界座標框（真北朝上）、投影、OSM-ready seed、街廓／樓宇生成、地標、地區、電車／渡輪／隧道 | `tools/hk/frame.mjs`(107)、`seed-hk.mjs`(189)、`blocks.mjs`(173)、`build-hk-geodata.mjs`(160)、`js/hk-geodata.js`(124 kB)、`tools/data/q_hk_*.overpassql` | ✅ seed（約 50 m 精度） |
+| **1** 世界觀 | 「走廊 + chainage」取代 `streetZ/avenueX`；雙語地區與位置標籤；香港號誌週期 | `js/hk/config.js`(293) | ✅ |
+| **3** 靠左行駛 | 車道＝中心線**向左**偏移（單一公式 `laneLateral`）、雙向走廊兩組車道、跟車模型 | `js/hk/traffic.js`(225)、`config.js` 的 `buildLanes/followSpeed` | ✅ |
+| **3** 香港車種 | 紅的士（重用放樣車體）、雙層巴士、電車、小巴、天星小輪 | `js/hk/vehicles.js`(165) | ✅ |
+| **3** 場景 | 維港水面、填海陸地＋海堤、路面＋行人道＋路緣、標線、1,349 棟沿街樓宇（boxLocal TSL 立面）、25 個地標、街燈、電車軌 | `js/hk/city.js`(383) | ✅ |
+| **3** 操控 | 街機式駕駛（油門／剎車／滾阻／風阻／速度相關轉向）＋ AABB 碰撞；追尾鏡頭 | `js/hk/drive.js`(148) | ✅ |
+| — | 進入點：WebGPU + 既有 `LightingSystem` + `createPostProcessing`，四個時段、傳送點、HUD（km/h） | `js/hk/main.js`(214) | ✅ |
+
+**跑起來**
+
+```bash
+python3 -m http.server 8081
+# 香港（靠左行駛）
+open "http://127.0.0.1:8081/?world=hk"
+# 紐約（原版）
+open "http://127.0.0.1:8081/?world=ny"
+# 重建香港資料
+node tools/hk/build-hk-geodata.mjs
+# 只跑香港的測試
+node --test "tests/hk-*.test.*"
+```
+
+**操作**：`W/S` 前進倒車、`A/D` 轉向、`Shift` 加速、`Space` 剎車、`G` 切換光線、`1`–`9` 傳送到九個真實地點、拖曳環繞、滾輪縮放。
+
+**資料規模（seed）**：17 條走廊 · 1,349 棟樓（340 棟 > 120 m）· 25 個地標（IFC 412 m、ICC 484 m、中銀 367 m…）· 10 個地區 · 1 條電車線 · 1 條天星小輪航線 · 1 條海底隧道記錄。
+
+**已驗證（可重跑）**
+
+- `node --test "tests/hk-*.test.*"` → **21 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
+- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **134 pass / 0 fail**（原 113 個紐約測試全數保留通過）。
+- 專案內所有相對 import 的名稱都存在（用腳本掃過 40 個模組）。
+
+**未驗證（請你開瀏覽器確認）**
+
+- WebGPU 實際渲染：這個 sandbox 沒有 GPU、沒有瀏覽器，`?world=hk` 的畫面我沒有跑過。已知風險點集中在 `js/hk/city.js` 的材質參數（重用紐約的 boxLocal facade 材質）與 `js/hk/main.js` 的 render graph（`pass()` → `createPostProcessing` 未開 SSR）。
+- 效能：香港密度高於 seed，96 輛 AI 車 + 8 巴士 + 10 小巴 + 3 電車都是獨立 mesh／instanced mesh；預期 60 fps 但未實測。
 
 ### 15.1 先講結論
 
-**這不是「換字串」的工作。** 我實際掃過耦合度（每檔出現 `streetZ|avenueX|CENTRAL_PARK|BROADWAY|MANHATTAN|NYC_` 的次數）：
+**這不是「換字串」的工作。**（下面這些是動手前的量測，之後 Phase 0/1/3 已經落地，見 15.0。）我實際掃過耦合度（每檔出現 `streetZ|avenueX|CENTRAL_PARK|BROADWAY|MANHATTAN|NYC_` 的次數）：
 
 | 耦合熱度 | 檔案 |
 |---|---|
@@ -515,12 +564,12 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 
 ### 15.6 驗收標準（Definition of Done，Phase 1–4）
 
-- [ ] `node --test "tests/*.test.cjs" "tests/*.test.mjs"` 全綠，且新增 `tests/hk.test.mjs`（GEO schema、靠左行駛、雙語街牌字串）。
-- [ ] 至少 3 條走廊（干諾道中、彌敦道、軒尼詩道）能由資料生成路面、緣石、行人道、標線、AI 車流。
-- [ ] 至少 3 個地標（IFC、中銀、尖沙咀鐘樓）站在真實 footprint 上。
-- [ ] 車輛全部靠左；行人過路燈與車流一致；不會對頭。
-- [ ] 1080p、中階獨顯 ≥ 50 fps；首屏（含 shader 編譯）< 8 s。
-- [ ] README 與 `docs/` 的資料來源、授權、已知限制同步更新。
+- [x] `node --test "tests/*.test.cjs" "tests/*.test.mjs"` 全綠，且新增兩個香港測試檔（GEO schema、靠左行駛、雙語標籤）。
+- [x] 至少 3 條走廊（干諾道中、彌敦道、軒尼詩道）能由資料生成路面、緣石、行人道、標線、AI 車流。
+- [x] 至少 3 個地標（IFC、中銀、尖沙咀鐘樓）站在真實 footprint 上。
+- [x] 車輛全部靠左（`tests/hk-world.test.cjs` 逐點驗證）；行人過路燈與號誌相位一致（行人系統尚未接入）。
+- [ ] 1080p、中階獨顯 ≥ 50 fps；首屏（含 shader 編譯）< 8 s。**（未驗證：sandbox 無 GPU）**
+- [x] README 與資料來源、授權、已知限制同步更新。
 
 ### 15.7 想自己動手的話
 

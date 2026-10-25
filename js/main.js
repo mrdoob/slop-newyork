@@ -19,11 +19,19 @@ import { LightingSystem } from './lighting.js';
 import { NYCMapSystem } from './nyc-map.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
 import { CityAudioSystem } from './audio-system.js';
+import { getWorldId } from './world.js';
 
 // js/main.js
 // Main entry point for New York City (Midtown Manhattan) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
 
 async function initApp() {
+  // Phase 0「世界切換」：?world=hk（或上次選過香港）時，整個紐約建城流程都不執行，改由香港世界接手。
+  // 紐約本身的行為保持不變：沒有 query 時仍然完全走原來那條路。
+  if (getWorldId() === 'hk') {
+    const { startHongKong } = await import('./hk/main.js');
+    return startHongKong();
+  }
+
   const container = document.getElementById('canvas-container');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingStatus = document.getElementById('loading-status');
