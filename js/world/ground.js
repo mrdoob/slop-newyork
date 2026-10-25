@@ -288,11 +288,11 @@ function createDecks(geo) {
   const deckLift = (x, z, over = Infinity, step = 1.2) => {
     const list = cells.get(Math.floor(x / CELL) * 100003 + Math.floor(z / CELL));
     if (!list) return 0;
-    let best = 0;
+    let best = 0, past = 0;
     for (const sg of list) {
       const ux = sg.bx - sg.ax, uz = sg.bz - sg.az;
       const L2 = ux * ux + uz * uz;
-      let tc = 0;
+      let tc = 0, beyond = false;
       if (L2 === 0) {
         if (Math.hypot(x - sg.ax, z - sg.az) > sg.half) continue; // a junction's disc
       } else {
@@ -301,12 +301,18 @@ function createDecks(geo) {
         const L = Math.sqrt(L2);
         if (t < -sg.half / L || t > 1 + sg.half / L) continue;
         tc = Math.min(1, Math.max(0, t));
+        beyond = tc !== t;
         if (Math.abs((x - sg.ax) * uz - (z - sg.az) * ux) / L > sg.half) continue;
       }
       const lift = sg.la + (sg.lb - sg.la) * tc;
-      if (lift > best && lift <= over + step) best = lift;
+      if (lift > (beyond ? past : best) && lift <= over + step) {
+        if (beyond) past = lift;
+        else best = lift;
+      }
     }
-    return best;
+    // A segment's run past its end (its end's lift held) only fills the outside of a bend, where no segment's own
+    // span reaches: on a ramp it would hold the next vertex's lift half a deck's width early, a step at every vertex
+    return best || past;
   };
   return { segments, junctions, deckLift };
 }
