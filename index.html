@@ -23,6 +23,21 @@
   <link rel="modulepreload" href="./js/world/city-config.js" />
   <link rel="modulepreload" href="./js/render/tsl-materials.js" />
   <link rel="modulepreload" href="./js/world/trees.js" />
+  <link rel="modulepreload" href="./js/models/bodies.js" />
+  <link rel="modulepreload" href="./js/models/cars/nissan.js" />
+  <link rel="modulepreload" href="./js/models/cars/chevrolet.js" />
+  <link rel="modulepreload" href="./js/models/cars/volkswagen.js" />
+  <link rel="modulepreload" href="./js/models/cars/toyota.js" />
+  <link rel="modulepreload" href="./js/models/cars/honda.js" />
+  <link rel="modulepreload" href="./js/models/cars/mazda.js" />
+  <link rel="modulepreload" href="./js/models/cars/kia-hyundai.js" />
+  <link rel="modulepreload" href="./js/models/cars/ford.js" />
+  <link rel="modulepreload" href="./js/models/cars/stellantis.js" />
+  <link rel="modulepreload" href="./js/models/cars/electric.js" />
+  <link rel="modulepreload" href="./js/models/cars/premium.js" />
+  <link rel="modulepreload" href="./js/models/cars/exotic.js" />
+  <link rel="modulepreload" href="./js/models/cars/index.js" />
+  <link rel="modulepreload" href="./js/models/motos/index.js" />
   <link rel="modulepreload" href="./js/actors/actor-models.js" />
   <link rel="modulepreload" href="./js/actors/vehicle-lights.js" />
   <link rel="modulepreload" href="./js/sim/pedestrians.js" />
@@ -50,11 +65,14 @@
   <link rel="modulepreload" href="./js/world/bridges.js" />
   <link rel="modulepreload" href="./js/sim/traffic.js" />
   <link rel="modulepreload" href="./js/sim/pedestrian-routes.js" />
+  <link rel="modulepreload" href="./js/player/drivetrain.js" />
+  <link rel="modulepreload" href="./js/player/vehicle-damage.js" />
   <link rel="modulepreload" href="./js/player/controllers.js" />
   <link rel="modulepreload" href="./js/input/touch-controls.js" />
   <link rel="modulepreload" href="./js/input/gamepad-controls.js" />
   <link rel="modulepreload" href="./js/player/cameras.js" />
   <link rel="modulepreload" href="./js/ui/city-map.js" />
+  <link rel="modulepreload" href="./js/ui/tachometer.js" />
   <link rel="modulepreload" href="./js/render/scene-culling.js" />
   <link rel="modulepreload" href="./js/render/post-processing.js" />
   <link rel="modulepreload" href="./js/audio/audio-synthesis.js" />
@@ -68,7 +86,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&amp;family=Overpass:wght@600;700&amp;display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261024-multiplayer" />
+  <link rel="stylesheet" href="./css/style.css?v=20261024-cars-moto" />
 </head>
 <body>
   <!-- Icon sprite (24 × 24 stroke icons, drawn in currentColor) -->
@@ -204,8 +222,10 @@
           <span id="hud-active-mode" class="gauge-label">Taxi de Tepic</span>
           <span class="gauge-alt"><span class="gauge-alt-label">Alt</span> <span id="hud-altitude">0</span> ft</span>
         </div>
-        <div class="gauge-speed"><span id="hud-speed">0</span><span class="gauge-unit">mph</span></div>
+        <div class="gauge-speed"><span id="hud-speed">0</span><span class="gauge-unit">km/h</span></div>
         <div class="gauge-meter" aria-hidden="true"><span id="hud-speed-meter"></span></div>
+        <!-- The car's rev counter, gear, gearbox, nitro & engine (js/ui/tachometer.js), only while driving -->
+        <div id="hud-tacho" class="tacho"></div>
       </div>
       <div id="camera-switch" class="camera-switch">
         <button id="cam-prev" class="icon-btn" type="button" title="Previous camera" aria-label="Previous camera">

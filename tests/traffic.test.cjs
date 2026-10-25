@@ -192,7 +192,7 @@ function populationContext() {
     clock: 0,
     VEHICLE_SPAWN_DISTANCE: 250, PED_SPAWN_DISTANCE: 150, NEAR_RADIUS: 350,
     nearEdges: [], nearSignals: [], track: {}, KERB: 1.6, QUEUE_GAP: 0.62,
-    atCurb: () => {}, laneClear: () => true,
+    atCurb: () => {}, laneClear: () => true, drawModel: () => {},
     place: (v, e, lane, s) => Object.assign(v, { edge: e, lane, s })
   };
   context.nearView = trafficFunction('nearView', context);

@@ -17,6 +17,8 @@ import { CameraSystem, CAMERA_PRESETS } from './player/cameras.js';
 import { LightingSystem } from './render/lighting.js';
 import { WEATHER_SAMPLES, weatherLabel } from './world/weather.js';
 import { CityMapSystem } from './ui/city-map.js';
+import { Tachometer } from './ui/tachometer.js';
+import { gearLabel } from './player/drivetrain.js';
 import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js';
 import { CityAudioSystem } from './audio/audio-system.js';
 import { buildTerrain } from './world/terrain.js';
@@ -141,14 +143,14 @@ async function initApp() {
         controllerManager.teleportActiveTo(p.x, p.z, p.heading, p.y);
       }
       const car = saved.looks?.car;
-      if (car && Number.isFinite(car.paint)) controllerManager.setCarLook(car.bodyType, car.paint, car.police);
+      if (car && Number.isFinite(car.paint)) controllerManager.setCarLook(car.bodyType, car.paint, car.police, car.model);
       if (Number.isFinite(saved.looks?.cyclist?.color)) controllerManager.setBikeColor(saved.looks.cyclist.color);
       savedMode = saved.activeMode;
     }
   } catch { /* Missing or unavailable storage does not prevent playing. */ }
   controllerManager.setMode('person');
   controllerManager.landHelicopter(true);
-  if (savedMode === 'car' || savedMode === 'cyclist') {
+  if (savedMode === 'car' || savedMode === 'cyclist' || savedMode === 'moto') {
     controllerManager.setMode(savedMode);
     controllerManager.exitVehicle();
   }
@@ -273,6 +275,7 @@ async function initApp() {
   const elLocation = document.getElementById('hud-location');
   const elControlsHint = document.getElementById('hud-controls-hint');
   const elPrompt = document.getElementById('hud-prompt');
+  const tachometer = new Tachometer(document.getElementById('hud-tacho'));
   const liveButton = document.getElementById('time-live');
   const liveLabel = liveButton && liveButton.querySelector('.seg-label');
 
@@ -309,12 +312,16 @@ async function initApp() {
   // Keyboard guide for each mode: [keys, action]
   const controlHints = {
     person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['F'], 'Robar / Subir']],
-    car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['B'], 'Horn'], [['F'], 'Bajar']],
+    car: [[['W', 'S'], 'Gas / Brake'], [['A', 'D'], 'Steer'], [['Shift'], 'Nitro'], [['Space'], 'Handbrake'], [['E', 'Q'], 'Gears'],
+      [['T'], 'Auto / Manual'], [['F'], 'Bajar']],
     cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['F'], 'Bajar']],
+    moto: [[['W', 'S'], 'Gas / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Nitro'], [['E', 'Q'], 'Gears'], [['T'], 'Auto / Manual'],
+      [['F'], 'Bajar']],
     helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['F'], 'Bajar']]
   };
-  // Boosted top speeds in mph (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
-  const topSpeedMph = { person: 18, car: 81, cyclist: 43, helicopter: 116 };
+  // Boosted top speeds in km/h (controllers.js caps them at 8.2, 19 & 52 m/s; the car has its tachometer instead):
+  // full scale of the speed meter
+  const topSpeedKmh = { person: 30, car: 200, cyclist: 68, helicopter: 187, moto: 110 };
 
   function renderControlHints(mode) {
     if (!elControlsHint) return;
@@ -381,7 +388,7 @@ async function initApp() {
     syncMode();
   }
   // What F would do here, shown over the controls guide
-  const promptNames = { car: 'Subir al coche', cyclist: 'Subir a la bici', helicopter: 'Subir al helicóptero' };
+  const promptNames = { car: 'Subir al coche', cyclist: 'Subir a la bici', moto: 'Subir a la moto', helicopter: 'Subir al helicóptero' };
   let promptText = '';
   function updatePrompt() {
     let text = '';
@@ -794,6 +801,13 @@ async function initApp() {
     // Update 3rd-person controllers, camera, signals, traffic & vehicle collisions, building LODs, and dynamic shadow focus
     gamepadControls.update(dt);
     controllerManager.update(dt, elapsed);
+    // The car's or moto's tachometer follows the engine every frame (the rest of the HUD every 250 ms, below)
+    const motorMode = controllerManager.activeMode;
+    if (motorMode === 'car' || motorMode === 'moto') {
+      const v = controllerManager.entities[motorMode];
+      const engine = v.damage ? 1 - v.damage.engine : 1;
+      tachometer.update(v.spec, v.drive, Math.round(Math.abs(v.speed) * 3.6), engine, engine <= 0, v.drive ? gearLabel(v.drive, v.spec) : '1');
+    }
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
     trafficSystem.setParked(controllerManager.parkedVehicles());
@@ -869,7 +883,7 @@ async function initApp() {
 
       const activeEnt = controllerManager.getActiveEntity();
       const mode = controllerManager.activeMode;
-      const mph = Math.round(Math.abs(activeEnt.speed) * 2.237);
+      const kmh = Math.round(Math.abs(activeEnt.speed) * 3.6);
       // over the town's floor (its slopes put the streets well over y = 0)
       const altM = activeEnt.position.y - controllerManager.floorHeight(activeEnt.position.x, activeEnt.position.z);
       const altFt = Math.max(0, Math.round(altM * 3.281));
@@ -878,9 +892,9 @@ async function initApp() {
         elFps.textContent = String(currentFps);
         elFps.className = currentFps >= 50 ? 'fps-ok' : currentFps >= 30 ? 'fps-warn' : 'fps-bad';
       }
-      if (elSpeed) elSpeed.textContent = String(mph);
-      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, mph / (topSpeedMph[mode] || 80))})`;
-      document.body.classList.toggle('is-boosting', controllerManager.keys.boost && mph > 0);
+      if (elSpeed) elSpeed.textContent = String(kmh);
+      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, kmh / (topSpeedKmh[mode] || 130))})`;
+      document.body.classList.toggle('is-boosting', controllerManager.keys.boost && kmh > 0);
       if (elAltitude) elAltitude.textContent = altFt.toLocaleString('en-US');
       // The street corner of the player on the follow cameras, of the camera itself on the scenic ones
       const where = cameraSystem.getActivePreset().category === 'follow' ? activeEnt.position : cameraSystem.currentPos;

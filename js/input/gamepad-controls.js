@@ -146,7 +146,7 @@ class GamepadControls {
     const mode = this.controller.activeMode;
     let drive = -movement.y;
     let vertical = 0;
-    if (mode === 'car' || mode === 'cyclist') {
+    if (mode === 'car' || mode === 'cyclist' || mode === 'moto') {
       drive = Math.max(0, drive, buttonValue(pad, 7)) - Math.max(0, -drive, buttonValue(pad, 6));
     } else if (mode === 'helicopter') {
       vertical = buttonValue(pad, 7) - buttonValue(pad, 6);
@@ -158,6 +158,7 @@ class GamepadControls {
     this.controller.setGamepadInput('up', mode === 'person' ? Number(Boolean(held(0))) : Math.max(0, vertical));
     this.controller.setGamepadInput('down', Math.max(0, -vertical));
     this.controller.setGamepadInput('boost', Number(Boolean(held(2))));
+    this.controller.setGamepadInput('handbrake', mode === 'car' ? Number(Boolean(held(0))) : 0); // A: the car's handbrake
     const zoom = Number(Boolean(held(13))) - Number(Boolean(held(12)));
     this.camera.applyGamepadInput(look.x, look.y, zoom, Number.isFinite(dt) ? Math.max(0, Math.min(0.1, dt)) : 0);
   }

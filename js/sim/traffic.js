@@ -6,6 +6,7 @@ import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } fro
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from '../actors/vehicle-lights.js';
 import {
   BODY_SPECS,
+  bodyDims,
   BUS_SPEC,
   buildCarGeometry,
   buildCarProxyGeometry,
@@ -22,12 +23,13 @@ import {
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BONES, boxHit, riderKnocked, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
+import { TAXI_MODEL, POLICE_MODEL, BODY_SHARE, paintsOf, pickModel, pickBody } from '../models/cars/index.js';
 
 // js/sim/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
-// - 200 cars (taxis, sedans, SUVs, pickups, vans, hatchbacks, police cruisers), 12 buses, 28 cyclists and 26
-//   motorcyclists keep to their lanes and follow the vehicle ahead (Intelligent Driver Model), change lanes to
-//   overtake or to reach a turn lane, turn into other streets,
+// - 200 cars (the car models of js/models/cars: taxis, police cruisers and ~50 real makes drawn by rarity), 12 buses,
+//   28 cyclists and 26 motorcyclists keep to their lanes and follow the vehicle ahead (Intelligent Driver Model),
+//   change lanes to overtake or to reach a turn lane, turn into other streets,
 //   stop for the signals street-details.js shows, give way to oncoming traffic when turning left, to the avenue at
 //   unsignalized corners and to pedestrians on crosswalks, and never enter an intersection they can't clear.
 // - 340 pedestrians follow connected sidewalks, meet to talk, and cross signalized crosswalks on WALK.
@@ -46,7 +48,7 @@ const KNOCK_SPEED = 2.2; // m/s: the player's car or bicycle knocks people over 
 const MASS = {
   person: 75, bike: 95, moto: 260, hatch: 1100, sedan: 1300, taxi: 1300, suv: 2100, pickup: 2200, van: 2300, bus: 12000
 };
-const massOf = (v) => (v.bus ? MASS.bus : MASS[v.bodyType] || MASS.sedan);
+const massOf = (v) => (v.bus ? MASS.bus : v.mass || MASS[v.bodyType] || MASS.sedan);
 const DOWN_TIME = 9; // s a knocked-over person lies still before getting up (out of sight, see spawnPed)
 
 // Intelligent Driver Model: max acceleration, comfortable braking, time headway, standstill gap; and the sideways
@@ -183,68 +185,84 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     };
   }
 
-  // The car bodies on the streets: lofted models (actor-models.js) sharing one set of spinning wheels, scaled to each
-  const CAR_KINDS = ['taxi', 'sedan', 'suv', 'pickup', 'van', 'hatch'];
+  // The cars are the car models of js/models/cars (real makes, sizes & colours), each drawn with its body shape stretched
+  // to its size. One instanced mesh per body shape (and level of detail); whenever a car comes back into the traffic
+  // it is drawn again by the models' rarity, so best sellers fill the streets and supercars turn up once in a while.
+  // Every fifth car is a taxi and a few are state police cruisers, which keep their liveries.
   const carWheelLeftGeo = buildSteerableWheelGeo(BODY_SPECS.sedan, -1);
   const carWheelRightGeo = buildSteerableWheelGeo(BODY_SPECS.sedan, 1);
   const carWheelMat = createLoftedCarMaterial(BODY_SPECS.sedan, 0xffbe14);
+  const CAR_BODIES = ['taxi', ...Object.keys(BODY_SHARE)];
+  const HEAVY_BODIES = new Set(['suv', 'pickup', 'van', 'wedge']);
 
   const taxiYellow = new THREE.Color(0xffbe14);
   const policeWhite = new THREE.Color(0xf6f9fc);
-  const palettes = {
-    sedan: [0x1c2026, 0xcfd6de, 0x1d3b6c, 0x52575e, 0x6e1f24],
-    suv: [0x16191e, 0xf0f3f7, 0x3a434d, 0x28382e, 0xbec6cf],
-    pickup: [0xf2f3f1, 0xb3221c, 0x9aa1a8, 0x1a1c20, 0x23406e, 0x6b5a45],
-    van: [0xf4f5f2, 0xf4f5f2, 0xc9ccd0, 0xd9cfb4, 0x3a6a8c],
-    hatch: [0xc4161c, 0xcfd6de, 0xf0f2f2, 0x2b62b8, 0x9bbf2a, 0xe08a12]
-  };
-  for (const kind in palettes) palettes[kind] = palettes[kind].map((c) => new THREE.Color(c));
-  // the share of the cars that aren't taxis or police of each body (Tepic drives a lot of pickups)
-  const carMix = [['sedan', 0.3], ['suv', 0.22], ['pickup', 0.2], ['hatch', 0.18], ['van', 0.1]];
-  const carHeavy = { suv: true, pickup: true, van: true }; // they sound bigger (audio-sources.js); see MASS for weight
+  const paintColor = new THREE.Color();
+
+  // c becomes a `model` with the `body` shape: its size (scales of the body shape), paint and footprint
+  function assignModel(c, body, model) {
+    const dims = bodyDims(BODY_SPECS[body]);
+    c.bodyType = body;
+    c.model = model;
+    c.sx = model.size[1] / dims.width;
+    c.sy = model.size[2] / dims.height;
+    c.sz = model.size[0] / dims.length;
+    c.sw = Math.min(c.sy, c.sz); // (wheels keep round)
+    c.half = dims.halfL * c.sz;
+    c.halfWidth = dims.halfW * c.sx * 0.92;
+    c.axle = BODY_SPECS[body].wheelZ * c.sz;
+    c.heavy = HEAVY_BODIES.has(body); // (sounds bigger, audio-sources.js)
+    c.mass = model.mass; // kg, what it trades in a crash (massOf)
+    if (c.isPolice) paintColor.copy(policeWhite);
+    else if (c.isTaxi) paintColor.copy(taxiYellow);
+    else {
+      const paints = paintsOf(model);
+      paintColor.setHex(paints[Math.floor(Math.random() * paints.length)]);
+    }
+    c.paint[0] = Math.fround(paintColor.r);
+    c.paint[1] = Math.fround(paintColor.g);
+    c.paint[2] = Math.fround(paintColor.b);
+  }
+  // A fresh draw from the traffic's models (taxis & police stay what they are)
+  function drawModel(c) {
+    if (c.isTaxi || c.isPolice) return;
+    const body = pickBody();
+    assignModel(c, body, pickModel(body));
+  }
 
   const cars = [];
-  const carCounts = Object.fromEntries(CAR_KINDS.map((k) => [k, 0]));
   let policeCount = 0;
 
   for (let i = 0; i < NUM_CARS; i++) {
     const isPolice = (i % 40) === 6;
     const isTaxi = !isPolice && (i % 5) === 0;
-    let bodyType = 'sedan';
-    if (isTaxi) bodyType = 'taxi';
-    else if (!isPolice) {
-      let roll = ((i * 0.6180339887) % 1 + 1) % 1;
-      for (const [kind, share] of carMix) {
-        bodyType = kind;
-        if ((roll -= share) < 0) break;
-      }
-    }
-    const col = isTaxi ? taxiYellow : isPolice ? policeWhite : palettes[bodyType][i % palettes[bodyType].length];
-    carCounts[bodyType]++;
-    if (isPolice) policeCount++;
-
-    const spec = BODY_SPECS[bodyType];
-    const widest = Math.max(...spec.halfWidth.map(([, w]) => w));
-    const car = createVehicle(false, spec.zFront, widest - 0.07, spec.wheelZ, CAR_DRIVER, 10 + (i % 5) * 0.9);
+    const car = createVehicle(false, 2.25, 0.86, 1.38, CAR_DRIVER, 10 + (i % 5) * 0.9);
     // paint as float32 values, so renderCar() can tell whether an instance slot's paint changes by comparing
-    const paint = [Math.fround(col.r), Math.fround(col.g), Math.fround(col.b)];
-    Object.assign(car, { isTaxi, isPolice, heavy: !!carHeavy[bodyType], bodyType, paint });
+    Object.assign(car, { isTaxi, isPolice, heavy: false, mass: MASS.sedan, bodyType: 'sedan', model: null, paint: [0, 0, 0], sx: 1, sy: 1, sz: 1, sw: 1 });
+    if (isPolice) {
+      policeCount++;
+      assignModel(car, 'sedan', POLICE_MODEL);
+    } else if (isTaxi) {
+      assignModel(car, 'taxi', TAXI_MODEL);
+    } else {
+      drawModel(car);
+    }
     cars.push(car);
   }
 
-  // Per body type: the full model (with separately instanced spinning wheels near the camera) and, beyond
+  // Per body shape: the full model (with separately instanced spinning wheels near the camera) and, beyond
   // CAR_PROXY_DISTANCE, the ~250-triangle stand-in. Instance slots are handed out every frame to the cars the camera
-  // can see (or whose shadow it may see), see renderCar(). Per-instance paint & lamp / livery state the car material
-  // reads: brake lights, left (+x) & right (-x) turn signals, livery (1 = police).
+  // can see (or whose shadow it may see), see renderCar(); any car may come back as any body shape, so each has room
+  // for all of them. Per-instance paint & lamp / livery state the car material reads: brake lights, left (+x) & right
+  // (-x) turn signals, livery (1 = police).
   const bodies = {};
-  for (const kind of CAR_KINDS) {
+  for (const kind of CAR_BODIES) {
     const spec = BODY_SPECS[kind];
-    const n = Math.max(1, carCounts[kind]);
     const mat = createLoftedCarMaterial(spec);
     const lodMesh = (g) => {
-      g.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3));
-      g.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4));
-      return new THREE.InstancedMesh(g, mat, n);
+      g.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(NUM_CARS * 3), 3));
+      g.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(NUM_CARS * 4), 4));
+      return new THREE.InstancedMesh(g, mat, NUM_CARS);
     };
     bodies[kind] = { near: lodMesh(buildCarGeometry(spec, false)), far: lodMesh(buildCarProxyGeometry(spec)) };
   }
@@ -1527,6 +1545,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
   // Put v in a free lane around the focus. Normal replenishment protects the near view; teleports can fill it.
   function spawnVehicle(v, rMin, rMax, protectView) {
+    if (!v.bus && !v.bike && !v.moto) drawModel(v); // (a car comes back as another model)
     for (let attempt = 0; attempt < 12; attempt++) {
       const e = nearEdges[Math.floor(Math.random() * nearEdges.length)];
       if (!e || (v.bus && e.axis !== 'ave') || e.len < 2 * v.half + 10) continue;
@@ -1863,7 +1882,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const cosY = Math.cos(rotY);
     const spec = BODY_SPECS[c.bodyType];
     const forwardDist = (c.x - c.prevX) * sinY + (c.z - c.prevZ) * cosY;
-    const rawStep = forwardDist / spec.wheelRadius;
+    const rawStep = forwardDist / (spec.wheelRadius * c.sw);
     c.wheelSpin = (c.wheelSpin + Math.sign(rawStep) * Math.min(Math.abs(rawStep), 0.48)) % (Math.PI * 2);
     if (hasView && !visible(c.x, c.z, 18, (c.hy || 0) + 1)) return;
 
@@ -1873,7 +1892,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
     dummy.position.set(c.x, c.hy || 0, c.z);
     dummy.rotation.set(c.pitch + (c.gp || 0), rotY, c.roll, 'YXZ');
-    dummy.scale.set(1, 1, 1);
+    dummy.scale.set(c.sx, c.sy, c.sz); // (the body shape stretched to the model's size)
     dummy.updateMatrix();
     bodyInst.setMatrixAt(slot, dummy.matrix);
     if (c.isPolice) policeLightbarInst.setMatrixAt(policeDrawn++, dummy.matrix);
@@ -1929,7 +1948,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     }
 
     if (near) {
-      placeWheels(c, wheelCars++, rotY, c.roll, spec.wheelRadius, spec.wheelX, spec.wheelZ, carWheelLeftInst, carWheelRightInst);
+      placeWheels(c, wheelCars++, rotY, c.roll, spec.wheelRadius * c.sw, spec.wheelX * c.sx, spec.wheelZ * c.sz, carWheelLeftInst, carWheelRightInst);
     }
   }
 
@@ -2018,7 +2037,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         // Match the body instance, including suspension and impact rotation.
         dummy.position.set(v.x, v.hy || 0, v.z);
         dummy.rotation.set(v.pitch + (v.gp || 0), v.yaw + v.yawOffset, v.roll, 'YXZ');
-        dummy.scale.set(1, 1, 1);
+        if (v.bus) dummy.scale.set(1, 1, 1);
+        else dummy.scale.set(v.sx, v.sy, v.sz);
         dummy.updateMatrix();
         for (let side = -1; side <= 1; side += 2) {
           const spot = headlightPool[spotUsed++];
@@ -2382,7 +2402,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const taken = v.bike
       ? { kind: 'cyclist', x: v.x, z: v.z, heading: yaw, speed: v.speed, color: v.color.getHex() }
       : {
-          kind: 'car', x: v.x, z: v.z, heading: yaw, speed: v.speed, bodyType: v.bodyType, police: v.isPolice,
+          kind: 'car', x: v.x, z: v.z, heading: yaw, speed: v.speed, bodyType: v.bodyType, police: v.isPolice, model: v.model.id,
           paint: new THREE.Color().setRGB(v.paint[0], v.paint[1], v.paint[2]).getHex()
         };
     // out of the driver's door (on the left: heading 0 faces +z, left is +x), or off the bicycle
@@ -2562,15 +2582,15 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       player.vx = Math.sin(heading) * speed + (playerEntity.vx || 0);
       player.vz = Math.cos(heading) * speed + (playerEntity.vz || 0);
     }
-    player.halfW = activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : 0.86;
-    player.halfL = activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : 2.18;
-    // (the player's car weighs as the body it took from the traffic, see controllers.js setCarLook)
+    // (the player's car: the size and weight of the model it is, controllers.js setCarLook)
+    player.halfW = activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : playerEntity?.halfW || 0.86;
+    player.halfL = activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : playerEntity?.halfL || 2.18;
     player.mass = activeMode === 'cyclist' ? MASS.bike : activeMode === 'person' ? MASS.person
-      : MASS[playerEntity && playerEntity.look && playerEntity.look.bodyType] || MASS.sedan;
+      : playerEntity?.spec?.mass || MASS[playerEntity && playerEntity.look && playerEntity.look.bodyType] || MASS.sedan;
     player.mode = activeMode;
     player.heading = playerEntity ? playerEntity.heading || 0 : 0;
     player.speed = Math.hypot(player.vx, player.vz);
-    player.knocks = player.active && (activeMode === 'car' || activeMode === 'cyclist') && player.speed > KNOCK_SPEED;
+    player.knocks = player.active && (activeMode === 'car' || activeMode === 'cyclist' || activeMode === 'moto') && player.speed > KNOCK_SPEED;
 
     // 1. Cars & buses
     // Limit attempted placements, not just successes, and rotate through the pool so an awkward location
