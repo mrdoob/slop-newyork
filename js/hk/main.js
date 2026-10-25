@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { pass, vec4 } from 'three/tsl';
 import { createPostProcessing } from '../post-processing.js';
-import { LightingSystem } from '../lighting.js';
+import { createHongKongLighting } from './lighting.js';
 import { applyBranding, getWorld } from '../world.js';
 import * as HK from './config.js';
 import { buildHongKongCity } from './city.js';
@@ -98,17 +98,34 @@ export async function startHongKong() {
     powerPreference: 'high-performance',
     reversedDepthBuffer: true
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(1.0);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
   container.appendChild(renderer.domElement);
   await renderer.init();
   mark('renderer');
 
   const scene = new THREE.Scene();
-  await yieldToBrowser('建立天空、日光與環境光（PMREM）…');
-  const lighting = new LightingSystem(scene, renderer);
-  lighting.applyPreset('golden');
+  await yieldToBrowser('建立日光與天空…');
+  // 自帶照明：半球光 + 平行光 + 明確天空色。不依賴 dev 分支的 SkyMesh / SunLight / PMREM，
+  // 因為任何一環不配合都會變成全黑又沒有錯誤訊息（`?sky=1` 才切回完整大氣天空）。
+  const lighting = createHongKongLighting(scene);
+  // 想試紐約那套完整大氣天空：?sky=1
+  let skyLighting = null;
+  if (params.get('sky') === '1') {
+    try {
+      const { LightingSystem } = await import('../lighting.js');
+      skyLighting = new LightingSystem(scene, renderer);
+      skyLighting.applyPreset('golden');
+      scene.fog = new THREE.Fog(0xdcc5ae, 260, 7000);
+      mark('sky');
+    } catch (error) {
+      console.warn('[hk] full sky unavailable, keeping the simple lighting', error);
+      skyLighting = null;
+    }
+  }
   mark('lighting');
 
   await yieldToBrowser('興建維港與樓宇…');
@@ -130,19 +147,36 @@ export async function startHongKong() {
   camera.position.set(HK.SPAWN.x, 6, HK.SPAWN.z - 12);
   camera.lookAt(HK.SPAWN.x, 1.6, HK.SPAWN.z);
 
-  await yieldToBrowser('編譯著色器與後處理…');
-  // 香港唔開 SSR（維港水面用 IBL 反射），但保留 ACES + 分時段調色 + bloom
-  const scenePass = pass(scene, camera);
-  const colorGrade = createPostProcessing(renderer, scenePass.getTextureNode('output'), vec4(0, 0, 0, 0));
-  const pipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
-  mark('postfx');
-
   if (lowDetail) {
     city.group.traverse((o) => { if (o.name === 'HongKongTowers' || o.name === 'HongKongMidRise') o.visible = false; });
   }
 
-  // 預編譯：幾百條 pipeline 一次過交給 GPU 會鎖死主執行緒幾十秒（紐約版就是為此寫了同樣的機制）。
-  // 這裡用 8 條並行 compileAsync，每批之後讓瀏覽器 paint 並更新進度。
+  // --- 繪製路徑 ----------------------------------------------------------------------------------
+  // 預設：renderer.render(scene, camera) —— 最笨、最直接、最少變數。
+  // `?post=1`：改用紐約那套 TSL RenderPipeline（pass + ACES 調色 + bloom），用來對比。
+  const usePost = params.get('post') === '1';
+  let postPipeline = null;
+  let colorGrade = null;
+  if (usePost) {
+    try {
+      await yieldToBrowser('建立後處理管線…');
+      const scenePass = pass(scene, camera);
+      colorGrade = createPostProcessing(renderer, scenePass.getTextureNode('output'), vec4(0, 0, 0, 0));
+      postPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
+      colorGrade.applyPreset('golden');
+      mark('postfx');
+    } catch (error) {
+      console.warn('[hk] post-processing unavailable, falling back to a direct render', error);
+      postPipeline = null;
+    }
+  }
+
+  function renderFrame() {
+    if (postPipeline) postPipeline.render();
+    else renderer.render(scene, camera);
+  }
+
+  // --- 預編譯（避免第一幀一次過編譯全部 pipeline 而卡死）----------------------------------------
   await yieldToBrowser('預編譯著色器（0%）…');
   {
     const jobs = [];
@@ -173,7 +207,7 @@ export async function startHongKong() {
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(8, jobs.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(8, Math.max(1, jobs.length)) }, worker));
     mark(`compile(${jobs.length})`);
   }
 
@@ -200,7 +234,8 @@ export async function startHongKong() {
       timeIndex = (timeIndex + 1) % TIME_CYCLE.length;
       const id = TIME_CYCLE[timeIndex];
       lighting.applyPreset(id);
-      colorGrade.applyPreset(id);
+      if (skyLighting) skyLighting.applyPreset(id);
+      if (colorGrade) colorGrade.applyPreset(id);
       city.setNight(id === 'midnight' ? 1 : id === 'twilight' ? 0.5 : 0.1);
     }
     if (/^Digit[1-9]$/.test(e.code)) {
@@ -264,6 +299,40 @@ export async function startHongKong() {
     }
   }
 
+  // --- 診斷面板（按 D 開關；?debug=1 一開始就顯示）----------------------------------------------------
+  // 這面板存在的理由：黑畫面可以是「冇畫任何東西」、「畫了但全黑」或「後處理輸出黑」，
+  // draw call 與三角形數就是分辨這三者的最快證據。
+  const diag = document.createElement('div');
+  diag.className = 'hk-diagnostics';
+  let diagVisible = params.get('debug') === '1';
+  diag.hidden = !diagVisible;
+  document.body.appendChild(diag);
+  function updateDiagnostics() {
+    if (!diagVisible) return;
+    const info = renderer.info || {};
+    const r = info.render || {};
+    const canvas = renderer.domElement;
+    const rect = canvas.getBoundingClientRect();
+    diag.textContent = [
+      `three r${THREE.REVISION} · ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} backend`,
+      `canvas ${canvas.width}×${canvas.height} @ ${Math.round(rect.width)}×${Math.round(rect.height)} css`,
+      `draw calls ${r.drawCalls ?? r.calls ?? '?'} · tris ${r.triangles ?? '?'}`,
+      `frames ${r.frame ?? '?'} · scene children ${scene.children.length}`,
+      `camera ${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)}`,
+      `player ${player.state.x.toFixed(0)}, ${player.state.z.toFixed(0)} · ${HK.districtAt(player.state.x, player.state.z).zh}`,
+      `lights ${scene.children.filter((o) => o.isLight).length} · path ${postPipeline ? 'post pipeline' : 'direct render'}${skyLighting ? ' + full sky' : ''}`,
+      'D 隱藏 · F12 有完整日誌'
+    ].join('\n');
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyD' && !e.metaKey && !e.ctrlKey) {
+      diagVisible = !diagVisible;
+      diag.hidden = !diagVisible;
+      updateDiagnostics();
+    }
+  });
+  mark('diagnostics');
+
   // --- 主迴圈 ----------------------------------------------------------------------------------------
   let last = performance.now();
   let elapsed = 0;
@@ -273,12 +342,14 @@ export async function startHongKong() {
     chase.update(0.016, player.state);
     traffic.update(0.016, camera.position);
     await yieldToBrowser('第一幀…');
-    pipeline.render();
+    renderFrame();
     const device = renderer.backend?.device;
     const info = device && device.queue?.onSubmittedWorkDone ? Promise.resolve(device.queue.onSubmittedWorkDone()) : Promise.resolve();
     await info.catch(() => {});
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
     mark('firstFrame');
+    const info = renderer.info?.render || {};
+    console.log('[hk] first frame', { drawCalls: info.drawCalls ?? info.calls, triangles: info.triangles, path: postPipeline ? 'post' : 'direct', sky: !!skyLighting });
     console.log(`[hk] boot ${PHASES.map(([l, t]) => `${l} ${t}ms`).join(', ')}`);
     console.log(`[hk] ${city.counts.buildings} buildings · ${city.counts.landmarks} landmarks · ${traffic.counts.cars} cars · ${traffic.counts.lanes} lanes (keep left)`);
   } catch (error) {
@@ -293,10 +364,12 @@ export async function startHongKong() {
     player.update(dt);
     chase.update(dt, player.state);
     traffic.update(dt, camera.position);
-    lighting.update(camera.position);
+    lighting.update(player.state);
+    if (skyLighting) skyLighting.update(player.state);
     updateHud(dt);
+    updateDiagnostics();
 
-    pipeline.render();
+    renderFrame();
   });
 
   // 除錯／驗證用（不會影響正常遊玩）

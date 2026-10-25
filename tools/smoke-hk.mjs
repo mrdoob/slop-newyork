@@ -66,10 +66,18 @@ try {
 const { buildHongKongCity } = await import('../js/hk/city.js');
 const { createHongKongTraffic } = await import('../js/hk/traffic.js');
 const { createPlayer, ChaseCamera } = await import('../js/hk/drive.js');
+const { createHongKongLighting } = await import('../js/hk/lighting.js');
 const HK = await import('../js/hk/config.js');
 
 // --- 建城 ------------------------------------------------------------------------------------------
 const scene = new THREE.Scene();
+const lighting = createHongKongLighting(scene);
+if (!scene.background || !scene.fog) fail('the Hong Kong scene must have an explicit background and fog');
+for (const id of ['golden', 'midday', 'twilight', 'midnight']) {
+  lighting.applyPreset(id);
+  if (!Number.isFinite(lighting.sun.intensity) || lighting.sun.intensity <= 0) fail(`preset ${id} leaves the sun dark`);
+}
+lighting.applyPreset('golden');
 const buildStart = performance.now();
 const phases = [];
 const city = await buildHongKongCity(scene, { onProgress: async (label) => { phases.push([label, Math.round(performance.now() - buildStart)]); } });
@@ -130,6 +138,8 @@ console.log(JSON.stringify(report, null, 1));
 
 if (nanGeometry) fail(`${nanGeometry} geometries contain NaN positions`);
 if (city.counts.buildings < 1000) fail(`only ${city.counts.buildings} buildings`);
+if (lights < 2) fail(`only ${lights} lights in the scene`);
+if (!scene.background) fail('no background colour: a black frame could not be told apart from an empty scene');
 if (traffic.counts.cars !== 96) fail(`expected 96 AI cars, got ${traffic.counts.cars}`);
 if (traffic.counts.lanes < 60) fail(`only ${traffic.counts.lanes} lanes`);
 if (triangles < 50000) fail(`scene is suspiciously light: ${triangles} triangles`);

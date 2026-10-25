@@ -493,7 +493,7 @@ node --test "tests/hk-*.test.*"
 
 **操作**：`W/S` 前進倒車、`A/D` 轉向、`Shift` 加速、`Space` 剎車、`G` 切換光線、`1`–`9` 傳送到九個真實地點、拖曳環繞、滾輪縮放。
 
-**診斷**：`?world=hk&low=1` 跳過樓宇（只留道路與車流）；啟動失敗時載入畫面會顯示錯誤訊息與已完成階段。
+**診斷**：`?world=hk&debug=1` 顯示即時診斷面板（按 `D` 亦可）；`&low=1` 跳過樓宇；`&post=1` 試 TSL 後處理；`&sky=1` 試完整大氣天空；啟動失敗時載入畫面會顯示錯誤訊息與已完成階段。
 
 **資料規模（seed）**：17 條走廊 · 1,349 棟樓（340 棟 > 120 m）· 25 個地標（IFC 412 m、ICC 484 m、中銀 367 m…）· 10 個地區 · 1 條電車線 · 1 條天星小輪航線 · 1 條海底隧道記錄。
 
@@ -537,7 +537,18 @@ buildings 1,349 · landmarks 25 (+冠頂 12) · cars 96 · lanes 99
 player 出生於 (65, −201) → 中環
 ```
 
-**注意**：`tools/smoke-hk.mjs` 驗證的是「建城與模擬」，**不包括 WebGPU 繪製**（shader 編譯、管線、實際像素）。那一層仍然只有你在瀏覽器能驗。
+**第三輪（HUD 正常、車速在動，但 3D 畫面全黑）**
+
+截圖證明模擬層完全正常（60 fps、22 km/h、「中環 Central · 干諾道中」），所以問題收窄到繪製層。兩個明確的錯：
+
+| # | 原因 | 修法 |
+|---|---|---|
+| 6 | CSS 選擇器寫成 `body[data-world="hong-kong"]`，但 `applyBranding()` 實際寫入的是 `dataset.world = 'hk'` → **紐約那套 HUD 完全沒有被隱藏**（截圖右上角仍是 Golden Hour / Teleport / Map，右下角是空的 "NYC YELLOW TAXI"） | 選擇器全部改為 `body[data-world="hk"]` |
+| 7 | 香港的 render graph 直接照抄紐約的 `pass()` + `createPostProcessing()`，但**沒有照抄它對 render target／MRT 的設定**。在 dev 分支的 three.js 上，`pass()` 的 output texture 可能因此是空的 → 整個畫面（連天空）都是黑 | 香港改成**自帶照明 + 直接 `renderer.render(scene, camera)`**：`js/hk/lighting.js`（半球光 + 可投影平行光 + 明確天空底色與霧）。紐約那套完整大氣天空改為 `?sky=1`、TSL 後處理管線改為 `?post=1`，兩者都用 try/catch 包住，失敗會自動退回直接繪製 |
+
+**新增診斷面板**（按 `D` 開關，或 `?world=hk&debug=1`）：顯示 three 版本、backend（WebGPU/WebGL）、canvas 實際像素與 CSS 尺寸、**draw calls 與三角形數**、camera 位置、所在區、燈光數、目前繪製路徑。黑畫面時這幾個數字就能分辨「冇畫任何東西 / 畫了但全黑 / 後處理輸出黑」。
+
+**注意**：`tools/smoke-hk.mjs` 驗證的是「建城、照明與模擬」，**不包括 WebGPU 繪製**（shader 編譯、管線、實際像素）。那一層仍然只有你在瀏覽器能驗；現在它會明確斷言 `lights >= 2` 與 `scene.background` 存在，避免「場景全黑但測試全綠」。
 
 **仍未驗證（需要你在瀏覽器確認）**
 

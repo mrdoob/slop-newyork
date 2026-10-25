@@ -1,14 +1,14 @@
-/* css/hk.css — Slop Hong Kong 的 HUD（Phase 0 世界切換：body[data-world="hong-kong"]） */
+/* css/hk.css — Slop Hong Kong 的 HUD（Phase 0 世界切換：body[data-world="hk"]） */
 
 /* 香港世界用有自己的 HUD；紐約那套（含觸控層與全螢幕地圖）先隱藏，避免兩套 UI 疊在一起 */
-body[data-world="hong-kong"] .hud,
-body[data-world="hong-kong"] #touch-controls,
-body[data-world="hong-kong"] #fullmap-modal,
-body[data-world="hong-kong"] .popover {
+body[data-world="hk"] .hud,
+body[data-world="hk"] #touch-controls,
+body[data-world="hk"] #fullmap-modal,
+body[data-world="hk"] .popover {
   display: none !important;
 }
 
-body[data-world="hong-kong"] #canvas-container {
+body[data-world="hk"] #canvas-container {
   z-index: 0;
 }
 
@@ -201,4 +201,26 @@ body[data-world="hong-kong"] #canvas-container {
   .hk-teleports { max-width: 60vw; }
   .hk-speed #hk-speed { font-size: 32px; }
   .hk-telemetry { min-width: 150px; }
+}
+
+/* 診斷面板（按 D 開關）：黑畫面時用來分辨「冇畫東西 / 畫了但全黑 / 後處理輸出黑」 */
+.hk-diagnostics {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  top: 76px;
+  z-index: 40;
+  margin: 0;
+  padding: 10px 12px;
+  max-width: 46ch;
+  white-space: pre-wrap;
+  font: 500 11px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #d8f0e0;
+  background: rgba(6, 12, 10, 0.86);
+  border: 1px solid rgba(120, 255, 190, 0.28);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.hk-diagnostics[hidden] {
+  display: none;
 }

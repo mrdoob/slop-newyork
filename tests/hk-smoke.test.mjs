@@ -22,6 +22,7 @@ test('Hong Kong builds and simulates with real three.js', { skip: existsSync(thr
   assert.equal(report.traffic.cars, 96);
   assert.ok(report.triangles > 50000, `only ${report.triangles} triangles`);
   assert.ok(report.meshes > 100, `only ${report.meshes} meshes`);
+  assert.ok(report.lights >= 2, `only ${report.lights} lights — the scene would render black`);
   assert.ok(report.instances > 1000, `only ${report.instances} instances`);
   assert.ok(report.frameMs < 8, `simulation costs ${report.frameMs} ms/frame`);
   assert.match(report.playerDistrict, /[\u4e00-\u9fff]/);
