@@ -21,12 +21,13 @@ import {
 } from './actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BONES, boxHit, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
+import { BONES, boxHit, riderKnocked, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
 
 // js/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
-// - 200 cars (taxis, sedans, SUVs, NYPD cruisers) and 12 MTA buses keep to their lanes and follow the vehicle
-//   ahead (Intelligent Driver Model), change lanes to overtake or to reach a turn lane, turn into other streets,
+// - 200 cars (taxis, sedans, SUVs, pickups, vans, hatchbacks, police cruisers), 12 buses, 28 cyclists and 26
+//   motorcyclists keep to their lanes and follow the vehicle ahead (Intelligent Driver Model), change lanes to
+//   overtake or to reach a turn lane, turn into other streets,
 //   stop for the signals street-details.js shows, give way to oncoming traffic when turning left, to the avenue at
 //   unsignalized corners and to pedestrians on crosswalks, and never enter an intersection they can't clear.
 // - 340 pedestrians follow connected sidewalks, meet to talk, and cross signalized crosswalks on WALK.
@@ -37,7 +38,9 @@ const NUM_CARS = 200;
 const NUM_BUSES = 12;
 const NUM_PEDS = 340;
 const NUM_BIKES = 28; // cyclists riding with the traffic (the player can knock them off)
-const KNOCK_SPEED = 2.2; // m/s: the player's car or bicycle knocks people over above it
+const NUM_MOTOS = 26; // motorcyclists, likewise
+const KNOCK_SPEED = 2.2; // m/s: the player's car or bicycle knocks people over above it (and riders off, driven into
+// them that fast, see riderKnocked)
 const DOWN_TIME = 9; // s a knocked-over person lies still before getting up (out of sight, see spawnPed)
 
 // Intelligent Driver Model: max acceleration, comfortable braking, time headway, standstill gap; and the sideways
@@ -52,6 +55,16 @@ const BIKE_FRAME = {
   gripHalf: 0.22,
   bracket: new THREE.Vector3(0, 0.34, -0.145),
   crankLength: 0.17
+};
+// Motorcycle (motoBodyGeo / motoPartsGeo): the rider's seat & bars, feet still on the pegs
+const MOTO_DRIVER = { a: 2.8, b: 3.6, T: 1.0, s0: 1.8, aLat: 4.0 };
+const MOTO_FRAME = {
+  seat: new THREE.Vector3(0, 0.94, -0.2),
+  bars: new THREE.Vector3(0, 1.04, 0.44),
+  gripHalf: 0.3,
+  bracket: new THREE.Vector3(0, 0.36, -0.04),
+  crankLength: 0,
+  footHalf: 0.2
 };
 const LOOKAHEAD = 70; // metres a driver looks ahead for vehicles, stop lines and signals
 
@@ -148,7 +161,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   };
 
   // =========================================================================
-  // 1. 3D LOFTED YELLOW TAXIS, SEDANS, SUVS & POLICE CRUISERS (200 VEHICLES)
+  // 1. 3D LOFTED TAXIS, SEDANS, SUVS, PICKUPS, VANS, HATCHBACKS & POLICE CRUISERS (200 VEHICLES)
   // =========================================================================
   function createVehicle(bus, half, halfWidth, axle, driver, v0) {
     return {
@@ -163,83 +176,70 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     };
   }
 
-  // Build 3 distinct 3D LoftGeometry vehicle classes (Taxi, Sedan/NYPD, SUV) with separate spinning 3D wheels
-  const taxiGeo = buildCarGeometry(BODY_SPECS.taxi, false);
-  const sedanGeo = buildCarGeometry(BODY_SPECS.sedan, false);
-  const suvGeo = buildCarGeometry(BODY_SPECS.suv, false);
+  // The car bodies on the streets: lofted models (actor-models.js) sharing one set of spinning wheels, scaled to each
+  const CAR_KINDS = ['taxi', 'sedan', 'suv', 'pickup', 'van', 'hatch'];
   const carWheelLeftGeo = buildSteerableWheelGeo(BODY_SPECS.sedan, -1);
   const carWheelRightGeo = buildSteerableWheelGeo(BODY_SPECS.sedan, 1);
-
-  const taxiMat = createLoftedCarMaterial(BODY_SPECS.taxi);
-  const sedanMat = createLoftedCarMaterial(BODY_SPECS.sedan);
-  const suvMat = createLoftedCarMaterial(BODY_SPECS.suv);
   const carWheelMat = createLoftedCarMaterial(BODY_SPECS.sedan, 0xffbe14);
 
   const taxiYellow = new THREE.Color(0xffbe14);
   const policeWhite = new THREE.Color(0xf6f9fc);
-  const sedanPalette = [
-    new THREE.Color(0x1c2026), // Black Town Car / Uber
-    new THREE.Color(0xcfd6de), // Metallic Silver Sedan
-    new THREE.Color(0x1d3b6c), // Deep Navy Sedan
-    new THREE.Color(0x52575e), // Graphite Grey Sedan
-    new THREE.Color(0x6e1f24)  // Burgundy Sedan
-  ];
-  const suvPalette = [
-    new THREE.Color(0x16191e), // Executive Black Escalade/Suburban
-    new THREE.Color(0xf0f3f7), // Pearl White SUV
-    new THREE.Color(0x3a434d), // Slate Metallic SUV
-    new THREE.Color(0x28382e), // Forest Green SUV
-    new THREE.Color(0xbec6cf)  // Silver SUV
-  ];
+  const palettes = {
+    sedan: [0x1c2026, 0xcfd6de, 0x1d3b6c, 0x52575e, 0x6e1f24],
+    suv: [0x16191e, 0xf0f3f7, 0x3a434d, 0x28382e, 0xbec6cf],
+    pickup: [0xf2f3f1, 0xb3221c, 0x9aa1a8, 0x1a1c20, 0x23406e, 0x6b5a45],
+    van: [0xf4f5f2, 0xf4f5f2, 0xc9ccd0, 0xd9cfb4, 0x3a6a8c],
+    hatch: [0xc4161c, 0xcfd6de, 0xf0f2f2, 0x2b62b8, 0x9bbf2a, 0xe08a12]
+  };
+  for (const kind in palettes) palettes[kind] = palettes[kind].map((c) => new THREE.Color(c));
+  // the share of the cars that aren't taxis or police of each body (Tepic drives a lot of pickups)
+  const carMix = [['sedan', 0.3], ['suv', 0.22], ['pickup', 0.2], ['hatch', 0.18], ['van', 0.1]];
+  const carHeavy = { suv: true, pickup: true, van: true }; // they shove harder (collideWithPlayer) and sound bigger
 
   const cars = [];
-  let taxiCount = 0;
-  let sedanCount = 0;
-  let suvCount = 0;
+  const carCounts = Object.fromEntries(CAR_KINDS.map((k) => [k, 0]));
   let policeCount = 0;
 
   for (let i = 0; i < NUM_CARS; i++) {
     const isPolice = (i % 40) === 6;
     const isTaxi = !isPolice && (i % 5) === 0;
-    const isSUV = !isPolice && !isTaxi && (i % 2 === 0);
-
     let bodyType = 'sedan';
-    let col;
-
-    if (isTaxi) {
-      bodyType = 'taxi';
-      taxiCount++;
-      col = taxiYellow;
-    } else if (isSUV) {
-      bodyType = 'suv';
-      suvCount++;
-      col = suvPalette[i % suvPalette.length];
-    } else {
-      sedanCount++;
-      col = isPolice ? policeWhite : sedanPalette[i % sedanPalette.length];
-      if (isPolice) policeCount++;
+    if (isTaxi) bodyType = 'taxi';
+    else if (!isPolice) {
+      let roll = ((i * 0.6180339887) % 1 + 1) % 1;
+      for (const [kind, share] of carMix) {
+        bodyType = kind;
+        if ((roll -= share) < 0) break;
+      }
     }
+    const col = isTaxi ? taxiYellow : isPolice ? policeWhite : palettes[bodyType][i % palettes[bodyType].length];
+    carCounts[bodyType]++;
+    if (isPolice) policeCount++;
 
-    const car = createVehicle(false, isSUV ? 2.3 : 2.25, isSUV ? 0.92 : 0.86, isSUV ? 1.4 : 1.38, CAR_DRIVER, 10 + (i % 5) * 0.9);
+    const spec = BODY_SPECS[bodyType];
+    const widest = Math.max(...spec.halfWidth.map(([, w]) => w));
+    const car = createVehicle(false, spec.zFront, widest - 0.07, spec.wheelZ, CAR_DRIVER, 10 + (i % 5) * 0.9);
     // paint as float32 values, so renderCar() can tell whether an instance slot's paint changes by comparing
     const paint = [Math.fround(col.r), Math.fround(col.g), Math.fround(col.b)];
-    Object.assign(car, { isTaxi, isPolice, isSUV, bodyType, paint });
+    Object.assign(car, { isTaxi, isPolice, heavy: !!carHeavy[bodyType], bodyType, paint });
     cars.push(car);
   }
 
   // Per body type: the full model (with separately instanced spinning wheels near the camera) and, beyond
   // CAR_PROXY_DISTANCE, the ~250-triangle stand-in. Instance slots are handed out every frame to the cars the camera
   // can see (or whose shadow it may see), see renderCar(). Per-instance paint & lamp / livery state the car material
-  // reads: brake lights, left (+x) & right (-x) turn signals, livery (1 = NYPD).
+  // reads: brake lights, left (+x) & right (-x) turn signals, livery (1 = police).
   const bodies = {};
-  for (const [kind, geo, count, mat] of [['taxi', taxiGeo, taxiCount, taxiMat], ['sedan', sedanGeo, sedanCount, sedanMat], ['suv', suvGeo, suvCount, suvMat]]) {
-    const n = Math.max(1, count);
+  for (const kind of CAR_KINDS) {
+    const spec = BODY_SPECS[kind];
+    const n = Math.max(1, carCounts[kind]);
+    const mat = createLoftedCarMaterial(spec);
     const lodMesh = (g) => {
       g.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3));
       g.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4));
       return new THREE.InstancedMesh(g, mat, n);
     };
-    bodies[kind] = { near: lodMesh(geo), far: lodMesh(buildCarProxyGeometry(BODY_SPECS[kind])) };
+    bodies[kind] = { near: lodMesh(buildCarGeometry(spec, false)), far: lodMesh(buildCarProxyGeometry(spec)) };
   }
   const bodyMeshes = Object.values(bodies).flatMap((b) => [b.near, b.far]);
 
@@ -326,18 +326,32 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   for (let i = 0; i < NUM_BUSES; i++) buses.push(createVehicle(true, 6.0, 1.3, 3.6, BUS_DRIVER, 8 + (i % 3)));
 
   // Cyclists: vehicles of their own kind keeping to the right-hand lane, a frame & wheels instanced, the rider a
-  // PersonRig posed on the pedals (pedestrians.js ride)
+  // PersonRig posed on the pedals (pedestrians.js ride). Motorcyclists ride the same way, in any lane at car speeds,
+  // feet on the pegs. Either goes down when hit hard enough (knockRider).
+  const riderLooks = (seed, i) => new PersonRig({
+    seed: seed + i * 1.37, scale: 0.92 + (i % 7) * 0.025, female: i % 3 === 0, girth: 0.92 + (i % 4) * 0.05, hair: (i % 5) * 0.2
+  });
   const bikePalette = [0x0078e8, 0xd8242b, 0x1b1d22, 0xf2f2f0, 0x2f9a4b, 0xf2b705].map((c) => new THREE.Color(c));
+  const motoPalette = [0xc8102e, 0x14161a, 0x1f4fa8, 0xf2f2f0, 0xf26b0f, 0x2e7d32].map((c) => new THREE.Color(c));
   const bikes = [];
   for (let i = 0; i < NUM_BIKES; i++) {
     const bike = createVehicle(false, 0.95, 0.32, 0.58, BIKE_DRIVER, 4.2 + (i % 5) * 0.45);
     Object.assign(bike, {
       bike: true, bodyType: 'bike', color: bikePalette[i % bikePalette.length], pedal: Math.random() * 6.28, wreck: null,
-      rider: new PersonRig({ seed: 300 + i * 1.37, scale: 0.92 + (i % 7) * 0.025, female: i % 3 === 0, girth: 0.92 + (i % 4) * 0.05, hair: (i % 5) * 0.2 })
+      rider: riderLooks(300, i)
     });
     bikes.push(bike);
   }
-  const vehicles = [...cars, ...bikes, ...buses];
+  const motos = [];
+  for (let i = 0; i < NUM_MOTOS; i++) {
+    const moto = createVehicle(false, 1.05, 0.4, 0.68, MOTO_DRIVER, 10.5 + (i % 5) * 1.1);
+    Object.assign(moto, {
+      moto: true, bodyType: 'moto', color: motoPalette[i % motoPalette.length], pedal: 0, wreck: null,
+      rider: riderLooks(700, i)
+    });
+    motos.push(moto);
+  }
+  const vehicles = [...cars, ...bikes, ...motos, ...buses];
   const bikeFrameGeo = mergeGeometries([
     new THREE.CylinderGeometry(0.022, 0.022, 0.72, 6).rotateX(Math.PI * 0.46).translate(0, 0.78, 0.04),
     new THREE.CylinderGeometry(0.026, 0.026, 0.78, 6).rotateX(Math.PI * 0.28).translate(0, 0.58, 0.16),
@@ -350,17 +364,55 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     new THREE.TorusGeometry(0.35, 0.038, 6, 20).rotateY(Math.PI * 0.5).translate(0, 0.38, 0.58),
     new THREE.TorusGeometry(0.35, 0.038, 6, 20).rotateY(Math.PI * 0.5).translate(0, 0.38, -0.58)
   ]);
-  const bikeFrameInst = new THREE.InstancedMesh(bikeFrameGeo, new THREE.MeshStandardNodeMaterial({ roughness: 0.35, metalness: 0.4 }), NUM_BIKES);
-  const bikeWheelInst = new THREE.InstancedMesh(bikeWheelGeo, new THREE.MeshStandardNodeMaterial({ color: 0x181a1e, roughness: 0.6 }), NUM_BIKES);
-  for (const m of [bikeFrameInst, bikeWheelInst]) {
+  // A small street motorcycle (125-150 cc): painted tank, side covers, fenders & tail; the rest black or bare metal
+  const motoBodyGeo = mergeGeometries([
+    new THREE.BoxGeometry(0.3, 0.17, 0.46).translate(0, 0.86, 0.2), // tank
+    new THREE.BoxGeometry(0.26, 0.2, 0.3).translate(0, 0.7, -0.22), // side covers
+    new THREE.BoxGeometry(0.18, 0.08, 0.5).rotateX(-0.12).translate(0, 0.86, -0.62), // tail
+    new THREE.BoxGeometry(0.12, 0.03, 0.42).rotateX(0.35).translate(0, 0.62, 0.7), // front fender
+    new THREE.CylinderGeometry(0.1, 0.11, 0.1, 10).rotateX(Math.PI * 0.5).translate(0, 0.95, 0.6) // headlight shell
+  ]);
+  const motoPartsGeo = mergeGeometries([
+    new THREE.TorusGeometry(0.27, 0.06, 6, 18).rotateY(Math.PI * 0.5).translate(0, 0.31, 0.68),
+    new THREE.TorusGeometry(0.27, 0.06, 6, 18).rotateY(Math.PI * 0.5).translate(0, 0.31, -0.66),
+    new THREE.CylinderGeometry(0.06, 0.06, 0.1, 8).rotateZ(Math.PI * 0.5).translate(0, 0.31, 0.68), // hubs
+    new THREE.CylinderGeometry(0.07, 0.07, 0.12, 8).rotateZ(Math.PI * 0.5).translate(0, 0.31, -0.66),
+    new THREE.BoxGeometry(0.24, 0.3, 0.4).translate(0, 0.44, 0.02), // engine
+    new THREE.BoxGeometry(0.27, 0.08, 0.6).translate(0, 0.97, -0.22), // seat
+    new THREE.CylinderGeometry(0.025, 0.025, 0.72, 6).rotateX(-0.42).translate(0.09, 0.64, 0.55), // fork
+    new THREE.CylinderGeometry(0.025, 0.025, 0.72, 6).rotateX(-0.42).translate(-0.09, 0.64, 0.55),
+    new THREE.CylinderGeometry(0.018, 0.018, 0.66, 6).rotateZ(Math.PI * 0.5).translate(0, 1.04, 0.44), // bars
+    new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6).rotateX(0.5).translate(0.08, 0.5, -0.38), // swingarm
+    new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6).rotateX(0.5).translate(-0.08, 0.5, -0.38),
+    new THREE.CylinderGeometry(0.045, 0.035, 0.62, 8).rotateX(Math.PI * 0.5 - 0.12).translate(0.17, 0.42, -0.36), // exhaust
+    new THREE.BoxGeometry(0.42, 0.025, 0.05).translate(0, 0.34, -0.06) // pegs
+  ]);
+  const twoWheelMesh = (geo, mat, n) => {
+    const m = new THREE.InstancedMesh(geo, mat, n);
     m.castShadow = true;
     m.frustumCulled = false;
     m.count = 0;
-  }
-  for (let i = 0; i < NUM_BIKES; i++) bikeFrameInst.setColorAt(i, bikePalette[0]);
-  const riderCrowd = new PersonCrowd(NUM_BIKES);
+    return m;
+  };
+  // The instanced meshes of each kind of two-wheeler, the frame its rider sits on, and how many are drawn this frame
+  const bikeKit = {
+    frame: twoWheelMesh(bikeFrameGeo, new THREE.MeshStandardNodeMaterial({ roughness: 0.35, metalness: 0.4 }), NUM_BIKES),
+    wheels: twoWheelMesh(bikeWheelGeo, new THREE.MeshStandardNodeMaterial({ color: 0x181a1e, roughness: 0.6 }), NUM_BIKES),
+    seat: BIKE_FRAME, drawn: 0
+  };
+  const motoKit = {
+    frame: twoWheelMesh(motoBodyGeo, new THREE.MeshStandardNodeMaterial({ roughness: 0.3, metalness: 0.25 }), NUM_MOTOS),
+    wheels: twoWheelMesh(motoPartsGeo, new THREE.MeshStandardNodeMaterial({ color: 0x1b1c1f, roughness: 0.5, metalness: 0.45 }), NUM_MOTOS),
+    seat: MOTO_FRAME, drawn: 0
+  };
+  const kits = [bikeKit, motoKit];
+  for (const v of bikes) v.kit = bikeKit;
+  for (const v of motos) v.kit = motoKit;
+  for (let i = 0; i < NUM_BIKES; i++) bikeKit.frame.setColorAt(i, bikePalette[0]);
+  for (let i = 0; i < NUM_MOTOS; i++) motoKit.frame.setColorAt(i, motoPalette[0]);
+  const riderCrowd = new PersonCrowd(NUM_BIKES + NUM_MOTOS);
   const bikeRoot = new THREE.Object3D();
-  group.add(bikeFrameInst, bikeWheelInst);
+  for (const kit of kits) group.add(kit.frame, kit.wheels);
   group.add(busBodyInst, busHeaderInst, busWheelLeftInst, busWheelRightInst);
 
   // =========================================================================
@@ -1352,7 +1404,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const hit = overlapWithPlayer(relX, relZ, rotY, halfW, halfL, pe.heading || 0, player.halfW, player.halfL);
     if (!hit) return;
     const { nx, nz, pen, localX, localZ, pSin, pCos } = hit;
-    const massRatio = v.bus ? 0.15 : v.isSUV ? 0.58 : 1.0 - player.push;
+    const massRatio = v.bus ? 0.15 : v.heavy ? 0.58 : 1.0 - player.push;
     const pPush = 1.0 - massRatio;
     pe.position.x += nx * pen * pPush;
     pe.position.z += nz * pen * pPush;
@@ -1825,7 +1877,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const visIdx = visibleCars++;
     dummy.rotation.set(0, rotY, 0, 'YXZ');
     dummy.position.set(c.x, 0.018 + (c.hy || 0), c.z);
-    dummy.scale.set(2.22, 1.0, 5.05);
+    dummy.scale.set(c.halfWidth * 2 + 0.5, 1.0, c.half * 2 + 0.55);
     dummy.updateMatrix();
     carShadowInst.setMatrixAt(visIdx, dummy.matrix);
 
@@ -2037,7 +2089,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   }
 
   // =========================================================================
-  // 8B. KNOCK-DOWNS: the player's car or bicycle throws pedestrians & cyclists to the ground (mayhem.js)
+  // 8B. KNOCK-DOWNS: the player's car or bicycle throws pedestrians, cyclists & motorcyclists to the ground (mayhem.js)
   // =========================================================================
   // Where walls stand (main.js hands over the player's building colliders): knocked bodies bounce off them
   let solidAt = null;
@@ -2093,58 +2145,97 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     pedCrowd.add(p.rig, Math.hypot(p.x - focusX, p.z - focusZ));
   }
 
-  function knockBike(v, hit) {
+  // The player against a cyclist or motorcyclist, over the whole of the bike: hit hard enough (the speed between them),
+  // a car or bicycle knocks its rider off (true); slower, the two are just eased apart. A bike is never shunted like a
+  // car (collideWithPlayer), which threw it about with sparks and crash sounds instead of knocking its rider down
+  function contactRider(v) {
+    const pe = player.entity;
+    const relX = pe.position.x - v.x;
+    const relZ = pe.position.z - v.z;
+    if (Math.abs(relX) > v.half + player.halfL + 1 || Math.abs(relZ) > v.half + player.halfL + 1) return false;
+    const rotY = v.yaw + v.yawOffset;
+    const hit = overlapWithPlayer(relX, relZ, rotY, v.halfWidth, v.half, player.heading, player.halfW, player.halfL);
+    if (!hit) return false;
+    const bvx = v.tx * v.speed + v.vx;
+    const bvz = v.tz * v.speed + v.vz;
+    if (riderKnocked(player.mode, player.vx - bvx, player.vz - bvz, -hit.nx, -hit.nz, KNOCK_SPEED)) {
+      knockRider(v, -hit.nx, -hit.nz, bvx, bvz);
+      return true;
+    }
+    // (the bike gives way, a little less so to a pedestrian)
+    const give = player.mode === 'person' ? 0.6 : 0.85;
+    pe.position.x += hit.nx * hit.pen * (1 - give);
+    pe.position.z += hit.nz * hit.pen * (1 - give);
+    if (pe.mesh) pe.mesh.position.copy(pe.position);
+    shove(v, -hit.nx * hit.pen * give, -hit.nz * hit.pen * give);
+    // up against the player ahead, it can go no faster than they do
+    if (hit.nx * v.tx + hit.nz * v.tz > 0.5) v.speed = Math.min(v.speed, Math.max(0, player.vx * v.tx + player.vz * v.tz));
+    return false;
+  }
+
+  // Rider v comes off, thrown away from the player along (nx, nz): with the player's momentum, or its own if it was the
+  // faster (a bike running into the back of a car), its bike sliding on and falling on its side
+  function knockRider(v, nx, nz, bvx, bvz) {
     const r = v.rider;
     poseRider(v); // (a bike out of sight hasn't posed its rider lately)
     v.fallBase = v.fallBase || new Float32Array(BONES * 8);
     v.fallBase.set(r.pose.subarray(0, BONES * 8));
+    const own = Math.hypot(bvx, bvz) > player.speed;
+    const tvx = own ? bvx : player.vx;
+    const tvz = own ? bvz : player.vz;
     const g = hillAt(v.x, v.z);
-    const f = startTumble(v.x, g, v.z, player.vx, player.vz, hit.nx, hit.nz);
+    const f = startTumble(v.x, g, v.z, tvx, tvz, nx, nz);
     // the rider's pivot as it sat (the hips over the saddle)
-    f.y0 = f.py = g + 1.05;
-    // the bicycle skids on, falling on its side
+    f.y0 = f.py = g + v.kit.seat.seat.y + 0.07;
     v.wreck = {
       rider: f,
-      px: v.x, pz: v.z, yaw: v.yaw,
-      vx: player.vx * 0.7 + hit.nx * 1.5, vz: player.vz * 0.7 + hit.nz * 1.5,
-      roll: 0, rollVel: (Math.random() < 0.5 ? -1 : 1) * (2 + player.speed * 0.15), rest: 0
+      px: v.x, pz: v.z, yaw: v.yaw + v.yawOffset,
+      vx: tvx * 0.7 + nx * 1.5, vz: tvz * 0.7 + nz * 1.5,
+      roll: 0, rollVel: (Math.random() < 0.5 ? -1 : 1) * (2 + player.speed * 0.15), rest: 0,
+      grip: v.moto ? 1.6 : 2.5 // how fast its slide dies down: a motorcycle skids further
     };
     v.edge = null; // off the road graph (lanes & junctions rebuild their occupancy every frame)
     v.speed = 0;
-    reportCollision(player.entity, v, v.x, 0.9, v.z, -hit.nx, -hit.nz, player.speed);
-    if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mode === 'car' ? 0.88 : 0.5;
+    v.vx = v.vz = 0;
+    reportCollision(player.entity, v, v.x, 0.9, v.z, -nx, -nz, Math.hypot(player.vx - bvx, player.vz - bvz));
+    if (v.moto) spawnCollisionSparks(v.x, 0.3 + g, v.z, nx, nz, Math.hypot(tvx, tvz));
+    if (player.entity && typeof player.entity.speed === 'number') {
+      player.entity.speed *= player.mode === 'car' ? (v.moto ? 0.8 : 0.88) : 0.5;
+    }
   }
 
-  function renderBike(v, dt, slot) {
+  function renderBike(v, dt) {
+    const kit = v.kit;
+    const slot = kit.drawn++;
     const rotY = v.yaw + v.yawOffset;
     dummy.position.set(v.x, v.hy || 0, v.z);
     dummy.rotation.set(0, rotY, -clamp(v.yawRate * v.speed * 0.05, -0.3, 0.3), 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
-    bikeFrameInst.setMatrixAt(slot, dummy.matrix);
-    bikeWheelInst.setMatrixAt(slot, dummy.matrix);
-    bikeFrameInst.setColorAt(slot, v.color);
-    v.pedal = (v.pedal + (v.speed * dt) / 0.6) % (Math.PI * 2);
+    kit.frame.setMatrixAt(slot, dummy.matrix);
+    kit.wheels.setMatrixAt(slot, dummy.matrix);
+    kit.frame.setColorAt(slot, v.color);
+    if (v.bike) v.pedal = (v.pedal + (v.speed * dt) / 0.6) % (Math.PI * 2);
     poseRider(v);
     riderCrowd.add(v.rider, Math.hypot(v.x - focusX, v.z - focusZ));
   }
 
-  // The rider on the saddle of bike v as it stands now, hands on the bars and feet on the pedals
+  // The rider on the saddle of bike v as it stands now, hands on the bars and feet on the pedals (or pegs)
   function poseRider(v) {
     const rotY = v.yaw + v.yawOffset;
     bikeRoot.position.set(v.x, v.hy || 0, v.z);
     bikeRoot.rotation.set(0, rotY, -clamp(v.yawRate * v.speed * 0.05, -0.3, 0.3), 'YXZ');
     bikeRoot.updateMatrixWorld(true);
     v.rider.yaw = rotY;
-    v.rider.ride(bikeRoot, v.pedal, BIKE_FRAME);
+    v.rider.ride(bikeRoot, v.pedal, v.kit.seat);
     v.rider.placed = false; // riding poses aren't walking ones: a walk would start afresh
   }
 
-  // The fallen cyclist and the bicycle on its side; both cleared once they've lain still a while
-  function renderWreck(v, dt, slot) {
+  // The fallen rider and the bike on its side; both cleared once they've lain still a while
+  function renderWreck(v, dt) {
     const w = v.wreck;
     const restR = stepTumble(w.rider, dt, hillAt(w.rider.px, w.rider.pz), solidAt);
-    const k = Math.exp(-2.5 * dt);
+    const k = Math.exp(-w.grip * dt);
     w.vx *= k;
     w.vz *= k;
     slide(w, w.vx * dt, w.vz * dt, solidAt);
@@ -2153,20 +2244,20 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     if (Math.hypot(w.vx, w.vz) < 0.2) w.rest += dt;
     if (restR > DOWN_TIME && w.rest > DOWN_TIME) {
       v.wreck = null;
-      return false;
+      return;
     }
-    const draw = !hasView || visible(w.px, w.pz, 4);
-    if (!draw) return false;
+    if (hasView && !visible(w.px, w.pz, 4)) return;
+    const kit = v.kit;
+    const slot = kit.drawn++;
     dummy.position.set(w.px, 0.04 + hillAt(w.px, w.pz), w.pz);
     dummy.rotation.set(0, w.yaw, w.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
-    bikeFrameInst.setMatrixAt(slot, dummy.matrix);
-    bikeWheelInst.setMatrixAt(slot, dummy.matrix);
-    bikeFrameInst.setColorAt(slot, v.color);
+    kit.frame.setMatrixAt(slot, dummy.matrix);
+    kit.wheels.setMatrixAt(slot, dummy.matrix);
+    kit.frame.setColorAt(slot, v.color);
     tumblePose(v.rider.pose, v.fallBase, w.rider);
     riderCrowd.add(v.rider, Math.hypot(w.px - focusX, w.pz - focusZ));
-    return true;
   }
 
   // =========================================================================
@@ -2185,12 +2276,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const BAIL_TURN = 7; // rad/s
 
   // The car or bicycle the player on foot could take: the nearest whose body is within `reach` metres of (x, z),
-  // going slowly enough to be stopped (no buses)
+  // going slowly enough to be stopped (no buses, nor motorcycles: the player has none of their own to ride yet)
   function vehicleNear(x, z, reach) {
     let best = null;
     let bestDistance = reach;
     for (const v of vehicles) {
-      if (v.bus || v.wreck || !v.edge || v.speed > 7) continue;
+      if (v.bus || v.moto || v.wreck || !v.edge || v.speed > 7) continue;
       const dx = x - v.x;
       const dz = z - v.z;
       if (Math.abs(dx) > 10 || Math.abs(dz) > 10) continue;
@@ -2382,7 +2473,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     refreshNear();
     updateView(camera);
 
-    player.active = Boolean(playerEntity && activeMode !== 'helicopter' && playerEntity.position.y < 2.6);
+    // (on the ground: over the hill it stands on, as roads climbing the hills carry the traffic up with them)
+    player.active = Boolean(playerEntity && activeMode !== 'helicopter'
+      && playerEntity.position.y - hillAt(playerEntity.position.x, playerEntity.position.z) < 2.6);
     if (playerEntity) {
       const heading = playerEntity.heading || 0;
       const speed = playerEntity.speed || 0;
@@ -2421,11 +2514,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     policeDrawn = 0;
     visibleBuses = 0;
     riderCrowd.begin();
-    let bikesDrawn = 0;
+    for (const kit of kits) kit.drawn = 0;
     for (let i = 0; i < vehicles.length; i++) {
       const v = vehicles[i];
       if (v.wreck) {
-        if (renderWreck(v, dt, bikesDrawn)) bikesDrawn++;
+        renderWreck(v, dt);
         continue;
       }
       if (!v.edge) continue;
@@ -2438,29 +2531,26 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       knock(v, dt);
       pose(v, dt);
       v.hy = hillAt(v.x, v.z);
-      if (v.bike) {
-        const hit = playerHits(v.x, v.z, 0.45);
-        if (hit) {
-          knockBike(v, hit);
-          if (renderWreck(v, 0, bikesDrawn)) bikesDrawn++;
+      if (v.kit) {
+        if (player.active && contactRider(v)) {
+          renderWreck(v, 0);
           continue;
         }
-      }
-      if (player.active) collideWithPlayer(v, v.yaw + v.yawOffset, v.bus ? 1.30 : v.bike ? 0.32 : v.isSUV ? 0.92 : 0.86, v.bus ? 5.72 : v.bike ? 0.95 : v.isSUV ? 2.22 : 2.18);
+      } else if (player.active) collideWithPlayer(v, v.yaw + v.yawOffset, v.bus ? 1.30 : v.halfWidth, v.bus ? 5.72 : v.half - 0.07);
       if (v.vx * v.vx + v.vz * v.vz > 0.36) knockOn(v);
 
-      if (v.bike) {
-        if (!hasView || visible(v.x, v.z, 3)) renderBike(v, dt, bikesDrawn++);
+      if (v.kit) {
+        if (!hasView || visible(v.x, v.z, 3)) renderBike(v, dt);
       } else if (v.bus) renderBus(v);
       else renderCar(v);
     }
     riderCrowd.end();
-    bikeFrameInst.count = bikesDrawn;
-    bikeWheelInst.count = bikesDrawn;
-    if (bikesDrawn) {
-      flagRange(bikeFrameInst.instanceMatrix, bikesDrawn);
-      flagRange(bikeWheelInst.instanceMatrix, bikesDrawn);
-      if (bikeFrameInst.instanceColor) flagRange(bikeFrameInst.instanceColor, bikesDrawn);
+    for (const kit of kits) {
+      kit.frame.count = kit.wheels.count = kit.drawn;
+      if (!kit.drawn) continue;
+      flagRange(kit.frame.instanceMatrix, kit.drawn);
+      flagRange(kit.wheels.instanceMatrix, kit.drawn);
+      if (kit.frame.instanceColor) flagRange(kit.frame.instanceColor, kit.drawn);
     }
     const hideEmpty = ++updates > 2;
     for (const m of bodyMeshes) {
@@ -2565,6 +2655,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     cars,
     buses,
     bikes,
+    motos,
     peds,
     network
   };

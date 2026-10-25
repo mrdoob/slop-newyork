@@ -46,6 +46,7 @@ const SPAWN = {
 };
 // HUD names of the player's characters & vehicles, in the city's language
 const LABELS = { person: 'Peatón', car: 'Taxi de Tepic', cyclist: 'Ciclista', helicopter: 'Helicóptero turístico' };
+const CAR_NAMES = { sedan: 'Sedán', suv: 'SUV', pickup: 'Pickup', van: 'Combi', hatch: 'Hatchback' };
 const groundCollider = { type: 'ground' };
 
 const CAR_DRIVE = {
@@ -417,7 +418,8 @@ class ThirdPersonControllerManager {
     return true;
   }
 
-  // The player's car takes the body and paint of the one it was taken from: taxi, sedan, SUV or police cruiser
+  // The player's car takes the body and paint of the one it was taken from: taxi, sedan, SUV, pickup, van, hatchback
+  // or police cruiser
   setCarLook(bodyType = 'taxi', paint = 0xffbe14, police = false) {
     const c = this.entities.car;
     const spec = BODY_SPECS[bodyType] || BODY_SPECS.taxi;
@@ -440,7 +442,7 @@ class ThirdPersonControllerManager {
     c.headLights.forEach((spot, i) => placeVehicleHeadlight(spot, spec, i === 0 ? -1 : 1));
     c.carState = mat.userData.carState;
     if (c.carState) c.carState.value.set(0, 0, 0, police ? 1 : 0); // (livery: 1 = police)
-    c.label = spec.name === 'taxi' ? LABELS.car : police ? 'Patrulla' : spec.name === 'suv' ? 'SUV' : 'Sedán';
+    c.label = spec.name === 'taxi' ? LABELS.car : police ? 'Patrulla' : CAR_NAMES[spec.name] || 'Sedán';
     c.look = { bodyType: spec.name, paint, police: Boolean(police) };
   }
 

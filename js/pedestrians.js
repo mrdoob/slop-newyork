@@ -1425,7 +1425,7 @@ class PersonRig {
    * Riding a bicycle: `root` (Object3D) is the bike frame (pose in its parent's space, e.g. the scene), `crank` the
    * pedal crank angle. Seat, bars and bottom bracket in the frame's space (metres, +Z forward).
    */
-  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17 }) {
+  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, footHalf = 0.1 }) {
     const s = this.s;
     const j = this.bind;
     this.gait = 0;
@@ -1476,9 +1476,10 @@ class PersonRig {
       _q2.multiply(qZ(_q, -side * ARM_BIND_ABDUCTION));
       this.writeBone(LIMB.forearm[i], _q2, _knee);
 
-      // pedals go round bottom, back, top, front as `crank` grows (pedalling forwards)
+      // pedals go round bottom, back, top, front as `crank` grows (pedalling forwards); with no crank, the feet rest
+      // on the pegs
       const a = crank + (i === 0 ? 0 : Math.PI);
-      const pedal = _v.set(side * 0.1, bracket.y - Math.cos(a) * crankLength, bracket.z - Math.sin(a) * crankLength);
+      const pedal = _v.set(side * footHalf, bracket.y - Math.cos(a) * crankLength, bracket.z - Math.sin(a) * crankLength);
       const footPitch = 0.16 + 0.16 * Math.cos(a) - 0.1 * Math.sin(a);
       qX(_q2, footPitch);
       // ball of the foot on the pedal: ankle = pedal - R * (ball offset from the ankle)
