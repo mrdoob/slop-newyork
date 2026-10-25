@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { CROSSWALK } from './road-network.js';
 import { createRoadPaintMaterial } from '../render/tsl-materials.js';
+import { drapeGeometry } from './drape.js';
 
 // js/world/road-paint.js
 // Road markings generated from the drivable road network (js/world/road-network.js), so the paint matches where traffic
@@ -195,7 +196,8 @@ function buildRoadPaint(scene, network) {
   geometry.setAttribute('paint', new THREE.Float32BufferAttribute(paint, 3));
   geometry.setIndex(index);
 
-  const mesh = new THREE.Mesh(geometry, createRoadPaintMaterial());
+  // laid on the town's slopes with the asphalt under it: each strip cut along the ground's lattice
+  const mesh = new THREE.Mesh(drapeGeometry(geometry), createRoadPaintMaterial());
   mesh.name = 'RoadMarkings';
   mesh.receiveShadow = true;
   mesh.renderOrder = -1; // under the other see-through ground effects (contact shadows, headlight beams)

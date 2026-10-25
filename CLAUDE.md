@@ -14,7 +14,7 @@ node --test tests/*.test.*           # client and tool tests (Node ≥ 22; no in
 - URL switches:
   - `?live-time=<ISO date>` and `?live-weather=<clear|cloudy|overcast|rain|storm|fog>` preview the Live time of day.
   - `?multiplayer=1` joins the room server (see `server/README.md`).
-  - `?slopes=1` puts the player, traffic and cameras on the town's real ground heights (`world/ground.js`). Work in progress: the streets and buildings are still built flat at y = 0.
+  - `?slopes=0` builds the flat city of before, everything at y = 0 (the default lays the town on its real slopes, `world/ground.js`).
 
 ## Layout
 

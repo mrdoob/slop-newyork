@@ -157,7 +157,8 @@ function stepTopple(f, dt, lying = Math.PI / 2 - 0.04, tall = 6) {
 }
 
 /**
- * The street furniture the player can knock over. `props`: [{ kind: 'cobra' | 'post' | 'hydrant', x, z, yaw, parts:
+ * The street furniture the player can knock over. `props`: [{ kind: 'cobra' | 'post' | 'hydrant', x, z, yaw, ground (the
+ * height its stand-in stands at), base (the ground's height under it), parts:
  * [{ mesh, index }], light? }], the parts being the prop's instances in the static InstancedMeshes (see street-details.js;
  * scene-culling.js may have split them into chunks, recorded in mesh.userData.chunked). `looks` gives each kind's
  * stand-in: { [kind]: [{ geometry, material }] } in the prop's own frame (base at the origin, +x towards the street).
@@ -198,9 +199,15 @@ class PropBreaker {
     this.solidAt = typeof fn === 'function' ? fn : null;
   }
 
+  // The ground's height at (x, z) (ground.js), for the player's height over it and the props thrown across it
+  setGroundQuery(fn) {
+    this.groundAt = typeof fn === 'function' ? fn : null;
+  }
+
   /** Knocks over whatever the player's car or bicycle runs into this frame */
   update(dt, entity, mode) {
-    if (entity && (mode === 'car' || mode === 'cyclist') && entity.position.y < 1.5) {
+    const over = entity ? entity.position.y - (this.groundAt ? this.groundAt(entity.position.x, entity.position.z) : 0) : 0;
+    if (entity && (mode === 'car' || mode === 'cyclist') && over < 1.5) {
       const heading = entity.heading || 0;
       const vx = Math.sin(heading) * (entity.speed || 0) + (entity.vx || 0);
       const vz = Math.cos(heading) * (entity.speed || 0) + (entity.vz || 0);
@@ -254,7 +261,8 @@ class PropBreaker {
       fall: startTopple(speed),
       tall: p.kind === 'cobra' ? 8.4 : p.kind === 'post' ? 3.9 : 0.9,
       // hydrants are knocked off their base and thrown
-      fly: p.kind === 'hydrant' ? { px: p.x, pz: p.z, vx: vx * 0.6 + hit.nx * 1.5, vy: 3 + speed * 0.12, vz: vz * 0.6 + hit.nz * 1.5, y: 0 } : null,
+      // (y over the ground under it, `base` where it stood)
+      fly: p.kind === 'hydrant' ? { px: p.x, pz: p.z, vx: vx * 0.6 + hit.nx * 1.5, vy: 3 + speed * 0.12, vz: vz * 0.6 + hit.nz * 1.5, y: 0, base: p.base || 0 } : null,
       jet: null
     };
     if (p.kind === 'hydrant') {
@@ -270,7 +278,7 @@ class PropBreaker {
       const e = this.event;
       e.a = p;
       e.b = p.parts[0]?.mesh || p;
-      e.x = p.x; e.y = 1.0; e.z = p.z;
+      e.x = p.x; e.y = 1.0 + (p.base || 0); e.z = p.z;
       e.nx = -hit.nx; e.nz = -hit.nz;
       e.speed = Math.min(speed, p.kind === 'hydrant' ? 6 : 12);
       this.listener(e);
@@ -293,7 +301,7 @@ class PropBreaker {
         slide(f, f.vx * dt, f.vz * dt, this.solidAt);
         d.root.position.x = f.px;
         d.root.position.z = f.pz;
-        d.root.position.y = f.y;
+        d.root.position.y = f.y + (this.groundAt ? this.groundAt(f.px, f.pz) : f.base);
         d.tilt.rotation.x = Math.min(Math.PI / 2, d.tilt.rotation.x + dt * 6);
       } else if (d.fall.rest < 1) {
         stepTopple(d.fall, dt, Math.PI / 2 - 0.04, d.tall);

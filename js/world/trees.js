@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { createTreeMaterial } from '../render/tsl-materials.js';
+import { liftAt } from './ground.js';
 
 // js/world/trees.js
 // Procedural street & park trees, planted by street-details.js (section 7):
@@ -983,7 +984,7 @@ function createTreeField(scene, sites) {
     cam.copy(position);
     if (cam.distanceToSquared(last) < 16) return false;
     last.copy(cam);
-    const low = cam.y < 40;
+    const low = cam.y - liftAt(cam.x, cam.z) < 40; // near the ground (the town's slopes put it well over y = 0)
     let changed = false;
     for (let i = 0; i < N; i++) {
       const dx = px[i] - cam.x;

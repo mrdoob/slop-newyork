@@ -11,6 +11,8 @@ import {
   createParkLampPoolMaterial
 } from '../render/tsl-materials.js';
 import { GEO } from './city-geodata.js';
+import { SLOPES, liftAt, groundSlope } from './ground.js';
+import { drapeMeshes } from './drape.js';
 
 // Live construction data consumed by the building and street-detail builders after buildCityGrid().
 let parkTreeSites;
@@ -21,7 +23,8 @@ let sidewalkBlocks;
 // js/world/city-grid.js
 // Builds the city's ground: the valley floor, the roadway deck over the city outline, the raised sidewalks &
 // curbstones of every real curb island (city-config.js BLOCKS), the open country between the roads, and the parks &
-// plazas with their walks, lawns, trees and lamps.
+// plazas with their walks, lawns, trees and lamps. All of it is built flat at y = 0 and laid on the town's slopes at
+// the end (drape.js), its lamps & trees set on the ground under them.
 
 /**
  * Merges static non-instanced THREE.Mesh objects sharing the same material into a single
@@ -106,6 +109,45 @@ function createExtrudedPolygonMesh(pts, bottomY, height, material, receiveShadow
   return mesh;
 }
 
+/**
+ * A curb as much as shows of it around a sidewalk slab inset into it: the walls of `outer` from the ground up to
+ * `height`, and the top as the ring between `outer` and `inner` (the same polygon offset inward, vertex by vertex).
+ * Laid on the slopes its full top would be cut up along the ground's lattice under the slab for nothing.
+ */
+function createCurbRingGeometry(outer, inner, height) {
+  const position = [];
+  const normal = [];
+  const tri = (a, b, c, nx, ny, nz) => {
+    // wound to face (nx, ny, nz)
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+    const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const face = (uy * vz - uz * vy) * nx + (uz * vx - ux * vz) * ny + (ux * vy - uy * vx) * nz;
+    if (face < 0) [b, c] = [c, b];
+    position.push(...a, ...b, ...c);
+    for (let k = 0; k < 3; k++) normal.push(nx, ny, nz);
+  };
+  const n = outer.length;
+  for (let i = 0; i < n; i++) {
+    const p = outer[i], q = outer[(i + 1) % n], pi = inner[i], qi = inner[(i + 1) % n];
+    // the wall faces away from the inner ring
+    let ox = -(q.z - p.z), oz = q.x - p.x;
+    const len = Math.hypot(ox, oz) || 1;
+    ox /= len; oz /= len;
+    if ((pi.x + qi.x - p.x - q.x) * ox + (pi.z + qi.z - p.z - q.z) * oz > 0) { ox = -ox; oz = -oz; }
+    const p0 = [p.x, 0, p.z], q0 = [q.x, 0, q.z], p1 = [p.x, height, p.z], q1 = [q.x, height, q.z];
+    tri(p0, q0, q1, ox, 0, oz);
+    tri(p0, q1, p1, ox, 0, oz);
+    const pin = [pi.x, height, pi.z], qin = [qi.x, height, qi.z];
+    tri(p1, q1, qin, 0, 1, 0);
+    tri(p1, qin, pin, 0, 1, 0);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((position.length / 3) * 2), 2));
+  return geo;
+}
+
 function createFlatPolygonMesh(pts, y, material, receiveShadow = true) {
   const shape = createWorldXZShape(pts);
   const geo = new THREE.ShapeGeometry(shape, 1);
@@ -176,15 +218,28 @@ function buildCityGrid(scene) {
   // =========================================================================
   // 1. THE VALLEY FLOOR
   // =========================================================================
+  let valleyMesh;
   {
-    // Dry valley floor out to the horizon around the detailed box (the roads deck sits on it)
+    // Dry valley floor out to the horizon around the detailed box (the roads deck sits on it). On the town's slopes the
+    // hills' mesh (terrain.js) is the ground over all of its grid, and the floor rings it at the far floor's height
     const groundMat = new THREE.MeshStandardNodeMaterial({ color: 0x56653c, roughness: 0.96, metalness: 0.0 });
-    const groundGeo = new THREE.PlaneGeometry(60000, 60000, 1, 1);
-    groundGeo.rotateX(-Math.PI / 2);
-    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
-    groundMesh.position.set(0, -0.03, 0);
-    groundMesh.receiveShadow = true;
-    group.add(groundMesh);
+    let groundGeo;
+    const T = GEO.terrain;
+    if (SLOPES && T && GEO.ground) {
+      const R = 30000;
+      const ring = createWorldXZShape([{ x: -R, z: -R }, { x: R, z: -R }, { x: R, z: R }, { x: -R, z: R }]);
+      const x1 = T.x0 + (T.w - 1) * T.cell, z1 = T.z0 + (T.h - 1) * T.cell;
+      ring.holes.push(createWorldXZShape([{ x: T.x0, z: T.z0 }, { x: x1, z: T.z0 }, { x: x1, z: z1 }, { x: T.x0, z: z1 }]));
+      groundGeo = new THREE.ShapeGeometry(ring, 1);
+      groundGeo.rotateX(-Math.PI / 2);
+    } else {
+      groundGeo = new THREE.PlaneGeometry(60000, 60000, 1, 1);
+      groundGeo.rotateX(-Math.PI / 2);
+    }
+    valleyMesh = new THREE.Mesh(groundGeo, groundMat);
+    valleyMesh.position.set(0, (SLOPES && GEO.ground ? GEO.ground.floor : 0) - 0.03, 0);
+    valleyMesh.receiveShadow = true;
+    group.add(valleyMesh);
   }
 
   // =========================================================================
@@ -219,13 +274,18 @@ function buildCityGrid(scene) {
     if (b.rect) {
       const slab = { cx: (b.minX + b.maxX) * 0.5, cz: (b.minZ + b.maxZ) * 0.5, w: b.maxX - b.minX, d: b.maxZ - b.minZ, block: b };
       blockSidewalks.push(slab);
+      if (SLOPES) {
+        // laid on the slopes with the extruded islands (an instanced box can't bend)
+        slabGeos.push(new THREE.BoxGeometry(slab.w - 0.5, 0.19, slab.d - 0.5).translate(slab.cx, 0.125, slab.cz).toNonIndexed());
+        curbGeos.push(new THREE.BoxGeometry(slab.w, 0.17, slab.d).translate(slab.cx, 0.095, slab.cz).toNonIndexed());
+        slab.draped = true;
+      }
       if (b.median) addFootprint(slab.cx, slab.cz, slab.w, slab.d);
       else roadSidewalks.push({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ });
     } else {
       // curb (granite) ring under a sidewalk slab inset by 0.25 m, like the instanced pair below
-      const curb = createExtrudedPolygonMesh(b.poly, 0.0, 0.18, curbMat).geometry;
-      curbGeos.push(curb);
       const inner = offsetPolygonInward(b.poly, 0.25);
+      curbGeos.push(SLOPES && inner ? createCurbRingGeometry(b.poly, inner, 0.18) : createExtrudedPolygonMesh(b.poly, 0.0, 0.18, curbMat).geometry);
       if (inner) slabGeos.push(createExtrudedPolygonMesh(inner, 0.03, SW_TOP - 0.03, sidewalkMat).geometry);
       // rect cover for the consumers that work on rectangles: the lot rects grown back out to (just short of) the curb,
       // by the city's sidewalk width (2.2 m in Tepic: more would reach into the lanes)
@@ -254,7 +314,7 @@ function buildCityGrid(scene) {
   mergeInto(slabGeos, sidewalkMat);
   mergeInto(hedgeGeos, medianHedgeMat, true);
 
-  const rectSlabs = blockSidewalks.filter((s) => !s.cover);
+  const rectSlabs = blockSidewalks.filter((s) => !s.cover && !s.draped);
   const swInstanced = new THREE.InstancedMesh(unitBox, sidewalkMat, rectSlabs.length);
   const curbInstanced = new THREE.InstancedMesh(unitBox, curbMat, rectSlabs.length);
   swInstanced.receiveShadow = true;
@@ -275,7 +335,7 @@ function buildCityGrid(scene) {
   });
   swInstanced.instanceMatrix.needsUpdate = true;
   curbInstanced.instanceMatrix.needsUpdate = true;
-  group.add(swInstanced, curbInstanced);
+  if (rectSlabs.length) group.add(swInstanced, curbInstanced); // (none left on the slopes: an empty buffer can't bind)
 
   // 6. Park furniture shared by the parks (section 7): paving, granite copings, lampposts & trees
   const pavingMat = createParkPavingMaterial();
@@ -285,7 +345,7 @@ function buildCityGrid(scene) {
   const pavedRects = []; // park slab bounds, exported so street trees (street-details.js) stay off them
 
   function addLamp(x, y, z) {
-    lampMatrices.push(new THREE.Matrix4().makeTranslation(x, y, z));
+    lampMatrices.push(new THREE.Matrix4().makeTranslation(x, y + liftAt(x, z), z));
   }
 
   // 7. THE PARKS: every park block's curb island paved like a park walk, a granite-coped lawn inset from it under
@@ -340,7 +400,7 @@ function buildCityGrid(scene) {
         const inner = lawnTop || bed;
         if (!inPolygon(tx, tz, inner)) continue;
         const r = prand(tx, tz, 2);
-        treeSites.push({ x: tx, y: BED_Y, z: tz, scale: 0.9 + prand(tx, tz, 3) * 0.4, species: r < 0.55 ? 0 : (r < 0.75 ? 1 : 2) });
+        treeSites.push({ x: tx, y: BED_Y + liftAt(tx, tz), z: tz, scale: 0.9 + prand(tx, tz, 3) * 0.4, species: r < 0.55 ? 0 : (r < 0.75 ? 1 : 2) });
       }
     }
     // lampposts every ~34 m along the walk
@@ -381,8 +441,13 @@ function buildCityGrid(scene) {
     // Warm pools of lamplight on the walks & bed copings after dusk (additive decal, black by day)
     const poolInst = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), createParkLampPoolMaterial(), lampMatrices.length);
     const poolM = new THREE.Matrix4();
+    const up = new THREE.Vector3(0, 1, 0), normal = new THREE.Vector3(), tilt = new THREE.Quaternion();
+    const at = new THREE.Vector3(), size = new THREE.Vector3(14, 1, 14), slope = [0, 0];
     lampMatrices.forEach((m, i) => {
-      poolInst.setMatrixAt(i, poolM.makeScale(14, 1, 14).setPosition(m.elements[12], m.elements[13] + 0.17, m.elements[14]));
+      // tilted with the ground: a flat 14 m pool would stand off a sloping walk on one side
+      if (SLOPES) groundSlope(m.elements[12], m.elements[14], slope);
+      tilt.setFromUnitVectors(up, normal.set(-slope[0], 1, -slope[1]).normalize());
+      poolInst.setMatrixAt(i, poolM.compose(at.set(m.elements[12], m.elements[13] + 0.17, m.elements[14]), tilt, size));
     });
     poolInst.instanceMatrix.needsUpdate = true;
     poolInst.computeBoundingSphere();
@@ -397,6 +462,8 @@ function buildCityGrid(scene) {
 
   // Batch static sub-meshes by material to reduce per-frame WebGPU draw calls
   batchStaticGroupMeshes(group, new Set([roadMat, meadowMat]));
+  // ...and lay them on the town's slopes; the valley floor beyond the hills' grid stays flat
+  drapeMeshes(group, new Set([valleyMesh]));
 
   scene.add(group);
 

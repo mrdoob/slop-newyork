@@ -498,7 +498,8 @@ class ThirdPersonControllerManager {
     this.resetInput();
     if (!Number.isFinite(heading)) heading = ent.heading;
     const heli = this.activeMode === 'helicopter';
-    const altitude = heli ? Math.max(0.25, Math.min(380, savedAltitude ?? Math.max(92, ent.position.y))) : 0;
+    const floor = heli ? this.floorHeight(x, z) : 0; // (the helicopter flies up to 380 m over the town's floor)
+    const altitude = heli ? Math.max(floor + 0.25, Math.min(floor + 380, savedAltitude ?? Math.max(floor + 92, ent.position.y))) : 0;
     const destination = this.findTeleportPosition(x, z, heading, altitude);
     if (destination) {
       ent.position.x = destination.x;
@@ -520,6 +521,7 @@ class ThirdPersonControllerManager {
       ent.crowd.add(ent.rig, 0);
       ent.crowd.end();
     } else if (ent.type === 'car') {
+      this.tiltToGround(ent, 1);
       ent.vx = ent.vz = ent.angularVel = ent.steerAngle = 0;
       ent.pitchVel = ent.rollVel = ent.heaveY = ent.heaveVel = 0;
       ent.chassisPivot.rotation.x = ent.chassisPivot.rotation.z = 0;
@@ -528,6 +530,7 @@ class ThirdPersonControllerManager {
       for (const wheel of ent.wheels) if (wheel.isFront) wheel.steerPivot.rotation.y = 0;
       if (ent.carState) ent.carState.value.x = 1;
     } else if (ent.type === 'cyclist') {
+      this.tiltToGround(ent, 1);
       ent.leanAngle = ent.leanPivot.rotation.z = 0;
     } else {
       ent.verticalSpeed = ent.pitchAngle = ent.rollAngle = 0;
@@ -536,6 +539,18 @@ class ThirdPersonControllerManager {
     }
     ent.mesh.position.copy(ent.position);
     ent.mesh.rotation.y = ent.heading;
+  }
+
+  // Lays a car or bicycle on the slope under its wheels (the tilt eased by k of the way, 1: at once): its whole body
+  // with the wheels & contact shadow; a bicycle only pitches (its rider leans it, see updateCyclist)
+  tiltToGround(ent, k) {
+    const car = ent.type === 'car';
+    const t = this.groundTilt(ent.position.x, ent.position.z, ent.heading, car ? 1.35 : 0.55, car ? 0.8 : 0.3, (this._tilt ??= {}));
+    ent.groundPitch = (ent.groundPitch || 0) + (t.pitch - (ent.groundPitch || 0)) * k;
+    ent.groundRoll = car ? (ent.groundRoll || 0) + (t.roll - (ent.groundRoll || 0)) * k : 0;
+    ent.mesh.rotation.order = 'YXZ';
+    ent.mesh.rotation.x = ent.groundPitch;
+    ent.mesh.rotation.z = ent.groundRoll;
   }
 
   // Find a fully clear arrival before moving the player. Sequential collision pushes can leave a player trapped
@@ -626,6 +641,7 @@ class ThirdPersonControllerManager {
       type: 'person',
       label: LABELS.person,
       mesh: root,
+      shadow: pedShadow,
       crowd,
       rig,
       position: new THREE.Vector3(SPAWN.person.x, ISLAND_BOUNDS.sidewalkHeight, SPAWN.person.z),
@@ -1015,12 +1031,41 @@ class ThirdPersonControllerManager {
   }
 
   getGroundHeight(x, z, mode = 'person') {
-    // the hills over the flat city (terrain.js): everyone stands on them
-    const hill = this.terrainAt ? this.terrainAt(x, z) : 0;
+    // the ground (ground.js): the town's floor & the hills over it; everyone stands on it, a walker on the curbs over
+    // the town's floor (unless a hill rises above them)
+    const ground = this.terrainAt ? this.terrainAt(x, z) : 0;
     if (mode === 'person') {
-      return Math.max(this.isPointOnSidewalk(x, z) ? ISLAND_BOUNDS.sidewalkHeight : 0.0, hill);
+      const town = this.floorHeight(x, z);
+      return town + Math.max(this.isPointOnSidewalk(x, z) ? ISLAND_BOUNDS.sidewalkHeight : 0.0, ground - town);
     }
-    return hill;
+    return ground;
+  }
+
+  // The town's floor under (x, z) (ground.js townHeight: its slopes, 0 in the flat city), the helicopter's
+  // altitudes are reckoned from
+  floorHeight(x, z) {
+    return this.floorAt ? this.floorAt(x, z) : 0;
+  }
+
+  // The tilt of the ground under a body reaching `along` m ahead & behind and `across` m to either side of (x, z) facing
+  // `heading`, into out: { pitch, roll } for its root (Euler order YXZ: the nose up is a negative pitch, three's sense)
+  groundTilt(x, z, heading, along, across, out) {
+    out.pitch = out.roll = 0;
+    const g = this.terrainAt;
+    if (!g) return out;
+    const fx = Math.sin(heading), fz = Math.cos(heading); // ahead; left is (fz, -fx)
+    out.pitch = -Math.atan2(g(x + fx * along, z + fz * along) - g(x - fx * along, z - fz * along), 2 * along);
+    out.roll = Math.atan2(g(x + fz * across, z - fx * across) - g(x - fz * across, z + fx * across), 2 * across);
+    return out;
+  }
+
+  // Speed gained (m/s², down the slope) by a wheeled entity rolling along `heading` on the ground at (x, z)
+  slopeAcceleration(x, z, heading) {
+    const g = this.terrainAt;
+    if (!g) return 0;
+    const fx = Math.sin(heading), fz = Math.cos(heading);
+    const grade = (g(x + fx * 0.5, z + fz * 0.5) - g(x - fx * 0.5, z - fz * 0.5));
+    return -9.81 * grade / Math.hypot(1, grade);
   }
 
   // The colliders whose bounds come within `r` of (x, z), in their original order. They never move, so they are
@@ -1140,7 +1185,7 @@ class ThirdPersonControllerManager {
             if (vn > 2.2) {
               carEntity.lastCollisionSpark = {
                 x: pos.x - nx * extX * 0.92,
-                y: 0.56,
+                y: 0.56, // over the ground (traffic.js spawnCollisionSparks)
                 z: pos.z - nz * extZ * 0.92,
                 nx,
                 nz,
@@ -1187,9 +1232,17 @@ class ThirdPersonControllerManager {
     b.helmet.position.set(0, 0.175, -0.012).applyQuaternion(b.helmet.quaternion).add(b.riderRig.headPosition);
   }
 
-  // Height of the hills over the flat city at (x, z) (terrain.js), for the slopes the player can't drive up
-  setTerrain(fn) {
-    this.terrainAt = typeof fn === 'function' ? fn : null;
+  // The ground at (x, z) (ground.js groundHeight: the hills over the town's floor), for where everyone stands and the
+  // slopes the player can't drive up, and the town's floor alone (townHeight). The vehicles left standing are set on
+  // it (they were built at y = 0)
+  setTerrain(ground, floor = null) {
+    this.terrainAt = typeof ground === 'function' ? ground : null;
+    this.floorAt = typeof floor === 'function' ? floor : null;
+    for (const mode of ['person', 'car', 'cyclist']) {
+      const e = this.entities[mode];
+      e.position.y = this.getGroundHeight(e.position.x, e.position.z, mode);
+      this.settle(e);
+    }
   }
 
   // The hills: on foot, by bicycle or by car the player climbs them up to its own steepest grade (rise over run: a walker
@@ -1253,11 +1306,18 @@ class ThirdPersonControllerManager {
       this.updateHelicopter(dt, elapsed);
     }
     this.keepOffHills(active, prevX, prevZ);
+    if (this.activeMode === 'car' || this.activeMode === 'cyclist') this.tiltToGround(active, 1 - Math.exp(-dt * 14));
 
     for (const key of Object.keys(this.entities)) {
       const e = this.entities[key];
       e.mesh.position.copy(e.position);
       e.mesh.rotation.y = e.heading;
+    }
+    // the walker's contact shadow lies on the slope under it
+    if (this.activeMode === 'person') {
+      const p = this.entities.person;
+      const t = this.groundTilt(p.position.x, p.position.z, p.heading, 0.45, 0.45, (this._tilt ??= {}));
+      p.shadow.rotation.set(t.pitch, 0, t.roll, 'YXZ');
     }
 
     // Modulate clustered vehicle & bike lights by time of day (off during Midday & Golden Hour; fade in at Dusk & Night)
@@ -1319,6 +1379,8 @@ class ThirdPersonControllerManager {
     const braking = c.speed * throttle < 0;
     const previousSpeed = c.speed;
     c.speed = driveSpeed(c.speed, throttle, this.keys.boost, dt, CAR_DRIVE);
+    // rolling down a slope speeds it up, up one slows it (a car standing still keeps its handbrake on)
+    if (throttle || Math.abs(c.speed) > 0.3) c.speed += this.slopeAcceleration(c.position.x, c.position.z, c.heading) * dt;
     const acceleration = dt > 0 ? (c.speed - previousSpeed) / dt : 0;
 
     let steerInput = 0;
@@ -1386,6 +1448,7 @@ class ThirdPersonControllerManager {
     else if (this.keys.backward) throttle = -0.6 * this.keys.backward;
 
     b.speed = driveSpeed(b.speed, throttle, this.keys.boost, dt, BICYCLE_DRIVE);
+    if (throttle || Math.abs(b.speed) > 0.3) b.speed += this.slopeAcceleration(b.position.x, b.position.z, b.heading) * dt;
 
     let turnInput = 0;
     if (this.keys.left) turnInput = this.keys.left;
@@ -1453,10 +1516,12 @@ class ThirdPersonControllerManager {
     h.position.z += Math.cos(h.heading) * h.speed * dt;
     h.position.y += h.verticalSpeed * dt;
 
-    if (h.position.y < 0.25) {
-      this.reportCollision(h, groundCollider, 'ground', h.position.x, 0.25, h.position.z, 0, 1, 0, -h.verticalSpeed);
+    // from the town's floor up to 380 m over it (the hills are kept below it by keepOffHills)
+    const floor = this.floorHeight(h.position.x, h.position.z);
+    if (h.position.y < floor + 0.25) {
+      this.reportCollision(h, groundCollider, 'ground', h.position.x, floor + 0.25, h.position.z, 0, 1, 0, -h.verticalSpeed);
     }
-    h.position.y = Math.max(0.25, Math.min(380, h.position.y));
+    h.position.y = Math.max(floor + 0.25, Math.min(floor + 380, h.position.y));
     this.resolveHorizontalCollision(h.position, 4.5, null, h);
 
     const targetPitch = (h.speed / maxHorizSpeed) * 0.24;

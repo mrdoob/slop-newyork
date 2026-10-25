@@ -475,3 +475,45 @@ test('player clearance respects altitude and permits a ground arrival under an a
   helicopter.position.y = 1;
   assert.notDeepEqual({ ...controller.teleportActiveTo(0, 0) }, { x: 0, z: 0 }, 'a helicopter parked at street level must be avoided');
 });
+
+// The town's slopes (ground.js): a floor rising 0.1 m per metre south (+z) and 0.05 m per metre east (+x)
+function slopeHarness(hill = () => 0) {
+  const { controller } = keyboardHarness({ ISLAND_BOUNDS: { sidewalkHeight: 0.22 } });
+  const floor = (x, z) => 120 + x * 0.05 + z * 0.1;
+  controller.terrainAt = (x, z) => floor(x, z) + hill(x, z);
+  controller.floorAt = floor;
+  controller.isPointOnSidewalk = () => true;
+  return { controller, floor };
+}
+const near = (actual, expected, eps = 1e-9) => assert.ok(Math.abs(actual - expected) < eps, `${actual} should equal ${expected}`);
+
+test('on the slopes a walker stands on the curb over the town floor, a hill above it wins, vehicles on the ground', () => {
+  const { controller, floor } = slopeHarness();
+  near(controller.getGroundHeight(10, 20, 'person'), floor(10, 20) + 0.22);
+  near(controller.getGroundHeight(10, 20, 'car'), floor(10, 20));
+  near(controller.floorHeight(10, 20), floor(10, 20));
+  const hilly = slopeHarness(() => 3).controller;
+  near(hilly.getGroundHeight(10, 20, 'person'), floor(10, 20) + 3);
+});
+
+test('a vehicle tilts with the ground under its wheels and rolls down the slope', () => {
+  const { controller } = slopeHarness();
+  const t = {};
+  // heading 0 faces +z (uphill 0.1), its left is +x (up 0.05)
+  controller.groundTilt(0, 0, 0, 1.35, 0.8, t);
+  near(t.pitch, -Math.atan(0.1));
+  near(t.roll, Math.atan(0.05));
+  // facing -x: downhill 0.05 ahead, uphill 0.1 to its left (+z)
+  controller.groundTilt(0, 0, -Math.PI / 2, 1.35, 0.8, t);
+  near(t.pitch, Math.atan(0.05));
+  near(t.roll, Math.atan(0.1));
+  near(controller.slopeAcceleration(0, 0, 0), -9.81 * 0.1 / Math.hypot(1, 0.1));
+  near(controller.slopeAcceleration(0, 0, Math.PI), 9.81 * 0.1 / Math.hypot(1, 0.1));
+  // flat ground: no tilt, no pull
+  const flat = slopeHarness().controller;
+  flat.terrainAt = () => 0;
+  flat.groundTilt(5, 5, 1, 1, 1, t);
+  near(t.pitch, 0);
+  near(t.roll, 0);
+  near(flat.slopeAcceleration(5, 5, 1), 0);
+});

@@ -182,7 +182,7 @@ function populationContext() {
   const context = {
     Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
     clamp: (x, lo, hi) => Math.max(lo, Math.min(hi, x)),
-    hasView: true, camX: 0, camY: 10, camZ: 0, visible: () => true,
+    hasView: true, camX: 0, camY: 10, camZ: 0, visible: () => true, hillAt: () => 0,
     focusX: 0, focusZ: 0, player: { active: false },
     clock: 0,
     VEHICLE_SPAWN_DISTANCE: 250, PED_SPAWN_DISTANCE: 150, NEAR_RADIUS: 350,
@@ -257,4 +257,13 @@ test('crossing pedestrians fall back to a sidewalk when nearby crosswalks are un
   assert.equal(crossings, 5);
   assert.equal(ped.node, null);
   assert.equal(ped.z, 210);
+});
+
+test('vehicles pitch with the ground between their axles', () => {
+  // the ground rising 0.1 m per metre north (-z)
+  const groundPitch = trafficFunction('groundPitch', { Math, hillAt: (x, z) => 50 - 0.1 * z });
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} should equal ${b}`);
+  close(groundPitch({ x: 0, z: 0, tx: 0, tz: -1, axle: 1.4 }), -Math.atan(0.1)); // heading uphill: nose up
+  close(groundPitch({ x: 0, z: 0, tx: 0, tz: 1, axle: 1.4 }), Math.atan(0.1)); // downhill: nose down
+  close(groundPitch({ x: 0, z: 0, tx: 1, tz: 0 }), 0); // across the slope
 });

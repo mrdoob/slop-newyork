@@ -19,7 +19,7 @@ import { CityMapSystem } from './ui/city-map.js';
 import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js';
 import { CityAudioSystem } from './audio/audio-system.js';
 import { buildTerrain } from './world/terrain.js';
-import { groundHeight } from './world/ground.js';
+import { groundHeight, townHeight, liftAt } from './world/ground.js';
 import { buildTepicLandmarks } from './world/tepic-landmarks.js';
 
 // js/main.js
@@ -93,11 +93,11 @@ async function initApp() {
   markInit('streetDetails');
   // Buildings turned along non-grid streets have oriented colliders whose world bounds reach past their lots: they stay
   // inside the property line anyway, so the road network (lanes & sidewalks) doesn't need them.
-  // Elevated building sections that clear even a bus don't obstruct ground traffic.
+  // Elevated building sections that clear even a bus (3.5 m over the ground under them) don't obstruct ground traffic.
   const trafficSystem = createTrafficSystem(scene, cityGrid.sidewalks, [
     ...cityGrid.footprints,
     ...streetDetails.footprints,
-    ...allColliders.filter((c) => !c.obb && (c.minY ?? 0) < 3.5)
+    ...allColliders.filter((c) => !c.obb && (c.minY ?? 0) - liftAt((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2) < 3.5)
   ]);
   markInit('traffic');
   // Mast-arm traffic signals at the signalised junctions of a city off the grid (the grid's are built with the streets)
@@ -108,13 +108,14 @@ async function initApp() {
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
-  // The ground (ground.js): the hills over the flat city, and the town's own slopes under them with ?slopes=1
-  controllerManager.setTerrain(groundHeight);
+  // The ground (ground.js): the town's own slopes and the hills over them (the flat city with ?slopes=0)
+  controllerManager.setTerrain(groundHeight, townHeight);
   trafficSystem.setHillQuery(groundHeight);
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
   const solidAt = (x, z) => controllerManager.isSolidAt(x, z, 1.5, groundHeight(x, z));
   trafficSystem.setSolidQuery(solidAt);
   streetDetails.breaker?.setSolidQuery(solidAt);
+  streetDetails.breaker?.setGroundQuery(groundHeight);
   // Saved positions belong to one city's frame: the key carries the city's name
   const PLAYER_STATE_KEY = `${(CITY.city || 'city').toLowerCase()}-player-state`;
   // Reuse teleport placement so saved players return at rest, close to their last positions. The game always starts
@@ -185,7 +186,7 @@ async function initApp() {
 
   // City-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
   // (scene-culling.js)
-  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails']
+  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails', 'Hills']
     .map((name) => scene.getObjectByName(name))
     .filter(Boolean);
   setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);
@@ -859,7 +860,9 @@ async function initApp() {
       const activeEnt = controllerManager.getActiveEntity();
       const mode = controllerManager.activeMode;
       const mph = Math.round(Math.abs(activeEnt.speed) * 2.237);
-      const altFt = Math.max(0, Math.round(activeEnt.position.y * 3.281));
+      // over the town's floor (its slopes put the streets well over y = 0)
+      const altM = activeEnt.position.y - controllerManager.floorHeight(activeEnt.position.x, activeEnt.position.z);
+      const altFt = Math.max(0, Math.round(altM * 3.281));
 
       if (elFps) {
         elFps.textContent = String(currentFps);

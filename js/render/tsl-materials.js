@@ -54,8 +54,10 @@ import {
   specularColorBlended,
   specularF90,
   uniformArray,
-  int
+  int,
+  select
 } from 'three/tsl';
+import { townGrid } from '../world/ground.js';
 
 // js/render/tsl-materials.js
 // Photorealistic TSL (Three.js Shading Language) procedural shaders for Three.js r186 WebGPURenderer
@@ -153,14 +155,43 @@ const filteredPulse = Fn(([x, a, b, w]) => {
 });
 
 /**
+ * The height of the town's floor under a world (x, z), for shading by the height over the ground: ground.js's grid as a
+ * half-float texture (to ~0.2 m), its four nodes around (x, z) read as they are and blended on the same triangles the
+ * ground is (each cell split from its +x corner to its +z corner), the floor beyond it; 0 in the flat city (?slopes=0)
+ */
+const townFloorNode = (() => {
+  if (!townGrid) return () => float(0.0);
+  const { x0, z0, cell, w, h, heights } = townGrid;
+  const half = new Uint16Array(w * h);
+  for (let i = 0; i < half.length; i++) half[i] = THREE.DataUtils.toHalfFloat(heights[i]);
+  const tex = new THREE.DataTexture(half, w, h, THREE.RedFormat, THREE.HalfFloatType);
+  tex.magFilter = tex.minFilter = THREE.NearestFilter;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  const size = vec2(w, h);
+  return (xz) => {
+    const f = xz.sub(vec2(x0, z0)).div(cell); // in cells from the grid's first node
+    const ij = floor(f);
+    const t = f.sub(ij);
+    const node = (di, dj) => texture(tex, ij.add(vec2(di + 0.5, dj + 0.5)).div(size)).r;
+    const h00 = node(0, 0), h10 = node(1, 0), h01 = node(0, 1), h11 = node(1, 1);
+    const near = h00.add(h10.sub(h00).mul(t.x)).add(h01.sub(h00).mul(t.y));
+    const far = h11.add(h01.sub(h11).mul(float(1.0).sub(t.x))).add(h10.sub(h11).mul(float(1.0).sub(t.y)));
+    return select(t.x.add(t.y).lessThanEqual(1.0), near, far);
+  };
+})();
+
+/**
  * Occlusion-Aware Street Canyon Sky Visibility (aoNode)
- * Models how street canyons occlude overhead sky irradiance near the street floor (y = 0..65m), opening up on
- * upper floors.
+ * Models how street canyons occlude overhead sky irradiance near the street floor (0..65 m over the ground), opening
+ * up on upper floors.
  */
 const canyonSkyAONode = Fn(() => {
   const wp = positionWorld;
-  const heightOpenness = smoothstep(0.0, 68.0, wp.y);
-  const streetCrevice = smoothstep(0.0, 7.5, wp.y).mul(0.22).add(0.78);
+  // over the ground (the town's slopes): its floor found once a vertex, linear across the ground's triangles
+  const y = townGrid ? wp.y.sub(varying(townFloorNode(wp.xz))) : wp.y;
+  const heightOpenness = smoothstep(0.0, 68.0, y);
+  const streetCrevice = smoothstep(0.0, 7.5, y).mul(0.22).add(0.78);
   return mix(float(0.44), float(1.0), heightOpenness).mul(streetCrevice);
 });
 
@@ -1929,6 +1960,7 @@ function createCarFlareMaterial() {
 
 export {
   cityUniforms,
+  townFloorNode,
   WALL_KINDS,
   atlasSlotUV,
   createMexicanHouseMaterial,

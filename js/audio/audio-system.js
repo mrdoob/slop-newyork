@@ -87,6 +87,7 @@ class SpatialEmitter {
 class CityAudioSystem {
   constructor(simulation, { onStateChange = () => {} } = {}) {
     this.sources = new CityAudioSources(simulation);
+    this.controllers = simulation.controllerManager;
     this.acoustics = new CityAcoustics(simulation.controllerManager);
     this.onStateChange = onStateChange;
     this.context = null;
@@ -490,7 +491,9 @@ class CityAudioSystem {
         }
       }
     }
-    Object.assign(this.windParams, { speed: Math.min(sources.motion, 50), altitude: position.y, traffic: sources.traffic, night: night ? 1 : 0, enclosure });
+    // (the altitude over the town's floor: its slopes put the streets well over y = 0)
+    const altitude = position.y - (this.controllers ? this.controllers.floorHeight(position.x, position.z) : 0);
+    Object.assign(this.windParams, { speed: Math.min(sources.motion, 50), altitude, traffic: sources.traffic, night: night ? 1 : 0, enclosure });
     this.wind.update(this.windParams, now);
   }
 

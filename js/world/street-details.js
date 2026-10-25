@@ -1,20 +1,22 @@
 import * as THREE from 'three/webgpu';
-import { Fn, float, color, positionWorld, uniform, mod, step, smoothstep, mix, attribute, texture } from 'three/tsl';
+import { Fn, float, color, positionGeometry, uniform, mod, step, smoothstep, mix, attribute, texture } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SIGNAL_TIMING, blockAt, BLOCKS, nearestRoads } from './city-config.js';
 import { cityUniforms, createTreeGrateMaterial, atlasSlotUV } from '../render/tsl-materials.js';
 import { PropBreaker } from '../sim/mayhem.js';
 import { createTreeField } from './trees.js';
 import { pavedPlazaRects, parkTreeSites, sidewalkBlocks, parkLampSites } from './city-grid.js';
+import { liftAt } from './ground.js';
 
 // js/world/street-details.js
 // Populates the city's streets with street furniture using InstancedMesh:
 // - Mast-arm traffic signals at the road network's signalised junctions (addJunctionSignals)
 // - Cobra-head streetlights along the curbs and post-top lamps in the centro
 // - Fire hydrants, park & street trees
+// Each prop stands on the ground at its base (ground.js liftAt: the town's slopes, y = 0 in the flat city).
 
 /**
- * TSL 3-Aspect Traffic Signal Lens Material (Red y=5.78, Amber y=5.42, Green y=5.06)
+ * TSL 3-Aspect Traffic Signal Lens Material (red on top, amber, green: the lenses at 0.36, 0, -0.36 in the head)
  * Driven by the shared signal clock and SIGNAL_TIMING (city-config.js), which js/sim/traffic.js obeys.
  */
 function createTrafficSignalLensMaterial(isAvenueHead, clock) {
@@ -22,9 +24,10 @@ function createTrafficSignalLensMaterial(isAvenueHead, clock) {
   const mat = new THREE.MeshBasicNodeMaterial();
   mat.colorNode = Fn(() => {
     const t = mod(clock, cycle);
-    const wy = positionWorld.y;
-    const isTopRed = step(5.60, wy);
-    const isBottomGreen = float(1.0).sub(step(5.24, wy));
+    // which lens, from its height in the head (not in the world: the heads stand on the ground, at any height)
+    const ly = positionGeometry.y;
+    const isTopRed = step(0.18, ly);
+    const isBottomGreen = float(1.0).sub(step(-0.18, ly));
     const isMidAmber = float(1.0).sub(isTopRed).mul(float(1.0).sub(isBottomGreen));
 
     // Avenue phase: Green, then Amber from avenueAmber, Red from avenueRed
@@ -84,7 +87,7 @@ function buildStreetDetails(scene) {
 
   // 12-inch three-section signal head (origin at its centre, y = 5.42): housing, a tunnel visor over each lens
   // and a hanger to the mast arm, lenses on both faces (+-z) so it reads from both approaches; the lens material
-  // picks red / amber / green from each lens's world height (5.78 / 5.42 / 5.06)
+  // picks red / amber / green from each lens's height in the head (0.36 / 0 / -0.36)
   const HEAD_W = 0.4;
   const HEAD_H = 1.12;
   const HEAD_D = 0.28;
@@ -239,25 +242,26 @@ function buildStreetDetails(scene) {
           }
           placedPoles.push({ x: lx, z: lz });
           addFootprint(lx, lz, 0.45, 0.45);
-          const cobraProp = { kind: 'cobra', x: lx, z: lz, yaw: armYaw, ground: 0.1, idx: { pole: poleMatrices.length, arm: armMatrices.length, head: lampHeadMatrices.length } };
+          const g = liftAt(lx, lz); // the whole lamp stands on the ground at its pole
+          const cobraProp = { kind: 'cobra', x: lx, z: lz, yaw: armYaw, ground: 0.1 + g, base: g, idx: { pole: poleMatrices.length, arm: armMatrices.length, head: lampHeadMatrices.length } };
           breakables.push(cobraProp);
 
           // Tall ornamental streetlight pole
-          dummy.position.set(lx, 4.3, lz);
+          dummy.position.set(lx, 4.3 + g, lz);
           dummy.rotation.set(0, 0, 0);
           dummy.scale.set(0.12, 8.4, 0.12);
           dummy.updateMatrix();
           poleMatrices.push(dummy.matrix.clone());
 
           // Upper luminaire bracket arm overhanging the street
-          dummy.position.set(lx + outX * 1.15, 8.2, lz + outZ * 1.15);
+          dummy.position.set(lx + outX * 1.15, 8.2 + g, lz + outZ * 1.15);
           dummy.rotation.set(0, armYaw, 0);
           dummy.scale.set(2.3, 0.09, 0.09);
           dummy.updateMatrix();
           armMatrices.push(dummy.matrix.clone());
 
           // Cobra-head LED luminaire on the end of the arm, lens facing the street
-          dummy.position.set(headX, 8.08, headZ);
+          dummy.position.set(headX, 8.08 + g, headZ);
           dummy.rotation.set(0, armYaw, 0);
           dummy.scale.set(1, 1, 1);
           dummy.updateMatrix();
@@ -266,8 +270,9 @@ function buildStreetDetails(scene) {
 
           cobraLampSites.push({
             x: headX,
-            y: 8.02,
+            y: 8.02 + g,
             z: headZ,
+            g,
             tx: lx + outX * 3.4,
             tz: lz + outZ * 3.4
           });
@@ -291,16 +296,18 @@ function buildStreetDetails(scene) {
           placedPoles.push({ x: px, z: pz });
           addFootprint(px, pz, 0.4, 0.4);
 
-          dummy.position.set(px, 0.18, pz);
+          const g = liftAt(px, pz);
+          dummy.position.set(px, 0.18 + g, pz);
           dummy.rotation.set(0, 0, 0);
           dummy.scale.set(1, 1, 1);
           dummy.updateMatrix();
-          breakables.push({ kind: 'post', x: px, z: pz, yaw: 0, ground: 0.18, idx: { post: pedPostMatrices.length }, lightIndex: streetPointSites.length });
+          breakables.push({ kind: 'post', x: px, z: pz, yaw: 0, ground: 0.18 + g, base: g, idx: { post: pedPostMatrices.length }, lightIndex: streetPointSites.length });
           pedPostMatrices.push(dummy.matrix.clone());
           streetPointSites.push({
             x: px,
-            y: 4.02,
+            y: 4.02 + g,
             z: pz,
+            g,
             color: 0xffe0aa,
             intensity: 30,
             dist: 14.5
@@ -324,16 +331,18 @@ function buildStreetDetails(scene) {
           placedPoles.push({ x: px, z: pz });
           addFootprint(px, pz, 0.4, 0.4);
 
-          dummy.position.set(px, 0.18, pz);
+          const g = liftAt(px, pz);
+          dummy.position.set(px, 0.18 + g, pz);
           dummy.rotation.set(0, 0, 0);
           dummy.scale.set(1, 1, 1);
           dummy.updateMatrix();
-          breakables.push({ kind: 'post', x: px, z: pz, yaw: 0, ground: 0.18, idx: { post: pedPostMatrices.length }, lightIndex: streetPointSites.length });
+          breakables.push({ kind: 'post', x: px, z: pz, yaw: 0, ground: 0.18 + g, base: g, idx: { post: pedPostMatrices.length }, lightIndex: streetPointSites.length });
           pedPostMatrices.push(dummy.matrix.clone());
           streetPointSites.push({
             x: px,
-            y: 4.02,
+            y: 4.02 + g,
             z: pz,
+            g,
             color: 0xffe0aa,
             intensity: 28,
             dist: 14.0
@@ -404,7 +413,7 @@ function buildStreetDetails(scene) {
   const hydrantMat = new THREE.MeshStandardNodeMaterial({ color: 0xb8241e, roughness: 0.5, metalness: 0.4 });
   const hydrantInst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.26, 0.85, 8), hydrantMat, Math.max(1, hydrantPositions.length));
   hydrantPositions.forEach(([hx, hz], i) => {
-    dummy.position.set(hx, 0.64, hz);
+    dummy.position.set(hx, 0.64 + liftAt(hx, hz), hz);
     dummy.rotation.set(0, 0, 0);
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -414,7 +423,7 @@ function buildStreetDetails(scene) {
   hydrantInst.userData.keepOwnShadow = true;
   hydrantInst.instanceMatrix.needsUpdate = true;
   if (hydrantPositions.length) group.add(hydrantInst);
-  hydrantPositions.forEach(([hx, hz], i) => breakables.push({ kind: 'hydrant', x: hx, z: hz, yaw: 0, ground: 0.215, parts: [{ mesh: hydrantInst, index: i }] }));
+  hydrantPositions.forEach(([hx, hz], i) => breakables.push({ kind: 'hydrant', x: hx, z: hz, yaw: 0, ground: 0.215 + liftAt(hx, hz), base: liftAt(hx, hz), parts: [{ mesh: hydrantInst, index: i }] }));
 
   // =========================================================================
   // 7. LUSH TREES: PARKS & PLAZAS, STREET TREES
@@ -439,7 +448,8 @@ function buildStreetDetails(scene) {
   function addStreetTree(x, z, scale, species, acrossX, extra = {}) {
     if (!onSidewalk(x, z) || inPlaza(x, z, 1.5) || !isClearOfPoles(x, z, 2.2)) return;
     const q = Math.floor(hashPos(x, 8.8, z) * 3.999);
-    const t = { x, y: SIDEWALK_Y, z, scale, species, yaw: q * Math.PI * 0.5, tier: acrossX ? 1 : 2, ...extra };
+    const g = liftAt(x, z);
+    const t = { x, y: SIDEWALK_Y + g, g, z, scale, species, yaw: q * Math.PI * 0.5, tier: acrossX ? 1 : 2, ...extra };
     if (acrossX === (q % 2 === 0)) t.sx = extra.squeeze || 0.82;
     else t.sz = extra.squeeze || 0.82;
     treePositions.push(t);
@@ -489,17 +499,17 @@ function buildStreetDetails(scene) {
   sidewalkTreePositions.forEach((t, i) => {
     dummy.rotation.set(0, t.pitRot || 0, 0);
     dummy.scale.set(t.pitS || 1, 1, 1);
-    dummy.position.set(t.x, 0.19, t.z);
+    dummy.position.set(t.x, 0.19 + t.g, t.z);
     dummy.updateMatrix();
     pitCurbInst.setMatrixAt(i, dummy.matrix);
 
-    dummy.position.set(t.x, 0.20, t.z);
+    dummy.position.set(t.x, 0.20 + t.g, t.z);
     dummy.updateMatrix();
     pitSoilInst.setMatrixAt(i, dummy.matrix);
   });
   gratedTrees.forEach((t, i) => {
     dummy.rotation.set(0, 0, 0);
-    dummy.position.set(t.x, 0.225, t.z);
+    dummy.position.set(t.x, 0.225 + t.g, t.z);
     dummy.updateMatrix();
     pitGrateInst.setMatrixAt(i, dummy.matrix);
   });
@@ -523,7 +533,7 @@ function buildStreetDetails(scene) {
   // 8. CLUSTERED STREETLIGHTS & STREET FURNITURE LIGHT POOLS
   // =========================================================================
   for (const s of parkLampSites || []) {
-    streetPointSites.push({ x: s.x, y: s.y, z: s.z, color: 0xffe4b4, intensity: 32, dist: 14.0 });
+    streetPointSites.push({ x: s.x, y: s.y, z: s.z, g: liftAt(s.x, s.z), color: 0xffe4b4, intensity: 32, dist: 14.0 });
   }
 
   const STREETLIGHT_SPOT_POOL = 36;
@@ -592,8 +602,9 @@ function buildStreetDetails(scene) {
       const s = cobraLampSites[i];
       if (s.broken) continue;
       const dx = s.x - cx;
+      const dy = s.g - cy; // from the lamp's foot (the town's slopes put it well over y = 0)
       const dz = s.z - cz;
-      const d2 = dx * dx + dz * dz + cy * cy;
+      const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 > STREETLIGHT_DIST_SQ) continue;
       const d = Math.sqrt(d2);
       const forwardDot = dx * fwdX + dz * fwdZ;
@@ -614,7 +625,7 @@ function buildStreetDetails(scene) {
       const fade = smoothFade(s._effDist, cobraCutoff * 0.62, cobraCutoff);
       const spot = streetlightSpotPool[i];
       spot.position.set(s.x, s.y, s.z);
-      spot.target.position.set(s.tx, 0.0, s.tz);
+      spot.target.position.set(s.tx, s.g, s.tz);
       spot.target.updateMatrixWorld();
       spot.intensity = 88.0 * lampScale * fade;
     }
@@ -628,8 +639,9 @@ function buildStreetDetails(scene) {
       const s = streetPointSites[i];
       if (s.broken) continue;
       const dx = s.x - cx;
+      const dy = s.g - cy;
       const dz = s.z - cz;
-      const d2 = dx * dx + dz * dz + cy * cy;
+      const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 > STREET_POINT_DIST_SQ) continue;
       const d = Math.sqrt(d2);
       const forwardDot = dx * fwdX + dz * fwdZ;
@@ -715,22 +727,23 @@ function buildStreetDetails(scene) {
         const reach = off - mid;
         if (reach < 1.5) continue;
         placedPoles.push({ x: px, z: pz });
-        colliders?.push({ minX: px - 0.2, maxX: px + 0.2, minZ: pz - 0.2, maxZ: pz + 0.2, minY: 0, maxY: 6.6 });
+        const g = liftAt(px, pz); // pole, arm, head & blade on the ground at the pole
+        colliders?.push({ minX: px - 0.2, maxX: px + 0.2, minZ: pz - 0.2, maxZ: pz + 0.2, minY: g, maxY: 6.6 + g });
         const yaw = Math.atan2(e.dx, e.dz);
         const armYaw = Math.atan2(e.rz, -e.rx); // the arm runs from the pole to the left (−r)
         dummy.rotation.set(0, 0, 0);
-        dummy.position.set(px, 3.3, pz);
+        dummy.position.set(px, 3.3 + g, pz);
         dummy.scale.set(0.17, 6.6, 0.17);
         dummy.updateMatrix();
         poles.push(dummy.matrix.clone());
         dummy.rotation.set(0, armYaw, 0);
-        dummy.position.set(px - e.rx * (reach + 0.4) * 0.5, 6.1, pz - e.rz * (reach + 0.4) * 0.5);
+        dummy.position.set(px - e.rx * (reach + 0.4) * 0.5, 6.1 + g, pz - e.rz * (reach + 0.4) * 0.5);
         dummy.scale.set(reach + 0.4, 0.13, 0.13);
         dummy.updateMatrix();
         arms.push(dummy.matrix.clone());
         // the head over the lanes, its lenses facing the approach
         dummy.rotation.set(0, yaw, 0);
-        dummy.position.set(ex + e.rx * mid, 5.42, ez + e.rz * mid);
+        dummy.position.set(ex + e.rx * mid, 5.42 + g, ez + e.rz * mid);
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
         heads.push(dummy.matrix.clone());
@@ -746,7 +759,7 @@ function buildStreetDetails(scene) {
         if (cross && reach > 3.2) {
           const bx = px - e.rx * reach * 0.55, bz = pz - e.rz * reach * 0.55;
           dummy.rotation.set(0, yaw, 0);
-          dummy.position.set(bx, 6.55, bz);
+          dummy.position.set(bx, 6.55 + g, bz);
           dummy.scale.set(Math.min(3.4, reach - 1.2), 0.5, 0.05);
           dummy.updateMatrix();
           blades.push({ m: dummy.matrix.clone(), slot: slotOf(cross.toUpperCase()) });

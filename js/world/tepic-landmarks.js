@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { color, mix, positionWorld, fract, step } from 'three/tsl';
 import { GEO } from './city-geodata.js';
 import { cityUniforms } from '../render/tsl-materials.js';
+import { liftAt } from './ground.js';
 
 // js/world/tepic-landmarks.js
 // Tepic's landmarks on their real footprints (city-geodata.js `landmarks`, from OpenStreetMap): the Catedral on the
@@ -94,7 +95,13 @@ function buildCatedral(group, colliders) {
   // its front on the front of the lot
   const W = Math.min(26, Math.max(18, C.width)), L = Math.min(60, Math.max(30, C.depth));
   const shift = (C.depth - L) / 2;
-  root.position.set(C.x + C.f[0] * shift, 0, C.z + C.f[1] * shift);
+  const cx = C.x + C.f[0] * shift, cz = C.z + C.f[1] * shift;
+  // on the ground at the lowest corner of the church, a little into it (the town's slopes)
+  const cs = Math.cos(C.yaw), sn = Math.sin(C.yaw);
+  let base = Infinity;
+  for (const [a, b] of [[-W / 2, -L / 2], [W / 2, -L / 2], [W / 2, L / 2], [-W / 2, L / 2]]) base = Math.min(base, liftAt(cx + a * cs + b * sn, cz - a * sn + b * cs));
+  base = base > 0 ? base - 0.15 : 0;
+  root.position.set(cx, base, cz);
   root.rotation.y = C.yaw; // local +z: the facade's normal, towards the plaza
   const stone = stoneMaterial(0x8f8272);
   const light = stoneMaterial(0xa89a86);
@@ -193,11 +200,10 @@ function buildCatedral(group, colliders) {
   }
   group.add(root);
   // a collider over the church
-  const cs = Math.cos(C.yaw), sn = Math.sin(C.yaw);
   const hx = W / 2, hz = L / 2;
   const ox = root.position.x, oz = root.position.z;
   const ex = Math.abs(cs) * hx + Math.abs(sn) * hz, ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
-  colliders.push({ minX: ox - ex, maxX: ox + ex, minZ: oz - ez, maxZ: oz + ez, minY: 0, maxY: 50, obb: { cx: ox, cz: oz, hx, hz, cs, sn } });
+  colliders.push({ minX: ox - ex, maxX: ox + ex, minZ: oz - ez, maxZ: oz + ez, minY: base, maxY: base + 50, obb: { cx: ox, cz: oz, hx, hz, cs, sn } });
 }
 
 function buildTepicLandmarks(scene) {

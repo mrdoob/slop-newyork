@@ -75,18 +75,20 @@ class CameraSystem {
   scenicFromAnchor(id, elapsed, desiredPos, desiredLook) {
     const a = (this.scenicAnchors && this.scenicAnchors[id]) || SCENIC_ORIGIN;
     const sx = Math.sin(a.heading), cz = Math.cos(a.heading);
-    const at = (ahead, right, y) => [a.x + sx * ahead - cz * right, y, a.z + cz * ahead + sx * right];
+    // heights over the ground at the spot (the town's slopes put it well over y = 0)
+    const g = this.groundAt ? this.groundAt(a.x, a.z) : 0;
+    const at = (ahead, right, y) => [a.x + sx * ahead - cz * right, y + g, a.z + cz * ahead + sx * right];
     if (id === 'observatory') {
       // high over the spot, slowly panning across the roofs towards the hills
       const pan = Math.sin(elapsed * 0.18) * 120.0;
       desiredPos.set(...at(-40, 0, 190));
-      desiredLook.set(a.x + pan, 20, a.z - 600);
+      desiredLook.set(a.x + pan, 20 + g, a.z - 600);
     } else if (id === 'drone') {
       const orbit = elapsed * 0.07 + 0.65;
       const radius = 420.0 + Math.sin(elapsed * 0.23) * 90.0;
       const alt = 180.0 + Math.cos(elapsed * 0.19) * 50.0;
-      desiredPos.set(Math.cos(orbit) * radius + a.x, alt, Math.sin(orbit) * radius + a.z);
-      desiredLook.set(a.x, 12.0, a.z);
+      desiredPos.set(Math.cos(orbit) * radius + a.x, alt + g, Math.sin(orbit) * radius + a.z);
+      desiredLook.set(a.x, 12.0 + g, a.z);
     } else {
       const sway = Math.sin(elapsed * 0.25) * 1.8;
       desiredPos.set(...at(-28, 3.5 + sway, 6.5));

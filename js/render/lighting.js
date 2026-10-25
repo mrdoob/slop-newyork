@@ -23,6 +23,7 @@ import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
 import { cityUniforms } from './tsl-materials.js';
 import { GEO } from '../world/city-geodata.js';
 import { LiveWeather, sunDirection } from '../world/weather.js';
+import { SLOPES, townHeight } from '../world/ground.js';
 
 // js/render/lighting.js
 // Physically-Based Atmospheric Sky (Preetham SkyMesh + Beer-Powder Clouds),
@@ -315,6 +316,8 @@ class LightingSystem {
     // so helicopter / observatory views stay clearer than the horizon.
     this.uFogDensity = uniform(TIME_PRESETS.golden.fogDensity);
     this.uFogHeight = uniform(900.0);
+    // the haze thins from the valley floor up (the town's slopes raise it to the far floor's height)
+    this.uFogBase = uniform(SLOPES && GEO.ground ? GEO.ground.floor : 0.0);
     if (this.envRenderTarget) this.scene.fogNode = this.createAerialFogNode();
   }
 
@@ -326,8 +329,8 @@ class LightingSystem {
     const skyColor = pmremTexture(this.envRenderTarget.texture, horizonDir, float(0.3)).rgb;
     // Mean haze density exp(-y / H) along the ray between the fragment and the camera
     const H = this.uFogHeight;
-    const ya = max(positionWorld.y, 0.0);
-    const yb = max(cameraPosition.y, 0.0);
+    const ya = max(positionWorld.y.sub(this.uFogBase), 0.0);
+    const yb = max(cameraPosition.y.sub(this.uFogBase), 0.0);
     const dy = yb.sub(ya);
     const ea = exp(ya.div(H).negate());
     const eb = exp(yb.div(H).negate());
@@ -480,7 +483,8 @@ class LightingSystem {
     // every frame inside SunShadowNode.renderShadow(), splitting [near, far] halfway between a uniform and a
     // logarithmic split (the near cascade ends at ~far / 4). Keep far at 300 m at street level so the near cascade
     // stays sharp, and expand it with altitude (helicopter / observatory) so shadows reach all the way down to street level.
-    const altitude = focusPos && Number.isFinite(focusPos.y) ? Math.max(0, focusPos.y) : 0;
+    // (over the town's floor: its slopes put the streets well over y = 0)
+    const altitude = focusPos && Number.isFinite(focusPos.y) ? Math.max(0, focusPos.y - townHeight(focusPos.x, focusPos.z)) : 0;
     this.sunLight.shadow.camera.far = Math.max(300, Math.min(720, 260 + altitude * 1.6));
     if (this.activePresetId === 'live') this.updateLive();
   }

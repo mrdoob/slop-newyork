@@ -609,7 +609,7 @@ const signs = [];
 // 5D. TERRAIN: the hills around the valley (Cerro de San Juan, Cerro de la Cruz, the lomas) from the Terrarium elevation
 //     tiles (tools/data/tepic/fetch-terrain.sh). The city itself stays flat: the valley floor's slow tilt (a wide blur
 //     of the elevation under the streets & blocks) is taken off, and what rises above it fades in away from them.
-//     That tilt is kept apart as `ground`, the town's own slopes, for ?slopes=1 (js/world/ground.js)
+//     That tilt is kept apart as `ground`, the town's own slopes (js/world/ground.js)
 // =====================================================================================================================
 const { ground = null, ...terrainGrid } = (() => {
   const dir = path.join(DATA, 'terrain');
@@ -747,15 +747,18 @@ const { ground = null, ...terrainGrid } = (() => {
     out[k] = Math.round(Math.min(3200, h) * 10);
     if (h > peak) peak = h;
   }
-  // The ground under the town (js/world/ground.js, ?slopes=1): the city's own elevation on a finer grid than the
-  // hills', blurred over ~110 m. SRTM measures roofs & treetops, and what's wanted is a street's grade, not each house.
-  // Like the hills' floor it is the built-up cells' elevation only (a normalised blur), so a hill beside a street
-  // doesn't lift it, and away from the city it eases to the city's mean, the floor the hills stand on now.
+  // The ground under the town (js/world/ground.js): the city's own elevation blurred over ~110 m, worked
+  // out on a 25 m grid. SRTM measures roofs & treetops, and what's wanted is a street's grade, not each house. Like
+  // the hills' floor it is the built-up cells' elevation only (a normalised blur), so a hill beside a street doesn't
+  // lift it, and away from the city (and towards the grid's edge) it eases to the city's mean, the floor the hills
+  // stand on now. It is kept on the hills' own 75 m lattice: a field this smooth loses nothing at 75 m, and the world
+  // laid on the ground is cut along one set of triangles for both (ground.js clipToLattice).
   // Heights are over the datum, the lowest point of the town (built-up cells in BOX), so its ground is never under y = 0
-  const GCELL = 25, GMARGIN = 1200;
-  // over the detailed city (BOX) and a margin for the roads leaving it
-  const GX0 = Math.floor((BOX.x0 - GMARGIN) / GCELL) * GCELL, GZ0 = Math.floor((BOX.z0 - GMARGIN) / GCELL) * GCELL;
-  const GW = Math.ceil((BOX.x1 + GMARGIN - GX0) / GCELL) + 1, GH = Math.ceil((BOX.z1 + GMARGIN - GZ0) / GCELL) + 1;
+  const GCELL = 25, GSTEP = CELL / GCELL, GMARGIN = 1200, GEDGE = 600;
+  // over the detailed city (BOX) and a margin for the roads leaving it, on whole cells of the hills' grid
+  const GX0 = TX0 + Math.floor((BOX.x0 - GMARGIN - TX0) / CELL) * CELL, GZ0 = TZ0 + Math.floor((BOX.z0 - GMARGIN - TZ0) / CELL) * CELL;
+  const OW = Math.ceil((BOX.x1 + GMARGIN - GX0) / CELL) + 1, OH = Math.ceil((BOX.z1 + GMARGIN - GZ0) / CELL) + 1;
+  const GW = (OW - 1) * GSTEP + 1, GH = (OH - 1) * GSTEP + 1;
   // a field of the hills' grid at (x, z), bilinear
   const coarse = (arr, x, z) => {
     const fx = Math.min(TW - 1.001, Math.max(0, (x - TX0) / CELL)), fz = Math.min(TH - 1.001, Math.max(0, (z - TZ0) / CELL));
@@ -774,21 +777,36 @@ const { ground = null, ...terrainGrid } = (() => {
   const gNear = [blur(GEU, 4, GW, GH), blur(GU, 4, GW, GH)];
   const gFar = [blur(GEU, 20, GW, GH), blur(GU, 20, GW, GH)];
   const GF = new Float32Array(GW * GH);
-  let datum = Infinity, datumK = 0;
-  for (let k = 0; k < GF.length; k++) {
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const k = j * GW + i;
     const wN = gNear[1][k], wF = gFar[1][k];
     const f = wN > 0.05 ? gNear[0][k] / wN : wF > 0.01 ? gFar[0][k] / wF : floorMean;
-    GF[k] = f + (floorMean - f) * smooth(300, GMARGIN, GD[k]);
-    if (GU[k] >= 0.5 && GF[k] < datum && inBox(GX0 + (k % GW) * GCELL, GZ0 + Math.floor(k / GW) * GCELL)) { datum = GF[k]; datumK = k; }
+    const edge = Math.min(i, j, GW - 1 - i, GH - 1 - j) * GCELL;
+    GF[k] = f + (floorMean - f) * Math.max(smooth(300, GMARGIN, GD[k]), 1 - smooth(0, GEDGE, edge));
+  }
+  // the 75 m nodes; the datum is the lowest of those under the town's streets & houses (a node of a cell with a
+  // built-up corner in BOX), so no point of the town is under it
+  const at25 = (i, j) => GF[j * GSTEP * GW + i * GSTEP];
+  const town = (i, j) => {
+    const x = GX0 + i * CELL, z = GZ0 + j * CELL;
+    return inBox(x, z) && coarse(U, x, z) >= 0.5;
+  };
+  let datum = Infinity, datumAt = [0, 0];
+  for (let j = 0; j < OH; j++) for (let i = 0; i < OW; i++) {
+    let near = false;
+    for (let b = Math.max(0, j - 1); b <= Math.min(OH - 1, j + 1) && !near; b++) for (let a = Math.max(0, i - 1); a <= Math.min(OW - 1, i + 1); a++) if (town(a, b)) { near = true; break; }
+    if (near && at25(i, j) < datum) { datum = at25(i, j); datumAt = [GX0 + i * CELL, GZ0 + j * CELL]; }
   }
   datum = Math.round(datum * 10) / 10;
-  const groundOut = new Int16Array(GW * GH);
-  for (let k = 0; k < GF.length; k++) groundOut[k] = Math.round((GF[k] - datum) * 10);
+  const groundOut = new Int16Array(OW * OH);
+  for (let j = 0; j < OH; j++) for (let i = 0; i < OW; i++) groundOut[j * OW + i] = Math.round((at25(i, j) - datum) * 10);
+  // the ground between the nodes, on the same triangles as ground.js (each cell split from its +x corner to its +z)
   const gAt = (x, z) => {
-    const fx = (x - GX0) / GCELL, fz = (z - GZ0) / GCELL;
-    const i = Math.min(GW - 2, Math.max(0, Math.floor(fx))), j = Math.min(GH - 2, Math.max(0, Math.floor(fz)));
-    const tx = fx - i, tz = fz - j, k = j * GW + i;
-    return ((groundOut[k] * (1 - tx) + groundOut[k + 1] * tx) * (1 - tz) + (groundOut[k + GW] * (1 - tx) + groundOut[k + GW + 1] * tx) * tz) / 10;
+    const fx = (x - GX0) / CELL, fz = (z - GZ0) / CELL;
+    const i = Math.min(OW - 2, Math.max(0, Math.floor(fx))), j = Math.min(OH - 2, Math.max(0, Math.floor(fz)));
+    const tx = fx - i, tz = fz - j, k = j * OW + i;
+    const h00 = groundOut[k], h10 = groundOut[k + 1], h01 = groundOut[k + OW], h11 = groundOut[k + OW + 1];
+    return (tx + tz <= 1 ? h00 + (h10 - h00) * tx + (h01 - h00) * tz : h11 + (h01 - h11) * (1 - tx) + (h10 - h11) * (1 - tz)) / 10;
   };
   {
     // the grades the town's streets get: drivable ways, sampled every 10 m, in the built-up city
@@ -811,10 +829,10 @@ const { ground = null, ...terrainGrid } = (() => {
     }
     grades.sort((a, b) => a - b);
     const pc = (q) => (grades[Math.floor(q * (grades.length - 1))] * 100).toFixed(1);
-    const [dLon, dLat] = toLonLat(GX0 + (datumK % GW) * GCELL, GZ0 + Math.floor(datumK / GW) * GCELL);
-    log(`ground: ${GW} x ${GH} cells of ${GCELL} m, datum ${datum} m a.s.l. (at ${dLat.toFixed(4)},${dLon.toFixed(4)}), town up to ${top.toFixed(0)} m over it, plaza ${gAt(0, 0).toFixed(1)} m; street grades p50 ${pc(0.5)}%, p90 ${pc(0.9)}%, p99 ${pc(0.99)}%, max ${pc(1)}%`);
+    const [dLon, dLat] = toLonLat(...datumAt);
+    log(`ground: ${OW} x ${OH} cells of ${CELL} m, datum ${datum} m a.s.l. (at ${dLat.toFixed(4)},${dLon.toFixed(4)}), town up to ${top.toFixed(0)} m over it, plaza ${gAt(0, 0).toFixed(1)} m; street grades p50 ${pc(0.5)}%, p90 ${pc(0.9)}%, p99 ${pc(0.99)}%, max ${pc(1)}%`);
   }
-  const ground = { x0: GX0, z0: GZ0, cell: GCELL, w: GW, h: GH, datum, floor: Math.round((floorMean - datum) * 10) / 10, data: Buffer.from(groundOut.buffer).toString('base64') };
+  const ground = { x0: GX0, z0: GZ0, cell: CELL, w: OW, h: OH, datum, floor: Math.round((floorMean - datum) * 10) / 10, data: Buffer.from(groundOut.buffer).toString('base64') };
 
   // the cross on Cerro de la Cruz
   const crossPoi = (poisOSM.elements || []).find((e) => e.tags && /cerro de la cruz/i.test(e.tags.name || ''));
@@ -960,7 +978,7 @@ const GEO = {
   // The hills around the valley: heights (dm, Int16 little-endian, base64) over the flat city on a w x h grid of
   // `cell` m from (x0, z0), row by row; `cross`: the Cerro de la Cruz summit
   terrain,
-  // The ground under the town (?slopes=1): heights (dm, Int16 little-endian, base64) over `datum` (m a.s.l., the
+  // The ground under the town: heights (dm, Int16 little-endian, base64) over `datum` (m a.s.l., the
   // town's lowest point) on a w x h grid of `cell` m from (x0, z0), row by row; `floor`: its height away from town
   ground
 };

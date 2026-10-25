@@ -788,8 +788,9 @@ class CityMapSystem {
     const ent = this.controllerManager.getActiveEntity();
     const px = ent.position.x;
     const pz = ent.position.z;
-    // Ground-level radar shows ~800 m of the city; it zooms out as the camera climbs (helicopter)
-    const target = Math.max(0.05, RADAR_SCALE / (1 + Math.max(0, ent.position.y - 25) / 180));
+    // Ground-level radar shows ~800 m of the city; it zooms out as the camera climbs (helicopter) over the town's floor
+    const altitude = ent.position.y - this.controllerManager.floorHeight(px, pz);
+    const target = Math.max(0.05, RADAR_SCALE / (1 + Math.max(0, altitude - 25) / 180));
     this.miniScale += (target - this.miniScale) * 0.08;
     const scale = this.miniScale;
 

@@ -127,6 +127,7 @@ class Multiplayer {
     this.nextSendAt = 0;
 
     this.crowd = new PersonCrowd(MAX_REMOTE_PEOPLE, { farDistance: 40 });
+    this._tilt = {};
     this.crowd.meshes.forEach((m) => scene.add(m));
 
     this.badge = document.createElement('div');
@@ -256,6 +257,14 @@ class Multiplayer {
       if (r.visual) {
         r.visual.position.set(p.x, p.y, p.z);
         r.visual.rotation.y = p.heading;
+        // a car or bicycle lies on the slope under its wheels, as the local player's does (controllers.js tiltToGround)
+        if (r.mode === 'car' || r.mode === 'cyclist') {
+          const car = r.mode === 'car';
+          const t = this.controllers.groundTilt(p.x, p.z, p.heading, car ? 1.35 : 0.55, car ? 0.8 : 0.3, this._tilt);
+          r.visual.rotation.order = 'YXZ';
+          r.visual.rotation.x = t.pitch;
+          r.visual.rotation.z = car ? t.roll : 0;
+        }
       }
       if (r.mode === 'person') {
         const air = p.y - this.controllers.getGroundHeight(p.x, p.z, 'person');
@@ -334,7 +343,11 @@ function multiplayerOptions(search = location.search, host = location.hostname) 
   } catch {
     // storage blocked: the server hands out a numbered name
   }
-  return { url, region: params.get('mp-region') || DEFAULT_REGION, name };
+  // the flat city (?slopes=0) is a world of its own: everyone else stands up to 300 m higher on the town's slopes
+  // (the region name is 32 characters at most, the suffix included)
+  const base = params.get('mp-region') || DEFAULT_REGION;
+  const region = params.get('slopes') === '0' ? `${base.slice(0, 27)}-flat` : base;
+  return { url, region, name };
 }
 
 export { Multiplayer, RemotePlayer, multiplayerOptions, DEFAULT_REGION };
