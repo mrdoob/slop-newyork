@@ -4,7 +4,7 @@ const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
-const source = readFileSync(join(__dirname, '../js/touch-controls.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../js/input/touch-controls.js'), 'utf8');
 
 function element(attributes = {}) {
   const listeners = new Map();

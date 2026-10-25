@@ -11,7 +11,7 @@ import { loadModule } from '../tests/helpers/module.cjs';
 const corePath = process.argv[2] || process.env.THREE_CORE_PATH;
 if (!corePath) throw new Error('Pass the path to an existing Three.js build/three.core.js, or set THREE_CORE_PATH.');
 const THREE = await import(pathToFileURL(resolve(corePath)).href);
-const source = readFileSync(new URL('../js/pedestrians.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../js/sim/pedestrians.js', import.meta.url), 'utf8');
 // The previous path always solved the final pose; all other animation code stays identical.
 const alwaysSolve = source.replaceAll('if (updatePose) this.solve();', 'this.solve();');
 assert.notEqual(alwaysSolve, source, 'Expected deferred pose solves in PersonRig.update');

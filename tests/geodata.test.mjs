@@ -16,7 +16,7 @@ test('Tepic geodata builds with default paths in a checkout containing spaces an
       if (name.endsWith('.mjs')) fs.copyFileSync(path.join(root, 'tools', name), path.join(dir, 'tools', name));
     }
     fs.symlinkSync(path.join(root, 'tools/data'), path.join(dir, 'tools/data'), 'dir');
-    fs.cpSync(path.join(root, 'js/storefronts'), path.join(dir, 'js/storefronts'), { recursive: true });
+    fs.cpSync(path.join(root, 'js/world/storefronts'), path.join(dir, 'js/world/storefronts'), { recursive: true });
     const env = { ...process.env };
     delete env.GEO_DATA;
     const result = spawnSync(process.execPath, ['--max-old-space-size=8192', path.join(dir, 'tools/build-tepic-geodata.mjs')], {
@@ -24,7 +24,7 @@ test('Tepic geodata builds with default paths in a checkout containing spaces an
     });
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stderr + result.stdout);
-    const { GEO } = await import(pathToFileURL(path.join(dir, 'js/city-geodata.js')).href);
+    const { GEO } = await import(pathToFileURL(path.join(dir, 'js/world/city-geodata.js')).href);
     assert.ok(GEO.roadGraph.links.length > 0);
     assert.ok(GEO.blocks.length > 0);
   } finally {

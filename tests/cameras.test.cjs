@@ -4,7 +4,7 @@ const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
-const source = readFileSync(join(__dirname, '../js/cameras.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../js/player/cameras.js'), 'utf8');
 
 class Vector3 {
   constructor(x = 0, y = 0, z = 0) { this.set(x, y, z); }
@@ -64,9 +64,9 @@ function cameraHarness(entity = {
   const camera = new CameraSystem(canvas, { getActiveEntity: () => entity });
   return {
     camera, canvas, controls, window, document, captured, entity,
-    pointer(target, type, id, x, y = 0, pointerType = 'touch', button = 0) {
+    pointer(target, type, id, x, y = 0, pointerType = 'touch', button = 0, buttons = type === 'pointerup' ? 0 : 1) {
       const event = {
-        pointerId: id, clientX: x, clientY: y, pointerType, button,
+        pointerId: id, clientX: x, clientY: y, pointerType, button, buttons,
         prevented: false, preventDefault() { this.prevented = true; }
       };
       // Captured pointers keep reaching the canvas after moving over the controls.
@@ -179,6 +179,37 @@ test('mouse orbit and wheel zoom retain their behavior and bounds', () => {
   close(h.camera.zoomMultiplier, 0.45);
   h.canvas.dispatch('wheel', { deltaY: 10000, preventDefault() {} });
   close(h.camera.zoomMultiplier, 2.4);
+});
+
+test('the chase camera swings round the entity at its distance and keeps it centred while dragging', () => {
+  const h = cameraHarness();
+  for (let i = 0; i < 60; i++) h.camera.update(1 / 60, i / 60);
+  const horiz = Math.cos(0.09) * h.entity.chaseDistance;
+  h.pointer(h.canvas, 'pointerdown', 1, 0, 0, 'mouse');
+  h.pointer(h.canvas, 'pointermove', 1, 480, 0, 'mouse'); // about half a turn in one jerk
+  for (let i = 0; i < 90; i++) {
+    h.camera.update(1 / 60, 1 + i / 60);
+    const p = h.camera.currentPos, t = h.camera.currentLookAt, e = h.entity.position;
+    // on the circle round the entity, never cutting in towards it
+    close(Math.hypot(p.x - e.x, p.z - e.z), horiz);
+    // looking straight over it: camera, entity and target in one vertical plane
+    close((e.x - p.x) * (t.z - p.z) - (e.z - p.z) * (t.x - p.x), 0);
+  }
+  const p = h.camera.currentPos, e = h.entity.position, yaw = h.entity.heading + h.camera.orbitYawOffset;
+  assert.ok(Math.abs(p.x - (e.x - Math.sin(yaw) * horiz)) < 1e-3);
+  assert.ok(Math.abs(p.z - (e.z - Math.cos(yaw) * horiz)) < 1e-3);
+});
+
+test('a mouse drag whose pointerup never arrived stops orbiting on the next bare move', () => {
+  const h = cameraHarness();
+  h.pointer(h.canvas, 'pointerdown', 1, 0, 0, 'mouse');
+  h.pointer(h.canvas, 'pointermove', 1, 10, 0, 'mouse');
+  close(h.camera.orbitYawOffset, -0.065);
+  // the button came up under a context menu: the next move has no button held
+  h.pointer(h.canvas, 'pointermove', 1, 200, 50, 'mouse', 0, 0);
+  close(h.camera.orbitYawOffset, -0.065);
+  assert.equal(h.camera.isDragging, false);
+  assert.equal(h.captured.has(1), false);
 });
 
 for (const preset of ['chase', 'observatory', 'drone']) {

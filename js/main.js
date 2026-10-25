@@ -1,25 +1,27 @@
 import * as THREE from 'three/webgpu';
 import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2, smoothstep } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
-import { createPostProcessing } from './post-processing.js';
+import { createPostProcessing } from './render/post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
-import { CITY, getLocationLabel, isTypingInField, ROADS, CITY_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
-import { buildCityGrid } from './city-grid.js';
-import { buildCityBlocks } from './buildings.js';
-import { buildStreetDetails } from './street-details.js';
-import { createTrafficSystem, createHighwayTraffic } from './traffic.js';
-import { buildRoadPaint } from './road-paint.js';
-import { ThirdPersonControllerManager } from './controllers.js';
-import { TouchControls } from './touch-controls.js';
-import { GamepadControls } from './gamepad-controls.js';
-import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
-import { LightingSystem } from './lighting.js';
-import { WEATHER_SAMPLES, weatherLabel } from './weather.js';
-import { CityMapSystem } from './city-map.js';
-import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
-import { CityAudioSystem } from './audio-system.js';
-import { buildTerrain, hillGround } from './terrain.js';
-import { buildTepicLandmarks } from './tepic-landmarks.js';
+import { CITY, getLocationLabel, isTypingInField, ROADS, CITY_LANDMARKS, TELEPORT_LOCATIONS } from './world/city-config.js';
+import { buildCityGrid } from './world/city-grid.js';
+import { buildCityBlocks } from './world/buildings.js';
+import { buildStreetDetails } from './world/street-details.js';
+import { createTrafficSystem, createHighwayTraffic } from './sim/traffic.js';
+import { buildRoadPaint } from './world/road-paint.js';
+import { ThirdPersonControllerManager } from './player/controllers.js';
+import { TouchControls } from './input/touch-controls.js';
+import { GamepadControls } from './input/gamepad-controls.js';
+import { CameraSystem, CAMERA_PRESETS } from './player/cameras.js';
+import { LightingSystem } from './render/lighting.js';
+import { WEATHER_SAMPLES, weatherLabel } from './world/weather.js';
+import { CityMapSystem } from './ui/city-map.js';
+import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js';
+import { CityAudioSystem } from './audio/audio-system.js';
+import { buildTerrain } from './world/terrain.js';
+import { groundHeight, townHeight, liftAt } from './world/ground.js';
+import { buildTepicLandmarks } from './world/tepic-landmarks.js';
+import { buildCotos } from './world/cotos.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -86,17 +88,19 @@ async function initApp() {
   markInit('landmarks');
   const cityBlocks = buildCityBlocks(scene);
   markInit('blocks');
-  const allColliders = [...landmarkColliders, ...cityBlocks.colliders, ...(cityGrid.colliders || [])];
+  // The gated communities' walls & guard booths (the houses inside are among the blocks')
+  const { colliders: cotoColliders } = buildCotos(scene);
+  const allColliders = [...landmarkColliders, ...cityBlocks.colliders, ...cotoColliders, ...(cityGrid.colliders || [])];
 
   const streetDetails = buildStreetDetails(scene);
   markInit('streetDetails');
   // Buildings turned along non-grid streets have oriented colliders whose world bounds reach past their lots: they stay
   // inside the property line anyway, so the road network (lanes & sidewalks) doesn't need them.
-  // Elevated building sections that clear even a bus don't obstruct ground traffic.
+  // Elevated building sections that clear even a bus (3.5 m over the ground under them) don't obstruct ground traffic.
   const trafficSystem = createTrafficSystem(scene, cityGrid.sidewalks, [
     ...cityGrid.footprints,
     ...streetDetails.footprints,
-    ...allColliders.filter((c) => !c.obb && (c.minY ?? 0) < 3.5)
+    ...allColliders.filter((c) => !c.obb && (c.minY ?? 0) - liftAt((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2) < 3.5)
   ]);
   markInit('traffic');
   // Mast-arm traffic signals at the signalised junctions of a city off the grid (the grid's are built with the streets)
@@ -107,12 +111,14 @@ async function initApp() {
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
-  controllerManager.setTerrain(hillGround);
-  trafficSystem.setHillQuery(hillGround);
+  // The ground (ground.js): the town's own slopes and the hills over them (the flat city with ?slopes=0)
+  controllerManager.setTerrain(groundHeight, townHeight);
+  trafficSystem.setHillQuery(groundHeight);
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
-  const solidAt = (x, z) => controllerManager.isSolidAt(x, z, 1.5, hillGround(x, z));
+  const solidAt = (x, z) => controllerManager.isSolidAt(x, z, 1.5, groundHeight(x, z));
   trafficSystem.setSolidQuery(solidAt);
   streetDetails.breaker?.setSolidQuery(solidAt);
+  streetDetails.breaker?.setGroundQuery(groundHeight);
   // Saved positions belong to one city's frame: the key carries the city's name
   const PLAYER_STATE_KEY = `${(CITY.city || 'city').toLowerCase()}-player-state`;
   // Reuse teleport placement so saved players return at rest, close to their last positions. The game always starts
@@ -151,7 +157,7 @@ async function initApp() {
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
-  cameraSystem.setGroundQuery(hillGround); // the chase cameras stay over the hills
+  cameraSystem.setGroundQuery(groundHeight); // the chase cameras stay over the ground
   // The scenic cameras frame the city's own spots (see cameras.js)
   const T = TELEPORT_LOCATIONS;
   cameraSystem.setScenicAnchors({
@@ -183,7 +189,7 @@ async function initApp() {
 
   // City-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
   // (scene-culling.js)
-  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails']
+  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails', 'Hills']
     .map((name) => scene.getObjectByName(name))
     .filter(Boolean);
   setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);
@@ -263,7 +269,7 @@ async function initApp() {
   const liveButton = document.getElementById('time-live');
   const liveLabel = liveButton && liveButton.querySelector('.seg-label');
 
-  // Live time of day: the real sun & weather over the weather location (js/weather.js). ?live-time=<ISO date> starts the
+  // Live time of day: the real sun & weather over the weather location (js/world/weather.js). ?live-time=<ISO date> starts the
   // clock elsewhere & ?live-weather=<clear|cloudy|overcast|rain|storm|fog> pins the conditions, to preview them
   const liveParams = new URLSearchParams(location.search);
   const liveStart = Date.parse(liveParams.get('live-time') || '');
@@ -490,6 +496,12 @@ async function initApp() {
     });
   });
 
+  // No browser context menu in the game (text fields keep theirs): right-click or macOS Ctrl+click opened it, and
+  // opened mid-drag it swallowed the pointerup so the camera kept orbiting with the bare mouse
+  document.addEventListener('contextmenu', (e) => {
+    if (!isTypingInField(e)) e.preventDefault();
+  });
+
   // A mouse click mustn't leave the focus on a HUD button, or Space (jump / ascend) and Enter would press it again
   document.addEventListener('click', (e) => {
     const btn = e.target instanceof Element ? e.target.closest('button') : null;
@@ -649,6 +661,20 @@ async function initApp() {
     savedTime = localStorage.getItem('time-of-day');
   } catch { /* Storage may be disabled. */ }
   selectTime([...timeButtons].some((btn) => btn.getAttribute('data-time') === savedTime) ? savedTime : 'live');
+  // Multiplayer (?multiplayer=1, see js/net/multiplayer.js) loads only when asked for, so single-player pays nothing
+  let multiplayer = null;
+  if (new URLSearchParams(location.search).has('multiplayer')) {
+    import('./net/multiplayer.js')
+      .then(({ Multiplayer, multiplayerOptions }) => {
+        const options = multiplayerOptions();
+        if (!options) {
+          console.info('[mp] no server to connect to: add &mp-server=wss://… (or serve from localhost)');
+          return;
+        }
+        multiplayer = new Multiplayer({ scene, controllers: controllerManager, camera: cameraSystem.camera, ...options });
+      })
+      .catch((err) => console.warn('[mp] could not start multiplayer:', err));
+  }
   markInit('ui');
   // Debugging handle for the console, only with ?debug in the URL
   if (new URLSearchParams(location.search).has('debug')) {
@@ -783,6 +809,7 @@ async function initApp() {
     if (cityBlocks.updateLights) cityBlocks.updateLights(cameraSystem.camera);
     if (streetDetails.update) streetDetails.update(cameraSystem.camera);
     lightingSystem.update(cameraSystem.currentPos);
+    if (multiplayer) multiplayer.update(dt, elapsed);
     mapSystem.update();
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.isNight);
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk
@@ -836,7 +863,9 @@ async function initApp() {
       const activeEnt = controllerManager.getActiveEntity();
       const mode = controllerManager.activeMode;
       const mph = Math.round(Math.abs(activeEnt.speed) * 2.237);
-      const altFt = Math.max(0, Math.round(activeEnt.position.y * 3.281));
+      // over the town's floor (its slopes put the streets well over y = 0)
+      const altM = activeEnt.position.y - controllerManager.floorHeight(activeEnt.position.x, activeEnt.position.z);
+      const altFt = Math.max(0, Math.round(altM * 3.281));
 
       if (elFps) {
         elFps.textContent = String(currentFps);

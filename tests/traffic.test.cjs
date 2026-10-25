@@ -4,7 +4,7 @@ const { join } = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-const source = readFileSync(join(__dirname, '../js/traffic.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../js/sim/traffic.js'), 'utf8');
 // Exercise the production lane query and player snapshot without creating the WebGPU scene.
 const laneQuery = source.match(/  function playerInLane\(lane, pl\) \{[\s\S]*?\n  \}/)?.[0];
 const playerSnapshot = source.match(/    const pl = entity[\s\S]*?\n    \} : null;/)?.[0];
@@ -187,7 +187,7 @@ function populationContext() {
   const context = {
     Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
     clamp: (x, lo, hi) => Math.max(lo, Math.min(hi, x)),
-    hasView: true, camX: 0, camY: 10, camZ: 0, visible: () => true,
+    hasView: true, camX: 0, camY: 10, camZ: 0, visible: () => true, hillAt: () => 0,
     focusX: 0, focusZ: 0, player: { active: false },
     clock: 0,
     VEHICLE_SPAWN_DISTANCE: 250, PED_SPAWN_DISTANCE: 150, NEAR_RADIUS: 350,
@@ -271,4 +271,13 @@ test('a car hitting the end of a bicycle touches the bicycle, not just its middl
   assert.ok(hit, 'the car overlaps the bike');
   assert.ok(hit.nx < -0.9, 'and is pushed back the way it came');
   assert.equal(overlapWithPlayer(-2.4, -2.0, 0, 0.32, 0.95, Math.PI / 2, 0.86, 2.18), null, 'behind the bike it misses');
+});
+
+test('vehicles pitch with the ground between their axles', () => {
+  // the ground rising 0.1 m per metre north (-z)
+  const groundPitch = trafficFunction('groundPitch', { Math, hillAt: (x, z) => 50 - 0.1 * z });
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} should equal ${b}`);
+  close(groundPitch({ x: 0, z: 0, tx: 0, tz: -1, axle: 1.4 }), -Math.atan(0.1)); // heading uphill: nose up
+  close(groundPitch({ x: 0, z: 0, tx: 0, tz: 1, axle: 1.4 }), Math.atan(0.1)); // downhill: nose down
+  close(groundPitch({ x: 0, z: 0, tx: 1, tz: 0 }), 0); // across the slope
 });
