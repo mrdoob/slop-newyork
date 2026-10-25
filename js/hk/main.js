@@ -6,6 +6,7 @@ import { buildHongKongCity } from './city.js';
 import { createHongKongTraffic } from './traffic.js';
 import { createHongKongPedestrians } from './pedestrians.js';
 import { BUILD } from './build.js';
+import { createHongKongMap } from './map.js';
 import { createPlayer, ChaseCamera } from './drive.js';
 
 // js/hk/main.js
@@ -44,6 +45,7 @@ function buildHud(world) {
       <span>拖曳環繞 · 滾輪縮放</span>
     </div>
     <nav class="hk-teleports">${HK.TELEPORTS.map((t, i) => `<button type="button" data-tp="${i}">${i + 1} ${t.zh}</button>`).join('')}</nav>
+    <button type="button" class="hk-map-toggle" aria-label="開關地圖 (M)">地圖 <kbd>M</kbd></button>
   `;
   document.body.appendChild(hud);
   return hud;
@@ -188,7 +190,8 @@ export async function startHongKong() {
   mark('traffic');
 
   await yieldToBrowser('安排行人…');
-  const pedestrians = createHongKongPedestrians(scene);
+  // 重用紐約的人物模型（PersonCrowd / PersonRig）；失敗會自動退回簡化版
+  const pedestrians = await createHongKongPedestrians(scene);
   mark('pedestrians');
 
   const player = createPlayer(scene, city.colliders);
@@ -314,20 +317,10 @@ export async function startHongKong() {
       blackDetected = false;
       return;
     }
-    // ② 仍然黑：自動用 WebGL2 後端重載一次（每個 session 只做一次，避免無限 reload）
-    let alreadyTried = false;
-    try { alreadyTried = sessionStorage.getItem('hk-webgl-fallback') === '1'; } catch { /* 私隱模式 */ }
-    if (params.get('auto') !== '0' && !alreadyTried) {
-      try { sessionStorage.setItem('hk-webgl-fallback', '1'); } catch { /* 同上 */ }
-      const url = new URL(location.href);
-      url.searchParams.set('webgl', '1');
-      console.warn('[hk] WebGPU 畫唔出，改用 WebGL2 重載：' + url.href);
-      location.replace(url.href);
-      return;
-    }
+    // ② 仍然黑：只提示，唔自動 reload（自動跳轉會令人以為自己按錯咗）
     const banner = document.createElement('div');
     banner.className = 'hk-black-warning';
-    banner.textContent = '3D 畫面讀出來係全黑（已試過 WebGL2）。請開 F12 睇 console，並試 ?world=hk&test=1 對比。';
+    banner.textContent = 'canvas 讀出來係全黑（?blackcheck=1）。留意：WebGPU 的 canvas 事後讀像素可能本身係黑，請以肉眼為準。';
     document.body.appendChild(banner);
   }
 
@@ -513,12 +506,12 @@ export async function startHongKong() {
     const top = topElementAtCentre();
     const covered = !top.startsWith('canvas');
     diag.textContent = [
-      `slop-hk ${BUILD} · three r${THREE.REVISION} · ${backendName()}`,
+      `版本 v${BUILD} · three r${THREE.REVISION} · ${backendName()}`,
       `canvas ${canvas.width}×${canvas.height} @ ${Math.round(rect.width)}×${Math.round(rect.height)} css · ${canvas.isConnected ? 'in DOM' : '唔在 DOM！'}`,
       `canvas style opacity ${style.opacity} · display ${style.display} · visibility ${style.visibility}`,
       `畫面中央最上層：${top}${covered ? '  ← 蓋住咗 canvas！' : ''}`,
       `draw calls ${r.drawCalls ?? r.calls ?? '?'} · tris ${r.triangles ?? '?'} · frames ${r.frame ?? '?'}${blackDetected ? ' · 讀到全黑！' : ''}`,
-      `scene children ${scene.children.length} · lights ${scene.children.filter((o) => o.isLight).length} · pedestrians ${pedestrians.counts.pedestrians}`,
+      `scene children ${scene.children.length} · lights ${scene.children.filter((o) => o.isLight).length} · pedestrians ${pedestrians.counts.pedestrians}（${pedestrians.counts.model}）`,
       `background ${scene.background && scene.background.getHexString ? `#${scene.background.getHexString()}` : String(scene.background)}`,
       `camera ${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)} · near ${camera.near} far ${camera.far}`,
       `player ${player.state.x.toFixed(0)}, ${player.state.z.toFixed(0)} · ${HK.districtAt(player.state.x, player.state.z).zh}`,
@@ -544,16 +537,37 @@ export async function startHongKong() {
   });
   mark('diagnostics');
 
+  /** 傳送到世界座標（地圖點擊用）：保留車頭方向，速度歸零。 */
+  function teleportTo(x, z) {
+    player.state.x = x;
+    player.state.z = z;
+    player.state.speed = 0;
+    chase.smoothed.set(x - Math.sin(player.state.heading) * 9.5, 6, z - Math.cos(player.state.heading) * 9.5);
+  }
+
+  // --- 地圖（M 開關；點地圖傳送）-------------------------------------------------------------------
+  const map = createHongKongMap({ onTeleport: (x, z) => teleportTo(x, z) });
+  const mapToggle = hud.querySelector('.hk-map-toggle');
+  mapToggle?.addEventListener('click', () => map.toggle());
+  window.addEventListener('keydown', (event) => {
+    if (event.code === 'KeyM' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      map.toggle();
+      event.preventDefault();
+    }
+  });
+  mark('map');
+
   // --- 主迴圈 ----------------------------------------------------------------------------------------
   let last = performance.now();
   let elapsed = 0;
   let bumpCount = 0;
+  let frameNow = 0;
   // 第一幀先在 try/catch 內畫一次：着色器若編不過，會顯示錯誤而唔係黑畫面
   try {
     player.update(0.016);
     chase.update(0.016, player.state);
     traffic.update(0.016, camera.position, player.state);
-    pedestrians.update?.(0.016);
+    pedestrians.update?.(0.016, camera.position);
     await yieldToBrowser('第一幀…');
     renderFrame();
     const device = renderer.backend?.device;
@@ -566,12 +580,14 @@ export async function startHongKong() {
     console.log('[hk] first frame', { drawCalls: info.drawCalls ?? info.calls, triangles: info.triangles, path: postPipeline ? 'post' : 'direct', sky: !!skyLighting });
     console.log(`[hk] build ${BUILD}`);
     console.log(`[hk] boot ${PHASES.map(([l, t]) => `${l} ${t}ms`).join(', ')}`);
-    console.log(`[hk] ${city.counts.buildings} buildings · ${city.counts.landmarks} landmarks · ${traffic.counts.cars} cars · ${traffic.counts.lanes} lanes (keep left) · ${pedestrians.counts.pedestrians} pedestrians`);
+    console.log(`[hk] ${city.counts.buildings} buildings · ${city.counts.landmarks} landmarks · ${traffic.counts.cars} cars · ${traffic.counts.lanes} lanes (keep left) · ${pedestrians.counts.pedestrians} pedestrians (${pedestrians.counts.model})`);
   } catch (error) {
     showBootError(error, PHASES);
   }
 
-  if (!testPattern) blackScreenWatchdog();
+  // 注意：WebGPU 的 canvas 在 present 之後唔可以可靠地讀返像素（讀出嚟永遠係黑），
+  // 所以自動偵測會誤報。現在改成 opt-in：?blackcheck=1 才會做，而且唔會自動 reload。
+  if (params.get('blackcheck') === '1') blackScreenWatchdog();
 
   renderer.setAnimationLoop((now) => {
     const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));

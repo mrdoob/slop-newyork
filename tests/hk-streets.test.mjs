@@ -109,11 +109,13 @@ test('行人道由走廊推導，而且全部喺行車道以外', { skip }, asyn
 test('行人實例：位置有限、貼住地面、唔會走出馬路', { skip }, async () => {
   const { createHongKongPedestrians } = await import('../js/hk/pedestrians.js');
   const scene = { children: [], add(o) { this.children.push(o); } };
-  const peds = createHongKongPedestrians(scene, { count: 120 });
+  const peds = await createHongKongPedestrians(scene, { count: 120 });
   assert.equal(peds.counts.pedestrians, 120);
+  assert.equal(peds.counts.model, 'nyc-person', '應該重用紐約的人物模型（PersonCrowd）');
   assert.equal(scene.children.length, 1, '行人應該集中喺一個 group');
   const group = scene.children[0];
-  assert.equal(group.children.length, 2, '應該只有 2 個 InstancedMesh（身體 + 頭）');
+  assert.equal(group.children.length, 2, 'PersonCrowd 的兩個 LOD 網格（近／遠）');
+  assert.equal(peds.meshes.length, 2);
 
   for (let frame = 0; frame < 120; frame++) peds.update(1 / 30);
 
@@ -121,5 +123,30 @@ test('行人實例：位置有限、貼住地面、唔會走出馬路', { skip }
     assert.ok(Number.isFinite(p.s), '行人 s 變成 NaN');
     assert.ok(p.s >= 0 && p.s <= p.path.len, `行人 s 超出範圍：${p.s}/${p.path.len}`);
     assert.ok(p.speed >= 1.0 && p.speed <= 1.7, `行人速度不合理：${p.speed}`);
+  }
+});
+
+test('地圖：世界座標 ↔ 地圖座標可以來回轉換，而且全部落在地圖之內', async () => {
+  const { createProjection } = await import('../js/hk/map.js');
+  const bounds = { minX: -2000, maxX: 1800, minZ: -4200, maxZ: -200 };
+  for (const size of [300, 420, 128]) {
+    const projection = createProjection(bounds, size, size, 12);
+    for (const point of [
+      { x: bounds.minX, z: bounds.minZ },
+      { x: bounds.maxX, z: bounds.maxZ },
+      { x: 0, z: -2000 },
+      { x: 320, z: -4048 }
+    ]) {
+      const m = projection.toMap(point.x, point.z);
+      assert.ok(m.x >= -0.001 && m.x <= size + 0.001, `x 超出地圖：${m.x}`);
+      assert.ok(m.y >= -0.001 && m.y <= size + 0.001, `y 超出地圖：${m.y}`);
+      const back = projection.toWorld(m.x, m.y);
+      assert.ok(Math.abs(back.x - point.x) < 0.5, `x round-trip：${back.x} vs ${point.x}`);
+      assert.ok(Math.abs(back.z - point.z) < 0.5, `z round-trip：${back.z} vs ${point.z}`);
+    }
+    // 北朝上：z 越細（越北）y 越細
+    const north = projection.toMap(0, bounds.minZ + 100);
+    const south = projection.toMap(0, bounds.maxZ - 100);
+    assert.ok(north.y < south.y, '地圖要北朝上');
   }
 });
