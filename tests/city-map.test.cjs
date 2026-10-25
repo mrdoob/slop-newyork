@@ -11,7 +11,8 @@ for (const [width, height, dpr] of [[500, 300, 1], [320, 180, 1.5], [1920, 1080,
     const window = { innerWidth: width, innerHeight: height, devicePixelRatio: dpr };
     const { CityMapSystem } = loadModule(source, {
       globals: { window, performance: { now: () => 0 } },
-      imports: { '../world/city-geodata.js': { GEO: {} }, '../world/city-config.js': { ROADS: [] } }
+      // the grid turned 24.87° east of true north, as Tepic's is: the map turns it back
+      imports: { '../world/city-geodata.js': { GEO: { frame: { bearingDeg: 24.87 } } }, '../world/city-config.js': { ROADS: [] } }
     });
     const map = Object.create(CityMapSystem.prototype);
     // Capture the production render viewport; drawing primitives are irrelevant to coordinate conversion.
@@ -33,8 +34,8 @@ for (const [width, height, dpr] of [[500, 300, 1], [320, 180, 1.5], [1920, 1080,
 
     for (const point of [{ x: 200, z: -300 }, { x: 325, z: -375 }]) {
       // Convert the renderer's centred coordinates through the canvas backing store to CSS pixels.
-      const screenX = (view.toX(point.x) + view.w / 2) * view.dpr * width / map.fullCanvas.width;
-      const screenY = (view.toY(point.z) + view.h / 2) * view.dpr * height / map.fullCanvas.height;
+      const screenX = (view.toX(point.x, point.z) + view.w / 2) * view.dpr * width / map.fullCanvas.width;
+      const screenY = (view.toY(point.x, point.z) + view.h / 2) * view.dpr * height / map.fullCanvas.height;
       const clicked = map.screenToWorld(screenX, screenY, width, height);
       // The pixel budget can yield a fractional DPR; integer backing sizes may round by less than one pixel.
       const tolerance = 1 / (view.s * view.dpr);

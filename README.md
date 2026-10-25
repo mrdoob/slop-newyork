@@ -36,6 +36,12 @@ tools/data/tepic/fetch-routes.sh
 node --max-old-space-size=12000 tools/build-tepic-geodata.mjs
 ```
 
+The streets that are not asphalt (`js/world/pavement-data.js`: empedrado, adoquín, tierra, concreto) come from OpenStreetMap's `surface` tags, plus the colonias known to be cobbled that OpenStreetMap leaves untagged (`COBBLED` in the tool: add a colonia there, or tag its streets in OpenStreetMap):
+
+```bash
+node tools/build-tepic-pavements.mjs
+```
+
 ## License and data
 
 The project code is available under the [MIT License](LICENSE).
