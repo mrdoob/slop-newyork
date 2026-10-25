@@ -517,3 +517,68 @@ test('a vehicle tilts with the ground under its wheels and rolls down the slope'
   near(t.roll, 0);
   near(flat.slopeAcceleration(5, 5, 1), 0);
 });
+
+// A car driven straight along +z over ground `ground(z)` for `seconds` at a held `speed` (m/s), 60 frames a second:
+// its heights, and how long it was in the air (flying: clear of the suspension's travel)
+function drive(ground, speed, seconds = 3, vy = 0) {
+  const { controller } = keyboardHarness();
+  const car = {
+    position: { x: 0, y: ground(0), z: 0 }, heading: 0, speed, vx: 0, vz: 0, angularVel: 0, steerAngle: 0,
+    pitchVel: 0, rollVel: 0, heaveVel: 0, heaveY: 0, wheelSpin: 0, vy, airborne: false, flying: false,
+    chassisPivot: { rotation: { x: 0, z: 0 }, position: { y: 0 } }, wheels: []
+  };
+  controller.entities = { car };
+  controller.terrainAt = (x, z) => ground(z);
+  controller.resolveHorizontalCollision = () => {};
+  controller.keys.forward = 1; // (the throttle holds the speed against the drag & the slope)
+  let flying = 0, top = -Infinity;
+  for (let i = 0; i < seconds * 60; i++) {
+    car.speed = speed;
+    controller.updateCar(1 / 60);
+    if (car.flying) flying += 1 / 60;
+    top = Math.max(top, car.position.y - ground(car.position.z));
+    assert.ok(car.position.y >= ground(car.position.z) - 1e-9, 'never under the ground');
+  }
+  return { car, flying, top };
+}
+// a hill: 12% up for 40 m, then 12% down
+const crest = (z) => (z < 40 ? z * 0.12 : Math.max(0, 4.8 - (z - 40) * 0.12));
+
+test('a car flies off a crest at speed, and keeps to the ground over it slowly', () => {
+  const fast = drive(crest, 30);
+  assert.ok(fast.flying > 0.4, `${fast.flying.toFixed(2)} s in the air`);
+  assert.ok(fast.top > 0.5, `${fast.top.toFixed(2)} m over the ground`);
+  // landed, on the ground again, the suspension compressed by the touchdown
+  assert.equal(fast.car.airborne, false);
+  const slow = drive(crest, 6);
+  assert.equal(slow.flying, 0);
+  assert.ok(slow.top < 0.15);
+});
+
+test('a car drives up and down plain slopes without leaving the ground', () => {
+  for (const grade of [0.1, -0.1]) {
+    // (already rolling down or up it)
+    const run = drive((z) => z * grade, 30, 1, 30 * grade);
+    assert.equal(run.flying, 0);
+    assert.ok(run.top < 0.01, `${run.top} m over the ground`);
+    assert.equal(run.car.airborne, false);
+  }
+});
+
+test('a car keeps no grip or steering in the air', () => {
+  const { controller } = keyboardHarness();
+  const car = {
+    position: { x: 0, y: 5, z: 0 }, heading: 0, speed: 20, vx: 0, vz: 0, angularVel: 0, steerAngle: 0.5,
+    pitchVel: 0, rollVel: 0, heaveVel: 0, heaveY: 0, wheelSpin: 0, vy: 0, airborne: true, flying: true,
+    chassisPivot: { rotation: { x: 0, z: 0 }, position: { y: 0 } }, wheels: []
+  };
+  controller.entities = { car };
+  controller.terrainAt = () => 0;
+  controller.resolveHorizontalCollision = () => {};
+  controller.keys.forward = 1;
+  controller.keys.left = 1;
+  controller.updateCar(1 / 60);
+  assert.equal(car.heading, 0);
+  assert.ok(car.speed <= 20 && car.speed > 19.9);
+  assert.ok(car.position.y < 5 && car.vy < 0, 'it falls');
+});
