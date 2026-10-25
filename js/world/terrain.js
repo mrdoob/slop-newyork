@@ -34,33 +34,41 @@ function buildTerrain(scene) {
     scene.add(group);
     return { group };
   }
+  // The mesh: the hills' 75 m grid, and on the town's slopes the town's finer grid over its own area instead (its
+  // floor bends between the hills' nodes: the mesh must too, on the very triangles the ground is reckoned on). Only
+  // the cells that rise at all; on the town's slopes the mesh is the ground all over the grids (the valley floor rings
+  // them), but for the detailed city's box where the road deck (city-grid.js) covers the flat parts. The flat cells,
+  // which cast no shadow, go apart: a mesh over the whole grid is never out of a cascade's view
+  const G = SLOPES && GEO.ground ? GEO.ground : null;
+  const gx1 = G ? G.x0 + (G.w - 1) * G.cell : 0, gz1 = G ? G.z0 + (G.h - 1) * G.cell : 0;
+  const position = [], hill = [], rising = [], flat = [];
+  const addGrid = (x0, z0, cell, w, h, hillAt, skip) => {
+    const base = position.length / 3;
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const x = x0 + i * cell, z = z0 + j * cell, hh = hillAt(i, j, x, z);
+        position.push(x, meshHeight(x, z, hh), z);
+        hill.push(hh);
+      }
+    }
+    for (let j = 0; j + 1 < h; j++) {
+      for (let i = 0; i + 1 < w; i++) {
+        const cx0 = x0 + i * cell, cz0 = z0 + j * cell, cx1 = cx0 + cell, cz1 = cz0 + cell;
+        if (skip && skip(cx0, cz0, cx1, cz1)) continue;
+        const k = base + j * w + i;
+        const rises = Math.max(hill[k], hill[k + 1], hill[k + w], hill[k + w + 1]) >= 0.15;
+        if (!rises && (!SLOPES || (inBox(cx0, cz0) && inBox(cx1, cz1)))) continue;
+        (rises ? rising : flat).push(k, k + w, k + 1, k + 1, k + w, k + w + 1);
+      }
+    }
+  };
   const { w, h, cell, x0, z0 } = T;
-  const pos = new Float32Array(w * h * 3);
-  for (let j = 0; j < h; j++) {
-    for (let i = 0; i < w; i++) {
-      const k = j * w + i;
-      const x = x0 + i * cell, z = z0 + j * cell;
-      pos[k * 3] = x;
-      pos[k * 3 + 1] = meshHeight(x, z, heights[k]);
-      pos[k * 3 + 2] = z;
-    }
-  }
-  // Only the cells that rise at all; on the town's slopes the mesh is the ground all over its grid (the valley floor
-  // rings it), but for the detailed city's box where the road deck (city-grid.js) covers the flat parts
-  const underDeck = (i, j) => SLOPES && inBox(x0 + i * cell, z0 + j * cell) && inBox(x0 + (i + 1) * cell, z0 + (j + 1) * cell);
-  // (the flat valley cells, which cast no shadow, apart: a mesh over the whole grid is never out of a cascade's view)
-  const rising = [], flat = [];
-  for (let j = 0; j + 1 < h; j++) {
-    for (let i = 0; i + 1 < w; i++) {
-      const k = j * w + i;
-      const rises = Math.max(heights[k], heights[k + 1], heights[k + w], heights[k + w + 1]) >= 0.15;
-      if (!rises && (!SLOPES || underDeck(i, j))) continue;
-      (rises ? rising : flat).push(k, k + w, k + 1, k + 1, k + w, k + w + 1);
-    }
-  }
+  addGrid(x0, z0, cell, w, h, (i, j) => heights[j * w + i],
+    G ? (cx0, cz0, cx1, cz1) => cx0 >= G.x0 && cx1 <= gx1 && cz0 >= G.z0 && cz1 <= gz1 : null);
+  if (G) addGrid(G.x0, G.z0, G.cell, G.w, G.h, (i, j, x, z) => terrainHeight(x, z));
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  if (SLOPES) geo.setAttribute('hill', new THREE.BufferAttribute(heights, 1)); // the height over the floor, for the colours
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  if (SLOPES) geo.setAttribute('hill', new THREE.Float32BufferAttribute(hill, 1)); // the height over the floor, for the colours
   // (the normals from every cell drawn, before the flat ones go into a mesh of their own)
   geo.setIndex(new THREE.Uint32BufferAttribute([...rising, ...flat], 1));
   geo.computeVertexNormals();

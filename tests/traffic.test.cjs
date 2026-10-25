@@ -19,6 +19,11 @@ const { playerInLane, snapshot } = vm.runInNewContext(`
   ({ playerInLane, snapshot });
 `);
 
+// The player-vs-vehicle box test, also used for cyclists and motorcyclists over their whole bike (contactRider)
+const overlapSource = source.match(/  const satHit = [\s\S]*?\n  function overlapWithPlayer\([\s\S]*?\n  \}/)?.[0];
+assert.ok(overlapSource, 'traffic player overlap test is present');
+const overlapWithPlayer = vm.runInNewContext(`${overlapSource}; overlapWithPlayer`);
+
 function lane(points) {
   const cum = [0];
   for (let i = 1; i < points.length; i++) {
@@ -187,7 +192,7 @@ function populationContext() {
     clock: 0,
     VEHICLE_SPAWN_DISTANCE: 250, PED_SPAWN_DISTANCE: 150, NEAR_RADIUS: 350,
     nearEdges: [], nearSignals: [], track: {}, KERB: 1.6, QUEUE_GAP: 0.62,
-    atCurb: () => {}, laneClear: () => true,
+    atCurb: () => {}, laneClear: () => true, drawModel: () => {},
     place: (v, e, lane, s) => Object.assign(v, { edge: e, lane, s })
   };
   context.nearView = trafficFunction('nearView', context);
@@ -257,6 +262,15 @@ test('crossing pedestrians fall back to a sidewalk when nearby crosswalks are un
   assert.equal(crossings, 5);
   assert.equal(ped.node, null);
   assert.equal(ped.z, 210);
+});
+
+test('a car hitting the end of a bicycle touches the bicycle, not just its middle', () => {
+  // a bicycle at the origin riding +z (1.9 m long, 0.64 m wide); the player's car (heading +x) noses into its rear
+  // wheel, 0.8 m behind its centre, where a pedestrian-sized circle round the bike's middle would miss it
+  const hit = overlapWithPlayer(-2.4, -0.8, 0, 0.32, 0.95, Math.PI / 2, 0.86, 2.18);
+  assert.ok(hit, 'the car overlaps the bike');
+  assert.ok(hit.nx < -0.9, 'and is pushed back the way it came');
+  assert.equal(overlapWithPlayer(-2.4, -2.0, 0, 0.32, 0.95, Math.PI / 2, 0.86, 2.18), null, 'behind the bike it misses');
 });
 
 test('vehicles pitch with the ground between their axles', () => {

@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu';
 
 // js/sim/mayhem.js
-// Arcade knock-downs for the player's car and bicycle: people (pedestrians, cyclists) thrown and tumbling to the ground,
-// street furniture (lamp posts, hydrants) tipping over. Pure helpers (tested in tests/mayhem.test.cjs) plus the props'
-// breaker, which hides a prop's static instances and animates a stand-in falling in its place.
+// Arcade knock-downs for the player's car and bicycle: people (pedestrians, cyclists, motorcyclists) thrown and
+// tumbling to the ground, street furniture (lamp posts, hydrants) tipping over. Pure helpers (tested in
+// tests/mayhem.test.cjs) plus the props' breaker, which hides a prop's static instances and animates a stand-in falling
+// in its place.
 
 const BONES = 15; // PersonRig bones (pedestrians.js BONE_COUNT): each 8 floats, quaternion, translation, scale
 const GRAVITY = 9.8;
@@ -27,6 +28,19 @@ function boxHit(px, pz, heading, hw, hl, x, z, r) {
   if (Math.abs(along) > hl + r || Math.abs(across) > hw + r) return null;
   const d = Math.hypot(dx, dz) || 1;
   return { nx: dx / d, nz: dz / d, along, across };
+}
+
+/**
+ * Does the player, in `mode`, knock a cyclist or motorcyclist they touch off their bike? Only from a car or a bicycle,
+ * when (rvx, rvz), the player's velocity less the rider's (whichever of them was moving), drives them together across
+ * the contact (nx, nz: from the player towards the rider) faster than `minSpeed`, or slides one along the other well
+ * faster than that: brushing past a rider at about their own speed only eases them apart.
+ */
+function riderKnocked(mode, rvx, rvz, nx, nz, minSpeed) {
+  if (mode !== 'car' && mode !== 'cyclist') return false;
+  const closing = rvx * nx + rvz * nz;
+  const slide = Math.hypot(rvx - closing * nx, rvz - closing * nz);
+  return closing > minSpeed || slide > minSpeed * 2.5;
 }
 
 /**
@@ -229,7 +243,7 @@ class PropBreaker {
   /** Knocks over whatever the player's car or bicycle runs into this frame */
   update(dt, entity, mode) {
     const over = entity ? entity.position.y - (this.groundAt ? this.groundAt(entity.position.x, entity.position.z) : 0) : 0;
-    if (entity && (mode === 'car' || mode === 'cyclist') && over < 1.5) {
+    if (entity && (mode === 'car' || mode === 'cyclist' || mode === 'moto') && over < 1.5) {
       const heading = entity.heading || 0;
       const vx = Math.sin(heading) * (entity.speed || 0) + (entity.vx || 0);
       const vz = Math.cos(heading) * (entity.speed || 0) + (entity.vz || 0);
@@ -364,4 +378,4 @@ function hideInstance(mesh, index) {
   attr.needsUpdate = true;
 }
 
-export { BONES, boxHit, startTumble, stepTumble, slide, tumblePose, startTopple, stepTopple, hideInstance, PropBreaker };
+export { BONES, boxHit, riderKnocked, startTumble, stepTumble, slide, tumblePose, startTopple, stepTopple, hideInstance, PropBreaker };

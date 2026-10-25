@@ -5,6 +5,19 @@ const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
 const source = readFileSync(join(__dirname, '../js/player/controllers.js'), 'utf8');
+// The car's drivetrain & damage are plain modules without imports: the real ones run under the harness
+const realModule = (path) => loadModule(readFileSync(join(__dirname, path), 'utf8'));
+const drivetrain = realModule('../js/player/drivetrain.js');
+const vehicleDamage = realModule('../js/player/vehicle-damage.js');
+// ...and two of the car models' files stand in for the registry (js/models/cars/index.js)
+const carModels = [...realModule('../js/models/cars/nissan.js').CARS, ...realModule('../js/models/cars/stellantis.js').CARS];
+const carModelById = Object.fromEntries(carModels.map((m) => [m.id, m]));
+const carRegistry = {
+  CAR_MODEL_BY_ID: carModelById,
+  TAXI_MODEL: carModelById['nissan-tsuru'],
+  POLICE_MODEL: carModelById['dodge-charger-pursuit'],
+  pickModel: (body) => carModels.find((m) => m.body === body) || null
+};
 
 function eventTarget() {
   const listeners = new Map();
@@ -36,6 +49,10 @@ function keyboardHarness(nyc = {}) {
       '../actors/actor-models.js': {},
       '../sim/pedestrians.js': {},
       '../actors/vehicle-lights.js': {},
+      './drivetrain.js': drivetrain,
+      './vehicle-damage.js': vehicleDamage,
+      '../models/cars/index.js': carRegistry,
+      '../models/motos/index.js': realModule('../js/models/motos/index.js'),
     }
   });
   // Exercise the production event handlers without constructing the scene's 3D models.
@@ -180,8 +197,9 @@ function advanceWithTouch(mode, strength, reverse) {
 for (const mode of ['Person', 'Car', 'Cyclist', 'Helicopter']) {
   test(`analog ${mode.toLowerCase()} input proportionally scales movement and turning`, () => {
     for (const reverse of [false, true]) {
-      const full = advanceWithTouch(mode, 1, reverse);
-      const partial = advanceWithTouch(mode, 0.4, reverse);
+      // (a car below its tyres' grip: at full throttle traction control caps its pull)
+      const full = advanceWithTouch(mode, mode === 'Car' ? 0.5 : 1, reverse);
+      const partial = advanceWithTouch(mode, mode === 'Car' ? 0.2 : 0.4, reverse);
       assert.ok(Math.abs(partial.speed - full.speed * 0.4) < 1e-10, 'movement should scale with joystick strength');
       const turn = mode === 'Car' ? 'steerAngle' : 'heading';
       assert.ok(Math.abs(partial[turn] - full[turn] * 0.4) < 1e-10, 'turning should scale with joystick strength');
@@ -516,4 +534,34 @@ test('a vehicle tilts with the ground under its wheels and rolls down the slope'
   near(t.pitch, 0);
   near(t.roll, 0);
   near(flat.slopeAcceleration(5, 5, 1), 0);
+});
+
+test('one key feeds every action bound to it: Space jumps on foot and pulls the car\'s handbrake', () => {
+  const { controller, key } = keyboardHarness();
+  key('keydown', 'Space');
+  assert.equal(controller.keys.up, true);
+  assert.equal(controller.keys.handbrake, true);
+  key('keydown', 'KeyE');
+  key('keyup', 'Space');
+  assert.equal(controller.keys.up, true, 'E still holds up');
+  assert.equal(controller.keys.handbrake, false);
+  assert.equal(controller.keys.shiftUp, true);
+});
+
+test('a car crash is the sudden change in its velocity: it dents the side it was hit on and costs engine power', () => {
+  const { controller } = keyboardHarness();
+  const car = {
+    heading: 0, speed: 0, vx: 0, vz: 0, wheels: [],
+    damage: vehicleDamage.createDamage()
+  };
+  // a gentle shove: nothing
+  assert.equal(controller.impactCar(car, 0, -2), 0);
+  // stopped dead from 54 km/h facing +z: pushed back (-z), so hit at the nose
+  assert.ok(controller.impactCar(car, 0, -15) > 0.9);
+  assert.ok(car.damage.front > 0 && car.damage.rear === 0);
+  assert.ok(vehicleDamage.enginePower(car.damage) < 1);
+  // facing +x (its left is -z), pushed towards -z: hit from +z, on its right
+  const turned = { heading: Math.PI / 2, speed: 0, vx: 0, vz: 0, wheels: [], damage: vehicleDamage.createDamage() };
+  controller.impactCar(turned, 0, -12);
+  assert.ok(turned.damage.right > 0 && turned.damage.left === 0);
 });

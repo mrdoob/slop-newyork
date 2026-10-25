@@ -111,9 +111,12 @@ test('triangles cut along the lattice keep their area & winding, each piece on o
 
 test("the town's grid lies on the hills' lattice and meets the far floor at its edge", () => {
   const G = GEO.ground, T = GEO.terrain;
-  assert.equal(G.cell, T.cell);
+  // its cells halve the hills', on the same lines: every hill triangle is a whole number of town triangles
+  assert.equal(T.cell % G.cell, 0);
   assert.equal((G.x0 - T.x0) % T.cell, 0);
   assert.equal((G.z0 - T.z0) % T.cell, 0);
+  assert.equal(((G.w - 1) * G.cell) % T.cell, 0);
+  assert.equal(((G.h - 1) * G.cell) % T.cell, 0);
   const g = createGround(GEO, { slopes: true });
   const x1 = G.x0 + (G.w - 1) * G.cell, z1 = G.z0 + (G.h - 1) * G.cell;
   // on the grid's border, and just beyond it, the floor the hills stand on

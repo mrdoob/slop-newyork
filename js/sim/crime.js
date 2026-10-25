@@ -917,11 +917,11 @@ class CrimeSystem {
     }
 
     // run over by the player
-    if (this.onStreet && (this.mode === 'car' || this.mode === 'cyclist') && this.pspeed > 2.2) {
-      const hw = this.mode === 'car' ? 0.86 : 0.35, hl = this.mode === 'car' ? 2.18 : 0.85;
-      const hit = boxHit(this.px, this.pz, this.player.heading, hw, hl, a.x, a.z, 0.3);
+    const size = this.playerSize();
+    if (this.onStreet && this.mode !== 'person' && size && this.pspeed > 2.2) {
+      const hit = boxHit(this.px, this.pz, this.player.heading, size[0], size[1], a.x, a.z, 0.3);
       if (hit) {
-        const dmg = this.pspeed * (this.mode === 'car' ? 7 : 2.5);
+        const dmg = this.pspeed * (this.mode === 'car' ? 7 : this.mode === 'moto' ? 4 : 2.5);
         this.audio?.crash?.({ a: this.player, b: a, x: a.x, y: this.groundAt(a.x, a.z) + 1, z: a.z, speed: this.pspeed });
         a.hp -= dmg;
         this.knockAgent(a, this.pvx, this.pvz, hit.nx, hit.nz);
@@ -1411,12 +1411,32 @@ class CrimeSystem {
     cr.position.set(cr.x, cr.y + 0.7, cr.z);
   }
 
+  // The player's half width & half length on the ground (its car's own, a motorcycle's, a bicycle's, on foot), or null
+  playerSize() {
+    const pe = this.player;
+    const s = (this._size ??= [0, 0]);
+    if (this.mode === 'car') {
+      s[0] = pe.halfW || 0.86;
+      s[1] = pe.halfL || 2.18;
+    } else if (this.mode === 'moto') {
+      s[0] = 0.4;
+      s[1] = 1.0;
+    } else if (this.mode === 'cyclist') {
+      s[0] = 0.35;
+      s[1] = 0.85;
+    } else if (this.mode === 'person') {
+      s[0] = s[1] = 0.32;
+    } else {
+      return null;
+    }
+    return s;
+  }
+
   // Patrol cars against the player and each other
   collideCruisers() {
     const pe = this.player;
     const box = this._playerBox ??= { x: 0, z: 0, heading: 0, hw: 0, hl: 0 };
-    const sizes = { car: [0.86, 2.18], cyclist: [0.35, 0.85], person: [0.32, 0.32] };
-    const size = sizes[this.mode];
+    const size = this.playerSize();
     for (const cr of this.cruisers) {
       if (!cr.active) continue;
       cr.hw = cr.halfW;
@@ -1429,7 +1449,7 @@ class CrimeSystem {
         box.hl = size[1];
         const hit = boxOverlap(cr, box);
         if (hit) {
-          const pm = this.mode === 'car' ? 1300 : this.mode === 'cyclist' ? 95 : 75;
+          const pm = this.mode === 'car' ? 1300 : this.mode === 'moto' ? 260 : this.mode === 'cyclist' ? 95 : 75;
           const share = cr.mass / (cr.mass + pm); // the player's share of the push
           pe.position.x += hit.nx * hit.pen * share;
           pe.position.z += hit.nz * hit.pen * share;

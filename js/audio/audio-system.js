@@ -112,7 +112,7 @@ class CityAudioSystem {
     this.collisionSystems = [simulation.controllerManager, simulation.trafficSystem, simulation.propBreaker].filter(Boolean);
     this.onCollision = (impact) => this.crash(impact);
     for (const system of this.collisionSystems) system.setCollisionListener?.(this.onCollision);
-    this.motorParams = { speed: 0, load: 0, verticalSpeed: 0, doppler: 1, seed: 0 };
+    this.motorParams = { speed: 0, load: 0, verticalSpeed: 0, doppler: 1, seed: 0, rpm: 0 };
     this.windParams = { speed: 0, altitude: 0, night: 0, traffic: 0, enclosure: 0 };
     this.footPosition = { x: 0, y: 0, z: 0, seed: 0 };
     this.onGesture = (event) => {
@@ -285,6 +285,7 @@ class CityAudioSystem {
       params.speed = source.speed;
       params.load = source.load;
       params.verticalSpeed = source.verticalSpeed;
+      params.rpm = source.rpm || 0;
       params.seed = source.seed;
       params.doppler = clamp(343 / (343 + radial), 0.85, 1.18);
       slot.voice.update(params, now);
