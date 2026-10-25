@@ -52,7 +52,7 @@ python3 -m http.server 8081
 # 開 http://127.0.0.1:8081/
 ```
 
-跑測試（15 個測試檔、134 個 test case，約 34 秒，零依賴）：
+跑測試（16 個測試檔、140 個 test case，約 34 秒，零依賴）：
 
 ```bash
 node --test "tests/*.test.cjs" "tests/*.test.mjs"
@@ -95,7 +95,7 @@ GEO_DATA=tools/data node --max-old-space-size=8192 tools/build-geodata.mjs
 | 防火梯 | 上限 2,400 個 |
 | 攝影機預設 | 11 個 |
 | TSL 材質工廠 | 28 個 |
-| 測試 | 134 pass / 0 fail（113 紐約 + 21 香港） |
+| 測試 | 140 pass / 0 fail（113 紐約 + 27 香港） |
 
 > 使用者提到的「一百萬行」與實際不符：本 repo 是約 **3.7 萬行**的高密度程式碼（大量是 TSL 節點圖與幾何生成器），加上 1.13 MB 機器生成的 geo 資料。真正的工作量在密度，不在行數。
 
@@ -447,6 +447,7 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 | `vehicle-lights.test.cjs` | 車燈從燈具位置出發、不照穿底盤 |
 | `hk-geodata.test.mjs` | 香港資料：世界框方向、投影、樓宇不壓路、地標在陸上、海岸線分離、交通資料 |
 | `hk-world.test.cjs` | 香港世界：**靠左行駛的車道幾何**、車道數、`poseAt`、號誌、雙語標籤、傳送點、跟車模型、世界切換 |
+| `hk-render.test.mjs` | 標線只產生**一個** typed array（回歸測試）、無 NaN、留在車行道內、虛線相位跨段、退化輸入、啟動流程會 macrotask 讓路並預編譯 shader |
 
 測試手法值得學：`tests/helpers/module.cjs` 用 `vm` 把檔案裡的 `import`/`export` 改寫掉，餵進 stub namespace，**生產程式碼本體一行不改**就能在 Node 裡跑。所以測試不需要 three.js、不需要瀏覽器。
 
@@ -470,7 +471,7 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 | **1** 世界觀 | 「走廊 + chainage」取代 `streetZ/avenueX`；雙語地區與位置標籤；香港號誌週期 | `js/hk/config.js`(293) | ✅ |
 | **3** 靠左行駛 | 車道＝中心線**向左**偏移（單一公式 `laneLateral`）、雙向走廊兩組車道、跟車模型 | `js/hk/traffic.js`(225)、`config.js` 的 `buildLanes/followSpeed` | ✅ |
 | **3** 香港車種 | 紅的士（重用放樣車體）、雙層巴士、電車、小巴、天星小輪 | `js/hk/vehicles.js`(165) | ✅ |
-| **3** 場景 | 維港水面、填海陸地＋海堤、路面＋行人道＋路緣、標線、1,349 棟沿街樓宇（boxLocal TSL 立面）、25 個地標、街燈、電車軌 | `js/hk/city.js`(383) | ✅ |
+| **3** 場景 | 維港水面、填海陸地＋海堤、路面＋行人道＋路緣、標線（單一 geometry）、1,349 棟沿街樓宇（boxLocal TSL 立面）、25 個地標、593 支街燈、電車軌 | `js/hk/city.js`、`js/hk/markings.js` | ✅ |
 | **3** 操控 | 街機式駕駛（油門／剎車／滾阻／風阻／速度相關轉向）＋ AABB 碰撞；追尾鏡頭 | `js/hk/drive.js`(148) | ✅ |
 | — | 進入點：WebGPU + 既有 `LightingSystem` + `createPostProcessing`，四個時段、傳送點、HUD（km/h） | `js/hk/main.js`(214) | ✅ |
 
@@ -490,18 +491,32 @@ node --test "tests/hk-*.test.*"
 
 **操作**：`W/S` 前進倒車、`A/D` 轉向、`Shift` 加速、`Space` 剎車、`G` 切換光線、`1`–`9` 傳送到九個真實地點、拖曳環繞、滾輪縮放。
 
+**診斷**：`?world=hk&low=1` 跳過樓宇（只留道路與車流）；啟動失敗時載入畫面會顯示錯誤訊息與已完成階段。
+
 **資料規模（seed）**：17 條走廊 · 1,349 棟樓（340 棟 > 120 m）· 25 個地標（IFC 412 m、ICC 484 m、中銀 367 m…）· 10 個地區 · 1 條電車線 · 1 條天星小輪航線 · 1 條海底隧道記錄。
 
 **已驗證（可重跑）**
 
-- `node --test "tests/hk-*.test.*"` → **21 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
-- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **134 pass / 0 fail**（原 113 個紐約測試全數保留通過）。
+- `node --test "tests/hk-*.test.*"` → **27 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
+- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **140 pass / 0 fail**（原 113 個紐約測試全數保留通過）。
 - 專案內所有相對 import 的名稱都存在（用腳本掃過 40 個模組）。
 
-**未驗證（請你開瀏覽器確認）**
+**已知問題與已修（v2：Page Unresponsive）**
 
-- WebGPU 實際渲染：這個 sandbox 沒有 GPU、沒有瀏覽器，`?world=hk` 的畫面我沒有跑過。已知風險點集中在 `js/hk/city.js` 的材質參數（重用紐約的 boxLocal facade 材質）與 `js/hk/main.js` 的 render graph（`pass()` → `createPostProcessing` 未開 SSR）。
-- 效能：香港密度高於 seed，96 輛 AI 車 + 8 巴士 + 10 小巴 + 3 電車都是獨立 mesh／instanced mesh；預期 60 fps 但未實測。
+首次在瀏覽器試跑時，頁面卡在「初始化 WebGPURenderer…」並彈出 *Page Unresponsive*。追查結果是兩個**主執行緒**問題，與 WebGPU 無關：
+
+| # | 原因 | 修法 |
+|---|---|---|
+| 1 | `city.js` 的標線為 **每一段虛線** 開一個 `BufferGeometry`（全城 13,108 個）再 `mergeGeometries`，同步跑幾秒至十幾秒 | 新增 `js/hk/markings.js`：一次過寫入單一 typed array。**13,108 個 geometry → 1 個**，實測 19 ms、9,008 個 quad |
+| 2 | 用 `requestAnimationFrame` 當「讓路」，但 rAF 的微任務在瀏覽器 paint **之前**執行，所以建城中途卡住時畫面永遠停在舊狀態 | 改用 `setTimeout(…, 16)`（macrotask，必定 paint），並把建城拆成 4 個階段逐段顯示 |
+| 3 | 第一幀一次過編譯所有 shader pipeline（紐約版正是為此寫了預編譯機制，否則冷快取 ~25 s） | 補上 8 路並行 `renderer.compileAsync()` + 進度百分比 |
+
+另外加了：**任何啟動例外都會印在載入畫面上**（訊息 + 已完成階段 + 耗時），不會再出現「黑畫面 + Unresponsive」；以及 `?world=hk&low=1` 診斷模式（跳過樓宇，只留道路＋車流）。
+
+**仍未驗證（需要你在瀏覽器確認）**
+
+- WebGPU 實際渲染：這個 sandbox 沒有 GPU、沒有瀏覽器，`?world=hk` 的畫面我沒有跑過。若仍失敗，載入畫面現在會直接顯示錯誤與停在哪一階段 —— 把那張圖貼回來即可。
+- 效能：20.9 km 走廊 · 99 條車道 · 1,349 棟樓 · 593 支街燈 · 96 車；預期 60 fps 但未實測。
 
 ### 15.1 先講結論
 

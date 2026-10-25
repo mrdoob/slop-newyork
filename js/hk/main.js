@@ -49,18 +49,50 @@ function buildHud(world) {
   return hud;
 }
 
+/** 真正的「讓路」：setTimeout 係 macrotask，瀏覽器一定會在之間 painting，唔似 rAF 的微任務。 */
+const yieldToBrowser = (label) => new Promise((resolve) => {
+  const status = document.getElementById('loading-status');
+  if (status && label) status.textContent = label;
+  setTimeout(resolve, 16);
+});
+
+const PHASES = [];
+function mark(label) {
+  PHASES.push([label, Math.round(performance.now())]);
+}
+
+/** 把錯誤直接顯示在載入畫面上（黑畫面 + 一句話，好過顯示 Unresponsive）。 */
+function showBootError(error, phaseList) {
+  const overlay = document.getElementById('loading-overlay');
+  if (!overlay) return;
+  const message = error && error.stack ? String(error.stack).split('\n').slice(0, 6).join('\n') : String(error);
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <div class="hk-boot-error" style="max-width:min(760px,92vw);text-align:left;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">
+      <div style="font:700 15px/1.4 Inter,system-ui,sans-serif;color:#ff8f93;margin-bottom:10px">香港世界啟動失敗 · Hong Kong boot failed</div>
+      <pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;color:#ffd7d8;background:rgba(0,0,0,.45);padding:12px;border-radius:10px;border:1px solid rgba(255,120,125,.35);margin:0 0 10px">${message.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</pre>
+      <div style="font:12px/1.6 Inter,system-ui,sans-serif;color:rgba(255,255,255,.72)">
+        已完成的階段：${(phaseList || []).map(([l, t]) => `${l} (${t} ms)`).join(' → ') || '（無）'}<br>
+        請把上面這段連同 Console（F12）的紅色錯誤一齊貼回去。
+      </div>
+    </div>`;
+  console.error('[hk] boot failed', error);
+}
+
 export async function startHongKong() {
   const world = getWorld('hk');
   applyBranding(world);
 
   const container = document.getElementById('canvas-container');
   const loadingOverlay = document.getElementById('loading-overlay');
-  const loadingStatus = document.getElementById('loading-status');
-  const setStatus = (text) => {
-    if (loadingStatus) loadingStatus.textContent = text;
-  };
-  setStatus('初始化 WebGPURenderer…');
+  const params = new URLSearchParams(location.search);
+  const lowDetail = params.get('low') === '1';
 
+  // 例外一律顯示在畫面上，唔會留下一片黑 + Unresponsive
+  window.addEventListener('error', (e) => showBootError(e.error || e.message, PHASES));
+  window.addEventListener('unhandledrejection', (e) => showBootError(e.reason, PHASES));
+
+  await yieldToBrowser('初始化 WebGPURenderer…');
   const renderer = new THREE.WebGPURenderer({
     antialias: true,
     powerPreference: 'high-performance',
@@ -70,29 +102,80 @@ export async function startHongKong() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   container.appendChild(renderer.domElement);
-
   await renderer.init();
+  mark('renderer');
 
   const scene = new THREE.Scene();
+  await yieldToBrowser('建立天空、日光與環境光（PMREM）…');
   const lighting = new LightingSystem(scene, renderer);
   lighting.applyPreset('golden');
+  mark('lighting');
 
-  setStatus('興建維港、道路與樓宇…');
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-  const city = buildHongKongCity(scene);
+  await yieldToBrowser('興建維港與樓宇…');
+  const city = await buildHongKongCity(scene, {
+    onProgress: async (label) => {
+      await yieldToBrowser(label);
+      mark(label);
+    }
+  });
+  mark('city');
 
-  setStatus('安排靠左車流…');
+  await yieldToBrowser('安排靠左行駛的車流…');
   const traffic = createHongKongTraffic(scene);
+  mark('traffic');
 
   const player = createPlayer(scene, city.colliders);
   const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.35, 40000);
   const chase = new ChaseCamera(camera, renderer.domElement);
+  camera.position.set(HK.SPAWN.x, 6, HK.SPAWN.z - 12);
+  camera.lookAt(HK.SPAWN.x, 1.6, HK.SPAWN.z);
 
-  // 後處理：與紐約同一套（ACES + 分時段調色 + 門檻式 bloom）。香港這裡不開 SSR（水面用 IBL 反射）。
+  await yieldToBrowser('編譯著色器與後處理…');
+  // 香港唔開 SSR（維港水面用 IBL 反射），但保留 ACES + 分時段調色 + bloom
   const scenePass = pass(scene, camera);
-  const scenePassColor = scenePass.getTextureNode('output');
-  const colorGrade = createPostProcessing(renderer, scenePassColor, vec4(0, 0, 0, 0));
+  const colorGrade = createPostProcessing(renderer, scenePass.getTextureNode('output'), vec4(0, 0, 0, 0));
   const pipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
+  mark('postfx');
+
+  if (lowDetail) {
+    city.group.traverse((o) => { if (o.name === 'HongKongTowers' || o.name === 'HongKongMidRise') o.visible = false; });
+  }
+
+  // 預編譯：幾百條 pipeline 一次過交給 GPU 會鎖死主執行緒幾十秒（紐約版就是為此寫了同樣的機制）。
+  // 這裡用 8 條並行 compileAsync，每批之後讓瀏覽器 paint 並更新進度。
+  await yieldToBrowser('預編譯著色器（0%）…');
+  {
+    const jobs = [];
+    const seen = new Set();
+    scene.traverseVisible((o) => {
+      if (!o.isMesh && !o.isLine && !o.isPoints && !o.isSprite) return;
+      const key = o.isInstancedMesh ? o : o.material;
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      jobs.push(o);
+    });
+    let next = 0;
+    let done = 0;
+    const worker = async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= jobs.length) return;
+        try {
+          await renderer.compileAsync(jobs[i], camera, scene);
+        } catch (error) {
+          console.warn('[hk compile]', error);
+        }
+        if (++done % 8 === 0) {
+          const pct = Math.round((done / jobs.length) * 100);
+          const status = document.getElementById('loading-status');
+          if (status) status.textContent = `預編譯著色器（${pct}%）…`;
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(8, jobs.length) }, worker));
+    mark(`compile(${jobs.length})`);
+  }
 
   // --- 輸入 ------------------------------------------------------------------------------------------
   const keyMap = {
@@ -184,7 +267,24 @@ export async function startHongKong() {
   // --- 主迴圈 ----------------------------------------------------------------------------------------
   let last = performance.now();
   let elapsed = 0;
-  let firstFrame = true;
+  // 第一幀先在 try/catch 內畫一次：着色器若編不過，會顯示錯誤而唔係黑畫面
+  try {
+    player.update(0.016);
+    chase.update(0.016, player.state);
+    traffic.update(0.016, camera.position);
+    await yieldToBrowser('第一幀…');
+    pipeline.render();
+    const device = renderer.backend?.device;
+    const info = device && device.queue?.onSubmittedWorkDone ? Promise.resolve(device.queue.onSubmittedWorkDone()) : Promise.resolve();
+    await info.catch(() => {});
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    mark('firstFrame');
+    console.log(`[hk] boot ${PHASES.map(([l, t]) => `${l} ${t}ms`).join(', ')}`);
+    console.log(`[hk] ${city.counts.buildings} buildings · ${city.counts.landmarks} landmarks · ${traffic.counts.cars} cars · ${traffic.counts.lanes} lanes (keep left)`);
+  } catch (error) {
+    showBootError(error, PHASES);
+  }
+
   renderer.setAnimationLoop((now) => {
     const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
     last = now;
@@ -197,18 +297,9 @@ export async function startHongKong() {
     updateHud(dt);
 
     pipeline.render();
-
-    if (firstFrame) {
-      firstFrame = false;
-      const device = renderer.backend?.device;
-      Promise.resolve(device && device.queue.onSubmittedWorkDone()).catch(() => {}).then(() => {
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
-      });
-    }
   });
 
   // 除錯／驗證用（不會影響正常遊玩）
   globalThis.__slopHK = { scene, renderer, city, traffic, player, camera, HK };
-  console.log(`[hk] ${city.counts.buildings} buildings · ${city.counts.landmarks} landmarks · ${traffic.counts.cars} cars · ${traffic.counts.lanes} lanes (keep left)`);
   return { scene, renderer, city, traffic, player };
 }

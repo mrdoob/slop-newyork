@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createCurtainWallMaterial, createPreWarBuildingMaterial, createFacadeBoxes, WALL_KINDS } from '../tsl-materials.js';
 import * as HK from './config.js';
+import { buildRoadMarkings, dedupe } from './markings.js';
 
 // js/hk/city.js
 // 香港城市場景：維港水面、填海陸地與海堤、道路走廊（路面＋行人道＋路緣）、行車標線、沿街樓宇、地標、街燈、電車軌。
@@ -22,7 +23,8 @@ const Y = {
 // --- 幾何工具 ---------------------------------------------------------------------------------------------
 
 /** 沿折線的連續帶狀面（含斜接法線，轉彎不會斷開）。 */
-function ribbon(pts, width, y, { uAlong = 8, skirt = 0, normalSign = 1 } = {}) {
+function ribbon(inputPts, width, y, { uAlong = 8, skirt = 0, normalSign = 1 } = {}) {
+  const pts = dedupe(inputPts);
   const n = pts.length;
   if (n < 2) return null;
   const pos = [];
@@ -86,51 +88,6 @@ function ribbon(pts, width, y, { uAlong = 8, skirt = 0, normalSign = 1 } = {}) {
   return { top: geo, skirt: skirtGeo };
 }
 
-/** 虛線／實線：沿折線在 left 偏移處畫一段段窄條。 */
-function paintStrip(pts, offset, width, { dash = 0, gap = 0, y = Y.paint } = {}) {
-  const out = [];
-  let run = 0;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[i + 1];
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const len = Math.hypot(dx, dz) || 1e-6;
-    const ux = dx / len;
-    const uz = dz / len;
-    const lx = uz;
-    const lz = -ux;
-    const period = dash + gap;
-    let t = 0;
-    while (t < len) {
-      const segLen = dash > 0 ? Math.min(dash, len - t) : len;
-      if (period > 0 && dash > 0) {
-        const phase = (run + t) % period;
-        if (phase > dash) {
-          t += period - phase;
-          continue;
-        }
-      }
-      const x0 = a.x + ux * t + lx * offset;
-      const z0 = a.z + uz * t + lz * offset;
-      const x1 = a.x + ux * (t + segLen) + lx * offset;
-      const z1 = a.z + uz * (t + segLen) + lz * offset;
-      const hw = width / 2;
-      const quad = new THREE.BufferGeometry();
-      quad.setAttribute('position', new THREE.Float32BufferAttribute([
-        x0 + lx * hw, y, z0 + lz * hw, x0 - lx * hw, y, z0 - lz * hw,
-        x1 + lx * hw, y, z1 + lz * hw, x1 - lx * hw, y, z1 - lz * hw
-      ], 3));
-      quad.setIndex([0, 2, 1, 1, 2, 3]);
-      quad.computeVertexNormals();
-      out.push(quad);
-      t += dash > 0 ? segLen + gap : len;
-    }
-    run += len;
-  }
-  return out;
-}
-
 // --- 水面與陸地 -------------------------------------------------------------------------------------------
 
 function buildHarbour(group) {
@@ -189,27 +146,17 @@ function buildRoads(group) {
   asphalt.name = 'HongKongRoads';
   group.add(footways, asphalt);
 
-  // 標線：雙白線（不准超車）、車道虛線、路邊實線。香港靠左行駛，左右以行車方向為準。
-  const white = [];
-  for (const road of HK.ROADS) {
-    const half = road.w / 2;
-    white.push(...paintStrip(road.pts, half - 0.5, 0.16)); // 左邊線
-    white.push(...paintStrip(road.pts, -(half - 0.5), 0.16)); // 右邊線
-    if (road.oneway) {
-      for (let i = 1; i < road.lanesPerWay; i++) white.push(...paintStrip(road.pts, i * HK.LANE_WIDTH, 0.13, { dash: 4, gap: 6 }));
-    } else {
-      white.push(...paintStrip(road.pts, 0.22, 0.13));
-      white.push(...paintStrip(road.pts, -0.22, 0.13));
-      for (let i = 1; i < road.lanesPerWay; i++) {
-        white.push(...paintStrip(road.pts, i * HK.LANE_WIDTH, 0.13, { dash: 4, gap: 6 }));
-        white.push(...paintStrip(road.pts, -i * HK.LANE_WIDTH, 0.13, { dash: 4, gap: 6 }));
-      }
-    }
-  }
+  // 標線：一次過寫入單一 typed array（見 markings.js），香港靠左行駛，左右以行車方向為準。
+  // 舊寫法為每條虛線段開一個 BufferGeometry 再 merge，香港走廊是一萬三千個，會鎖死主執行緒。
+  const marks = buildRoadMarkings(HK.ROADS, { laneWidth: HK.LANE_WIDTH, y: Y.paint });
+  const paintGeo = new THREE.BufferGeometry();
+  paintGeo.setAttribute('position', new THREE.BufferAttribute(marks.positions, 3));
+  paintGeo.setIndex(new THREE.BufferAttribute(marks.indices, 1));
+  paintGeo.computeVertexNormals();
   const paintMat = new THREE.MeshStandardNodeMaterial({ color: 0xe8e6dc, roughness: 0.6, metalness: 0.0 });
   paintMat.polygonOffset = true;
   paintMat.polygonOffsetFactor = -1;
-  const paint = new THREE.Mesh(mergeGeometries(white), paintMat);
+  const paint = new THREE.Mesh(paintGeo, paintMat);
   paint.name = 'HongKongRoadPaint';
   group.add(paint);
   return { footways, asphalt, paint };
@@ -347,14 +294,18 @@ function buildStreetFurniture(group) {
 
 // --- 組裝 -------------------------------------------------------------------------------------------------
 
-export function buildHongKongCity(scene) {
+export async function buildHongKongCity(scene, { onProgress = async () => {} } = {}) {
   const group = new THREE.Group();
   group.name = 'HongKongCity';
   scene.add(group);
 
+  await onProgress('海岸線與維港水面…');
   const harbour = buildHarbour(group);
+  await onProgress('道路、行人道與標線…');
   const roads = buildRoads(group);
+  await onProgress('沿街樓宇…');
   const buildings = buildBuildings(group);
+  await onProgress('地標與街道家具…');
   const tallSet = [];
   const landmarks = buildLandmarks(group, tallSet);
   const furniture = buildStreetFurniture(group);
