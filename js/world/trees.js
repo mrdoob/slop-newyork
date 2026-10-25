@@ -3,12 +3,16 @@ import { createTreeMaterial } from '../render/tsl-materials.js';
 import { liftAt } from './ground.js';
 
 // js/world/trees.js
-// Procedural street & park trees, planted by street-details.js (section 7):
-// - London plane, honey locust & American elm grown from seeded per-species rules: a flared trunk / leader carrying
-//   scaffold limbs, branches and twigs as tapered, curving bark tubes (uv in metres for the bark shader)
-// - Leaf sprays on alpha-tested cards hung from the twigs, cut from a generated leaf atlas (palmate plane leaves,
-//   feathery locust fronds, toothed elm leaves and a dense far-canopy clump) whose mipmaps keep their coverage, so
-//   distant crowns don't thin out
+// Procedural street & park trees of Tepic, planted by street-details.js (section 7):
+// - Laurel de la India (Ficus microcarpa, the plazas' and sidewalks' tree), jacaranda, mango and tabachín
+//   (flamboyán) grown from seeded per-species rules: a flared trunk / leader carrying scaffold limbs, branches and
+//   twigs as tapered, curving bark tubes (uv in metres for the bark shader); the jacarandas bloom purple in
+//   February-April and the tabachines red in May-July (the month of ?live-time, or today's)
+// - Washingtonia fan palms, the camellones' palm: a tall ringed trunk under a skirt of dead fronds and a crown of fan
+//   leaves on their stalks (growPalm)
+// - Leaf sprays on alpha-tested cards hung from the twigs, cut from a generated leaf atlas (small glossy ficus
+//   leaves, feathery bipinnate fronds, long mango leaves, a dense far-canopy clump and the palm's fan) whose mipmaps
+//   keep their coverage, so distant crowns don't thin out
 // - Crown-shell normals, interior occlusion & sway weights baked per vertex (attributes: createTreeMaterial in
 //   tsl-materials.js)
 // - Three levels of detail (two variants per species up close), picked per tree from the camera distance and
@@ -35,15 +39,18 @@ const smooth = (e0, e1, x) => {
 };
 
 // =====================================================================================================================
-// 1. LEAF ATLAS: 2x2 tiles of leaf sprays drawn in metres and fitted to their tile (tileMeters = the card's world size)
-//    0 London plane · 1 honey locust · 2 American elm · 3 dense far-canopy clump (whole-crown cards of the far level)
+// 1. LEAF ATLAS: 3x3 tiles of leaf sprays drawn in metres and fitted to their tile (tileMeters = the card's world size)
+//    0 ficus · 1 bipinnate fronds (jacaranda, tabachín) · 2 mango · 3 dense far-canopy clump (whole-crown cards of
+//    the far level) · 4 Washingtonia fan leaf (5-8 empty)
 //    Texels: r = leaf brightness, g = per-leaf hue jitter, b = twig / stalk mask, a = coverage
 // =====================================================================================================================
-const ATLAS_SIZE = 1024;
-const TILE = ATLAS_SIZE / 2;
+const ATLAS_TILES = 3; // tiles per side
+const TILE = 512;
+const ATLAS_SIZE = TILE * ATLAS_TILES;
 const GUTTER = 8; // px kept clear round every tile, so mip levels don't bleed between tiles
 const TILE_FAR = 3;
-const tileOrigin = (k) => [(k % 2) * TILE, (k >> 1) * TILE];
+const TILE_PALM = 4;
+const tileOrigin = (k) => [(k % ATLAS_TILES) * TILE, Math.floor(k / ATLAS_TILES) * TILE];
 
 // Spray primitives in metres (x right, y up from the card's attachment point): twigs (polylines) & leaves
 function buildSprays(rng) {
@@ -73,32 +80,28 @@ function buildSprays(rng) {
 
   const sprays = [];
 
-  // 0. London plane: four or five twigs fanning out, big palmate leaves on long stalks, alternating along them
+  // 0. Laurel de la India: many short twigs crowded with small, glossy, elliptic leaves (a dense, dark crown)
   {
     const prims = [];
-    const n = 5;
+    const n = 6;
     for (let i = 0; i < n; i++) {
       const f = (i + 0.5) / n - 0.5;
-      const pts = twig(f * 0.08, 0, f * 1.55 + R(-0.1, 0.1), R(0.62, 0.8) * (1 - Math.abs(f) * 0.32), f * 0.6);
-      prims.push({ type: 'twig', pts, w0: 0.016, w1: 0.006 });
+      const pts = twig(f * 0.1, 0, f * 1.7 + R(-0.12, 0.12), R(0.42, 0.55) * (1 - Math.abs(f) * 0.3), f * 0.5, 10);
+      prims.push({ type: 'twig', pts, w0: 0.011, w1: 0.004 });
       let side = rng() < 0.5 ? 1 : -1;
-      for (let t = R(0.18, 0.26); t < 0.97; t += R(0.15, 0.19)) {
+      for (let t = R(0.08, 0.14); t < 0.97; t += R(0.055, 0.075)) {
         const { p, a } = at(pts, t);
         side = -side;
-        const la = a + side * R(0.55, 1.05);
-        const len = R(0.17, 0.23) * (1 - t * 0.25);
-        const stalk = len * 0.32;
-        const q = [p[0] + Math.sin(la) * stalk, p[1] + Math.cos(la) * stalk];
-        prims.push({ type: 'stalk', a: p, b: q, w: 0.006 });
-        prims.push({ type: 'palmate', p: q, a: la + R(-0.25, 0.25), len, t });
+        prims.push({ type: 'oval', p, a: a + side * R(0.5, 1.1), len: R(0.07, 0.09), wid: 0.46, t });
       }
       const tip = at(pts, 1);
-      prims.push({ type: 'palmate', p: tip.p, a: tip.a + R(-0.2, 0.2), len: R(0.15, 0.19), t: 1 });
+      prims.push({ type: 'oval', p: tip.p, a: tip.a, len: 0.075, wid: 0.44, t: 1 });
     }
     sprays.push(prims);
   }
 
-  // 1. Honey locust: slender twigs bearing feathery compound fronds of tiny paired leaflets (lacy, light-dappled)
+  // 1. Jacaranda & tabachín: slender twigs bearing feathery bipinnate fronds of tiny paired leaflets (lacy,
+  //    light-dappled; in bloom the tint turns them purple or red)
   {
     const prims = [];
     const n = 3;
@@ -127,22 +130,23 @@ function buildSprays(rng) {
     sprays.push(prims);
   }
 
-  // 2. American elm: zigzag twigs, drooping a little, with two ranks of oval, pointed, lopsided leaves
+  // 2. Mango: stout twigs ending in whorls of long, narrow, leathery leaves hanging from the tips
   {
     const prims = [];
-    const n = 5;
+    const n = 4;
     for (let i = 0; i < n; i++) {
       const f = (i + 0.5) / n - 0.5;
-      const pts = twig(f * 0.06, 0, f * 1.6 + R(-0.1, 0.1), R(0.5, 0.66) * (1 - Math.abs(f) * 0.25), f * 0.9, 14);
-      prims.push({ type: 'twig', pts, w0: 0.012, w1: 0.004 });
-      let side = rng() < 0.5 ? 1 : -1;
-      for (let t = R(0.1, 0.16); t < 0.97; t += R(0.085, 0.11)) {
+      const pts = twig(f * 0.08, 0, f * 1.5 + R(-0.1, 0.1), R(0.4, 0.52) * (1 - Math.abs(f) * 0.25), f * 0.4, 10);
+      prims.push({ type: 'twig', pts, w0: 0.014, w1: 0.007 });
+      // a whorl at the end of each flush of growth: halfway up and at the tip
+      for (const t of [0.5, 1.0]) {
         const { p, a } = at(pts, t);
-        side = -side;
-        prims.push({ type: 'oval', p, a: a + side * R(0.6, 1.0), len: R(0.1, 0.13) * (1 - t * 0.2), wid: 0.5, skew: side * 0.12, t });
+        const k = t < 1 ? 5 : 8;
+        for (let j = 0; j < k; j++) {
+          const la = a + ((j + 0.5) / k - 0.5) * R(2.6, 3.3);
+          prims.push({ type: 'oval', p, a: la, len: R(0.2, 0.26), wid: 0.22, skew: R(-0.04, 0.04), t });
+        }
       }
-      const tip = at(pts, 1);
-      prims.push({ type: 'oval', p: tip.p, a: tip.a, len: 0.09, wid: 0.48, t: 1 });
     }
     sprays.push(prims);
   }
@@ -157,6 +161,33 @@ function buildSprays(rng) {
       const rr = Math.sqrt(rng()) * edge(ang);
       const p = [Math.cos(ang) * rr, 1.3 + Math.sin(ang) * rr];
       prims.push({ type: 'oval', p, a: R(-Math.PI, Math.PI), len: R(0.16, 0.22), wid: 0.55, t: Math.min(1, Math.max(0, (p[1] - 0.2) / 2.2)) });
+    }
+    sprays.push(prims);
+  }
+
+  // 4. Washingtonia fan leaf: a stalk rising to the hastula, then some fifty folded segments radiating over a half
+  //    circle, the outer ones bending down at their tips, with loose threads between them
+  {
+    const prims = [];
+    const stalk = [[0, 0], [0, 0.55]];
+    prims.push({ type: 'twig', pts: stalk, w0: 0.035, w1: 0.028 });
+    const h = stalk[1];
+    const n = 52;
+    for (let i = 0; i < n; i++) {
+      const f = (i + 0.5) / n - 0.5; // -0.5 .. 0.5 across the fan
+      const a0 = f * 3.1 + R(-0.03, 0.03);
+      const len = R(0.62, 0.72) * (1 - Math.abs(f) * 0.35);
+      // the outer segments arch over and down
+      const seg = twig(h[0], h[1], a0, len, Math.sign(f) * Math.abs(f) * R(0.5, 0.9), 6);
+      for (let k = 0; k < 4; k++) {
+        const t0 = k / 4;
+        const { p, a } = at(seg, t0);
+        prims.push({ type: 'oval', p, a, len: len * 0.3, wid: 0.18 - k * 0.025, t: 0.4 + 0.6 * (1 - Math.abs(f)) });
+      }
+      if (rng() < 0.4) {
+        const tip = at(seg, 1);
+        prims.push({ type: 'stalk', pts: twig(tip.p[0], tip.p[1], tip.a + R(0.3, 0.8) * Math.sign(f || 1), R(0.08, 0.16), 0.6, 4), w: 0.0035 });
+      }
     }
     sprays.push(prims);
   }
@@ -314,7 +345,7 @@ function createLeafAtlas() {
     level0[i + 3] = mask[i + 3];
   }
   const tex = new THREE.DataTexture(level0, ATLAS_SIZE, ATLAS_SIZE, THREE.RGBAFormat, THREE.UnsignedByteType);
-  tex.mipmaps = coverageMips(level0, ATLAS_SIZE, 2);
+  tex.mipmaps = coverageMips(level0, ATLAS_SIZE, ATLAS_TILES);
   tex.generateMipmaps = false;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -394,37 +425,70 @@ function coverageMips(level0, size, tiles, cutoff = 128) {
 //    length blended from the lowest to the highest limb), branches & twigs (count, span along the parent, angle off it,
 //    length as a share of the parent or in metres), bending per metre (up: toward the sky, out: away from the trunk,
 //    droop: down, growing toward the tips), leaf cards per twig (scale, droop) and the per-tree foliage tints (sRGB).
-//    Scale 1 is a mature park tree; street trees are planted smaller.
+//    Scale 1 is a mature park tree; street trees are planted smaller. `bloom`: the months (0 = January) a share of
+//    the trees flowers, in those tints. A palm (`palm`) grows by its own rules (growPalm).
 // =====================================================================================================================
 const SPECIES = [
-  { // 0: London plane: tall clear trunk and leader with heavy ascending limbs, a broad rounded crown of big leaves
-    name: 'plane', tile: 0,
-    trunk: { r: 0.3, top: 8.6, lean: 0.04, segs: 8 },
-    limbs: { n: 6, y: [3.4, 7.4], tilt: [1.0, 0.36], len: [4.6, 2.8], r: 0.62, up: 0.07, out: 0, droop: 0, jitter: 0.07, segs: 6 },
-    branches: { n: 4, t: [0.3, 0.98], angle: [0.55, 0.95], len: [0.62, 0.42], up: 0.06, out: 0.02, droop: 0, jitter: 0.1, segs: 4 },
-    twigs: { n: 3, t: [0.3, 1.0], angle: [0.6, 1.05], len: [1.15, 0.75], up: 0.02, out: 0, droop: 0.04, jitter: 0.12, segs: 2 },
-    cards: { perTwig: 2, scale: [0.85, 1.1], droop: 0.05 },
-    tints: [0x4b6a29, 0x5a7a2f, 0x3f5e25]
+  { // 0: Laurel de la India (Ficus microcarpa): a short, stout, pale trunk forking low into many spreading limbs, a
+    //    dense, dark, rounded dome of small glossy leaves (the plazas' trees, kept clipped on the sidewalks)
+    name: 'laurel', tile: 0,
+    trunk: { r: 0.36, top: 3.2, lean: 0.05, segs: 6 },
+    limbs: { n: 7, y: [1.9, 3.1], tilt: [1.08, 0.45], len: [4.8, 3.2], r: 0.58, up: 0.1, out: 0, droop: 0, jitter: 0.1, segs: 6 },
+    branches: { n: 5, t: [0.25, 0.98], angle: [0.55, 1.0], len: [0.6, 0.4], up: 0.07, out: 0.03, droop: 0, jitter: 0.12, segs: 4 },
+    twigs: { n: 4, t: [0.25, 1.0], angle: [0.6, 1.1], len: [0.95, 0.65], up: 0.03, out: 0, droop: 0.03, jitter: 0.14, segs: 2 },
+    cards: { perTwig: 3, scale: [0.85, 1.1], droop: 0.04 },
+    tints: [0x2c4a1d, 0x335424, 0x284318]
   },
-  { // 1: Honey locust: slim trunk forking into spreading, zigzag limbs, an open layered crown of feathery fronds
-    name: 'locust', tile: 1,
-    trunk: { r: 0.19, top: 5.4, lean: 0.07, segs: 7 },
-    limbs: { n: 5, y: [2.6, 5.0], tilt: [1.12, 0.55], len: [4.2, 2.8], r: 0.68, up: 0.04, out: 0, droop: 0, jitter: 0.16, segs: 6 },
-    branches: { n: 4, t: [0.3, 0.98], angle: [0.6, 1.05], len: [0.6, 0.42], up: 0.03, out: 0.03, droop: 0.02, jitter: 0.16, segs: 4 },
-    twigs: { n: 3, t: [0.3, 1.0], angle: [0.55, 1.0], len: [1.0, 0.65], up: 0, out: 0, droop: 0.06, jitter: 0.14, segs: 2 },
-    cards: { perTwig: 2, scale: [0.85, 1.1], droop: 0.1 },
-    tints: [0x7b8c33, 0x8d9b3d, 0x6c7f2d]
+  { // 1: Jacaranda: a slim, leaning trunk forking into a few long ascending limbs, an open, airy, umbrella-ish crown
+    //    of feathery fronds; purple with flowers from February to April
+    name: 'jacaranda', tile: 1,
+    trunk: { r: 0.2, top: 3.8, lean: 0.1, segs: 7 },
+    limbs: { n: 5, y: [2.4, 3.8], tilt: [0.95, 0.5], len: [4.8, 3.4], r: 0.66, up: 0.05, out: 0.02, droop: 0, jitter: 0.15, segs: 6 },
+    branches: { n: 5, t: [0.3, 0.98], angle: [0.55, 1.0], len: [0.58, 0.4], up: 0.03, out: 0.03, droop: 0.02, jitter: 0.15, segs: 4 },
+    twigs: { n: 4, t: [0.25, 1.0], angle: [0.55, 1.0], len: [1.0, 0.65], up: 0, out: 0, droop: 0.06, jitter: 0.14, segs: 2 },
+    cards: { perTwig: 3, scale: [1.0, 1.3], droop: 0.1 },
+    tints: [0x5d7a32, 0x6b8638, 0x55702c],
+    bloom: { months: [1, 2, 3], share: 0.85, tints: [0x7d63c4, 0x8b72d0, 0x6e58b0] }
   },
-  { // 2: American elm: trunk forking low into upright limbs that arch outward, a tall vase with drooping twigs
-    name: 'elm', tile: 2,
-    trunk: { r: 0.28, top: 4.3, lean: 0.03, segs: 6 },
-    limbs: { n: 5, y: [3.3, 4.1], tilt: [0.36, 0.22], len: [7.4, 7.0], r: 0.6, up: 0, out: 0.075, droop: 0, jitter: 0.06, segs: 7 },
-    branches: { n: 5, t: [0.35, 1.0], angle: [0.5, 0.85], len: [0.44, 0.3], up: 0, out: 0.05, droop: 0.07, jitter: 0.1, segs: 4 },
-    twigs: { n: 3, t: [0.3, 1.0], angle: [0.5, 0.95], len: [1.3, 0.85], up: 0, out: 0, droop: 0.16, jitter: 0.12, segs: 2 },
-    cards: { perTwig: 2, scale: [0.85, 1.1], droop: 0.4 },
-    tints: [0x44622a, 0x53702e, 0x3a5724]
+  { // 2: Mango: a thick, dark trunk forking low into upright limbs, a tall, dense, dark dome hanging with long leaves
+    name: 'mango', tile: 2,
+    trunk: { r: 0.32, top: 2.6, lean: 0.04, segs: 6 },
+    limbs: { n: 6, y: [1.9, 2.7], tilt: [0.85, 0.35], len: [5.2, 4.4], r: 0.62, up: 0.06, out: 0.02, droop: 0, jitter: 0.08, segs: 7 },
+    branches: { n: 5, t: [0.3, 1.0], angle: [0.5, 0.95], len: [0.5, 0.34], up: 0.02, out: 0.04, droop: 0.04, jitter: 0.1, segs: 4 },
+    twigs: { n: 3, t: [0.3, 1.0], angle: [0.55, 1.0], len: [1.0, 0.7], up: 0, out: 0, droop: 0.1, jitter: 0.12, segs: 2 },
+    cards: { perTwig: 3, scale: [0.85, 1.1], droop: 0.18 },
+    tints: [0x23401b, 0x2b4a1f, 0x30521e]
+  },
+  { // 3: Tabachín (flamboyán): a short trunk under wide, nearly level limbs, a flat-topped umbrella crown of feathery
+    //    fronds broader than the tree is tall; flame red with flowers from May to July
+    name: 'tabachin', tile: 1,
+    trunk: { r: 0.27, top: 2.7, lean: 0.06, segs: 6 },
+    limbs: { n: 6, y: [2.2, 2.9], tilt: [1.28, 1.05], len: [5.6, 4.8], r: 0.62, up: 0.035, out: 0.01, droop: 0, jitter: 0.1, segs: 7 },
+    branches: { n: 5, t: [0.25, 1.0], angle: [0.6, 1.1], len: [0.5, 0.36], up: 0.04, out: 0.03, droop: 0.02, jitter: 0.14, segs: 4 },
+    twigs: { n: 4, t: [0.25, 1.0], angle: [0.6, 1.05], len: [0.95, 0.65], up: 0.01, out: 0, droop: 0.04, jitter: 0.14, segs: 2 },
+    cards: { perTwig: 3, scale: [1.0, 1.3], droop: 0.06 },
+    tints: [0x5b7a2a, 0x678530, 0x527026],
+    bloom: { months: [4, 5, 6], share: 0.8, tints: [0xc8381c, 0xd84e22, 0xb83018] }
+  },
+  { // 4: Washingtonia (palma abanico): a tall, slender, ringed trunk a little curved, a brown skirt of dead fronds
+    //    under the crown of fan leaves (Av. Insurgentes' and the camellones' palm)
+    name: 'palma', tile: TILE_PALM, palm: true,
+    trunk: { r: 0.24, top: 11.5, lean: 0.06, segs: 14, skirt: 1.8 },
+    leaves: { n: 26, size: [1.6, 1.9] },
+    tints: [0x4a6a2e, 0x557635, 0x435f2a]
   }
 ];
+
+// The month the trees show (0 = January): the Live time's (?live-time=<ISO date>, as main.js reads it) or today's
+function treeMonth() {
+  try {
+    const q = new URLSearchParams(globalThis.location ? globalThis.location.search : '').get('live-time');
+    const d = q ? new Date(q) : new Date();
+    return Number.isFinite(d.getTime()) ? d.getMonth() : new Date().getMonth();
+  } catch {
+    return new Date().getMonth();
+  }
+}
 
 // =====================================================================================================================
 // 3. SKELETON
@@ -575,7 +639,8 @@ class TreeGeometryBuilder {
   }
 }
 
-// Tapered tube along a branch with parallel-transported rings (every `stride`-th skeleton point); uv in metres
+// Tapered tube along a branch with parallel-transported rings (every `stride`-th skeleton point); uv in metres;
+// b.mark (per skeleton point, 0..1, optional) goes to the bark's aTree.w (the palm's skirt of dead fronds)
 function addTube(gb, b, radial, stride, aoAt, swayAt) {
   const n = b.pts.length;
   const keep = [];
@@ -610,7 +675,7 @@ function addTube(gb, b, radial, stride, aoAt, swayAt) {
       const ang = (j / radial) * Math.PI * 2;
       dir.copy(N).multiplyScalar(Math.cos(ang)).addScaledVector(Bn, Math.sin(ang));
       p.copy(b.pts[i]).addScaledVector(dir, b.rad[i]);
-      gb.vertex(p, dir, (j / radial) * around, vLen, 0, ao, sway, 0);
+      gb.vertex(p, dir, (j / radial) * around, vLen, 0, ao, sway, b.mark ? b.mark[i] : 0);
     }
   });
   // Rings run counter-clockwise round the tangent, so (a, a + 1, c) is counter-clockwise seen from outside: the front
@@ -761,10 +826,75 @@ function placeCards(sp, branches, lod, tileMeters, rng, crown) {
   return cards;
 }
 
+// A Washingtonia: the trunk (rising from a flared foot, curving a little back towards the sky, swelling into the
+// skirt of dead fronds under the crown: b.mark) and its fan leaves, young ones upright, the oldest hanging, spiralling
+// round the crown by the golden angle. Returns { trunk, leaves: [{ at, dir }] }
+function growPalm(sp, seed) {
+  const rng = mulberry32(seed);
+  const R = (a, b) => a + (b - a) * rng();
+  const T = sp.trunk;
+  const top = T.top * R(0.92, 1.08);
+  const lean = R(0, Math.PI * 2);
+  const dir = new V3(Math.cos(lean) * T.lean, 1, Math.sin(lean) * T.lean).normalize();
+  const schedule = [0, 0.015, 0.04];
+  for (let i = 1; i <= T.segs; i++) schedule.push(0.04 + (0.96 * i) / T.segs);
+  const trunk = growBranch(new V3(0, 0, 0), dir, top, T.r, T.r, T.segs, { up: 0.012, out: 0, droop: 0, jitter: 0.01 }, rng, 0, schedule);
+  const skirt0 = 1 - T.skirt / top;
+  trunk.mark = trunk.ts.map((t) => smooth(skirt0 - 0.01, skirt0 + 0.02, t));
+  trunk.rad = trunk.ts.map((t, i) => {
+    const foot = 1 + 0.9 * Math.exp(-(t * top) / 0.35);
+    const skirt = trunk.mark[i] * (1.2 + 0.3 * smooth(skirt0, 1, t)) * (1 - 0.3 * smooth(0.97, 1, t));
+    return T.r * Math.max(foot * (1 - 0.18 * t), skirt * 1.45);
+  });
+  const crown = trunk.pts[trunk.pts.length - 1];
+  const leaves = [];
+  const n = sp.leaves.n;
+  let az = R(0, Math.PI * 2);
+  for (let i = 0; i < n; i++) {
+    az += 2.39996 + R(-0.2, 0.2);
+    const f = i / (n - 1);
+    const elev = lerp(1.15, -0.4, f * f) + R(-0.12, 0.12); // above the horizontal: most spread, a few hang
+    const d = new V3(Math.cos(elev) * Math.cos(az), Math.sin(elev), Math.cos(elev) * Math.sin(az));
+    leaves.push({ at: crown.clone().addScaledVector(d, 0.2).add(new V3(0, -0.25 - 0.3 * f, 0)), dir: d });
+  }
+  return { trunk, leaves };
+}
+
+// A palm's levels: lod 0 & 1 every leaf (lod 1 on a coarser trunk), lod 2 half of them, larger, on a prism
+function buildPalmGeometries(sp, variant, tileMeters, seed) {
+  const { trunk, leaves } = growPalm(sp, seed);
+  const rng0 = mulberry32(seed ^ 0x2545f491);
+  const R = (a, b) => a + (b - a) * rng0();
+  const size = tileMeters[sp.tile];
+  const cardOf = (l, scale) => {
+    // the fan's face skyward (outward for the upright young leaves)
+    let face = new V3(0, 1, 0).addScaledVector(l.dir, -l.dir.y);
+    if (face.lengthSq() < 0.05) face = new V3(-l.dir.x, 0, -l.dir.z);
+    return { at: l.at, up: l.dir, face: face.normalize(), size: size * scale };
+  };
+  const cards0 = leaves.map((l) => cardOf(l, R(sp.leaves.size[0], sp.leaves.size[1])));
+  const pts = [];
+  for (const c of cards0) pts.push(c.at.clone().addScaledVector(c.up, c.size * 0.5), c.at.clone().addScaledVector(c.up, c.size));
+  const crown = makeCrown(pts);
+  const geos = [];
+  for (const lod of variant === 0 ? [0, 1, 2] : [0, 1]) {
+    const gb = new TreeGeometryBuilder();
+    const rng = mulberry32(seed + lod * 31337);
+    addTube(gb, trunk, [10, 7, 5][lod], [1, 2, 3][lod], (p) => crown.barkAO(p), (b, t) => 0.25 * t * t);
+    const cards = lod < 2 ? cards0 : cards0.filter((_, i) => i % 2 === 0).map((c) => ({ ...c, size: c.size * 1.2 }));
+    for (const c of cards) addCard(gb, c.at, c.up, c.face, c.size, sp.tile, rng() < 0.5, rng(), crown);
+    const g = gb.build();
+    g.userData = { species: sp.name, variant, lod, cards: cards.length, triangles: gb.idx.length / 3 };
+    geos[lod] = g;
+  }
+  return geos;
+}
+
 // One species / variant: [lod0, lod1, lod2] geometries (lod 2 only for variant 0)
 function buildTreeGeometries(speciesIndex, variant, tileMeters) {
   const sp = SPECIES[speciesIndex];
   const seed = 7919 * (speciesIndex + 1) + 104729 * (variant + 1);
+  if (sp.palm) return buildPalmGeometries(sp, variant, tileMeters, seed);
   const branches = growTree(sp, seed);
 
   // Crown from the full-detail foliage: card anchors pushed out by half a card
@@ -824,7 +954,7 @@ function hashPos(x, y, z) {
 }
 
 /**
- * Builds the instanced tree field for `sites` ({ x, y, z, scale, species, yaw?, sx?, sz?, tier? }) and keeps each
+ * Builds the instanced tree field for `sites` ({ x, y, z, scale, species, yaw?, sx?, sz?, tier?, whitewash? }) and keeps each
  * tree's level of detail up to date from the camera of every view pass (scene.onBeforeRender). Returns
  * { group, material, atlas, update(cameraPosition) }.
  */
@@ -870,6 +1000,7 @@ function createTreeField(scene, sites) {
 
   const dummy = new THREE.Object3D();
   const tint = new THREE.Color();
+  const month = treeMonth();
   sites.forEach((t, i) => {
     const sp = Math.min(SPECIES.length - 1, Math.max(0, t.species || 0));
     const r1 = hashPos(t.x, 1.3, t.z);
@@ -882,8 +1013,12 @@ function createTreeField(scene, sites) {
     dummy.scale.set(s * (0.9 + r3 * 0.2) * (t.sx || 1), s * (0.88 + r1 * 0.24), s * (0.9 + r2 * 0.2) * (t.sz || 1));
     dummy.updateMatrix();
     dummy.matrix.toArray(mats, i * 16);
-    tint.setHex(SPECIES[sp].tints[Math.floor(r3 * 2.999)]).multiplyScalar(0.82 + r1 * 0.36);
-    data.set([tint.r, tint.g, tint.b, sp + r2 * 0.999], i * 4);
+    // in bloom: a share of the trees in flower that month (r1 also sets the brightness: unrelated enough)
+    const bloom = SPECIES[sp].bloom;
+    const tints = bloom && bloom.months.includes(month) && hashPos(t.z, 4.4, t.x) < bloom.share ? bloom.tints : SPECIES[sp].tints;
+    tint.setHex(tints[Math.floor(r3 * (tints.length - 0.001))]).multiplyScalar(0.82 + r1 * 0.36);
+    // w: species + 10 for a trunk whitewashed with cal (the street trees' painted feet) + a per-tree fraction
+    data.set([tint.r, tint.g, tint.b, sp + (t.whitewash ? 10 : 0) + r2 * 0.999], i * 4);
     px[i] = t.x;
     py[i] = (t.y || 0) + 6 * s;
     pz[i] = t.z;

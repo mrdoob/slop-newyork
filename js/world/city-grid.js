@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CITY_OUTLINE, BLOCKS } from './city-config.js';
+import { CITY_OUTLINE, BLOCKS, blockAt } from './city-config.js';
 import {
   createRoadSurfaceMaterial,
   createSidewalkMaterial,
@@ -400,8 +400,10 @@ function buildCityGrid(scene) {
         if (prand(tx, tz, 9) < 0.3) continue; // glades
         const inner = lawnTop || bed;
         if (!inPolygon(tx, tz, inner)) continue;
+        // Tepic's park trees (trees.js): laureles de la India most, then mangos, jacarandas, tabachines & a few palms
         const r = prand(tx, tz, 2);
-        treeSites.push({ x: tx, y: BED_Y + liftAt(tx, tz), z: tz, scale: 0.9 + prand(tx, tz, 3) * 0.4, species: r < 0.55 ? 0 : (r < 0.75 ? 1 : 2) });
+        const species = r < 0.45 ? 0 : r < 0.6 ? 2 : r < 0.75 ? 1 : r < 0.9 ? 3 : 4;
+        treeSites.push({ x: tx, y: BED_Y + liftAt(tx, tz), z: tz, scale: 0.9 + prand(tx, tz, 3) * 0.4, species });
       }
     }
     // lampposts every ~34 m along the walk
@@ -453,6 +455,76 @@ function buildCityGrid(scene) {
     poolInst.instanceMatrix.needsUpdate = true;
     poolInst.computeBoundingSphere();
     group.add(poolInst);
+  }
+
+  // 8. THE REAL PARKS' & WOODS' TREES: the city's parks, gardens, cemeteries, golf course, mango orchards and the
+  //    woods round the town (GEO.parks, from OpenStreetMap) are planted on a jittered grid at their own spacing
+  //    (m) with their own share of glades, wherever they lie on parkland or open country (never on a house block or
+  //    a road) that no granite park bed (section 7) has planted already: the Alameda, Parque La Loma, the Panteón
+  //    Hidalgo... The woods only within ~300 m of the town (beyond, the hills' ground stands for them)
+  {
+    const GREEN = {
+      park: [10, 0.15], garden: [9, 0.2], recreation_ground: [16, 0.4], cemetery: [13, 0.3],
+      golf_course: [22, 0.5], orchard: [8, 0.04], wood: [14, 0.12], forest: [14, 0.12]
+    };
+    // species by place: [laurel, jacaranda, mango, tabachín, palm] shares
+    const MIX = {
+      park: [0.42, 0.16, 0.12, 0.18, 0.12], garden: [0.42, 0.16, 0.12, 0.18, 0.12], recreation_ground: [0.4, 0.15, 0.2, 0.2, 0.05],
+      cemetery: [0.5, 0.2, 0.05, 0.1, 0.15], golf_course: [0.35, 0.2, 0.1, 0.15, 0.2], orchard: [0, 0, 1, 0, 0],
+      wood: [0.3, 0.1, 0.35, 0.25, 0], forest: [0.3, 0.1, 0.35, 0.25, 0]
+    };
+    const pick = (mix, r) => {
+      for (let k = 0; k < mix.length; k++) if ((r -= mix[k]) < 0) return k;
+      return 0;
+    };
+    // the town: 100 m cells within 300 m of a block of houses
+    const C = 100;
+    const town = new Set();
+    for (const b of BLOCKS) {
+      if (b.rural || b.park > 0.6) continue;
+      for (let ix = Math.floor(b.minX / C) - 3; ix <= Math.floor(b.maxX / C) + 3; ix++) {
+        for (let iz = Math.floor(b.minZ / C) - 3; iz <= Math.floor(b.maxZ / C) + 3; iz++) town.add(ix * 100003 + iz);
+      }
+    }
+    const planted = new Set(genericParks);
+    const inRing = (x, z, r) => {
+      let inside = false;
+      for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+        if ((r[i + 1] > z) !== (r[j + 1] > z) && x < ((r[j] - r[i]) * (z - r[i + 1])) / (r[j + 1] - r[i + 1]) + r[i]) inside = !inside;
+      }
+      return inside;
+    };
+    let n = 0;
+    for (const p of GEO.parks || []) {
+      const g = GREEN[p.cat];
+      if (!g) continue;
+      const [SP, glade] = g;
+      const woods = p.cat === 'wood' || p.cat === 'forest';
+      for (const r of p.rings || []) {
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (let i = 0; i < r.length; i += 2) {
+          x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]);
+          z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]);
+        }
+        for (let gx = x0 + SP * 0.5; gx < x1; gx += SP) {
+          for (let gz = z0 + SP * 0.5; gz < z1; gz += SP) {
+            // an orchard's rows stay in line; the rest scatter
+            const jit = p.cat === 'orchard' ? 0.1 : 0.75;
+            const tx = gx + (prand(gx, gz, 4) - 0.5) * SP * jit;
+            const tz = gz + (prand(gz, gx, 5) - 0.5) * SP * jit;
+            if (prand(tx, tz, 6) < glade || !inRing(tx, tz, r)) continue;
+            if (woods && !town.has(Math.floor(tx / C) * 100003 + Math.floor(tz / C))) continue;
+            const b = blockAt(tx, tz);
+            if (!b || !(b.park > 0.6 || b.rural) || planted.has(b)) continue;
+            const species = pick(MIX[p.cat], prand(tx, tz, 7));
+            const big = p.cat === 'orchard' ? 0.7 : 0.95;
+            treeSites.push({ x: tx, y: (b.rural ? 0.03 : PARK_Y) + liftAt(tx, tz), z: tz, scale: big + prand(tx, tz, 8) * 0.45, species });
+            n++;
+          }
+        }
+      }
+    }
+    console.info(`[cityGrid] ${n} trees in the parks, cemeteries, orchards & woods of OpenStreetMap`);
   }
 
   // Park & plaza tree and lamp sites, read by street-details.js after the city grid is built
