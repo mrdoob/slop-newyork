@@ -611,6 +611,16 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function setParked(list) {
     parked = Array.isArray(list) ? list : [];
   }
+  // The weather on the street (main.js, from weather.js RoadWater): on a wet road drivers keep further back, go a
+  // little slower and take the bends slower (the tyres' grip, wetGrip), and nobody brakes as hard; in the rain people
+  // hurry and don't stop to chat
+  let roadGrip = 1, caution = 1, headway = 1, rainNow = 0;
+  function setRoadWater(wet, rain, grip = 1 - 0.3 * wet) {
+    roadGrip = grip;
+    caution = 1 - 0.12 * wet;
+    headway = 1 + 0.4 * wet;
+    rainNow = rain;
+  }
 
   // Lane lists hold pooled { v, s } entries sorted by position s along the lane, rebuilt every frame
   const pool = [];
@@ -841,10 +851,10 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
   // Intelligent Driver Model: acceleration on a free road, and the braking term for an obstacle `gap` metres
   // (bumper to bumper) ahead moving at `speed`
-  const freeAcc = (v) => v.driver.a * (1 - (v.speed / v.v0) ** 4);
+  const freeAcc = (v) => v.driver.a * (1 - (v.speed / (v.v0 * caution)) ** 4);
   function brake(v, gap, speed, s0 = v.driver.s0, T = v.driver.T) {
     const { a, b } = v.driver;
-    const desired = s0 + Math.max(0, v.speed * T + (v.speed * (v.speed - speed)) / (2 * Math.sqrt(a * b)));
+    const desired = s0 + Math.max(0, v.speed * T * headway + (v.speed * (v.speed - speed)) / (2 * Math.sqrt(a * b)));
     return -a * (desired / Math.max(gap, 0.1)) ** 2;
   }
   // ...and for a line d metres ahead to stop s0 short of: no time gap to keep to a line
@@ -1207,7 +1217,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   }
 
   // Fastest v can take curve c at without exceeding the sideways acceleration its driver accepts
-  const bendSpeed = (v, c) => Math.sqrt(v.driver.aLat / Math.max(c.curv, 1e-3));
+  const bendSpeed = (v, c) => Math.sqrt(v.driver.aLat * roadGrip / Math.max(c.curv, 1e-3));
 
   // IDM acceleration for vehicles ahead in the lane (and, through the intersection, in the lane it leads to),
   // the stop line while v may not go, a red beyond, the player, and slowing down for turns and give-way lines
@@ -1267,7 +1277,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       }
     }
     const acc = Math.min(freeAcc(v) + worst, (cap - v.speed) * 2);
-    v.acc = clamp(acc, -9, v.driver.a);
+    v.acc = clamp(acc, -9 * roadGrip, v.driver.a);
   }
 
   // Front bumper at the stop line: cross if allowed, or if going too fast to stop; otherwise wait there
@@ -1793,11 +1803,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       p.nextLeg = 0;
       if (!p.node && p.nextRoute) atCurb(p);
     }
-    if (!p.node && p.route?.edge && p.t > 6 && p.t < p.len - 6 && clock >= p.restTime) {
+    if (!p.node && p.route?.edge && p.t > 6 && p.t < p.len - 6 && clock >= p.restTime && rainNow < 0.3) {
       p.pause = 1.5 + Math.random() * 3;
       p.restTime = clock + 35 + Math.random() * 55;
     }
-    let vMax = p.pause > 0 || p.conversation ? 0 : p.speed;
+    let vMax = p.pause > 0 || p.conversation ? 0 : p.speed * (1 + 0.45 * rainNow);
     if (!p.nextRoute) vMax = Math.min(vMax, Math.sqrt(2 * PED_BRAKE * ahead));
     let room = Infinity;
     if (!p.node && p.nextRoute) {
@@ -1914,7 +1924,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         for (let dz = -1; dz <= 1 && !partner; dz++) {
           for (const q of meetingCells.get(`${ix + dx}:${iz + dz}`) || []) {
             const distance = Math.hypot(p.x - q.x, p.z - q.z);
-            if (q.conversation || p.route.block !== q.route.block || distance < 0.75 || distance > 2 || Math.random() > 0.15) continue;
+            if (q.conversation || p.route.block !== q.route.block || distance < 0.75 || distance > 2 || Math.random() > 0.15 * (1 - rainNow)) continue;
             partner = q;
             break;
           }
@@ -3143,6 +3153,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     setHillQuery,
     setSurfaceQuery,
     setParked,
+    setRoadWater,
     vehicleNear,
     hijack,
     cars,

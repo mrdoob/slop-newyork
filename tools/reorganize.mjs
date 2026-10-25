@@ -20,10 +20,10 @@ const JS = path.join(ROOT, 'js');
 
 // js/<entry> → js/<folder>/<entry>; main.js stays at js/main.js as the page's entry point
 const FOLDERS = {
-  render: ['lighting.js', 'post-processing.js', 'tsl-materials.js', 'scene-culling.js'],
+  render: ['lighting.js', 'rain.js', 'post-processing.js', 'tsl-materials.js', 'scene-culling.js'],
   world: [
     'city-config.js', 'city-geodata.js', 'city-grid.js', 'buildings.js', 'tepic-landmarks.js', 'cotos.js', 'street-details.js',
-    'storefronts', 'terrain.js', 'ground.js', 'drape.js', 'waterways.js', 'river-channels.js', 'trees.js', 'road-network.js', 'road-paint.js', 'pavements.js', 'pavement-data.js', 'bridges.js', 'weather.js'
+    'storefronts', 'terrain.js', 'ground.js', 'drape.js', 'waterways.js', 'river-channels.js', 'trees.js', 'road-network.js', 'road-paint.js', 'pavements.js', 'pavement-data.js', 'bridges.js', 'airport.js', 'weather.js'
   ],
   sim: ['traffic.js', 'pedestrians.js', 'pedestrian-routes.js', 'transit.js', 'mayhem.js', 'weapons.js', 'crime-rules.js', 'gunfire-fx.js', 'crime.js'],
   actors: ['actor-models.js', 'vehicle-lights.js'],

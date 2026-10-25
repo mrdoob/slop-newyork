@@ -96,6 +96,49 @@ function weatherLabel(w) {
   return WMO_LABELS[w.code] || (w.cloudCover > 0.7 ? 'Overcast' : w.cloudCover > 0.3 ? 'Partly cloudy' : 'Clear');
 }
 
+// Is it raining (drizzle, rain, showers, thunderstorm), by the rate or the WMO code?
+function isRaining(w) {
+  return w.rainRate > 0.05 || (w.code >= 51 && w.code <= 67) || (w.code >= 80 && w.code <= 82) || w.code >= 95;
+}
+
+// How hard it falls, 0..1, for the drops drawn & heard: drizzle ~0.25, steady rain (3 mm/h) 0.5, a downpour or a
+// storm (8 mm/h and up) 1
+function rainIntensity(w) {
+  if (!isRaining(w)) return 0;
+  const rate = Math.max(w.rainRate || 0, w.code >= 95 ? 10 : w.code === 65 || w.code === 81 || w.code === 82 ? 7 : 0);
+  return clamp01(0.25 + rate / 10.5);
+}
+
+// Tyre grip on the road for a water film `wet` (0 dry .. 1 soaked): wet asphalt keeps roughly 0.7 of its dry friction
+// (0.7-0.8 μ wet against 0.9-1.0 dry for road tyres)
+const wetGrip = (wet) => 1 - 0.3 * clamp01(wet);
+
+/**
+ * The water on the roads, for driving (not for the look, which lighting.js sets): it rises within a minute or two of
+ * steady rain and drains & dries over ~20 minutes once it stops (quicker in sun & wind). Starts wet if it rained in
+ * the past three hours. `rain` eases to the falling intensity, so showers come and go rather than switch.
+ */
+class RoadWater {
+  constructor() {
+    this.wet = 0;
+    this.rain = 0;
+    this.started = false;
+  }
+
+  update(dt, w) {
+    const rain = rainIntensity(w);
+    if (!this.started) {
+      this.started = true;
+      this.rain = rain;
+      this.wet = Math.max(rain > 0 ? 0.6 + 0.4 * rain : 0, clamp01((w.recentRain || 0) / 6) * 0.6);
+    }
+    this.rain += (rain - this.rain) * (1 - Math.exp(-dt / 6));
+    if (rain > 0) this.wet = Math.min(1, this.wet + dt * (0.004 + 0.02 * rain) * (1.2 - this.wet));
+    else this.wet = Math.max(0, this.wet - dt * (1 + (w.windSpeed || 0) / 20) / 1200);
+    return this;
+  }
+}
+
 class LiveWeather {
   constructor(location = WEATHER_LOCATION, { fetchImpl = globalThis.fetch && globalThis.fetch.bind(globalThis), storage } = {}) {
     this.location = location;
@@ -175,4 +218,7 @@ class LiveWeather {
   }
 }
 
-export { WEATHER_LOCATION, CLEAR_WEATHER, WEATHER_SAMPLES, solarPosition, sunDirection, parseOpenMeteo, weatherLabel, LiveWeather };
+export {
+  WEATHER_LOCATION, CLEAR_WEATHER, WEATHER_SAMPLES, solarPosition, sunDirection, parseOpenMeteo, weatherLabel, LiveWeather,
+  isRaining, rainIntensity, wetGrip, RoadWater
+};

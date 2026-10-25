@@ -50,7 +50,7 @@ function toWorld(lon, lat) {
   const c = Math.cos(THETA), s = Math.sin(THETA);
   return [e * c - n * s, -(e * s + n * c)];
 }
-const BOX = { x0: -5800, x1: 9400, z0: -4800, z1: 9900 };
+const BOX = { x0: -5800, x1: 10400, z0: -4800, z1: 10100 }; // (build-tepic-geodata.mjs's)
 
 // Kinds: 0 empedrado (river stones set in the ground), 1 adoquín (cut setts & pavers), 2 tierra (earth & gravel),
 // 3 concreto hidráulico (poured slabs)

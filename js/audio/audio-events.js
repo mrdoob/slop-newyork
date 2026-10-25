@@ -294,6 +294,24 @@ function explosion(ctx, seed) {
   }, 0.9);
 }
 
+// Thunder: a crack (a near strike) or none, then a long rolling rumble of low bands, swelling & fading as the sound of
+// each stretch of the channel arrives from farther along it
+function thunder(ctx, seed) {
+  const random = randomSource(seed);
+  const coefficients = [45, 160, 900].map((frequency) => 1 - Math.exp(-TAU * frequency / ctx.sampleRate));
+  const bands = [0, 0, 0];
+  const rolls = Array.from({ length: 6 }, (_, i) => ({ at: 0.15 + i * 0.55 + random() * 0.5, width: 0.35 + random() * 0.6, level: 0.5 + random() * 0.5 }));
+  return makeBuffer(ctx, 5.5, (t) => {
+    const noise = random() * 2 - 1;
+    for (let i = 0; i < bands.length; i++) bands[i] += (noise - bands[i]) * coefficients[i];
+    let roll = 0;
+    for (const r of rolls) roll += r.level * Math.exp(-(((t - r.at) / r.width) ** 2));
+    const rumble = (bands[0] * 5 + (bands[1] - bands[0]) * 1.4) * roll * Math.exp(-t * 0.35);
+    const crack = (bands[2] - bands[1]) * Math.exp(-t * 14) * (1 - Math.exp(-t * 400)) * 1.5;
+    return rumble + crack;
+  }, 0.9);
+}
+
 // A pickup's chime: two quick rising notes
 function chime(ctx) {
   return makeBuffer(ctx, 0.32, (t) => {
@@ -357,6 +375,7 @@ export function createEventResources(ctx, resources) {
       bazooka: [gunshot(ctx, 'bazooka', 621)]
     },
     explosions: Array.from({ length: 2 }, (_, i) => explosion(ctx, i + 701)),
+    thunder: Array.from({ length: 2 }, (_, i) => thunder(ctx, i + 801)),
     chime: chime(ctx),
     gusts: gustBuffer(ctx),
     signalTick: signal(ctx, false),
@@ -368,7 +387,7 @@ export function playEvent(ctx, resources, kind, output, options = {}) {
   const random = randomSource(options.seed);
   const start = Math.max(ctx.currentTime, finite(options.when, ctx.currentTime));
   const intensity = clamp(finite(options.intensity, 1));
-  const levels = { footstep: 0.22, talk: 0.065, horn: 0.23, signal: 0.13, crash: 0.35, gun: 0.5, explosion: 0.7, pickup: 0.18 };
+  const levels = { footstep: 0.22, talk: 0.065, horn: 0.23, signal: 0.13, crash: 0.35, gun: 0.5, explosion: 0.7, pickup: 0.18, thunder: 0.6 };
   if (!Object.hasOwn(levels, kind) || intensity === 0) return { endTime: start, dispose() {} };
   const gain = ctx.createGain();
   gain.gain.value = intensity * levels[kind];
@@ -456,6 +475,9 @@ export function playEvent(ctx, resources, kind, output, options = {}) {
   } else if (kind === 'explosion') {
     play(resources.explosions[Math.floor(random() * resources.explosions.length)], start, 0.9 + random() * 0.15);
     play(resources.crashes.debris[Math.floor(random() * resources.crashes.debris.length)], start + 0.08, 0.8, 0.6);
+  } else if (kind === 'thunder') {
+    // the farther the strike, the lower and duller its rumble
+    play(resources.thunder[Math.floor(random() * resources.thunder.length)], start, 0.75 + intensity * 0.3 + random() * 0.08);
   } else if (kind === 'pickup') {
     play(resources.chime, start);
   } else {
@@ -471,6 +493,53 @@ function smoothParameter(parameter, timeConstant, epsilon = 0.0001) {
     parameter.cancelScheduledValues(now);
     parameter.setTargetAtTime(value, now, timeConstant);
     target = value;
+  };
+}
+
+// Rain: the hiss of drops on the street all round, and their drumming on the roof over the player's head inside a car
+// (muffled, louder). `rain` is rainIntensity (0..1)
+export function createRainVoice(ctx, resources, output) {
+  const master = ctx.createGain();
+  master.gain.value = 1;
+  master.connect(output);
+  const noise = ctx.createBufferSource();
+  noise.buffer = resources.noise;
+  noise.loop = true;
+  const hissFilter = ctx.createBiquadFilter();
+  setControlRate(hissFilter.frequency, hissFilter.detune, hissFilter.Q, hissFilter.gain);
+  hissFilter.type = 'bandpass';
+  hissFilter.frequency.value = 3800;
+  hissFilter.Q.value = 0.35;
+  const hiss = ctx.createGain();
+  hiss.gain.value = 0;
+  const drumFilter = ctx.createBiquadFilter();
+  setControlRate(drumFilter.frequency, drumFilter.detune, drumFilter.Q, drumFilter.gain);
+  drumFilter.type = 'lowpass';
+  drumFilter.frequency.value = 650;
+  drumFilter.Q.value = 0.7;
+  const drum = ctx.createGain();
+  drum.gain.value = 0;
+  noise.connect(hissFilter).connect(hiss).connect(master);
+  noise.connect(drumFilter).connect(drum).connect(master);
+  noise.start(ctx.currentTime, resources.noise.duration * 0.61);
+  const hissLevel = smoothParameter(hiss.gain, 1.5);
+  const drumLevel = smoothParameter(drum.gain, 0.6);
+  let disposed = false;
+  return {
+    update({ rain = 0, enclosure = 0, inCar = false } = {}, now = ctx.currentTime) {
+      if (disposed) return;
+      now = Math.max(ctx.currentTime, finite(now, ctx.currentTime));
+      const r = clamp(rain);
+      hissLevel(r * 0.05 * (inCar ? 0.35 : 1) * (1 - clamp(enclosure) * 0.4), now);
+      drumLevel(inCar ? r * 0.07 : 0, now);
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      master.gain.setTargetAtTime(0, ctx.currentTime, 0.015);
+      noise.stop(ctx.currentTime + 0.08);
+      noise.onended = () => { for (const n of [noise, hissFilter, hiss, drumFilter, drum, master]) n.disconnect(); };
+    }
   };
 }
 

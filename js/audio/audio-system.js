@@ -1,5 +1,5 @@
 import { createSynthResources, createMotorVoice, setControlRate } from './audio-synthesis.js';
-import { createEventResources, playEvent, createWindVoice } from './audio-events.js';
+import { createEventResources, playEvent, createWindVoice, createRainVoice } from './audio-events.js';
 import { CityAudioSources } from './audio-sources.js';
 import { CityAcoustics } from './audio-acoustics.js';
 
@@ -114,6 +114,7 @@ class CityAudioSystem {
     for (const system of this.collisionSystems) system.setCollisionListener?.(this.onCollision);
     this.motorParams = { speed: 0, load: 0, verticalSpeed: 0, doppler: 1, seed: 0, rpm: 0 };
     this.windParams = { speed: 0, altitude: 0, night: 0, traffic: 0, enclosure: 0 };
+    this.rainParams = { rain: 0, enclosure: 0, inCar: false };
     this.footPosition = { x: 0, y: 0, z: 0, seed: 0 };
     this.onGesture = (event) => {
       if (event.type === 'keydown' && (event.repeat || event.metaKey || event.ctrlKey || /INPUT|TEXTAREA|SELECT/.test(event.target?.tagName))) return;
@@ -180,6 +181,7 @@ class CityAudioSystem {
     this.reflectionFilter.Q.value = 0.5;
     this.reflections.connect(this.reverb).connect(this.reflectionFilter).connect(this.mix);
     this.wind = createWindVoice(context, this.resources, this.mix);
+    this.rainVoice = createRainVoice(context, this.resources, this.mix);
     context.onstatechange = () => this.onStateChange();
   }
 
@@ -509,6 +511,20 @@ class CityAudioSystem {
     const altitude = position.y - (this.controllers ? this.controllers.floorHeight(position.x, position.z) : 0);
     Object.assign(this.windParams, { speed: Math.min(sources.motion, 50), altitude, traffic: sources.traffic, night: night ? 1 : 0, enclosure });
     this.wind.update(this.windParams, now);
+    const mode = this.controllers?.activeMode;
+    Object.assign(this.rainParams, { enclosure, inCar: mode === 'car' || mode === 'helicopter' });
+    this.rainVoice.update(this.rainParams, now);
+  }
+
+  // How hard it rains (rainIntensity, 0..1), for the rain's hiss
+  setRain(intensity) {
+    this.rainParams.rain = intensity;
+  }
+
+  // A thunderclap `delay` s from now (the sound of a strike `delay` × 343 m away), louder for a near one
+  thunder(delay = 0, near = 0.5) {
+    if (!this.ready || !this.enabled || this.context?.state !== 'running') return;
+    playEvent(this.context, this.resources, 'thunder', this.mix, { when: this.context.currentTime + delay, intensity: 0.35 + 0.65 * near, seed: Math.floor(Math.random() * 1e6) });
   }
 
   dispose() {
@@ -519,6 +535,7 @@ class CityAudioSystem {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.reset();
     this.wind?.dispose(true);
+    this.rainVoice?.dispose();
     for (const node of [this.mix, this.compressor, this.master, this.reflections, this.reverb, this.reflectionFilter]) node?.disconnect();
     if (this.context) {
       this.context.onstatechange = null;

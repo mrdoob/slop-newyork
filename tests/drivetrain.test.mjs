@@ -171,3 +171,22 @@ test('the Italika motos top out at their own speeds', async () => {
     assert.ok(Math.abs(top - m.top) <= m.top * 0.03, `${m.id} tops out at ${top.toFixed(0)} km/h, not ${m.top}`);
   }
 });
+
+test('on a wet road a car stops in a longer distance and puts down less power', () => {
+  const s = spec('nissan-versa');
+  const stopping = (grip) => {
+    const d = createDriveState(s);
+    let v = 20, x = 0;
+    while (v > 0.05) {
+      v = stepDrive(d, s, { brake: 1, power: 1, grip }, v, DT);
+      x += v * DT;
+    }
+    return x;
+  };
+  const dry = stopping(1), wet = stopping(0.7);
+  assert.ok(wet > dry * 1.25 && wet < dry * 1.6, `from 72 km/h: ${dry.toFixed(1)} m dry, ${wet.toFixed(1)} m wet`);
+  const fast = spec(CAR_MODELS.reduce((a, m) => (m.power[0] > a.power[0] ? m : a)).id);
+  const d = createDriveState(fast);
+  stepDrive(d, fast, { throttle: 1, power: 1, grip: 0.7 }, 1, DT);
+  assert.equal(d.wheelspin, true, 'the most powerful car spins its tyres pulling away in the wet');
+});

@@ -166,7 +166,8 @@ function autoShift(d, spec, v, throttle) {
 /**
  * One step of the car along its heading. `input`: throttle 0..1 (W), brake 0..1 (S), handbrake, nitro (booleans),
  * shift (+1 / -1 for a manual shift this frame, 0 otherwise), slope (m/s² the hill adds along the heading), power
- * (0..1, what the damage leaves of the engine). Returns the new speed; d holds the gear, revs and the rest.
+ * (0..1, what the damage leaves of the engine), grip (0..1, what the road leaves of the tyres' dry grip: a wet one
+ * ~0.7, see weather.js wetGrip). Returns the new speed; d holds the gear, revs and the rest.
  */
 function stepDrive(d, spec, input, v, dt) {
   const throttleKey = input.throttle || 0;
@@ -210,7 +211,8 @@ function stepDrive(d, spec, input, v, dt) {
     drive = torque * ratio * spec.efficiency / spec.wheelRadius;
   }
   // Traction control holds the tyres at their limit; with far more torque than that they still break loose
-  const traction = spec.grip * spec.mass * G * spec.driven;
+  const grip = input.grip ?? 1;
+  const traction = spec.grip * grip * spec.mass * G * spec.driven;
   d.wheelspin = drive > traction * 1.25;
   if (d.wheelspin) rpm = Math.min(spec.redline, rpm + Math.min(1, drive / traction - 1.25) * 1500); // the engine flares
   if (drive > traction) drive = traction * (d.wheelspin ? 0.88 : 0.97);
@@ -219,8 +221,8 @@ function stepDrive(d, spec, input, v, dt) {
   // engine braking off the throttle, rolling resistance, air drag
   const speed = Math.abs(v);
   let resist = 0;
-  if (brake > 0) resist += brake * spec.brake * spec.mass;
-  if (input.handbrake) resist += 0.45 * spec.mass * G * 0.5;
+  if (brake > 0) resist += brake * spec.brake * grip * spec.mass;
+  if (input.handbrake) resist += 0.45 * grip * spec.mass * G * 0.5;
   if (!throttle && !d.shift) {
     // off the throttle: engine braking, or an electric car's regenerative braking (fading out as it stops)
     resist += spec.electric ? spec.regen * Math.min(1, speed / 5) : spec.engineBrake * (rpm / spec.redline) * ratio / spec.wheelRadius;

@@ -45,6 +45,7 @@ const MAP = {
   water: '#2f6fae', // the rivers, arroyos & reservoirs
   waterLabel: '#8cc1ee',
   highway: '#b27a35',
+  airfield: '#5d6470', // the airport's runway, taxiways & apron
   search: '#5fd0ff',
   halo: 'rgba(8, 11, 15, 0.9)'
 };
@@ -196,6 +197,14 @@ function mapLayers() {
       L.riverNames.push({ name, x: pts[i], z: pts[i + 1], angle: Math.atan2(dz, dx), river: kind === 'river' });
     }
   }
+  // The airport: its apron & helipads, the runway and the taxiways (GEO.airport, drawn at their real widths)
+  L.aprons = new TiledLayer(1000);
+  L.runways = new TiledLayer(1000);
+  L.taxiways = new TiledLayer(1000);
+  const airport = GEO.airport || { aprons: [], helipads: [], runways: [], taxiways: [] };
+  for (const ring of [...airport.aprons, ...airport.helipads]) L.aprons.ring(ring);
+  for (const [, , pts] of airport.runways) L.runways.line(pts);
+  for (const [, , pts] of airport.taxiways) L.taxiways.line(pts);
   L.blocks = new TiledLayer();
   L.parkBlocks = new TiledLayer();
   for (const b of BLOCKS) (b.park > 0.6 && !b.median ? L.parkBlocks : L.blocks).ring(b.poly);
@@ -725,6 +734,16 @@ class CityMapSystem {
       ctx.lineWidth = Math.max(width, px(minPx));
       layer.each(v, (p) => ctx.stroke(p));
     }
+
+    // 2c. The airport
+    ctx.fillStyle = ctx.strokeStyle = MAP.airfield;
+    L.aprons.each(v, (p) => ctx.fill(p));
+    ctx.lineCap = 'butt';
+    for (const [layer, width] of [[L.taxiways, 18], [L.runways, 45]]) {
+      ctx.lineWidth = Math.max(width, px(width > 20 ? 3 : 1.2));
+      layer.each(v, (p) => ctx.stroke(p));
+    }
+    ctx.lineCap = 'round';
 
     // 3. Building footprints, lowest first
     if (s >= 0.18) {

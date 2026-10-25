@@ -11,13 +11,15 @@ import { createTrafficSystem, createHighwayTraffic } from './sim/traffic.js';
 import { buildRoadPaint } from './world/road-paint.js';
 import { buildPavements } from './world/pavements.js';
 import { buildBridges } from './world/bridges.js';
+import { buildAirport } from './world/airport.js';
 import { ThirdPersonControllerManager } from './player/controllers.js';
 import { Stamina, struckDamage, hardness, crashDamage, walletAmount, nearest, CRASH_GRACE } from './player/stats.js';
 import { TouchControls } from './input/touch-controls.js';
 import { GamepadControls } from './input/gamepad-controls.js';
 import { CameraSystem, CAMERA_PRESETS } from './player/cameras.js';
 import { LightingSystem } from './render/lighting.js';
-import { WEATHER_SAMPLES, weatherLabel } from './world/weather.js';
+import { WEATHER_SAMPLES, weatherLabel, CLEAR_WEATHER, RoadWater, wetGrip } from './world/weather.js';
+import { createRain } from './render/rain.js';
 import { CityMapSystem } from './ui/city-map.js';
 import { Tachometer } from './ui/tachometer.js';
 import { gearLabel } from './player/drivetrain.js';
@@ -80,6 +82,11 @@ async function initApp() {
   // 2. Build Scene & Physical Atmospheric Sky / PMREM IBL / 4096x4096 Shadow Lighting
   const scene = new THREE.Scene();
   const lightingSystem = new LightingSystem(scene, renderer);
+  // Rain falling round the camera, and the water it leaves on the roads (Live weather only: the fixed times of day
+  // stay dry)
+  const rain = createRain(scene, lightingSystem.uNightFactor);
+  const roadWater = new RoadWater();
+  let nextLightning = 0;
   markInit('lighting');
 
   if (loadingStatus) {
@@ -119,6 +126,7 @@ async function initApp() {
   const highwayTraffic = createHighwayTraffic(scene, cityGrid.highwayLanes);
   buildRoadPaint(scene, trafficSystem.network);
   buildPavements(scene); // (the empedrado, adoquín, earth & concrete streets, under the paint)
+  buildAirport(scene); // (the runway, taxiways & apron south-east of town, and the airliners at the gates)
   markInit('roadPaint');
   // The overpasses, their ramps & the railway; their walls, parapets & piers stop the player (not the traffic's
   // footprints: the lanes on and under them stay open)
@@ -851,6 +859,32 @@ async function initApp() {
   markInit('compile');
 
   // 6. Animation Loop
+  // The rain & the wet roads from the Live weather: drops round the camera slanted by the wind, the tyres' grip for
+  // the player & the traffic, the hiss in the audio, and in a thunderstorm lightning every 8-30 s with its thunder
+  // after the time its sound takes to arrive
+  function updateRain(dt, elapsed) {
+    const w = lightingSystem.activePresetId === 'live' ? lightingSystem.liveWeather || CLEAR_WEATHER : CLEAR_WEATHER;
+    roadWater.update(dt, w);
+    // wind blows from windDirection (° clockwise from true north): toward the opposite bearing, in the grid frame
+    const toward = (w.windDirection + 180 - (CITY.bearingDeg || 0)) * Math.PI / 180;
+    const wind = (w.windSpeed || 0) / 3.6;
+    rain.update(roadWater.rain, Math.sin(toward) * wind, -Math.cos(toward) * wind, elapsed, cameraSystem.camera);
+    controllerManager.roadWet = roadWater.wet;
+    controllerManager.roadGrip = wetGrip(roadWater.wet);
+    trafficSystem.setRoadWater(roadWater.wet, roadWater.rain, controllerManager.roadGrip);
+    audioSystem.setRain(roadWater.rain);
+    if (w.code >= 95 && roadWater.rain > 0.3) {
+      if (!nextLightning) nextLightning = elapsed + 4 + Math.random() * 10;
+      if (elapsed >= nextLightning) {
+        const distance = 600 + Math.random() * 5400; // m to the strike
+        const near = 1 - distance / 6000;
+        lightingSystem.flash(0.35 + 0.65 * near);
+        audioSystem.thunder(distance / 343, near);
+        nextLightning = elapsed + 8 + Math.random() * 22;
+      }
+    } else nextLightning = 0;
+  }
+
   let lastTime = performance.now();
   let elapsed = 0;
   let frameCount = 0;
@@ -905,6 +939,7 @@ async function initApp() {
     if (cityBlocks.updateLights) cityBlocks.updateLights(cameraSystem.camera);
     if (streetDetails.update) streetDetails.update(cameraSystem.camera);
     lightingSystem.update(cameraSystem.currentPos);
+    updateRain(dt, elapsed);
     if (multiplayer) multiplayer.update(dt, elapsed);
     mapSystem.update();
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.isNight);

@@ -87,8 +87,9 @@ const nodeKey = (g) => `${g.lat.toFixed(7)},${g.lon.toFixed(7)}`;
 
 // The detailed city: a box around the centro (metres in the grid frame). Everything the game builds lives in here.
 // From Lo de Lamedo & Las Brisas (west) to San Cayetano & Vistas de la Cantera (east), from El Tajo (north) to the south
-// of Xalisco: the whole metropolitan area of Tepic & Xalisco
-const BOX = { x0: -5800, x1: 9400, z0: -4800, z1: 9900 };
+// of Xalisco: the whole metropolitan area of Tepic & Xalisco, and the airport (Pantanal, its terminal & access roads
+// at x ~9400-10100, its runway along grid z 6000-9100)
+const BOX = { x0: -5800, x1: 10400, z0: -4800, z1: 10100 };
 log(`detail box corners: ${[[BOX.x0, BOX.z0], [BOX.x1, BOX.z0], [BOX.x1, BOX.z1], [BOX.x0, BOX.z1]].map(([x, z]) => toLonLat(x, z).map((v) => v.toFixed(4)).reverse().join(',')).join('  ')}`);
 const inBox = (x, z) => x >= BOX.x0 && x <= BOX.x1 && z >= BOX.z0 && z <= BOX.z1;
 const boxRing = [[BOX.x0, BOX.z0], [BOX.x0, BOX.z1], [BOX.x1, BOX.z1], [BOX.x1, BOX.z0]]; // negative shoelace area (x, z)
@@ -459,8 +460,55 @@ for (const e of landOSM.elements) {
   for (let i = 0; i + 1 < pts.length; i++) cutters.push({ x0: pts[i][0], z0: pts[i][1], x1: pts[i + 1][0], z1: pts[i + 1][1], r });
 }
 log(`${waterways.length} waterways (${waterways.filter((w) => w[0] === 'river').length} river pieces)`);
+// The airport (Aeropuerto Internacional de Tepic – Riviera Nayarit, MMEP; OSM aeroway=*): the runways & taxiways as
+// centrelines with their widths (runway 02/20 is 45 m wide, its taxiways ~18 m), the aprons & helipads as rings. They
+// are cut out of the blocks like roads, and js/world/airport.js lays their pavement & markings over the asphalt.
+const airport = { name: '', runways: [], taxiways: [], aprons: [], helipads: [], gates: [] };
+const airportRings = [];
+const airfieldPieces = []; // (the runway & taxiways, which the hills are levelled under like the streets, 5D)
+for (const e of landOSM.elements) {
+  const a = e.type === 'way' && e.geometry && e.tags && e.tags.aeroway;
+  if (!a) continue;
+  const pts = e.geometry.map((g) => toWorld(g.lon, g.lat));
+  if (!pts.some(([x, z]) => inBox(x, z))) continue;
+  if (a === 'aerodrome') airport.name = e.tags.name || '';
+  else if (a === 'runway' || a === 'taxiway') {
+    const w = num(e.tags.width) || (a === 'runway' ? 45 : 18);
+    for (const piece of clipChain(pts)) (a === 'runway' ? airport.runways : airport.taxiways).push([e.tags.ref || '', w, flat(rdp(piece, 0.3))]);
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const piece = { x0: pts[i][0], z0: pts[i][1], x1: pts[i + 1][0], z1: pts[i + 1][1], r: w / 2 + (a === 'runway' ? 4 : 1) };
+      cutters.push(piece);
+      airfieldPieces.push(piece);
+    }
+  } else if (a === 'jet_bridge' && pts.length > 1) {
+    // a gate's boarding bridge: from the terminal to the aircraft's door
+    const [p0, p1] = [pts[0], pts[pts.length - 1]];
+    airport.gates.push([q(p0[0]), q(p0[1]), q(p1[0]), q(p1[1])]);
+  } else if ((a === 'apron' || a === 'helipad') && pts.length > 3) {
+    const ring = rdpRing(pts.slice(0, -1), 0.3);
+    (a === 'apron' ? airport.aprons : airport.helipads).push(flat(ring));
+    if (a === 'apron') airportRings.push(ring);
+  }
+}
+log(`airport ${airport.name || '(none)'}: ${airport.runways.length} runway, ${airport.taxiways.length} taxiways, ${airport.aprons.length} aprons, ${airport.helipads.length} helipads`);
 for (const s of drivePieces) clearCapsule(land, W, H, X0, Z0, RES, s);
 for (const s of cutters) clearCapsule(land, W, H, X0, Z0, RES, s);
+// (the aprons too: the cells whose centres lie inside their rings)
+for (const ring of airportRings) {
+  const bb = bbox(ring);
+  for (let j = Math.max(0, Math.floor((bb.z0 - Z0) / RES)); j <= Math.min(H - 1, Math.ceil((bb.z1 - Z0) / RES)); j++) {
+    const z = Z0 + (j + 0.5) * RES;
+    const xs = [];
+    for (let a = 0, k = ring.length - 1; a < ring.length; k = a++) {
+      const [xa, za] = ring[k], [xb, zb] = ring[a];
+      if ((za > z) !== (zb > z)) xs.push(xa + ((z - za) * (xb - xa)) / (zb - za));
+    }
+    xs.sort((p, q) => p - q);
+    for (let n = 0; n + 1 < xs.length; n += 2) {
+      for (let i = Math.max(0, Math.ceil((xs[n] - X0) / RES - 0.5)); i <= Math.min(W - 1, Math.floor((xs[n + 1] - X0) / RES - 0.5)); i++) land[j * W + i] = 0;
+    }
+  }
+}
 log(`${drivePieces.length} roadway pieces and ${cutters.length} other cuts stamped on a ${W} x ${H} raster`);
 // Urban or open country: the share of each island under built-up land use (OSM landuse=residential & co., schools,
 // building footprints) against fields, woods & scrub. Small islands are always city blocks.
@@ -1205,7 +1253,17 @@ const { ground = null, ...terrainGrid } = (() => {
   // so no triangle under one may rise, or a stretch of street vanishes under a brown hump of hillside and comes out
   // the other side (the streets of the colonias up the lomas, the boulevards past empty lots)
   const roadV = new Uint8Array(TW * TH);
-  for (const s of drivePieces) {
+  // (the airfield likewise: the runway & taxiways as their strips, the apron cell by cell)
+  for (const ring of airportRings) {
+    const bb = bbox(ring);
+    for (let z = bb.z0; z <= bb.z1; z += CELL / 4) for (let x = bb.x0; x <= bb.x1; x += CELL / 4) {
+      if (!inRing(ring, x, z)) continue;
+      const i = Math.floor((x - TX0) / CELL), j = Math.floor((z - TZ0) / CELL);
+      if (i < 0 || j < 0 || i >= TW - 1 || j >= TH - 1) continue;
+      roadV[j * TW + i] = roadV[j * TW + i + 1] = roadV[(j + 1) * TW + i] = roadV[(j + 1) * TW + i + 1] = 1;
+    }
+  }
+  for (const s of [...drivePieces, ...airfieldPieces]) {
     const L = Math.hypot(s.x1 - s.x0, s.z1 - s.z0);
     for (let t = 0; t <= L; t += CELL / 6) {
       const x = s.x0 + ((s.x1 - s.x0) * t) / Math.max(L, 1e-6), z = s.z0 + ((s.z1 - s.z0) * t) / Math.max(L, 1e-6);
@@ -1479,7 +1537,8 @@ const SPOTS = [
   ['estacion', 'Antigua estación del tren', 'Av. Allende · Ferrocarril', 21.50392, -104.88208],
   ['juventud', 'Parque Lineal Juventud', 'Colonia Juventud', 21.49525, -104.87694],
   ['xalisco', 'Xalisco Centro', 'Plaza Benito Juárez · Xalisco', 21.44370, -104.90170],
-  ['bonaterra', 'Bonaterra', 'Libramiento · Bonaterra', 21.46550, -104.84385]
+  ['bonaterra', 'Bonaterra', 'Libramiento · Bonaterra', 21.46550, -104.84385],
+  ['aeropuerto', 'Aeropuerto de Tepic', 'Terminal · Pantanal', 21.41720, -104.83820, 21.41700, -104.83930]
 ];
 const linkPts = links.map(([a, b, , , , dir, inner]) => {
   const pts = [gnodes[a]];
@@ -1611,7 +1670,10 @@ const GEO = {
   ground,
   // Bus & combi routes (6B): groups, the zones' names; routes, [name, group, colour, fleet 'bus' | 'combi' | '' (both),
   // loops 1 | 0, pieces], each piece the roadGraph links driven in turn (index + 1 from a to b, -(index + 1) back)
-  transit
+  transit,
+  // The airport (4): runways & taxiways [ref, width (m), flat centreline], aprons & helipads (flat rings), gates (the
+  // boarding bridges [x, z at the terminal, x, z at the aircraft])
+  airport
 };
 
 const json = JSON.stringify(GEO);

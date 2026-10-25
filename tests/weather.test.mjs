@@ -116,3 +116,23 @@ test('blocked site storage does not stop live weather from starting', () => {
     else delete globalThis.localStorage;
   }
 });
+
+test('rain wets the road within a couple of minutes and it dries over the next half hour', async () => {
+  const { RoadWater, WEATHER_SAMPLES, CLEAR_WEATHER, rainIntensity, wetGrip } = await import('../js/world/weather.js');
+  assert.equal(rainIntensity(CLEAR_WEATHER), 0);
+  assert.ok(rainIntensity(WEATHER_SAMPLES.rain) > 0.4 && rainIntensity(WEATHER_SAMPLES.rain) < 0.8);
+  assert.equal(rainIntensity(WEATHER_SAMPLES.storm), 1);
+  assert.equal(wetGrip(0), 1);
+  assert.ok(Math.abs(wetGrip(1) - 0.7) < 1e-9);
+  const water = new RoadWater().update(0.1, CLEAR_WEATHER);
+  assert.equal(water.wet, 0, 'a dry start with no recent rain');
+  for (let t = 0; t < 120; t++) water.update(1, WEATHER_SAMPLES.rain);
+  assert.ok(water.wet > 0.8, `after 2 min of rain: ${water.wet}`);
+  assert.ok(water.rain > 0.4);
+  for (let t = 0; t < 300; t++) water.update(1, CLEAR_WEATHER);
+  assert.ok(water.wet > 0.3 && water.wet < 0.9, `5 min after: still wet (${water.wet})`);
+  assert.ok(water.rain < 0.01, 'the drops stop');
+  for (let t = 0; t < 1800; t++) water.update(1, CLEAR_WEATHER);
+  assert.equal(water.wet, 0, 'dry half an hour later');
+  assert.ok(new RoadWater().update(0.1, { ...CLEAR_WEATHER, recentRain: 6 }).wet > 0.5, 'wet from the start after a morning shower');
+});
