@@ -1875,6 +1875,55 @@ function createCurbMaterial() {
 }
 
 /**
+ * Cast Concrete for the overpasses' decks, walls & piers (js/world/bridges.js): board-formed tone that varies by the
+ * pour, faint 1.2 m form-tie lines on the walls, and run-off streaks darkening down from the deck's edge, wetter in rain
+ */
+function createBridgeConcreteMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.86 });
+  mat.aoNode = canyonSkyAONode();
+  mat.colorNode = Fn(() => {
+    const p = positionWorld;
+    const detail = smoothstep(220.0, 20.0, length(p.sub(cameraPosition)));
+    const pour = noise2D(vec2(p.x.add(p.z).mul(0.07), p.y.mul(0.3)));
+    const grain = noise2D(vec2(p.x.add(p.z).mul(3.1), p.y.mul(3.1))).sub(0.5).mul(0.07).mul(detail);
+    const base = mix(color(0x8d8a83), color(0xa7a39a), pour).add(grain);
+    // walls only: horizontal form joints & vertical streaks from the parapet down
+    const wall = float(1.0).sub(smoothstep(0.4, 0.8, abs(normalWorldGeometry.y)));
+    const joints = gridLine(p.y, 1.2, 0.03).mul(detail).mul(wall);
+    const streak = smoothstep(0.55, 0.9, noise2D(vec2(p.x.add(p.z).mul(1.7), p.y.mul(0.12)))).mul(wall);
+    const wetFilm = smoothstep(0.2, 0.8, cityUniforms.uRoadWetness);
+    return base.mul(float(1.0).sub(joints.mul(0.25))).mul(float(1.0).sub(streak.mul(0.22))).mul(mix(float(1.0), float(0.74), wetFilm));
+  })();
+  mat.roughnessNode = mix(float(0.86), float(0.55), smoothstep(0.2, 0.8, cityUniforms.uRoadWetness));
+  return mat;
+}
+
+/**
+ * Railway Track Bed: crushed-stone ballast with concrete sleepers every 0.6 m (box-filtered over the pixel footprint so
+ * they settle to a mean far off instead of shimmering). attribute `track` = (metres along the line, metres across it)
+ */
+function createTrackBedMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.95 });
+  mat.aoNode = canyonSkyAONode();
+  const track = attribute('track', 'vec2');
+  mat.colorNode = Fn(() => {
+    const p = positionWorld;
+    const detail = smoothstep(120.0, 10.0, length(p.sub(cameraPosition)));
+    const stones = mix(float(0.5), noise2D(p.xz.mul(9.0)), detail);
+    const ballast = mix(color(0x4f4a43), color(0x7a736a), stones.mul(0.7).add(noise2D(p.xz.mul(0.4)).mul(0.3)));
+    // sleepers: on for 0.26 m of each 0.6 m, 2.6 m long across the line (exact box filter of the on/off pattern)
+    const t = track.x.div(0.6);
+    const fw = max(fwidth(t), 0.0001);
+    const on = (x) => floor(x).mul(0.43).add(clamp(fract(x), 0.0, 0.43));
+    const sleepers = on(t.add(fw.mul(0.5))).sub(on(t.sub(fw.mul(0.5)))).div(fw);
+    const across = smoothstep(1.3, 1.25, abs(track.y)).mul(step(0.0, normalWorldGeometry.y.sub(0.9)));
+    const sleeper = mix(color(0x5e5a54), color(0x6f6b64), noise2D(p.xz.mul(2.0))); // weathered concrete
+    return mix(ballast, sleeper, sleepers.mul(across));
+  })();
+  return mat;
+}
+
+/**
  * Park Lush Multi-Octave Turf, Clover & Mowing Stripes TSL Material
  */
 function createParkLawnMaterial(isMeadow = false) {
@@ -1918,6 +1967,65 @@ function createParkLawnMaterial(isMeadow = false) {
     specularF90.assign(0.3);
   };
 
+  return mat;
+}
+
+/**
+ * The banks & bed of the river channels (js/world/river-channels.js): coursed stone walls, darker & mossy towards the
+ * water, down to a bed of silt. The `wet` attribute runs 0 at the banks' tops to 1 on the bed; uv are metres along the
+ * channel & across it.
+ */
+function createRiverBankMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.93, metalness: 0.0, side: THREE.DoubleSide });
+  const wet = attribute('wet', 'float');
+  const cStone = color(0x8f887a);
+  const cStoneDark = color(0x6c665b);
+  const cMoss = color(0x46502f);
+  const cSilt = color(0x4b4434);
+  mat.colorNode = Fn(() => {
+    const wp = positionWorld;
+    const camDist = length(wp.sub(cameraPosition));
+    const detail = smoothstep(160.0, 20.0, camDist);
+    // stone courses ~0.45 m high, the stones 0.6-1 m long, joints of dark mortar
+    const course = floor(wp.y.div(0.45));
+    const joints = max(gridLine(wp.y, 0.45, 0.025), gridLine(uv().x.add(hash2D(vec2(course, 3.1)).mul(0.8)), 0.8, 0.03)).mul(detail);
+    const stone = mix(cStone, cStoneDark, noise2D(vec2(uv().x.mul(1.25), course.mul(1.7))).mul(0.7).add(noise2D(wp.xz.mul(4.0)).mul(0.3)));
+    const walled = mix(stone, cStoneDark.mul(0.55), joints.mul(0.8));
+    // damp & mossy low on the walls, silt on the bed
+    const damp = smoothstep(0.35, 0.85, wet);
+    const banked = mix(walled, mix(walled.mul(0.62), cMoss, noise2D(wp.xz.mul(0.9)).mul(0.6)), damp);
+    return mix(banked, cSilt.mul(noise2D(wp.xz.mul(1.6)).mul(0.3).add(0.85)), smoothstep(0.96, 1.0, wet));
+  })();
+  mat.roughnessNode = mix(float(0.93), float(0.7), smoothstep(0.5, 1.0, wet));
+  return mat;
+}
+
+/**
+ * The water in the river channels: murky green-brown and nearly still on top, its ripples drifting downstream (uv.x:
+ * metres along the flow), mirroring the banks & sky at grazing angles through the water's Fresnel (on metalness, as for
+ * the road's puddles, so SSR reflects it).
+ */
+function createRiverWaterMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.06, metalness: 0.0 });
+  const cDeep = color(0x22301f);
+  const cSilty = color(0x4a4a32);
+  const viewDir = normalize(cameraPosition.sub(positionWorld));
+  const fresnel = pow(float(1.0).sub(clamp(viewDir.y, 0.0, 1.0)), 5.0).mul(0.98).add(0.02);
+  mat.colorNode = Fn(() => {
+    // siltier along the edges (uv.y: -1 at the left bank, 1 at the right), in slow drifting patches
+    const edge = smoothstep(0.55, 1.0, abs(uv().y));
+    const patch = noise2D(vec2(uv().x.mul(0.05).sub(time.mul(0.04)), uv().y.mul(0.8)));
+    return mix(cDeep, cSilty, edge.mul(0.6).add(patch.mul(0.3)));
+  })();
+  mat.metalnessNode = clamp(fresnel.mul(1.6), 0.0, 0.85);
+  mat.normalNode = Fn(() => {
+    const camDist = length(positionWorld.sub(cameraPosition));
+    const detail = smoothstep(220.0, 15.0, camDist);
+    const flow = uv().x.sub(time.mul(0.9));
+    const ripples = noise2D(vec2(flow.mul(0.9), uv().y.mul(3.0))).mul(0.06)
+      .add(noise2D(vec2(flow.mul(2.6).add(7.3), uv().y.mul(8.0).sub(time.mul(0.3)))).mul(0.025));
+    return bumpNormal(ripples.mul(detail));
+  })();
   return mat;
 }
 
@@ -2017,9 +2125,13 @@ export {
   createTreeGrateMaterial,
   createRoadSurfaceMaterial,
   createRoadPaintMaterial,
+  createBridgeConcreteMaterial,
+  createTrackBedMaterial,
   createSidewalkMaterial,
   createCurbMaterial,
   createParkLawnMaterial,
+  createRiverBankMaterial,
+  createRiverWaterMaterial,
   createContactShadowMaterial,
   createSmokeMaterial,
   createCarFlareMaterial

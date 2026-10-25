@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { CROSSWALK } from './road-network.js';
+import { CROSSWALK, edgeLift } from './road-network.js';
 import { createRoadPaintMaterial } from '../render/tsl-materials.js';
 import { drapeGeometry } from './drape.js';
 
@@ -22,21 +22,35 @@ function buildRoadPaint(scene, network) {
   const lines = [];
   const bends = new Map();
 
-  // Flat strip w wide from a to b, with a dash pattern (period, duty cycle) running along it
-  function strip(ax, az, bx, bz, w, col, period = 1, duty = 1, phase = 0, flow = 1) {
+  // Flat strip w wide from a to b, with a dash pattern (period, duty cycle) running along it, on edge e's road: up a
+  // ramp or over a bridge (its lift, road-network.js), in pieces between the bends of its profile
+  function strip(ax, az, bx, bz, w, col, period = 1, duty = 1, phase = 0, flow = 1, e = null) {
     const len = Math.hypot(bx - ax, bz - az);
     if (len < 0.05) return;
     const sx = ((az - bz) / len) * w * 0.5;
     const sz = ((bx - ax) / len) * w * 0.5;
-    const i = position.length / 3;
-    const end = phase + len * flow;
-    for (const [x, z, s, u] of [[ax, az, -1, phase], [ax, az, 1, phase], [bx, bz, 1, end], [bx, bz, -1, end]]) {
-      position.push(x + sx * s, HEIGHT, z + sz * s);
-      side.push(sx * s, sz * s);
-      paint.push(u, period, duty);
-      colors.push(col.r, col.g, col.b);
+    // where along a-b to cut (0..1): its ends, and where it passes the profile's points
+    const cuts = [0, 1];
+    if (e && e.lift) {
+      const ta = (ax - e.x0) * e.dx + (az - e.z0) * e.dz, tb = (bx - e.x0) * e.dx + (bz - e.z0) * e.dz;
+      if (Math.abs(tb - ta) > 0.01) for (const [t] of e.lift) { const f = (t - ta) / (tb - ta); if (f > 0.001 && f < 0.999) cuts.push(f); }
+      cuts.sort((p, q) => p - q);
     }
-    index.push(i, i + 1, i + 2, i, i + 2, i + 3);
+    const lift = (x, z) => (e && e.lift ? edgeLift(e, (x - e.x0) * e.dx + (z - e.z0) * e.dz) : 0);
+    for (let k = 0; k + 1 < cuts.length; k++) {
+      const f0 = cuts[k], f1 = cuts[k + 1];
+      const x0 = ax + (bx - ax) * f0, z0 = az + (bz - az) * f0, x1 = ax + (bx - ax) * f1, z1 = az + (bz - az) * f1;
+      const u0 = phase + len * flow * f0, u1 = phase + len * flow * f1;
+      const y0 = HEIGHT + lift(x0, z0), y1 = HEIGHT + lift(x1, z1);
+      const i = position.length / 3;
+      for (const [x, y, z, s, u] of [[x0, y0, z0, -1, u0], [x0, y0, z0, 1, u0], [x1, y1, z1, 1, u1], [x1, y1, z1, -1, u1]]) {
+        position.push(x + sx * s, y, z + sz * s);
+        side.push(sx * s, sz * s);
+        paint.push(u, period, duty);
+        colors.push(col.r, col.g, col.b);
+      }
+      index.push(i, i + 1, i + 2, i, i + 2, i + 3);
+    }
   }
 
   // Edges run between stop lines; s is measured from the start one and o to the right of the centre line
@@ -46,7 +60,7 @@ function buildRoadPaint(scene, network) {
     const ends = [at(e, e.from.shape ? -start : 0.9, o), at(e, e.to.shape ? e.span - start : e.len - 0.9, o)];
     lines.push({ e, o, w, col, period, duty, ends, joins: [] });
   };
-  const across = (e, s, o0, o1, w, col, period, duty) => strip(...at(e, s, o0), ...at(e, s, o1), w, col, period, duty);
+  const across = (e, s, o0, o1, w, col, period, duty) => strip(...at(e, s, o0), ...at(e, s, o1), w, col, period, duty, 0, 1, e);
   const clearCentre = (e, o) => {
     if (!network.isRoadClear) return false;
     const steps = Math.max(1, Math.ceil((e.len - 1.8) / 2.5));
@@ -181,7 +195,7 @@ function buildRoadPaint(scene, network) {
         next.phase = ((next.phase % next.period) + next.period) % next.period;
         stack.push(next);
       }
-      strip(...line.ends[0], ...line.ends[1], line.w, line.col, line.period, line.duty, line.phase, line.flow);
+      strip(...line.ends[0], ...line.ends[1], line.w, line.col, line.period, line.duty, line.phase, line.flow, line.e);
     }
   }
 
