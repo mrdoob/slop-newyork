@@ -243,7 +243,7 @@ class PropBreaker {
   /** Knocks over whatever the player's car or bicycle runs into this frame */
   update(dt, entity, mode) {
     const over = entity ? entity.position.y - (this.groundAt ? this.groundAt(entity.position.x, entity.position.z) : 0) : 0;
-    if (entity && (mode === 'car' || mode === 'cyclist') && over < 1.5) {
+    if (entity && (mode === 'car' || mode === 'cyclist' || mode === 'moto') && over < 1.5) {
       const heading = entity.heading || 0;
       const vx = Math.sin(heading) * (entity.speed || 0) + (entity.vx || 0);
       const vz = Math.cos(heading) * (entity.speed || 0) + (entity.vz || 0);

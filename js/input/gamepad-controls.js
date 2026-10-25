@@ -114,6 +114,7 @@ class GamepadControls {
     const toggleMap = edge(9), closeMap = edge(1);
     const board = edge(3); // Y: get in or out, as in GTA
     const cycleCamera = Number(Boolean(edge(5))) - Number(Boolean(edge(4))), recenter = edge(11);
+    const cycleWeapon = Number(Boolean(edge(15))) - Number(Boolean(edge(14))); // d-pad right / left
     this.previousButtons = pressed;
 
     const target = document.activeElement;
@@ -141,12 +142,13 @@ class GamepadControls {
     if (cycleCamera) this.callbacks.onCycleCamera?.(cycleCamera);
     if (revision !== this.revision) return;
     if (recenter) this.camera.resetOrbit();
+    if (cycleWeapon) this.callbacks.onCycleWeapon?.(cycleWeapon);
 
     const movement = stick(pad, 0), look = stick(pad, 2);
     const mode = this.controller.activeMode;
     let drive = -movement.y;
     let vertical = 0;
-    if (mode === 'car' || mode === 'cyclist') {
+    if (mode === 'car' || mode === 'cyclist' || mode === 'moto') {
       drive = Math.max(0, drive, buttonValue(pad, 7)) - Math.max(0, -drive, buttonValue(pad, 6));
     } else if (mode === 'helicopter') {
       vertical = buttonValue(pad, 7) - buttonValue(pad, 6);
@@ -158,6 +160,9 @@ class GamepadControls {
     this.controller.setGamepadInput('up', mode === 'person' ? Number(Boolean(held(0))) : Math.max(0, vertical));
     this.controller.setGamepadInput('down', Math.max(0, -vertical));
     this.controller.setGamepadInput('boost', Number(Boolean(held(2))));
+    this.controller.setGamepadInput('handbrake', mode === 'car' ? Number(Boolean(held(0))) : 0); // A: the car's handbrake
+    // fire: the right trigger on foot (in a vehicle it is the throttle), B from a car or a bicycle
+    this.controller.setGamepadInput('fire', mode === 'person' ? Number(buttonValue(pad, 7) > 0.5) : Number(Boolean(held(1))));
     const zoom = Number(Boolean(held(13))) - Number(Boolean(held(12)));
     this.camera.applyGamepadInput(look.x, look.y, zoom, Number.isFinite(dt) ? Math.max(0, Math.min(0.1, dt)) : 0);
   }

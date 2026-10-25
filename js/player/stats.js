@@ -1,16 +1,8 @@
 // js/player/stats.js
-// The player's health, stamina and money, GTA-style: hits from traffic and hard crashes cost health, which comes back
-// by itself (quickly up to half, slowly beyond); sprinting on foot or on a bicycle runs the stamina down; the people the
-// player knocks over drop their wallets (sim/pickups.js). At no health the player is "wasted" and wakes up at the
-// nearest hospital, which keeps part of the money. No three.js here, so node --test imports it directly
-// (tests/stats.test.mjs). Money is in Mexican pesos.
-
-const MAX_HEALTH = 100;
-const REGEN_DELAY = 5; // s unhurt before health starts coming back
-const REGEN_FAST = 3; // per s up to REGEN_CAP (GTA V refills half the bar by itself)
-const REGEN_CAP = 50;
-const REGEN_SLOW = 0.5; // per s above it: about 100 s from half to full
-const HURT_GRACE = 0.35; // s after a hit in which another does nothing (one crash reports several contacts)
+// What the player's body adds to the crime system's health & money (sim/crime.js), GTA-style: stamina, which sprinting
+// on foot or on a bicycle runs down; the health lost in the player's own crashes and when traffic drives into them on
+// foot; the cash in the wallet of someone the player knocks over; the hospital a wasted player wakes up at. No three.js
+// here, so node --test imports it directly (tests/stats.test.mjs).
 
 const MAX_STAMINA = 100;
 // per s of sprinting: ~9 s flat out on foot, ~14 s standing on the pedals
@@ -19,10 +11,7 @@ const STAMINA_DELAY = 0.8; // s after a sprint before the breath comes back
 const STAMINA_RECOVER = 18; // per s: empty to full in ~6 s
 const WINDED_UNTIL = 35; // once the stamina runs out, no sprinting until it is back to this
 
-const START_MONEY = 500;
-const HOSPITAL_BILL = 1000; // the most the hospital keeps (it takes what there is, GTA III's $100 in today's pesos)
-const WASTED_TIME = 4; // s on the "wasted" screen before waking up at the hospital
-
+const CRASH_GRACE = 0.35; // s after a crash in which another hurts nothing (one crash reports several contacts)
 const PERSON_MASS = 75; // kg (traffic.js MASS.person)
 
 /**
@@ -53,21 +42,23 @@ function hardness(kind, other) {
 
 /**
  * Health lost in a crash at `speed` m/s (the approach speed) of the player in `mode` against something of `hard`ness
- * (hardness above): a car's cage shrugs off anything under ~40 km/h; a cyclist is hurt from ~16 km/h; a helicopter
- * dropped onto the ground hurts from 5 m/s down.
+ * (hardness above), before the crime system takes its share off for being inside a vehicle (crime.js hurt: 0.55): a
+ * car's cage shrugs off anything under ~40 km/h; a cyclist is hurt from ~16 km/h, a motorcyclist from ~25 km/h; a
+ * helicopter dropped onto the ground hurts from 5 m/s down.
  */
 function crashDamage(mode, speed, hard, kind = '') {
   if (!(hard > 0) || !(speed > 0)) return 0;
-  if (mode === 'car') return Math.max(0, speed - 11) * 2.2 * hard;
-  if (mode === 'cyclist') return Math.max(0, speed - 4.5) * 5 * hard;
-  if (mode === 'helicopter') return Math.max(0, speed - 5) * (kind === 'ground' ? 9 : 3) * hard;
+  if (mode === 'car') return Math.max(0, speed - 11) * 4 * hard;
+  if (mode === 'cyclist') return Math.max(0, speed - 4.5) * 9 * hard;
+  if (mode === 'moto') return Math.max(0, speed - 7) * 7 * hard;
+  if (mode === 'helicopter') return Math.max(0, speed - 5) * (kind === 'ground' ? 16 : 5) * hard;
   return 0;
 }
 
-/** The cash in a knocked-over person's wallet: $20 to $500 in tens, mostly small (`rand` gives 0..1) */
+/** The cash in a knocked-over person's wallet: $5 to $120 in fives, mostly small (`rand` gives 0..1) */
 function walletAmount(rand = Math.random) {
   const r = rand();
-  return 20 + Math.round((r * r * 480) / 10) * 10;
+  return 5 + Math.round((r * r * 115) / 5) * 5;
 }
 
 /** The nearest of `places` ({ x, z }) to (x, z), or null */
@@ -84,86 +75,38 @@ function nearest(places, x, z) {
   return best;
 }
 
-class PlayerStats {
-  constructor({ money = START_MONEY } = {}) {
-    this.health = MAX_HEALTH;
-    this.stamina = MAX_STAMINA;
-    this.money = Number.isFinite(money) ? Math.max(0, Math.round(money)) : START_MONEY;
+class Stamina {
+  constructor() {
+    this.value = MAX_STAMINA;
     this.winded = false; // out of breath: no sprinting until WINDED_UNTIL
-    this.sinceHurt = Infinity; // s since the last hit
     this.sinceSprint = Infinity;
-    this.wasted = 0; // s left on the wasted screen, 0 alive
-    this.lastBill = 0;
-  }
-
-  get alive() {
-    return this.wasted <= 0 && this.health > 0;
   }
 
   /** May the player sprint now (shift on foot or on a bicycle)? */
   get canSprint() {
-    return this.alive && !this.winded;
+    return !this.winded;
   }
 
-  /** Takes `amount` health; returns the health actually lost. At none the player is wasted. */
-  hurt(amount) {
-    if (!this.alive || !(amount > 0) || this.sinceHurt < HURT_GRACE) return 0;
-    const lost = Math.min(this.health, amount);
-    this.health -= lost;
-    this.sinceHurt = 0;
-    if (this.health <= 0) {
-      this.health = 0;
-      this.wasted = WASTED_TIME;
-    }
-    return lost;
-  }
-
-  earn(amount) {
-    if (amount > 0) this.money += Math.round(amount);
-  }
-
-  /**
-   * Advances by dt; `sprinting` is the mode ('person' | 'cyclist') the player is sprinting in, or null. Returns
-   * 'respawn' once the wasted screen is over (the caller takes the player to the hospital and calls respawn()).
-   */
+  /** Advances by dt; `sprinting` is the mode ('person' | 'cyclist') the player is sprinting in, or null */
   update(dt, sprinting = null) {
-    if (this.wasted > 0) {
-      this.wasted -= dt;
-      return this.wasted <= 0 ? 'respawn' : null;
-    }
-    this.sinceHurt += dt;
-    if (this.sinceHurt >= REGEN_DELAY && this.health < MAX_HEALTH) {
-      const rate = this.health < REGEN_CAP ? REGEN_FAST : REGEN_SLOW;
-      this.health = Math.min(MAX_HEALTH, this.health + rate * dt);
-    }
     const drain = sprinting && this.canSprint ? STAMINA_DRAIN[sprinting] || 0 : 0;
     if (drain > 0) {
-      this.stamina = Math.max(0, this.stamina - drain * dt);
+      this.value = Math.max(0, this.value - drain * dt);
       this.sinceSprint = 0;
-      if (this.stamina <= 0) this.winded = true;
+      if (this.value <= 0) this.winded = true;
     } else {
       this.sinceSprint += dt;
-      if (this.sinceSprint >= STAMINA_DELAY) this.stamina = Math.min(MAX_STAMINA, this.stamina + STAMINA_RECOVER * dt);
+      if (this.sinceSprint >= STAMINA_DELAY) this.value = Math.min(MAX_STAMINA, this.value + STAMINA_RECOVER * dt);
     }
-    if (this.winded && this.stamina >= WINDED_UNTIL) this.winded = false;
-    return null;
+    if (this.winded && this.value >= WINDED_UNTIL) this.winded = false;
   }
 
-  /** Back on its feet at the hospital: full health and breath, less the bill (returned) */
-  respawn() {
-    const bill = Math.min(this.money, HOSPITAL_BILL);
-    this.money -= bill;
-    this.lastBill = bill;
-    this.health = MAX_HEALTH;
-    this.stamina = MAX_STAMINA;
+  /** Back to full (waking up at the hospital) */
+  reset() {
+    this.value = MAX_STAMINA;
     this.winded = false;
-    this.wasted = 0;
-    this.sinceHurt = Infinity;
-    return bill;
+    this.sinceSprint = Infinity;
   }
 }
 
-export {
-  PlayerStats, struckDamage, hardness, crashDamage, walletAmount, nearest,
-  MAX_HEALTH, MAX_STAMINA, REGEN_CAP, START_MONEY, HOSPITAL_BILL, WASTED_TIME, WINDED_UNTIL
-};
+export { Stamina, struckDamage, hardness, crashDamage, walletAmount, nearest, MAX_STAMINA, WINDED_UNTIL, CRASH_GRACE };

@@ -24,6 +24,7 @@ import {
   instanceIndex
 } from 'three/tsl';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { BODY_SHAPES } from '../models/bodies.js';
 
 // js/actors/actor-models.js
 // Realistic 3D Lofted Vehicle Geometry + TSL Materials (the skinned, animated people are in pedestrians.js)
@@ -455,6 +456,11 @@ const BODY_SPECS = {
   }
 };
 BODY_SPECS.taxi = Object.assign({}, BODY_SPECS.sedan, { name: 'taxi', sign: true });
+// The car models' other body shapes (js/models/bodies.js), each a set of changes to the sedan or the SUV
+for (const [name, shape] of Object.entries(BODY_SHAPES)) {
+  const { base, ...changes } = shape;
+  BODY_SPECS[name] = Object.assign({}, BODY_SPECS[base], changes, { name });
+}
 for (const spec of Object.values(BODY_SPECS)) {
   // Kept for code that places lamp flares: lamp heights (front, rear) and centres across the car
   spec.lamps = [spec.headlight[1], spec.taillight[1]];
@@ -987,6 +993,16 @@ function buildBumpers(spec) {
   });
 }
 
+// A body shape's overall length, width (over the wheel arches) and height (to the roof), m: what a car model's real
+// size is stretched from
+function bodyDims(spec) {
+  if (spec._dims) return spec._dims;
+  const width = 2 * (Math.max(...spec.halfWidth.map((p) => p[1])) + spec.archFlare);
+  const height = Math.max(...spec.cabin.roofY.map((p) => p[1])) + spec.cabin.roofCrown;
+  spec._dims = { length: spec.zFront - spec.zRear, width, height, halfW: width / 2, halfL: Math.max(spec.zFront, -spec.zRear) };
+  return spec._dims;
+}
+
 function buildCarGeometry(spec, includeWheels = true) {
   const parts = [buildCarBody(spec, 1), buildCarCabin(spec, 1), ...buildMirrors(spec), ...buildBumpers(spec)];
   for (const side of [-1, 1]) {
@@ -1207,7 +1223,13 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   // Glasshouse: side windows (minus the B / C pillars), windshield & backlight, their black seals, chrome sill strip
   let sideG = polygonDistance(p.z, p.y, sideGlassPlanes, 0.07);
   for (const zp of cab.pillars) sideG = max(sideG, float(0.036).sub(abs(p.z.sub(zp))));
-  const backlight = coverage(polygonDistance(ax, p.z, rearGlassPlanes, 0.09)).mul(isWindow);
+  let backG = polygonDistance(ax, p.z, rearGlassPlanes, 0.09);
+  if (cab.glassEnd !== undefined) {
+    // no glass behind glassEnd: a painted cover over the rest of the glasshouse
+    sideG = max(sideG, float(cab.glassEnd + 0.04).sub(p.z));
+    backG = max(backG, float(cab.glassEnd).sub(p.z));
+  }
+  const backlight = coverage(backG).mul(isWindow);
   const glass = max(max(coverage(sideG), coverage(polygonDistance(ax, p.z, frontGlassPlanes, 0.09))), backlight.div(max(isWindow, 1e-4)))
     .mul(isWindow);
   const seal = max(
@@ -2179,6 +2201,7 @@ function createLoftedHelicopterMaterial() {
 export {
   CAR_PARTS,
   BODY_SPECS,
+  bodyDims,
   carLayout,
   carBodyHalfWidthAt,
   buildCarSidePatch,

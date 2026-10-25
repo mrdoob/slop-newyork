@@ -387,13 +387,20 @@ export function createMotorVoice(context, resources, kind, output) {
     const roadLevel = smoothParameter(roadGain.gain, 0.18);
     const roadFrequency = smoothParameter(roadLowpass.frequency, 0.18, 1);
     const noiseRate = smoothParameter(road.playbackRate, 0.12, 0.001);
-    render = (speed, load, doppler, now) => {
+    render = (speed, load, doppler, now, verticalSpeed, engineRPM) => {
       const first = previousTime < 0;
       const dt = first ? 0.1 : clamp(now - previousTime, 0, 0.5);
       previousTime = now;
       throttle = first ? load : throttle + (load - throttle) * (1 - Math.exp(-dt / (load > throttle ? 0.14 : 0.32)));
+      // An engine whose revs are given (the player's car or moto) sounds them as they are, its own gear changes included
+      if (engineRPM > 0) {
+        rpm = engineRPM;
+        shiftUntil = 0;
+      }
       const shiftRPM = (bus ? 1700 : moto ? 4800 : 2700) + throttle * (bus ? 950 : moto ? 3200 : 2900);
-      if (speed < 0.6) {
+      if (engineRPM > 0) {
+        // (no gearbox of its own to run)
+      } else if (speed < 0.6) {
         // A fresh launch starts in first immediately, even after a hard stop from top gear.
         gear = 0;
         gearLock = shiftUntil = 0;
@@ -414,7 +421,7 @@ export function createMotorVoice(context, resources, kind, output) {
       // dropping straight to idle; hysteresis and a minimum gear dwell prevent hunting around a shift boundary.
       const slip = throttle * (bus ? 600 : moto ? 1100 : 1500) * Math.max(0.12, 1 - speed / 16);
       const targetRPM = clamp(Math.max(idle, speed * ratios[gear]) + slip, idle, bus ? 2900 : moto ? 9500 : 6200);
-      rpm = first ? targetRPM : rpm + (targetRPM - rpm) * (1 - Math.exp(-dt / (targetRPM > rpm ? 0.12 : 0.075)));
+      if (!(engineRPM > 0)) rpm = first ? targetRPM : rpm + (targetRPM - rpm) * (1 - Math.exp(-dt / (targetRPM > rpm ? 0.12 : 0.075)));
       const pitch = (0.97 + variation * 0.06) * doppler;
       const effort = Math.min(1, throttle + speed * 0.005);
       const torque = now < shiftUntil ? 0.52 : 1;
@@ -556,7 +563,7 @@ export function createMotorVoice(context, resources, kind, output) {
     };
   }
 
-  function update({ speed = 0, load = 0, doppler = 1, seed = 0, verticalSpeed = 0 } = {}, now = context.currentTime) {
+  function update({ speed = 0, load = 0, doppler = 1, seed = 0, verticalSpeed = 0, rpm = 0 } = {}, now = context.currentTime) {
     if (disposed) return;
     const safeSeed = Number.isFinite(seed) ? seed : 0;
     if (safeSeed !== lastSeed) {
@@ -570,7 +577,8 @@ export function createMotorVoice(context, resources, kind, output) {
       Number.isFinite(load) ? clamp(load, 0, 1) : 0,
       Number.isFinite(doppler) ? clamp(doppler, 0.5, 2) : 1,
       time,
-      Number.isFinite(verticalSpeed) ? clamp(verticalSpeed, -30, 30) : 0
+      Number.isFinite(verticalSpeed) ? clamp(verticalSpeed, -30, 30) : 0,
+      Number.isFinite(rpm) ? clamp(rpm, 0, 9000) : 0
     );
   }
 
