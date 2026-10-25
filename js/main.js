@@ -888,6 +888,8 @@ async function initApp() {
     aimControl.update(dt);
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
+    // the hour sets how much traffic and how many people are out (traffic-demand.js): rush hours on the avenues
+    trafficSystem.setHour(lightingSystem.hourOfDay);
     trafficSystem.setParked(crimeSystem.addObstacles(controllerManager.parkedVehicles()));
     trafficSystem.update(
       dt,

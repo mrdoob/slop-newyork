@@ -31,6 +31,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BONES, boxHit, riderKnocked, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
 import { TAXI_MODEL, POLICE_MODEL, CAR_MODEL_BY_ID, BODY_SHARE, paintsOf, pickModel, pickBody } from '../models/cars/index.js';
 import { rayCircle, rayBox, roundBox, blastFalloff } from './weapons.js';
+import { roadClass, carDensity, peopleDensity, carDemand, busyFactor, ROUTE_PULL } from './traffic-demand.js';
 
 // js/sim/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
@@ -752,8 +753,66 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const nearSignals = [];
   let nearX = Infinity;
   let nearZ = Infinity;
+  // The hour of the day (local, 0-24; main.js setHour) sets how much traffic and how many people are out
+  // (traffic-demand.js). Each near edge is weighed by the metres of it within NEAR_RADIUS: a car is placed on one by
+  // its lane-km × its class's density (the avenues, not the colonias' streets), a pedestrian by its sidewalk-km × its
+  // crowd (cumulative, for pickWeighted); their totals are how many of each the hour has around the focus.
+  let hour = 14;
+  let weighedHour = NaN;
+  const nearCarWeights = [];
+  const nearPedWeights = [];
+  let carTarget = NUM_CARS;
+  let pedTarget = NUM_PEDS;
+  function setHour(h) {
+    if (Number.isFinite(h)) hour = ((h % 24) + 24) % 24;
+  }
+  // Metres of edge e within `r` of the focus
+  function inRange(e, r) {
+    const fx = focusX - e.sx, fz = focusZ - e.sz;
+    const along = fx * e.dx + fz * e.dz;
+    const across2 = fx * fx + fz * fz - along * along;
+    if (across2 >= r * r) return 0;
+    const half = Math.sqrt(r * r - across2);
+    return Math.max(0, Math.min(e.len, along + half) - Math.max(0, along - half));
+  }
+  function weighNear() {
+    weighedHour = hour;
+    nearCarWeights.length = 0;
+    nearPedWeights.length = 0;
+    let cars = 0;
+    let people = 0;
+    for (const e of nearEdges) {
+      const km = inRange(e, NEAR_RADIUS) / 1000;
+      const c = (e.roadClass ??= roadClass(e));
+      cars += km * e.lanes.length * carDensity(c, hour) * busyFactor(e.name);
+      people += km * peopleDensity(c, hour);
+      nearCarWeights.push(cars);
+      nearPedWeights.push(people);
+    }
+    carTarget = Math.min(NUM_CARS, Math.round(cars));
+    pedTarget = Math.min(NUM_PEDS, Math.round(people));
+  }
+  // An item of `list` at random by its cumulative `weights` (uniformly while they are all 0)
+  function pickWeighted(list, weights) {
+    const total = weights.length ? weights[weights.length - 1] : 0;
+    if (!(total > 0)) return list[Math.floor(Math.random() * list.length)];
+    const r = Math.random() * total;
+    let lo = 0;
+    let hi = weights.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (weights[mid] > r) hi = mid;
+      else lo = mid + 1;
+    }
+    return list[lo];
+  }
   function refreshNear() {
-    if (Math.hypot(focusX - nearX, focusZ - nearZ) < 40) return;
+    const moved = Math.hypot(focusX - nearX, focusZ - nearZ) >= 40;
+    if (!moved) {
+      // (the hour moved on: weighed afresh every 6 minutes of it)
+      if (!(Math.abs(hour - weighedHour) < 0.1)) weighNear();
+      return;
+    }
     nearX = focusX;
     nearZ = focusZ;
     nearEdges.length = 0;
@@ -771,6 +830,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const dx = n.x - focusX, dz = n.z - focusZ;
       if (n.signal && dx * dx + dz * dz < NEAR_RADIUS * NEAR_RADIUS) nearSignals.push(n);
     }
+    weighNear();
   }
 
   // Where the player is relative to v: metres ahead, metres to the right, how fast it moves v's way and how big it
@@ -907,6 +967,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const m = e.moves[k];
       let w = m.turn === 'S' ? (v.bus ? 8 : 3) : 1;
       if (v.bus && m.turn !== 'S' && m.to.lanes.length < 2) w *= 0.05;
+      // drivers keep to the bigger roads: off an avenue into a colonia's street now and then, onto one readily
+      w *= ROUTE_PULL[(m.to.roadClass ??= roadClass(m.to))] / ROUTE_PULL[(e.roadClass ??= roadClass(e))];
       if (fromLane) {
         if (m.out[v.lane] < 0) w = 0;
       } else if (Math.abs(nearestLane(m, v.lane) - v.lane) * 22 > e.len - v.s) {
@@ -1652,7 +1714,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const onRoutes = !!v.fleet && transit.paths.length > 0;
     const pool = onRoutes ? nearTransitEdges : nearEdges;
     for (let attempt = 0; attempt < 12; attempt++) {
-      const e = pool[Math.floor(Math.random() * pool.length)];
+      const e = onRoutes ? pool[Math.floor(Math.random() * pool.length)] : pickWeighted(pool, nearCarWeights);
       if (!e || (v.bus && !onRoutes && e.axis !== 'ave') || e.len < 2 * v.half + 10) continue;
       const on = onRoutes ? routeOn(e, v.fleet) : null;
       if (onRoutes && !on) continue;
@@ -1722,7 +1784,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const crosswalk = p.crossesStreets && nearSignals.length > 0 && attempt < 5;
       const ok = crosswalk
         ? crosswalkTrack(nearSignals[Math.floor(Math.random() * nearSignals.length)])
-        : nearEdges.length > 0 && sidewalkTrack(nearEdges[Math.floor(Math.random() * nearEdges.length)]);
+        : nearEdges.length > 0 && sidewalkTrack(pickWeighted(nearEdges, nearPedWeights));
       if (!ok) continue;
       const along = (focusX - track.ax) * track.ux + (focusZ - track.az) * track.uz;
       const minT = Math.max(0, along - rMax), maxT = Math.min(track.len, along + rMax);
@@ -2822,6 +2884,38 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     kit.frame.setColorAt(slot, v.color);
   }
 
+  // How many of each kind of vehicle the hour has out (weighNear's carTarget of the NUM_CARS): the bicycles and
+  // motorcycles in the same share as the cars, the buses on their routes by the hour alone (none in the small hours)
+  const kindOf = (v) => (v.bus ? 'bus' : v.bike ? 'bike' : v.moto ? 'moto' : 'car');
+  const fleetSize = { car: 0, bike: 0, moto: 0, bus: 0 };
+  for (const v of vehicles) fleetSize[kindOf(v)]++;
+  const active = { car: 0, bike: 0, moto: 0, bus: 0 };
+  const allowed = { car: 0, bike: 0, moto: 0, bus: 0 };
+  function allowance() {
+    for (const k in active) active[k] = 0;
+    for (const v of vehicles) if (v.edge && !v.wreck) active[kindOf(v)]++;
+    const share = carTarget / NUM_CARS;
+    allowed.car = carTarget;
+    allowed.bike = Math.round(fleetSize.bike * share);
+    allowed.moto = Math.round(fleetSize.moto * share);
+    allowed.bus = Math.round(fleetSize.bus * Math.max(0, Math.min(1, carDemand(hour) * 1.25 - 0.1)));
+  }
+  // Off the streets until wanted again (like a hijacked vehicle, without its driver getting out)
+  function retireVehicle(v) {
+    v.edge = null;
+    v.conn = null;
+    v.trail = null;
+    v.commit = null;
+    v.speed = 0;
+  }
+  function retirePed(p) {
+    if (p.conversation) endConversation(p.conversation);
+    p.placed = false;
+    p.fallen = null;
+    p.bail = null;
+    p.nextRoute = null;
+  }
+
   // =========================================================================
   // 9. UPDATE
   // =========================================================================
@@ -3070,15 +3164,35 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     // 1. Cars & buses
     // Limit attempted placements, not just successes, and rotate through the pool so an awkward location
     // cannot monopolize a frame. Previous-frame lane lists protect spawn spacing; rebuild before driving.
+    // Only as many on the streets as the hour and the place have (weighNear): those over it leave once out of sight
+    // and away from the player, and come back as it grows
+    allowance();
     let budget = jump ? vehicles.length : 4;
+    let retire = jump ? Infinity : 2;
     for (let scanned = 0; scanned < vehicles.length && budget > 0; scanned++) {
       const v = vehicles[vehicleCursor];
       vehicleCursor = (vehicleCursor + 1) % vehicles.length;
       if (v.wreck) continue; // a knocked-over cyclist stays where it fell for now
+      const k = kindOf(v);
       const d = v.edge ? Math.hypot(v.x - focusX, v.z - focusZ) : Infinity;
-      if (d <= (jump ? NEAR_RADIUS : VEHICLE_RADIUS)) continue;
+      if (d <= (jump ? NEAR_RADIUS : VEHICLE_RADIUS)) {
+        if (active[k] > allowed[k] && retire > 0 && d > 120 && !(hasView && visible(v.x, v.z, v.half + 2, (v.hy || 0) + 1))) {
+          retireVehicle(v);
+          active[k]--;
+          retire--;
+        }
+        continue;
+      }
+      if (active[k] - (v.edge ? 1 : 0) >= allowed[k]) {
+        if (v.edge) {
+          retireVehicle(v);
+          active[k]--;
+        }
+        continue;
+      }
       budget--;
-      spawnVehicle(v, jump ? 0 : 100, NEAR_RADIUS, !jump);
+      const had = !!v.edge;
+      if (spawnVehicle(v, jump ? 0 : 100, NEAR_RADIUS, !jump) && !had) active[k]++;
     }
     buildOccupancy();
     for (const m of bodyMeshes) m.count = 0;
@@ -3183,11 +3297,30 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     for (const n of walkedNodes) n.walkers.length = 0;
     walkedNodes.length = 0;
     let pedBudget = jump ? NUM_PEDS : 6;
+    let pedRetire = jump ? Infinity : 3;
+    let out = 0;
+    for (const p of peds) if (p.placed) out++;
     for (let scanned = 0; scanned < NUM_PEDS && pedBudget > 0; scanned++) {
       const p = peds[pedCursor];
       pedCursor = (pedCursor + 1) % NUM_PEDS;
       const d = p.placed ? Math.hypot(p.x - focusX, p.z - focusZ) : Infinity;
-      if (d <= (jump ? NEAR_RADIUS : PED_RADIUS)) continue;
+      if (d <= (jump ? NEAR_RADIUS : PED_RADIUS)) {
+        // more out than the hour has: one out of sight goes home
+        if (out > pedTarget && pedRetire > 0 && d > 50 && !p.bail && !p.fallen && !(hasView && visible(p.x, p.z, 2))) {
+          retirePed(p);
+          out--;
+          pedRetire--;
+        }
+        continue;
+      }
+      if (out - (p.placed ? 1 : 0) >= pedTarget) {
+        if (p.placed) {
+          retirePed(p);
+          out--;
+        }
+        continue;
+      }
+      if (!p.placed) out++;
       pedBudget--;
       p.fallen = null; // (a knocked-over pedestrian left far behind gets up elsewhere)
       p.bail = null; // (and so does a driver left behind)
@@ -3248,6 +3381,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     vehicleAt,
     vehicleBoxAt,
     setWallQuery,
+    setHour,
+    // (how many vehicles and people the hour has around the focus, and how many are out: for the HUD and tests)
+    demand: () => ({ hour, cars: carTarget, people: pedTarget, out: { ...active } }),
     vehicleNear,
     hijack,
     cars,

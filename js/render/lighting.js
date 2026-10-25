@@ -23,6 +23,7 @@ import { SunLightNode } from 'three/addons/lights/SunLightNode.js';
 import { cityUniforms } from './tsl-materials.js';
 import { GEO } from '../world/city-geodata.js';
 import { LiveWeather, sunDirection } from '../world/weather.js';
+import { localHour } from '../sim/traffic-demand.js';
 import { SLOPES, townHeight } from '../world/ground.js';
 
 // js/render/lighting.js
@@ -34,6 +35,7 @@ const TIME_PRESETS = {
   golden: {
     id: 'golden',
     name: 'Golden Hour · 17:45',
+    hour: 17.75, // (the traffic's and the crowds' hour, traffic-demand.js)
     // Crisp street-canyon sun slicing across avenues & intersections so buildings, cars, trees & pedestrians cast sharp shadows
     sunDir: new THREE.Vector3(-0.44, 0.58, -0.68).normalize(),
     sunColor: 0xffca92,
@@ -61,6 +63,7 @@ const TIME_PRESETS = {
   midday: {
     id: 'midday',
     name: 'Sunny Midday · 13:30',
+    hour: 13.5,
     sunDir: new THREE.Vector3(-0.34, 0.82, -0.46).normalize(),
     sunColor: 0xfff5e8,
     sunIntensity: 6.6,
@@ -87,6 +90,7 @@ const TIME_PRESETS = {
   twilight: {
     id: 'twilight',
     name: 'Blue Hour · 19:15',
+    hour: 19.25,
     sunDir: new THREE.Vector3(-0.52, 0.36, -0.77).normalize(),
     sunColor: 0xff9466,
     sunIntensity: 3.1,
@@ -113,6 +117,7 @@ const TIME_PRESETS = {
   midnight: {
     id: 'midnight',
     name: 'Night · 23:00',
+    hour: 23,
     sunDir: new THREE.Vector3(0.42, 0.68, -0.60).normalize(),
     sunColor: 0x8cb0e8,
     sunIntensity: 1.45,
@@ -351,6 +356,13 @@ class LightingSystem {
     this.scene.environment = this.envRenderTarget.texture;
     this.sky.showSunDisc.value = 1;
     this.scene.add(this.sky);
+  }
+
+  // The hour of the day it is in the town (0-24, local): the live clock's in the weather location's time zone, or the
+  // preset's own
+  get hourOfDay() {
+    if (this.activePresetId !== 'live') return TIME_PRESETS[this.activePresetId]?.hour ?? 14;
+    return localHour(this.liveClock(), this.weather.location?.timeZone);
   }
 
   get isNight() {

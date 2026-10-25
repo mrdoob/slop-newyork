@@ -447,7 +447,7 @@ function buildRoadNetwork(sidewalks, obstacles) {
             if (m > at && pts[m].x === stations[k + 1].x && pts[m].z === stations[k + 1].z) break;
           }
         }
-        runs.push({ from: stations[k], to: stations[k + 1], ...lanes, profile });
+        runs.push({ from: stations[k], to: stations[k + 1], ...lanes, profile, name: l.name || '' });
       }
     }
     console.info(`[roads] centreline streets: ${links.length} links not on the grid, ${runs.length} straight runs`);
@@ -504,7 +504,7 @@ function buildRoadNetwork(sidewalks, obstacles) {
     }
     return true;
   };
-  function addEdgeGeneral(from, to, axis, lanes, half, divided, profile = null) {
+  function addEdgeGeneral(from, to, axis, lanes, half, divided, profile = null, name = '') {
     const x0 = from.x;
     const z0 = from.z;
     const span = Math.hypot(to.x - x0, to.z - z0);
@@ -515,7 +515,8 @@ function buildRoadNetwork(sidewalks, obstacles) {
     if (!open.length) return;
     // on a bridge or ramp: [distance from `from` along the edge, lift (m over the ground)], ascending (see edgeLift)
     const lift = profile ? profile.map((p) => [(p.x - x0) * dx + (p.z - z0) * dz, p.lift]).sort((p, q) => p[0] - q[0]) : null;
-    edges.push({ from, to, axis, x0, z0, dx, dz, rx: -dz, rz: dx, span, half, lanes: open.sort((p, q) => p - q), moves: [], general: true, cand: lanes, divided: !!divided, lift });
+    // (`name`: the street's, OpenStreetMap's; the traffic weighs the busiest avenues by it, traffic-demand.js)
+    edges.push({ from, to, axis, x0, z0, dx, dz, rx: -dz, rz: dx, span, half, lanes: open.sort((p, q) => p - q), moves: [], general: true, cand: lanes, divided: !!divided, lift, name });
   }
   // A divided road drawn as two one-way roadways between the same two junctions (most of the Bowery) runs both ways
   // along one centreline here: each way keeps to the right of it, as on a two-way street, and the road is as wide as
@@ -544,8 +545,8 @@ function buildRoadNetwork(sidewalks, obstacles) {
     if (r.half >= 7.25) r.axis = o.axis = 'ave'; // as wide as a major road (see lanesOf)
   }
   for (const r of genRuns) {
-    if (r.fwd.length) addEdgeGeneral(r.from, r.to, r.axis, r.fwd, r.half, r.divided, r.profile);
-    if (r.back.length) addEdgeGeneral(r.to, r.from, r.axis, r.back, r.half, r.divided, r.profile);
+    if (r.fwd.length) addEdgeGeneral(r.from, r.to, r.axis, r.fwd, r.half, r.divided, r.profile, r.name);
+    if (r.back.length) addEdgeGeneral(r.to, r.from, r.axis, r.back, r.half, r.divided, r.profile, r.name);
   }
   // Two edges from one node to the same next one (a service road whose ends were drawn onto its main road's junctions)
   // would drive through each other: keep the grid's, else the one with the most lanes
