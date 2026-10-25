@@ -2,17 +2,21 @@ import * as THREE from 'three/webgpu';
 import { Fn, float, color, positionGeometry, uniform, mod, step, smoothstep, mix, attribute, texture } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SIGNAL_TIMING, blockAt, BLOCKS, nearestRoads } from './city-config.js';
-import { cityUniforms, createTreeGrateMaterial, atlasSlotUV } from '../render/tsl-materials.js';
+import { cityUniforms, createTreeGrateMaterial, atlasSlotUV, createWireMaterial, WIRE_FADE } from '../render/tsl-materials.js';
 import { PropBreaker } from '../sim/mayhem.js';
 import { createTreeField } from './trees.js';
-import { pavedPlazaRects, parkTreeSites, sidewalkBlocks, parkLampSites } from './city-grid.js';
+import { parkTreeSites, sidewalkBlocks, parkLampSites } from './city-grid.js';
 import { liftAt } from './ground.js';
 
 // js/world/street-details.js
 // Populates the city's streets with street furniture using InstancedMesh:
 // - Mast-arm traffic signals at the road network's signalised junctions (addJunctionSignals)
 // - Cobra-head streetlights along the curbs and post-top lamps in the centro
-// - Fire hydrants, park & street trees
+// - The CFE's concrete poles down one side of every street (crossarm, insulators, a transformer here and there, a
+//   streetlight on the arm) strung with their lines and the cables sagging across to the houses
+// - A few fire hydrants (rare in Tepic), park & street trees, palms down the camellones
+// - A post with the two streets' name plates on a corner of every junction (addJunctionSignals: their names are drawn
+//   into a small atlas for the junctions near the camera, redrawn as it moves)
 // Each prop stands on the ground at its base (ground.js liftAt: the town's slopes, y = 0 in the flat city).
 
 /**
@@ -128,9 +132,12 @@ function buildStreetDetails(scene) {
   // Street furniture the player can knock over (mayhem.js): its instances in the meshes below, resolved once built
   const breakables = [];
 
-  const plazaRects = pavedPlazaRects || [];
+  // On (or within m of) a paved park (city-grid.js section 7): its own island, tested on its outline (the parks'
+  // bounding boxes took in whole colonias round a long diagonal park like the Parque Lineal)
+  const isPavedPark = (b) => !!b && b.park > 0.6 && !b.rural && !b.median;
   const inPlaza = (x, z, m = 1.0) =>
-    plazaRects.some((r) => x > r.minX - m && x < r.maxX + m && z > r.minZ - m && z < r.maxZ + m);
+    isPavedPark(blockAt(x, z)) || isPavedPark(blockAt(x + m, z)) || isPavedPark(blockAt(x - m, z)) ||
+    isPavedPark(blockAt(x, z + m)) || isPavedPark(blockAt(x, z - m));
 
   // True only when (x, z) and its surrounding pad-meter footprint sit on a real curb island (never in a road or median)
   const isOnCurbIsland = (x, z, pad = 0.55) => {
@@ -352,6 +359,124 @@ function buildStreetDetails(scene) {
     }
   }
 
+  // =========================================================================
+  // 2b. THE CFE'S POLES & OVERHEAD WIRES
+  //     Tepic's power runs overhead: a concrete pole of the Comisión Federal de Electricidad every ~30 m down one
+  //     side of every street (the curb whose outward normal points the same half of the compass, so one of the two
+  //     facing curbs), 11 m tall, a crossarm with three insulators carrying the primaries, the secondary and the
+  //     phone & cable lines under it, a pole-top transformer on one in five and a streetlight on an arm over the
+  //     street. The lines span pole to pole, along each curb and on across the junctions, and the service cables sag
+  //     from the poles to the houses on both sides. Local pole frame: x out over the street, z along it, y up.
+  // =========================================================================
+  const cfePoles = []; // { x, z, g, ux, uz, outX, outZ, across (m to the far curb, 0 if none), edge, i }
+  const cfeEdges = [];
+  const CFE_SP = 30;
+  const CFE_H = 11;
+  for (const b of allBlocks) {
+    if (!b || !b.poly || b.poly.length < 3 || b.median || b.park > 0.6 || b.rural) continue;
+    const poly = b.poly;
+    for (let i = 0; i < poly.length; i++) {
+      const p0 = poly[i];
+      const p1 = poly[(i + 1) % poly.length];
+      const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+      if (len < 18) continue;
+      const ux = (p1.x - p0.x) / len;
+      const uz = (p1.z - p0.z) / len;
+      const mx = (p0.x + p1.x) * 0.5;
+      const mz = (p0.z + p1.z) * 0.5;
+      let inx = -uz;
+      let inz = ux;
+      if (blockAt(mx + inx * 1.6, mz + inz * 1.6) !== b) {
+        inx = uz;
+        inz = -ux;
+      }
+      if (blockAt(mx + inx * 1.6, mz + inz * 1.6) !== b || blockAt(mx - inx * 2.5, mz - inz * 2.5)) continue;
+      const outX = -inx;
+      const outZ = -inz;
+      if (outX * 0.8 + outZ * 0.6 <= 0) continue; // the other curb of this street carries them
+      const n = Math.floor((len - 12) / CFE_SP) + 1;
+      const step = n > 1 ? (len - 12) / (n - 1) : 0;
+      const edge = [];
+      for (let k = 0; k < n; k++) {
+        const d = n > 1 ? 6 + k * step : len / 2;
+        const px = p0.x + ux * d + inx * 0.45;
+        const pz = p0.z + uz * d + inz * 0.45;
+        if (!isOnSidewalk(px, pz, 0.3) || !isClearOfPoles(px, pz, 2.5)) continue;
+        // the far curb across the street (the houses the cables cross to)
+        let across = 0;
+        for (let sx = 3; sx <= 30; sx += 1.5) {
+          if (blockAt(px + outX * sx, pz + outZ * sx)) {
+            across = sx;
+            break;
+          }
+        }
+        const pole = { x: px, z: pz, g: liftAt(px, pz), ux, uz, outX, outZ, across, edge: cfeEdges.length, i: cfePoles.length };
+        placedPoles.push({ x: px, z: pz });
+        edge.push(pole);
+        cfePoles.push(pole);
+      }
+      cfeEdges.push(edge);
+    }
+  }
+  // A point of pole p's frame in the world
+  const cfePoint = (p, x, y, z = 0) => new THREE.Vector3(p.x + p.outX * x + p.ux * z, p.g + y, p.z + p.outZ * x + p.uz * z);
+  const cfeHash = (p, k) => hashPos(p.x, k, p.z);
+  // Spans: along each curb, and from the end poles on to the nearest pole of another curb straight ahead (within 42 m)
+  const cfeSpans = [];
+  {
+    const CELL = 21;
+    const grid = new Map();
+    const keyOf = (x, z) => Math.floor(x / CELL) * 100003 + Math.floor(z / CELL);
+    for (const p of cfePoles) {
+      const k = keyOf(p.x, p.z);
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(p);
+    }
+    const linked = new Set();
+    for (const edge of cfeEdges) {
+      for (let k = 0; k + 1 < edge.length; k++) cfeSpans.push([edge[k], edge[k + 1]]);
+      for (const [end, sign] of edge.length ? [[edge[edge.length - 1], 1], [edge[0], -1]] : []) {
+        let best = null;
+        let bestD = 42;
+        for (let a = -2; a <= 2; a++) {
+          for (let c = -2; c <= 2; c++) {
+            for (const q of grid.get(keyOf(end.x + a * CELL, end.z + c * CELL)) || []) {
+              if (q.edge === end.edge) continue;
+              const dx = q.x - end.x, dz = q.z - end.z;
+              const d = Math.hypot(dx, dz);
+              if (d < 4 || d >= bestD || (dx * end.ux + dz * end.uz) * sign < d * 0.94) continue;
+              best = q;
+              bestD = d;
+            }
+          }
+        }
+        if (!best) continue;
+        const key = Math.min(end.i, best.i) + ':' + Math.max(end.i, best.i);
+        if (linked.has(key)) continue;
+        linked.add(key);
+        cfeSpans.push([end, best]);
+      }
+    }
+  }
+  // The streetlight on the arm: a cobra head like the avenues', lit at night from the same pool (section 8)
+  for (const p of cfePoles) {
+    if (cfeHash(p, 2.2) < 0.35) continue; // not every pole carries one
+    const yaw = Math.atan2(-p.outZ, p.outX);
+    const arm = cfePoint(p, 0.9, 8.1);
+    dummy.position.copy(arm);
+    dummy.rotation.set(0, yaw, 0);
+    dummy.scale.set(1.8, 0.08, 0.08);
+    dummy.updateMatrix();
+    armMatrices.push(dummy.matrix.clone());
+    const head = cfePoint(p, 1.85, 8.0);
+    dummy.position.copy(head);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    lampHeadMatrices.push(dummy.matrix.clone());
+    dummy.rotation.set(0, 0, 0);
+    cobraLampSites.push({ x: head.x, y: head.y - 0.06, z: head.z, g: p.g, tx: p.x + p.outX * 3.4, tz: p.z + p.outZ * 3.4 });
+  }
+
   function addMatrixArrayInstanced(geo, mat, matrices, castShadow = true) {
     if (matrices.length === 0) return null;
     const inst = new THREE.InstancedMesh(geo, mat, matrices.length);
@@ -391,15 +516,134 @@ function buildStreetDetails(scene) {
     b.parts = parts;
   }
 
+  // The CFE poles' meshes: concrete shafts, the galvanised crossarms & racks, porcelain insulators, transformers
+  const cfeColliders = [];
+  if (cfePoles.length) {
+    const shaftGeo = new THREE.CylinderGeometry(0.09, 0.16, CFE_H, 8).translate(0, CFE_H / 2, 0);
+    const steelGeo = mergeGeometries([
+      new THREE.BoxGeometry(2.3, 0.1, 0.1).translate(0.3, 10.55, 0),
+      // the crossarm's braces & the racks of the secondary and the phone line
+      new THREE.BoxGeometry(0.05, 0.75, 0.05).translate(-0.3, 10.2, 0).rotateZ(0),
+      new THREE.BoxGeometry(0.05, 0.75, 0.05).translate(0.9, 10.2, 0),
+      new THREE.BoxGeometry(0.28, 0.32, 0.06).translate(0.14, 9.0, 0),
+      new THREE.BoxGeometry(0.22, 0.18, 0.05).translate(0.12, 7.6, 0)
+    ].map((g) => g.toNonIndexed()));
+    const insulatorGeo = mergeGeometries([-0.7, 0.3, 1.3].map((x) => new THREE.CylinderGeometry(0.045, 0.07, 0.24, 8).translate(x, 10.72, 0).toNonIndexed()));
+    const transformerGeo = mergeGeometries([
+      new THREE.CylinderGeometry(0.3, 0.3, 0.95, 12).translate(0.42, 9.65, 0),
+      new THREE.CylinderGeometry(0.31, 0.31, 0.06, 12).translate(0.42, 10.16, 0),
+      new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6).translate(0.32, 10.27, 0.12),
+      new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6).translate(0.32, 10.27, -0.12)
+    ].map((g) => g.toNonIndexed()));
+    const concreteMat = new THREE.MeshStandardNodeMaterial({ color: 0x9d998f, roughness: 0.92 });
+    const galvMat = new THREE.MeshStandardNodeMaterial({ color: 0x7c8084, roughness: 0.5, metalness: 0.6 });
+    const porcelainMat = new THREE.MeshStandardNodeMaterial({ color: 0xcfcabd, roughness: 0.35 });
+    const tankMat = new THREE.MeshStandardNodeMaterial({ color: 0x8a9094, roughness: 0.55, metalness: 0.35 });
+    const all = [];
+    const transformers = [];
+    for (const p of cfePoles) {
+      dummy.position.set(p.x, p.g, p.z);
+      dummy.rotation.set(0, Math.atan2(-p.outZ, p.outX), 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      all.push(dummy.matrix.clone());
+      if (cfeHash(p, 4.7) < 0.2) transformers.push(dummy.matrix.clone());
+      // concrete stops a car (main.js adds these to the player's colliders)
+      cfeColliders.push({ minX: p.x - 0.17, maxX: p.x + 0.17, minZ: p.z - 0.17, maxZ: p.z + 0.17, minY: p.g, maxY: p.g + CFE_H });
+    }
+    dummy.rotation.set(0, 0, 0);
+    addMatrixArrayInstanced(shaftGeo, concreteMat, all);
+    addMatrixArrayInstanced(steelGeo, galvMat, all);
+    addMatrixArrayInstanced(insulatorGeo, porcelainMat, all);
+    addMatrixArrayInstanced(transformerGeo, tankMat, transformers);
+  }
+
+  // The lines & the service cables, built in 200 m cells (each hidden beyond WIRE_FADE in update())
+  const wireCells = [];
+  if (cfeSpans.length) {
+    const CELL = 200;
+    const cells = new Map();
+    const up = new THREE.Vector3(0, 1, 0);
+    const p = new THREE.Vector3();
+    const tan = new THREE.Vector3();
+    const addWire = (a, b, sag, r) => {
+      const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+      const key = Math.floor(mx / CELL) * 100003 + Math.floor(mz / CELL);
+      let c = cells.get(key);
+      if (!c) cells.set(key, (c = { pos: [], wire: [], idx: [], x: (Math.floor(mx / CELL) + 0.5) * CELL, z: (Math.floor(mz / CELL) + 0.5) * CELL }));
+      const L = a.distanceTo(b);
+      const segs = Math.max(3, Math.min(8, Math.ceil(L / 5)));
+      const base = c.pos.length / 3;
+      for (let s = 0; s <= segs; s++) {
+        const t = s / segs;
+        // a parabola close enough to the catenary for these sags
+        p.copy(a).lerp(b, t).addScaledVector(up, -4 * sag * t * (1 - t));
+        tan.copy(b).sub(a).addScaledVector(up, -4 * sag * (1 - 2 * t)).normalize();
+        for (const w of [r, -r]) {
+          c.pos.push(p.x, p.y, p.z);
+          c.wire.push(tan.x, tan.y, tan.z, w);
+        }
+        if (s < segs) {
+          const v = base + s * 2;
+          c.idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+        }
+      }
+    };
+    // pole to pole: the three primaries on the insulators, the secondary & the phone / cable line
+    for (const [a, b] of cfeSpans) {
+      const L = Math.hypot(b.x - a.x, b.z - a.z);
+      for (const x of [-0.7, 0.3, 1.3]) addWire(cfePoint(a, x, 10.82), cfePoint(b, x, 10.82), 0.012 * L, 0.009);
+      addWire(cfePoint(a, 0.28, 9.0), cfePoint(b, 0.28, 9.0), 0.025 * L, 0.014);
+      addWire(cfePoint(a, 0.24, 7.6), cfePoint(b, 0.24, 7.6), 0.035 * L, 0.012);
+      if (cfeHash(a, 6.6) < 0.5) addWire(cfePoint(a, 0.24, 7.3), cfePoint(b, 0.24, 7.3), 0.045 * L, 0.016);
+    }
+    // the service cables: down to a house on this side, and across the street to one on the other
+    for (const q of cfePoles) {
+      const from = cfePoint(q, 0.28, 9.0);
+      const near = cfeHash(q, 7.1);
+      if (near < 0.75) {
+        const along = (near - 0.375) * 20;
+        const tx = q.x - q.outX * 2.4 + q.ux * along, tz = q.z - q.outZ * 2.4 + q.uz * along;
+        const blk = blockAt(tx, tz);
+        if (blk && !(blk.park > 0.6)) addWire(from, new THREE.Vector3(tx, liftAt(tx, tz) + 4.3, tz), 0.35, 0.008);
+      }
+      const far = cfeHash(q, 8.3);
+      if (q.across && far < 0.6) {
+        const along = (far - 0.3) * 16;
+        const d = q.across + 2.4;
+        const tx = q.x + q.outX * d + q.ux * along, tz = q.z + q.outZ * d + q.uz * along;
+        const blk = blockAt(tx, tz);
+        if (blk && !(blk.park > 0.6)) addWire(from, new THREE.Vector3(tx, liftAt(tx, tz) + 4.6, tz), 0.5, 0.008);
+      }
+    }
+    const wireMat = createWireMaterial();
+    for (const c of cells.values()) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(c.pos, 3));
+      geo.setAttribute('wire', new THREE.Float32BufferAttribute(c.wire, 4));
+      geo.setIndex(c.pos.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(c.idx, 1) : new THREE.Uint16BufferAttribute(c.idx, 1));
+      geo.computeBoundingSphere();
+      geo.boundingSphere.radius += 1; // (the ribbons widen in the vertex shader)
+      const mesh = new THREE.Mesh(geo, wireMat);
+      mesh.name = 'CfeWires';
+      mesh.renderOrder = 2; // (update() hides the far cells after the warm-up frame has compiled them)
+      group.add(mesh);
+      wireCells.push({ mesh, x: c.x, z: c.z });
+    }
+    if (wireCells.length > 1) for (const c of wireCells.slice(1)) c.mesh.userData.sharesPipelineWith = wireCells[0].mesh;
+  }
+  console.info(`[cfe] ${cfePoles.length} poles, ${cfeSpans.length} spans in ${wireCells.length} cells`);
+
   // =========================================================================
   // 6. FIRE HYDRANTS ALONG CURBS (INSTANCED)
   // =========================================================================
-  // A hydrant near a corner of every few blocks, on the sidewalk by the curb
+  // A hydrant near a corner of one block in fourteen, on the sidewalk by the curb (Tepic has few: a New York corner's
+  // hydrant on every block read as another city)
   const hydrantPositions = [];
   {
     let k = 0;
     for (const b of allBlocks) {
-      if (b.median || b.park > 0.6 || b.poly.length < 4 || (k++ % 3)) continue;
+      if (b.median || b.park > 0.6 || b.poly.length < 4 || (k++ % 14)) continue;
       const a = b.poly[0], c = b.poly[1];
       const L = Math.hypot(c.x - a.x, c.z - a.z);
       if (L < 12) continue;
@@ -426,17 +670,19 @@ function buildStreetDetails(scene) {
   hydrantPositions.forEach(([hx, hz], i) => breakables.push({ kind: 'hydrant', x: hx, z: hz, yaw: 0, ground: 0.215 + liftAt(hx, hz), base: liftAt(hx, hz), parts: [{ mesh: hydrantInst, index: i }] }));
 
   // =========================================================================
-  // 7. LUSH TREES: PARKS & PLAZAS, STREET TREES
-  //    London planes, honey locusts & American elms (one unified trunk + crown instanced mesh per species & band)
+  // 7. TREES: PARKS & PLAZAS, STREET TREES, THE CAMELLONES' PALMS
+  //    Tepic's laureles de la India, jacarandas, mangos, tabachines & Washingtonia palms (js/world/trees.js)
   // =========================================================================
-  const treePositions = []; // { x, y, z, scale, species (0 plane, 1 honey locust, 2 elm / oak) }
-  const mixSpecies = (r, plane, locust) => (r < plane ? 0 : (r < plane + locust ? 1 : 2));
+  const treePositions = []; // { x, y, z, scale, species (0 laurel, 1 jacaranda, 2 mango, 3 tabachín, 4 palm), whitewash? }
+  // A sidewalk tree: mostly laureles (clipped), then tabachines, jacarandas & mangos, each planted by the house before it
+  const streetSpecies = (r) => (r < 0.5 ? 0 : r < 0.7 ? 3 : r < 0.85 ? 1 : 2);
 
   // A. The parks & the plazas (sites laid out by city-grid.js)
   for (const s of parkTreeSites || []) treePositions.push(s);
 
   // B. Street trees on the raised sidewalks of every rectangular block (city-config.js BLOCKS via the slabs city-grid.js
-  //    laid): along their long w / e fronts, planes, locusts & elms with random missing trees. Never in plazas or parks.
+  //    laid): along their long w / e fronts, here and there (Tepic's streets are no avenue of planes: a tree where a
+  //    neighbour planted one, its trunk painted white with cal), in a bare square pit. Never in plazas or parks.
   const sidewalkTreePositions = [];
   const SIDEWALK_Y = 0.22;
   const swBlocks = sidewalkBlocks || [];
@@ -463,15 +709,52 @@ function buildStreetDetails(scene) {
     const x1 = s.cx + s.w * 0.5;
     const z0 = s.cz - s.d * 0.5;
     if (s.d >= 20) {
-      const thin = 0.3;
+      const thin = 0.72;
       for (const [x, side] of [[x0 + 1.3, -1], [x1 - 1.3, 1]]) {
         const n = Math.floor((s.d - 10) / AVE_SP) + 1;
         const zs = z0 + (s.d - (n - 1) * AVE_SP) * 0.5;
         for (let i = 0; i < n; i++) {
           const tz = zs + i * AVE_SP;
           if (hashPos(x, 3.1, tz) < thin) continue;
-          addStreetTree(x, tz, 0.66 + hashPos(tz, 3.1, x) * 0.14, mixSpecies(hashPos(x, side, tz), 0.4, 0.35), true);
+          addStreetTree(x, tz, 0.62 + hashPos(tz, 3.1, x) * 0.16, streetSpecies(hashPos(x, side, tz)), true,
+            { grate: false, whitewash: hashPos(tz, 6.2, x) < 0.65 });
         }
+      }
+    }
+  }
+
+  // C. The camellones: the long, narrow curb islands between the two roadways of a boulevard (mean width 2 x area /
+  //    perimeter under 9 m), planted down their middle every ~11 m with Washingtonia palms, some laureles & tabachines
+  for (const b of allBlocks) {
+    if (b.rural || b.park > 0.6 || b.poly.length < 3) continue;
+    let per = 0;
+    for (let i = 0; i < b.poly.length; i++) {
+      const a = b.poly[i], c = b.poly[(i + 1) % b.poly.length];
+      per += Math.hypot(c.x - a.x, c.z - a.z);
+    }
+    const width = (2 * b.area) / Math.max(per, 1);
+    if (width >= 9 || width < 1.8 || per / 2 < 25) continue;
+    const SP = 11;
+    const planted = [];
+    for (let i = 0; i < b.poly.length; i++) {
+      const a = b.poly[i], c = b.poly[(i + 1) % b.poly.length];
+      const L = Math.hypot(c.x - a.x, c.z - a.z);
+      if (L < SP * 0.6) continue;
+      const ux = (c.x - a.x) / L, uz = (c.z - a.z) / L;
+      // into the island: the side of the edge its own block lies on
+      let inx = -uz, inz = ux;
+      const mx = (a.x + c.x) / 2, mz = (a.z + c.z) / 2;
+      if (blockAt(mx + inx * width * 0.5, mz + inz * width * 0.5) !== b) { inx = uz; inz = -ux; }
+      for (let d = SP * 0.5; d < L - 2; d += SP) {
+        const x = a.x + ux * d + inx * width * 0.5, z = a.z + uz * d + inz * width * 0.5;
+        if (blockAt(x, z) !== b || inPlaza(x, z, 1.5) || !isClearOfPoles(x, z, 2.0)) continue;
+        if (planted.some((p) => (p.x - x) ** 2 + (p.z - z) ** 2 < SP * SP * 0.5)) continue;
+        const r = hashPos(x, 9.7, z);
+        const species = r < 0.62 ? 4 : r < 0.85 ? 0 : 3;
+        const scale = species === 4 ? 0.85 + hashPos(z, 2.7, x) * 0.45 : 0.62 + hashPos(z, 2.7, x) * 0.16;
+        const t = { x, y: SIDEWALK_Y + liftAt(x, z), z, scale, species, tier: 1, whitewash: species !== 4 && r < 0.78 };
+        planted.push(t);
+        treePositions.push(t);
       }
     }
   }
@@ -481,10 +764,10 @@ function buildStreetDetails(scene) {
   const pitCurbMat = new THREE.MeshStandardNodeMaterial({ color: 0x484642, roughness: 0.88 });
   const pitSoilMat = new THREE.MeshStandardNodeMaterial({ color: 0x241c14, roughness: 0.96 });
 
-  // Curbside tree pit surrounds & dark soil beds, with concentric cast-iron grates on the Midtown avenues
+  // Curbside tree pit surrounds & dark soil beds (the cast-iron grates, t.grate, are New York's: none in Tepic)
   // (pits run along the curb: t.pitRot = PI/2 on cross streets)
-  const pitCurbGeo = new THREE.BoxGeometry(1.7, 0.22, 2.6);
-  const pitSoilGeo = new THREE.BoxGeometry(1.35, 0.23, 2.25);
+  const pitCurbGeo = new THREE.BoxGeometry(1.3, 0.22, 1.3);
+  const pitSoilGeo = new THREE.BoxGeometry(1.0, 0.23, 1.0);
   const pitGrateGeo = new THREE.RingGeometry(0.24, 0.82, 12, 1).rotateX(-Math.PI / 2);
   const gratedTrees = sidewalkTreePositions.filter((t) => t.grate !== false);
 
@@ -573,8 +856,15 @@ function buildStreetDetails(scene) {
     return t * t * (3 - 2 * t);
   }
 
+  let cornerSigns = null; // (built by addJunctionSignals once the road network is known)
   function update(camera) {
     if (!camera) return;
+    if (cornerSigns) cornerSigns.update(camera.position);
+    // The overhead wires: the cells within their fade distance
+    for (const c of wireCells) {
+      const dx = c.x - camera.position.x, dz = c.z - camera.position.z;
+      c.mesh.visible = Math.sqrt(dx * dx + dz * dz) - 150 < WIRE_FADE;
+    }
     const glow = cityUniforms && cityUniforms.uInteriorGlow ? cityUniforms.uInteriorGlow.value : 0.48;
     // Streetlights fade in smoothly as dusk approaches (matching lampBulbGlow smoothstep(0.4, 1.1, uInteriorGlow))
     const lampScale = Math.min(1.25, Math.max(0.0, (glow - 0.36) * 1.15));
@@ -814,10 +1104,163 @@ function buildStreetDetails(scene) {
       add(geo, mat, blades.map((b) => b.m));
     }
     console.info(`[signals] ${heads.length} mast-arm signal heads, ${blades.length} street name blades at the signalised junctions`);
+    cornerSigns = buildCornerSigns(network, roadName, colliders);
     return heads.length;
   }
 
-  return { group, footprints, signalClock, audioSignals, update, breaker, addJunctionSignals };
+  // The name plates on the corners: a 2.8 m post on the curb at one corner of every junction (three or more ways, no
+  // signals: those carry their blades) with a blue plate along each of the two streets. 3,442 street names won't fit
+  // one texture, so the plates within NEAR m of the camera get the slots of a small atlas (least recently seen names
+  // are drawn over first) and the plates' instanced mesh is refilled whenever the camera has moved REFRESH m.
+  function buildCornerSigns(network, roadName, colliders) {
+    const NEAR = 260, REFRESH = 50, CELL = 100;
+    const corners = []; // { x, z, g, a: [yaw, name], b: [yaw, name] }
+    for (const n of network.nodes) {
+      if (n.signal || n.shape || !n.in || n.in.length < 2) continue;
+      for (const e of n.in) {
+        if (!e.lanes || !e.lanes.length) continue;
+        const ex = e.sx + e.dx * e.len, ez = e.sz + e.dz * e.len;
+        const px = ex + e.rx * (e.half + 0.8) + e.dx * 1.2, pz = ez + e.rz * (e.half + 0.8) + e.dz * 1.2;
+        if (!isOnCurbIsland(px, pz, 0.25) || !isClearOfPoles(px, pz, 1.2)) continue;
+        const own = roadName(ex - e.dx * 15, ez - e.dz * 15);
+        let cross = null;
+        for (const f of n.in) {
+          if (f === e || Math.abs(f.dx * e.dx + f.dz * e.dz) > 0.5) continue;
+          const nm = roadName(f.sx + f.dx * (f.len - 15), f.sz + f.dz * (f.len - 15));
+          if (nm && nm !== own) {
+            cross = [Math.atan2(-f.dz, f.dx), nm];
+            break;
+          }
+        }
+        if (!own || !cross) continue;
+        placedPoles.push({ x: px, z: pz });
+        corners.push({ x: px, z: pz, g: liftAt(px, pz), a: [Math.atan2(-e.dz, e.dx), own], b: cross });
+        colliders?.push({ minX: px - 0.06, maxX: px + 0.06, minZ: pz - 0.06, maxZ: pz + 0.06, minY: corners[corners.length - 1].g, maxY: corners[corners.length - 1].g + 2.8 });
+        break; // one corner per junction
+      }
+    }
+    if (!corners.length) return null;
+    // the posts: all of them, static
+    const postMat = new THREE.MeshStandardNodeMaterial({ color: 0x3c4046, roughness: 0.5, metalness: 0.6 });
+    const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.04, 2.8, 6).translate(0, 1.4, 0), postMat, corners.length);
+    corners.forEach((c, i) => {
+      dummy.position.set(c.x, c.g, c.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      posts.setMatrixAt(i, dummy.matrix);
+    });
+    posts.castShadow = true;
+    group.add(posts);
+    const grid = new Map();
+    for (const c of corners) {
+      const k = Math.floor(c.x / CELL) * 100003 + Math.floor(c.z / CELL);
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(c);
+    }
+    // the atlas: COLS x ROWS slots of SW x SH px
+    const COLS = 5, ROWS = 52, SW = 384, SH = 48, SLOTS = COLS * ROWS;
+    const canvas = document.createElement('canvas');
+    canvas.width = COLS * SW;
+    canvas.height = ROWS * SH;
+    const ctx = canvas.getContext('2d');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const slotOfName = new Map();
+    const nameInSlot = new Array(SLOTS).fill(null);
+    const lastSeen = new Float64Array(SLOTS);
+    let stamp = 0;
+    const draw = (k, name) => {
+      const x0 = (k % COLS) * SW, y0 = Math.floor(k / COLS) * SH;
+      ctx.fillStyle = '#1b3f8b';
+      ctx.fillRect(x0, y0, SW, SH);
+      ctx.strokeStyle = '#f4f4f0';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x0 + 4, y0 + 4, SW - 8, SH - 8);
+      ctx.fillStyle = '#f4f4f0';
+      let px = 26;
+      do { ctx.font = `700 ${px}px Overpass, Inter, Arial, sans-serif`; px--; } while (px > 10 && ctx.measureText(name).width > SW - 22);
+      ctx.fillText(name, x0 + SW / 2, y0 + SH / 2 + 1);
+    };
+    const slotFor = (name) => {
+      let k = slotOfName.get(name);
+      if (k === undefined) {
+        // the slot whose name was seen longest ago
+        k = 0;
+        for (let i = 1; i < SLOTS; i++) if (lastSeen[i] < lastSeen[k]) k = i;
+        if (nameInSlot[k] !== null) slotOfName.delete(nameInSlot[k]);
+        nameInSlot[k] = name;
+        slotOfName.set(name, k);
+        draw(k, name);
+        tex.needsUpdate = true;
+      }
+      lastSeen[k] = stamp;
+      return k;
+    };
+    const MAX = SLOTS * 2;
+    const geo = unitBox.clone();
+    const slotAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX), 1);
+    slotAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('plateSlot', slotAttr);
+    const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.4 });
+    mat.colorNode = texture(tex, atlasSlotUV(attribute('plateSlot', 'float'), COLS, ROWS));
+    const plates = new THREE.InstancedMesh(geo, mat, MAX);
+    plates.count = 0;
+    plates.frustumCulled = false;
+    group.add(plates);
+    let lastX = Infinity, lastZ = Infinity;
+    function update(at) {
+      if (Math.hypot(at.x - lastX, at.z - lastZ) < REFRESH) return;
+      lastX = at.x;
+      lastZ = at.z;
+      stamp++;
+      const near = [];
+      const r = Math.ceil(NEAR / CELL);
+      const ix = Math.floor(at.x / CELL), iz = Math.floor(at.z / CELL);
+      for (let a = -r; a <= r; a++) {
+        for (let b = -r; b <= r; b++) {
+          for (const c of grid.get((ix + a) * 100003 + iz + b) || []) {
+            const d = Math.hypot(c.x - at.x, c.z - at.z);
+            if (d < NEAR) near.push([d, c]);
+          }
+        }
+      }
+      near.sort((p, q) => p[0] - q[0]);
+      let n = 0;
+      const names = new Set();
+      for (const [, c] of near) {
+        if (n + 2 > MAX) break;
+        // never more names than slots in one refresh
+        if (!names.has(c.a[1]) || !names.has(c.b[1])) {
+          if (names.size + 2 > SLOTS) break;
+          names.add(c.a[1]);
+          names.add(c.b[1]);
+        }
+        for (const [[yaw, name], y] of [[c.a, 2.62], [c.b, 2.36]]) {
+          dummy.position.set(c.x, c.g + y, c.z);
+          dummy.rotation.set(0, yaw, 0);
+          // (along its street, a little out from the post)
+          dummy.translateX(0.48);
+          dummy.scale.set(0.92, 0.22, 0.025);
+          dummy.updateMatrix();
+          plates.setMatrixAt(n, dummy.matrix);
+          slotAttr.array[n] = slotFor(name);
+          n++;
+        }
+      }
+      dummy.rotation.set(0, 0, 0);
+      plates.count = n;
+      plates.instanceMatrix.needsUpdate = true;
+      slotAttr.needsUpdate = true;
+    }
+    console.info(`[signs] ${corners.length} corners with the two streets' name plates`);
+    return { update };
+  }
+
+  return { group, footprints, colliders: cfeColliders, signalClock, audioSignals, update, breaker, addJunctionSignals };
 }
 
 export { buildStreetDetails };

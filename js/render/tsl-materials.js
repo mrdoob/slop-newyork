@@ -41,6 +41,7 @@ import {
   step,
   smoothstep,
   dot,
+  cross,
   length,
   normalize,
   reflect,
@@ -55,7 +56,8 @@ import {
   specularF90,
   uniformArray,
   int,
-  select
+  select,
+  mx_worley_noise_vec2
 } from 'three/tsl';
 import { townGrid } from '../world/ground.js';
 
@@ -1343,9 +1345,12 @@ const TREE_WIND = vec2(0.86, 0.51);
  * - normal: on the cards, crown-shell normals (out from the crown centre, blended with the card face), so a crown
  *   shades as one leafy volume and both sides of a card light alike (the back faces keep them unflipped)
  * - aTree (vec4): x = 1 on leaf cards / 0 on bark, y = crown occlusion (0 deep inside .. 1 on the outer shell),
- *   z = sway weight (0 on the trunk .. 1 at the twig tips & cards), w = per-card random (leaf flutter phase)
- * - aTreeData (instanced vec4): rgb = per-tree linear foliage tint, w = species index + per-tree random fraction
- *   (species 0 London plane: flaking camouflage bark, 1 honey locust & 2 elm: dark furrowed bark)
+ *   z = sway weight (0 on the trunk .. 1 at the twig tips & cards), w = per-card random (leaf flutter phase) on the
+ *   cards, on the bark the palm's skirt of dead fronds (0..1)
+ * - aTreeData (instanced vec4): rgb = per-tree linear foliage tint, w = species index (+ 10 for a trunk whitewashed
+ *   with cal up to ~1.3 m, as Tepic paints its street trees) + per-tree random fraction (species 0 laurel de la
+ *   India: smooth pale grey bark, 1 jacaranda, 2 mango & 3 tabachín: dark furrowed bark, 4 Washingtonia palm: a
+ *   grey trunk ringed with old leaf scars under a straw-brown skirt)
  * Leaf atlas texels: r = leaf brightness, g = per-leaf hue jitter, b = twig / stalk mask, a = coverage (its mipmaps
  * keep the coverage, so distant crowns stay full).
  * Shading: per-tree tint with sun-yellowed & cooler leaves, deep leaves darker and occluded from the sky, sunlight
@@ -1370,7 +1375,9 @@ function createTreeMaterial(leafAtlas) {
   const isLeaf = aTree.x;
   const crownAO = aTree.y;
   const rnd = fract(aData.w);
-  const species = floor(aData.w);
+  const coded = floor(aData.w);
+  const whitewash = step(9.5, coded);
+  const species = coded.sub(whitewash.mul(10.0));
   const leaf = texture(leafAtlas, uv());
 
   // Wind. positionLocal is already instanced (world space); positionGeometry is the tree's own frame (metres)
@@ -1409,14 +1416,25 @@ function createTreeMaterial(leafAtlas) {
     const leafCol = mix(mix(base, base.mul(vec3(1.25, 1.08, 0.5)), warm), base.mul(vec3(0.8, 0.92, 1.05)), cool);
     const foliage = mix(leafCol, color(0x4a3b2c), leaf.b).mul(crownAO.mul(0.45).add(0.55));
 
-    // Bark (uv in metres): furrowed grey-brown ridges, or the London plane's olive bark flaking to cream & tan
+    // Bark (uv in metres): furrowed grey-brown ridges; the ficus' smooth pale grey, mottled; the palm's grey trunk
+    // ringed every ~12 cm, turning to the straw-brown, streaked skirt of dead fronds (aTree.w)
     const bu = uv();
     const n1 = noise2D(vec2(bu.x.mul(5.0), bu.y.mul(1.1)).add(rnd.mul(17.0)));
     const n2 = noise2D(bu.mul(vec2(3.2, 1.9)).add(rnd.mul(31.0)));
     const ridge = float(1.0).sub(abs(n1.sub(0.5).mul(2.0)));
     const furrowed = mix(color(0x2e261f), color(0x5c5043), smoothstep(0.35, 0.9, ridge));
-    const planeBark = mix(mix(color(0x645e4b), color(0x948c73), smoothstep(0.56, 0.66, n2)), color(0x4a3f31), smoothstep(0.3, 0.22, n2));
-    const bark = mix(furrowed, planeBark, step(species, 0.5)).mul(crownAO.mul(0.4).add(0.6));
+    const ficusBark = mix(color(0x6c675d), color(0x99938a), smoothstep(0.3, 0.75, n2)).mul(mix(float(0.88), float(1.0), ridge));
+    const ring = smoothstep(0.82, 0.95, fract(bu.y.div(0.12)));
+    const palmTrunk = mix(color(0x7d7468), color(0x5a5249), ring.mul(0.7)).mul(mix(float(0.9), float(1.05), n2));
+    const streak = noise2D(vec2(bu.x.mul(14.0), bu.y.mul(0.8)).add(rnd.mul(11.0)));
+    const skirt = mix(color(0x5e4a33), color(0x9a7d55), smoothstep(0.25, 0.8, streak));
+    const palmBark = mix(palmTrunk, skirt, aTree.w);
+    const isFicus = step(species, 0.5);
+    const isPalm = step(3.5, species);
+    const barkCol = mix(mix(furrowed, ficusBark, isFicus), palmBark, isPalm);
+    // cal on the trunk's foot, its top edge ragged where the brush stopped
+    const washed = whitewash.mul(step(positionGeometry.y, n1.mul(0.12).add(1.25)));
+    const bark = mix(barkCol, color(0xe6e2d6).mul(mix(float(0.9), float(1.0), n2)), washed).mul(crownAO.mul(0.4).add(0.6));
 
     return vec4(mix(bark, foliage, isLeaf), alpha);
   })();
@@ -1610,6 +1628,82 @@ function roadWetMasks(field, drainage = 0.0) {
  * (as for the rivers), so puddles reflect the street through SSR at grazing angles yet only darken seen from above.
  * Lane markings are separate geometry built from the road network (js/world/road-paint.js).
  */
+// A pothole at world (wx, wz): one 9 m cell in eight holds one, 0.35-0.95 m across, ragged (noise on its radius).
+// Returns vec2(inside 0..1, crumbled rim 0..1)
+const roadPothole = Fn(([wx, wz]) => {
+  const p = vec2(wx, wz);
+  const cell = floor(p.div(9.0));
+  const centre = cell.add(vec2(hash2D(cell.add(41.3)), hash2D(cell.add(77.9))).mul(0.7).add(0.15)).mul(9.0);
+  const r = hash2D(cell.add(5.1)).mul(0.6).add(0.35);
+  const d = length(p.sub(centre)).add(noise2D(p.mul(3.1)).sub(0.5).mul(r).mul(0.7));
+  const on = step(0.875, hash2D(cell.add(2.7)));
+  const inside = smoothstep(r, r.mul(0.82), d).mul(on);
+  const rim = smoothstep(r.mul(1.35), r, d).mul(float(1.0).sub(inside)).mul(on).mul(noise2D(p.mul(9.0)));
+  return vec2(inside, rim);
+});
+
+// A bacheo patch at world (wx, wz): one 23 m cell in four, a rectangle 1-3.5 x 0.8-2.2 m of newer, darker asphalt
+const roadPatch = Fn(([wx, wz]) => {
+  const p = vec2(wx, wz);
+  const cell = floor(p.div(23.0));
+  const centre = cell.add(vec2(hash2D(cell.add(9.4)), hash2D(cell.add(18.2))).mul(0.6).add(0.2)).mul(23.0);
+  const half = vec2(hash2D(cell.add(3.3)).mul(1.25).add(0.5), hash2D(cell.add(6.6)).mul(0.7).add(0.4));
+  const q = abs(p.sub(centre)).sub(half);
+  const aa = fwidth(p.x).max(0.002);
+  return smoothstep(aa, aa.negate(), max(q.x, q.y)).mul(step(0.75, hash2D(cell.add(1.9))));
+});
+
+/**
+ * The streets that are not asphalt (js/world/pavements.js, from OpenStreetMap's surface tags): attribute `pave` picks
+ * the kind, in world space so the overlapping strips of a street join seamlessly:
+ * - 0 empedrado: rounded river stones (Worley cells) set in earth, a few weeds in the joints
+ * - 1 adoquín: 20 x 10 cm setts in running bond
+ * - 2 tierra: packed brown earth with gravel and ruts
+ * - 3 concreto hidráulico: pale poured slabs, 3.5 m between the joints, hairline cracks
+ * Fine detail settles to its mean colour once it shrinks under a pixel.
+ */
+function createPavementMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.9 });
+  const kind = attribute('pave', 'float');
+  const isKind = (k) => step(k - 0.5, kind).mul(step(kind, k + 0.5));
+  const p = positionWorld.xz;
+  const pixelSize = length(fwidth(p));
+  const fine = smoothstep(0.06, 0.02, pixelSize);
+
+  // empedrado: F1 / F2 of ~13 cm cells; the stone where F2 - F1 is wide, rounding down into the earth of the joints
+  const wor = mx_worley_noise_vec2(p.mul(7.5));
+  const edge = wor.y.sub(wor.x);
+  const stone = smoothstep(0.1, 0.55, edge);
+  const stoneTone = noise2D(p.mul(7.5).add(wor.x.mul(2.0))).mul(0.7).add(noise2D(p.mul(1.3)).mul(0.3));
+  const stoneCol = mix(mix(color(0x5c554c), color(0x8f8576), stoneTone), color(0x7d6a55), smoothstep(0.7, 0.95, noise2D(p.mul(3.3))).mul(0.6));
+  const joint = mix(color(0x282019), color(0x36441f), smoothstep(0.6, 0.85, noise2D(p.mul(1.7))));
+  const empedrado = mix(mix(color(0x564e44), color(0x655c50), stoneTone.mul(0.5)), mix(joint, stoneCol, stone), fine);
+  const domed = smoothstep(0.0, 0.7, edge).mul(0.045);
+
+  // adoquín: running bond
+  const row = floor(p.y.div(0.1));
+  const setts = max(gridLine(p.x.add(mod(row, 2.0).mul(0.1)), 0.2, 0.008), gridLine(p.y, 0.1, 0.008));
+  const settCol = mix(color(0x7d746a), color(0x948b80), hash2D(vec2(floor(p.x.add(mod(row, 2.0).mul(0.1)).div(0.2)), row)));
+  const adoquin = mix(settCol, color(0x4b453e), setts.mul(fine));
+
+  // tierra
+  const dirtTone = noise2D(p.mul(0.6)).mul(0.6).add(noise2D(p.mul(4.0)).mul(0.4));
+  const gravel = step(0.78, noise2D(p.mul(28.0))).mul(fine);
+  const tierra = mix(mix(color(0x6f5a43), color(0x947a5a), dirtTone), color(0xa69a88), gravel.mul(0.7));
+
+  // concreto
+  const slabs = max(gridLine(p.x, 3.5, 0.012), gridLine(p.y, 3.5, 0.012));
+  const crack = float(1.0).sub(smoothstep(0.0, 0.015, abs(noise2D(p.mul(0.9)).sub(0.5)))).mul(fine);
+  const concTone = noise2D(p.mul(0.35)).mul(0.5).add(noise2D(p.mul(2.2)).mul(0.5));
+  const concreto = mix(color(0x9b968c), color(0xb1aca1), concTone).mul(float(1.0).sub(max(slabs, crack.mul(0.8)).mul(0.35)));
+
+  mat.colorNode = empedrado.mul(isKind(0)).add(adoquin.mul(isKind(1))).add(tierra.mul(isKind(2))).add(concreto.mul(isKind(3)));
+  mat.roughnessNode = mix(float(0.86), float(0.97), isKind(2)).sub(isKind(3).mul(0.08));
+  mat.normalNode = bumpNormal(domed.mul(isKind(0)).mul(fine).sub(setts.mul(isKind(1)).mul(0.004).mul(fine)));
+  mat.aoNode = canyonSkyAONode().mul(mix(float(1.0), stone.mul(0.35).add(0.65), isKind(0).mul(fine)));
+  return mat;
+}
+
 function createRoadSurfaceMaterial() {
   const mat = new THREE.MeshStandardNodeMaterial({
     metalness: 0.24,
@@ -1661,9 +1755,16 @@ function createRoadSurfaceMaterial() {
     const isManhole = float(1.0).sub(smoothstep(0.52, 0.60, mhDist)).mul(step(0.66, hash2D(mhCell))).mul(detail);
     const mhRings = sin(mhDist.mul(36.0)).mul(0.15).add(0.85);
 
+    // Baches & bacheo: Tepic's potholes (crumbled edges, a gravelly hollow) and the darker, smoother patches poured
+    // over the old ones
+    const bache = roadPothole(wx, wz).mul(detail);
+    const patch = roadPatch(wx, wz).mul(detail);
+    const patched = mix(baseAsphalt, color(0x232529).mul(fineGrain.mul(0.2).add(0.9)), patch);
+    const holed = mix(patched, mix(color(0x4d4740), color(0x38332d), microAggregate), bache.x).mul(float(1.0).add(bache.y.mul(0.35)));
+
     // Water filling the pores darkens the surface: damp stains & pools most, the overall wet film a little
-    const wetDarkening = mix(mix(float(1.0), float(0.72), damp), float(0.6), puddle).mul(mix(float(1.0), float(0.8), film));
-    return mix(baseAsphalt, cManhole.mul(mhRings), isManhole).mul(wetDarkening);
+    const wetDarkening = mix(mix(float(1.0), float(0.72), damp), float(0.6), max(puddle, bache.x.mul(damp))).mul(mix(float(1.0), float(0.8), film));
+    return mix(holed, cManhole.mul(mhRings), isManhole).mul(wetDarkening);
   })();
 
   mat.roughnessNode = Fn(() => {
@@ -1685,7 +1786,9 @@ function createRoadSurfaceMaterial() {
 
     const coarseGrit = noise2D(vec2(wx.mul(8.5), wz.mul(8.5))).sub(0.5).mul(0.0032).mul(coarseFade);
     const fineGrit = noise2D(vec2(wx.mul(36.0), wz.mul(36.0))).sub(0.5).mul(0.0016).mul(fineFade);
-    return bumpNormal(coarseGrit.add(fineGrit).mul(float(1.0).sub(puddle)));
+    // the potholes sink ~6 cm (its relief fades with the detail it sits in)
+    const hollow = roadPothole(wx, wz).x.mul(-0.06).mul(smoothstep(0.12, 0.04, pixelSize));
+    return bumpNormal(coarseGrit.add(fineGrit).add(hollow).mul(float(1.0).sub(puddle)));
   })();
 
   mat.emissiveNode = Fn(() => {
@@ -1696,10 +1799,8 @@ function createRoadSurfaceMaterial() {
 
     const skyMirror = mix(cityUniforms.uSkyHorizonColor, cityUniforms.uSkyTopColor, 0.40).mul(0.10);
 
-    const tsDist = clamp(float(1.0).sub(length(vec2(wx.add(212.0), wz.add(45.0))).div(145.0)), 0.0, 1.0);
-    const neonPatch = noise2D(vec2(wx.mul(0.15), wz.mul(0.15)));
-    const neonCol = mix(color(0xff2a85), color(0x2ad4ff), neonPatch).mul(0.32);
-    const reflectCol = mix(skyMirror, neonCol, tsDist.mul(0.65));
+    // (the New York fork reflected Times Square's neon here; Tepic's wet streets mirror only the sky)
+    const reflectCol = skyMirror;
 
     return reflectCol.mul(max(puddle, film.mul(0.35))).mul(roadFresnel).mul(cityUniforms.uInteriorGlow).mul(0.07);
   })();
@@ -1754,6 +1855,33 @@ function createRoadPaintMaterial() {
   mat.roughnessNode = mix(mix(float(0.62), float(0.42), wet.z), float(0.2), wet.y);
   mat.aoNode = canyonSkyAONode();
 
+  return mat;
+}
+
+/**
+ * Overhead wires (js/world/street-details.js: the CFE's lines and the cables to the houses): ribbons whose two edges
+ * share the centreline's points, `wire` = (unit tangent, signed half-width in metres). The vertex shader turns each
+ * ribbon to face the camera and widens it to at least ~1.5 px, fading it to match (phone-wire AA, as the road paint),
+ * so a 2 cm cable stays a steady hairline at any distance; it fades out by WIRE_FADE m (the cells beyond are hidden).
+ */
+const WIRE_FADE = 420;
+function createWireMaterial() {
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  mat.mrtNode = _transparentEffectMRT;
+  const wire = attribute('wire', 'vec4');
+  const side = normalize(cross(wire.xyz, cameraPosition.sub(positionGeometry))).mul(wire.w);
+  const widen = Fn(() => {
+    const viewProjection = cameraProjectionMatrix.mul(cameraViewMatrix);
+    const edge = viewProjection.mul(vec4(positionGeometry.add(side), 1.0));
+    const centre = viewProjection.mul(vec4(positionGeometry, 1.0));
+    const halfWidthPx = length(edge.xy.div(edge.w).sub(centre.xy.div(centre.w)).mul(screenSize).mul(0.5));
+    const inFront = step(0.05, min(edge.w, centre.w));
+    return clamp(float(0.75).div(max(halfWidthPx, 0.001)), 1.0, 12.0).mul(inFront).max(1.0);
+  })();
+  mat.positionNode = positionGeometry.add(side.mul(widen));
+  const far = smoothstep(float(WIRE_FADE), float(WIRE_FADE * 0.8), length(positionWorld.sub(cameraPosition)));
+  mat.opacityNode = varying(float(0.95).div(widen)).mul(far);
+  mat.colorNode = color(0x1d1d1f);
   return mat;
 }
 
@@ -2125,6 +2253,9 @@ export {
   createTreeGrateMaterial,
   createRoadSurfaceMaterial,
   createRoadPaintMaterial,
+  createPavementMaterial,
+  createWireMaterial,
+  WIRE_FADE,
   createBridgeConcreteMaterial,
   createTrackBedMaterial,
   createSidewalkMaterial,

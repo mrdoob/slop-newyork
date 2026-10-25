@@ -9,6 +9,7 @@ import { buildCityBlocks } from './world/buildings.js';
 import { buildStreetDetails } from './world/street-details.js';
 import { createTrafficSystem, createHighwayTraffic } from './sim/traffic.js';
 import { buildRoadPaint } from './world/road-paint.js';
+import { buildPavements } from './world/pavements.js';
 import { buildBridges } from './world/bridges.js';
 import { ThirdPersonControllerManager } from './player/controllers.js';
 import { Stamina, struckDamage, hardness, crashDamage, walletAmount, nearest, CRASH_GRACE } from './player/stats.js';
@@ -117,11 +118,14 @@ async function initApp() {
   streetDetails.addJunctionSignals?.(trafficSystem.network, allColliders); // (their poles stop the player)
   const highwayTraffic = createHighwayTraffic(scene, cityGrid.highwayLanes);
   buildRoadPaint(scene, trafficSystem.network);
+  buildPavements(scene); // (the empedrado, adoquín, earth & concrete streets, under the paint)
   markInit('roadPaint');
   // The overpasses, their ramps & the railway; their walls, parapets & piers stop the player (not the traffic's
   // footprints: the lanes on and under them stay open)
   const bridges = buildBridges(scene);
   allColliders.push(...bridges.colliders);
+  // The CFE's concrete poles stop the player (not the traffic: they stand on the sidewalks' outer edge)
+  allColliders.push(...(streetDetails.colliders || []));
   markInit('bridges');
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System

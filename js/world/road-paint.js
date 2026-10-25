@@ -1,17 +1,25 @@
 import * as THREE from 'three/webgpu';
 import { CROSSWALK, edgeLift } from './road-network.js';
+import { color, mix, step, fract, uv, float } from 'three/tsl';
 import { createRoadPaintMaterial } from '../render/tsl-materials.js';
+import { PAVEMENTS } from './pavement-data.js';
 import { drapeGeometry } from './drape.js';
 
 // js/world/road-paint.js
 // Road markings generated from the drivable road network (js/world/road-network.js), so the paint matches where traffic
 // actually drives and stops: dashed lane lines, double yellow centre lines on two-way roads, stop bars at the stop
 // lines, continental crosswalks across every intersection approach and green bike lanes along wide one-way avenues.
+// And the topes: the speed bumps across a third of the two-way residential streets, a little in from the corner,
+// painted in yellow & black stripes (seen only: the traffic and the player's car roll over them). The empedrado and
+// earth streets (pavement-data.js) get no paint: nobody paints lines on river stones.
 
 const WHITE = new THREE.Color(0xe6e2d6);
 const YELLOW = new THREE.Color(0xe8ad22);
 const GREEN = new THREE.Color(0x2a8a4e);
 const HEIGHT = 0.012; // above the asphalt
+const TOPE_LEN = 0.9; // along the street (m)
+const TOPE_H = 0.09;
+const TOPE_SEGS = 6;
 
 function buildRoadPaint(scene, network) {
   const position = [];
@@ -79,7 +87,30 @@ function buildRoadPaint(scene, network) {
     else roads.set(key, [e]);
   }
 
+  // The cobbled & earth streets' segments in 25 m cells: is (x, z) on one?
+  const UNPAINTED = 25;
+  const unpaintedCells = new Map();
+  for (const [kind, width, pts] of PAVEMENTS) {
+    if (kind !== 0 && kind !== 2) continue;
+    for (let i = 0; i + 3 < pts.length; i += 2) {
+      const seg = [pts[i], pts[i + 1], pts[i + 2], pts[i + 3], width * 0.5];
+      for (let ix = Math.floor((Math.min(seg[0], seg[2]) - 5) / UNPAINTED); ix <= Math.floor((Math.max(seg[0], seg[2]) + 5) / UNPAINTED); ix++) {
+        for (let iz = Math.floor((Math.min(seg[1], seg[3]) - 5) / UNPAINTED); iz <= Math.floor((Math.max(seg[1], seg[3]) + 5) / UNPAINTED); iz++) {
+          const k = ix * 100003 + iz;
+          if (!unpaintedCells.has(k)) unpaintedCells.set(k, []);
+          unpaintedCells.get(k).push(seg);
+        }
+      }
+    }
+  }
+  const unpainted = (x, z) => (unpaintedCells.get(Math.floor(x / UNPAINTED) * 100003 + Math.floor(z / UNPAINTED)) || []).some(([ax, az, bx, bz, h]) => {
+    const dx = bx - ax, dz = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+    return Math.hypot(ax + dx * t - x, az + dz * t - z) < h;
+  });
+
   for (const [e, back] of roads.values()) {
+    if (unpainted(...at(e, e.len / 2, 0))) continue;
     const firstLine = lines.length;
     // Lanes of both directions, measured to the right of e, left to right
     const lanes = e.lanes.map((o) => ({ o, dir: 1 }));
@@ -197,6 +228,54 @@ function buildRoadPaint(scene, network) {
       }
       strip(...line.ends[0], ...line.ends[1], line.w, line.col, line.period, line.duty, line.phase, line.flow, line.e);
     }
+  }
+
+  // Topes: a low rounded hump curb to curb (cosine profile along the street), on a third of the two-way streets
+  // ('st', no ramp or bridge, at least 45 m between corners): one ~14 m from a corner, a second near the other end
+  // of the longer blocks. uv.x: metres across the street (the stripes)
+  const tPos = [];
+  const tUv = [];
+  const tIdx = [];
+  const hash = (a, b) => {
+    const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  for (const [e, back] of roads.values()) {
+    if (!back || e.axis !== 'st' || e.lift || e.len < 45 || hash(e.from.id, e.to.id) > 0.33) continue;
+    const spots = [Math.min(14, e.len * 0.3)];
+    if (e.len > 90 && hash(e.to.id, e.from.id) < 0.5) spots.push(e.len - 14);
+    for (const s0 of spots) {
+      const base = tPos.length / 3;
+      for (let k = 0; k <= TOPE_SEGS; k++) {
+        const u = (k / TOPE_SEGS - 0.5) * TOPE_LEN;
+        const y = HEIGHT + TOPE_H * 0.5 * (1 + Math.cos((Math.PI * 2 * u) / TOPE_LEN));
+        for (const o of [-e.half + 0.25, e.half - 0.25]) {
+          const [x, z] = at(e, s0 + u, o);
+          tPos.push(x, y, z);
+          tUv.push(o + e.half, u);
+        }
+      }
+      for (let k = 0; k < TOPE_SEGS; k++) {
+        const v = base + k * 2;
+        tIdx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+      }
+    }
+  }
+  if (tPos.length) {
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute('position', new THREE.Float32BufferAttribute(tPos, 3));
+    tg.setAttribute('uv', new THREE.Float32BufferAttribute(tUv, 2));
+    tg.setIndex(tIdx);
+    const draped = drapeGeometry(tg);
+    draped.computeVertexNormals();
+    const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.75 });
+    // 50 cm stripes, the yellow worn a little darker
+    mat.colorNode = mix(color(0xd9a520), color(0x1c1c1a), step(0.5, fract(uv().x.div(1.0)))).mul(float(0.92));
+    const topes = new THREE.Mesh(draped, mat);
+    topes.name = 'Topes';
+    topes.receiveShadow = true;
+    scene.add(topes);
+    console.info(`[roads] ${tIdx.length / (TOPE_SEGS * 6)} topes`);
   }
 
   const normal = new Float32Array(position.length);

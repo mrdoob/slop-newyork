@@ -12,8 +12,8 @@ import {
 
 // js/ui/city-map.js
 // GTA 6-Style Live Radar Minimap + Full-Screen Interactive City Map.
-// Synchronized 1:1 with the 3D world (1 unit = 1 m; x = east, z = south on the centro's street grid, so both maps are
-// drawn "grid north up", GEO.frame.bearingDeg east of true north). They draw the very geography the city is built
+// Synchronized 1:1 with the 3D world (1 unit = 1 m; x = east, z = south on the centro's street grid, GEO.frame.bearingDeg
+// east of true north; both maps turn it back, true north up, so they match every other map of Tepic). They draw the very geography the city is built
 // from (GEO, from OpenStreetMap & Overture Maps): the city outline, every curb island (block) with the building
 // footprints standing on it, the parks, the highways, the real street centrelines (labelled along their course), the
 // colonias and the points of interest.
@@ -24,6 +24,9 @@ const MIN_ZOOM = 0.05; // full map, pixels per metre: the whole valley
 const MAX_ZOOM = 3.0; // single lots
 const RADAR_SCALE = 0.32; // radar pixels per metre on the ground (zooms out with altitude)
 const GRID_BEARING = Number.isFinite(FRAME.bearingDeg) ? FRAME.bearingDeg : 0; // the grid's north, degrees east of true north
+// Both maps are drawn true north up, as on any other map of Tepic: the world (grid north up) turned clockwise by the
+// grid's bearing on screen
+const MAP_ROT = (GRID_BEARING * Math.PI) / 180;
 
 // Map palette, shared by the radar & the atlas (in step with css/style.css): graphite ground with the streets a shade
 // lighter than the blocks they run between, muted parks; white landmarks & player, cyan search hits and amber
@@ -276,25 +279,35 @@ for (const r of ROADS) {
 }
 const ROAD_NAME_COUNT = new Set(ROAD_LABELS.map((l) => l.text)).size;
 
-/** A map viewport: centre (cx, cz) in world metres, s pixels per metre, w x h CSS pixels on a canvas of pixel ratio dpr */
+/**
+ * A map viewport: centre (cx, cz) in world metres, s pixels per metre, w x h CSS pixels on a canvas of pixel ratio dpr,
+ * the world turned `rot` radians clockwise on screen (MAP_ROT: true north up). minX..maxZ bound what it can see.
+ */
 class MapView {
-  constructor(cx, cz, s, w, h, dpr = 1) {
+  constructor(cx, cz, s, w, h, dpr = 1, rot = MAP_ROT) {
     this.cx = cx;
     this.cz = cz;
     this.s = s;
     this.w = w;
     this.h = h;
     this.dpr = dpr;
-    this.minX = cx - w / (2 * s);
-    this.maxX = cx + w / (2 * s);
-    this.minZ = cz - h / (2 * s);
-    this.maxZ = cz + h / (2 * s);
+    this.cos = Math.cos(rot);
+    this.sin = Math.sin(rot);
+    // the turned screen's bounds in the world
+    const c = Math.abs(this.cos), n = Math.abs(this.sin);
+    const hx = (w * c + h * n) / (2 * s), hz = (w * n + h * c) / (2 * s);
+    this.minX = cx - hx;
+    this.maxX = cx + hx;
+    this.minZ = cz - hz;
+    this.maxZ = cz + hz;
   }
 
   /** Canvas transform for world metres */
   world(ctx) {
-    const { s, dpr } = this;
-    ctx.setTransform(s * dpr, 0, 0, s * dpr, dpr * (this.w * 0.5 - this.cx * s), dpr * (this.h * 0.5 - this.cz * s));
+    const { s, dpr, cos, sin } = this;
+    const a = s * cos, b = s * sin;
+    ctx.setTransform(a * dpr, b * dpr, -b * dpr, a * dpr,
+      dpr * (this.w * 0.5 - a * this.cx + b * this.cz), dpr * (this.h * 0.5 - b * this.cx - a * this.cz));
   }
 
   /** Canvas transform for CSS pixels from the canvas centre (what toX / toY return) */
@@ -302,17 +315,38 @@ class MapView {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, this.dpr * this.w * 0.5, this.dpr * this.h * 0.5);
   }
 
-  toX(x) {
-    return (x - this.cx) * this.s;
+  toX(x, z) {
+    return ((x - this.cx) * this.cos - (z - this.cz) * this.sin) * this.s;
   }
 
-  toY(z) {
-    return (z - this.cz) * this.s;
+  toY(x, z) {
+    return ((x - this.cx) * this.sin + (z - this.cz) * this.cos) * this.s;
   }
 
   sees(b) {
     return b && b.maxX >= this.minX && b.minX <= this.maxX && b.maxZ >= this.minZ && b.minZ <= this.maxZ;
   }
+}
+
+// A direction in the world (radians from +x towards +z) as drawn on the map, turned so text never reads upside down
+function uprightAngle(ang) {
+  let a = ang + MAP_ROT;
+  while (a > Math.PI * 0.5 + 0.01) a -= Math.PI;
+  while (a <= -Math.PI * 0.5 - 0.01) a += Math.PI;
+  return a;
+}
+
+// Screen pixels (dx, dy) from the centre -> world metres (dx, dz) from the centre, at s pixels per metre
+function screenToWorldDelta(dx, dy, s) {
+  const c = Math.cos(MAP_ROT), n = Math.sin(MAP_ROT);
+  return { x: (dx * c + dy * n) / s, z: (-dx * n + dy * c) / s };
+}
+
+// Pixels per metre that fit the bounds b in w x h CSS pixels with the margins mx, my (as drawn: turned by MAP_ROT)
+function fitScale(b, w, h, mx, my) {
+  const c = Math.abs(Math.cos(MAP_ROT)), n = Math.abs(Math.sin(MAP_ROT));
+  const bw = b.maxX - b.minX, bd = b.maxZ - b.minZ;
+  return Math.min(w / ((bw * c + bd * n) * mx + 1), h / ((bw * n + bd * c) * my + 1));
 }
 
 // Player heading arrow at the (already rotated) origin: white, on a dark halo
@@ -351,9 +385,7 @@ class CityMapSystem {
     const elCounts = document.getElementById('fullmap-counts');
     if (elCounts) elCounts.textContent = `${ROAD_NAME_COUNT} streets · ${BLOCKS.length.toLocaleString('en-US')} blocks`;
 
-    // The map is drawn grid north up; the compass needle points to true north, GRID_BEARING to its left
-    const needle = document.getElementById('map-compass-needle');
-    if (needle) needle.setAttribute('transform', `rotate(${-GRID_BEARING} 22 22)`);
+    // (the map is drawn true north up, so its compass, index.html, points straight up)
 
     this.modal = document.getElementById('fullmap-modal');
     this.fullCanvas = document.getElementById('fullmap-canvas');
@@ -437,7 +469,7 @@ class CityMapSystem {
         const { w, h } = this.fullSize();
         this.viewCenterX = (b.minX + b.maxX) * 0.5;
         this.viewCenterZ = (b.minZ + b.maxZ) * 0.5;
-        this.viewZoom = Math.max(MIN_ZOOM, Math.min(w / ((b.maxX - b.minX) * 1.15), h / ((b.maxZ - b.minZ) * 1.06)));
+        this.viewZoom = Math.max(MIN_ZOOM, fitScale(b, w, h, 1.15, 1.06));
         this.renderFullMap();
       });
     }
@@ -482,8 +514,9 @@ class CityMapSystem {
           const dx = e.clientX - this.panStart.x;
           const dy = e.clientY - this.panStart.y;
           if (Math.hypot(dx, dy) > 5) this.dragMoved = true;
-          this.viewCenterX = this.panStart.cx - dx / this.viewZoom;
-          this.viewCenterZ = this.panStart.cz - dy / this.viewZoom;
+          const d = screenToWorldDelta(dx, dy, this.viewZoom);
+          this.viewCenterX = this.panStart.cx - d.x;
+          this.viewCenterZ = this.panStart.cz - d.z;
           this.renderFullMap();
           return;
         }
@@ -533,8 +566,9 @@ class CityMapSystem {
         const before = this.screenToWorld(mx, my, rect.width, rect.height);
         const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
         this.viewZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.viewZoom * factor));
-        this.viewCenterX = before.x - (mx - rect.width * 0.5) / this.viewZoom;
-        this.viewCenterZ = before.z - (my - rect.height * 0.5) / this.viewZoom;
+        const d = screenToWorldDelta(mx - rect.width * 0.5, my - rect.height * 0.5, this.viewZoom);
+        this.viewCenterX = before.x - d.x;
+        this.viewCenterZ = before.z - d.z;
         this.renderFullMap();
       }, { passive: false });
     }
@@ -572,7 +606,7 @@ class CityMapSystem {
         const { w, h } = this.fullSize();
         this.viewCenterX = (b.minX + b.maxX) * 0.5;
         this.viewCenterZ = (b.minZ + b.maxZ) * 0.5;
-        const fit = Math.min(w / ((b.maxX - b.minX) * 1.3 + 1), h / ((b.maxZ - b.minZ) * 1.3 + 1));
+        const fit = fitScale(b, w, h, 1.3, 1.3);
         this.viewZoom = Math.max(0.05, Math.min(1.2, fit));
       }
     }
@@ -625,10 +659,8 @@ class CityMapSystem {
   }
 
   screenToWorld(sx, sy, width, height) {
-    return {
-      x: this.viewCenterX + (sx - width * 0.5) / this.viewZoom,
-      z: this.viewCenterZ + (sy - height * 0.5) / this.viewZoom
-    };
+    const d = screenToWorldDelta(sx - width * 0.5, sy - height * 0.5, this.viewZoom);
+    return { x: this.viewCenterX + d.x, z: this.viewCenterZ + d.z };
   }
 
   // Teleports land in the city: inside the outline's extent at that z
@@ -767,14 +799,15 @@ class CityMapSystem {
     let n = 0;
     for (const c of cands) {
       if (n >= maxLabels) break;
-      const X = v.toX(c.a.x);
-      const Y = v.toY(c.a.z);
+      const X = v.toX(c.a.x, c.a.z);
+      const Y = v.toY(c.a.x, c.a.z);
       const same = byName.get(c.l.text);
       if (same && same.some(([x, y]) => Math.hypot(x - X, y - Y) < sameNameGap)) continue;
       const hw = c.width * 0.5 + 3;
       const hh = fontPx * 0.5 + 2;
-      const ca = Math.abs(Math.cos(c.a.ang));
-      const sa = Math.abs(Math.sin(c.a.ang));
+      const ang = uprightAngle(c.a.ang);
+      const ca = Math.abs(Math.cos(ang));
+      const sa = Math.abs(Math.sin(ang));
       const bx = hw * ca + hh * sa;
       const by = hw * sa + hh * ca;
       const box = [X - bx, Y - by, X + bx, Y + by];
@@ -784,7 +817,7 @@ class CityMapSystem {
       else byName.set(c.l.text, [[X, Y]]);
       ctx.save();
       ctx.translate(X, Y);
-      ctx.rotate(c.a.ang);
+      ctx.rotate(ang);
       ctx.fillStyle = c.hit ? MAP.search : c.l.highway ? '#e3a857' : c.l.major ? '#e8ebf0' : '#9ba5b3';
       ctx.strokeText(c.l.text, 0, 0);
       ctx.fillText(c.l.text, 0, 0);
@@ -850,9 +883,12 @@ class CityMapSystem {
     const fp = footprintLayers(this.allBlocks);
     const version = fp ? fp.version : 0;
     let c = this.miniCache;
+    // (the player's offset from the cache's centre as drawn: turned with the map, in metres)
+    const off = (cc) => ({ x: (px - cc.cx) * Math.cos(MAP_ROT) - (pz - cc.cz) * Math.sin(MAP_ROT), y: (px - cc.cx) * Math.sin(MAP_ROT) + (pz - cc.cz) * Math.cos(MAP_ROT) });
+    let o = c && off(c);
     if (!c || c.version !== version || Math.abs(scale / c.s - 1) > 0.12 ||
-      Math.abs(px - c.cx) > w / c.s - w / (2 * scale) - 8 / scale ||
-      Math.abs(pz - c.cz) > h / c.s - h / (2 * scale) - 8 / scale) {
+      Math.abs(o.x) > w / c.s - w / (2 * scale) - 8 / scale ||
+      Math.abs(o.y) > h / c.s - h / (2 * scale) - 8 / scale) {
       if (!c) {
         c = this.miniCache = { canvas: document.createElement('canvas') };
         c.canvas.width = bw * 2;
@@ -870,6 +906,7 @@ class CityMapSystem {
       this.drawWorld(c.ctx, cv, true);
       cv.screen(c.ctx);
       this.drawRoadLabels(c.ctx, cv, { fontPx: 9.5, maxLabels: 28, sameNameGap: 180 });
+      o = { x: 0, y: 0 };
     }
 
     const v = new MapView(px, pz, scale, w, h, dpr);
@@ -878,20 +915,18 @@ class CityMapSystem {
     ctx.fillStyle = MAP_BASE;
     ctx.fillRect(0, 0, bw, bh);
     const k = scale / c.s;
-    ctx.drawImage(c.canvas, dpr * ((c.cx - w / c.s - px) * scale + w * 0.5), dpr * ((c.cz - h / c.s - pz) * scale + h * 0.5),
+    ctx.drawImage(c.canvas, dpr * ((-w / c.s - o.x) * scale + w * 0.5), dpr * ((-h / c.s - o.y) * scale + h * 0.5),
       dpr * w * 2 * k, dpr * h * 2 * k);
 
     v.screen(ctx);
-    const toX = (wx) => v.toX(wx);
-    const toY = (wz) => v.toY(wz);
 
     // Live moving traffic blips on radar
     if (this.trafficSystem && this.trafficSystem.cars) {
       ctx.fillStyle = 'rgba(226, 232, 240, 0.34)';
       for (let i = 0; i < this.trafficSystem.cars.length; i += 2) {
         const car = this.trafficSystem.cars[i];
-        const cx = toX(car.x);
-        const cy = toY(car.z);
+        const cx = v.toX(car.x, car.z);
+        const cy = v.toY(car.x, car.z);
         if (Math.abs(cx) < w * 0.5 && Math.abs(cy) < h * 0.5) {
           ctx.fillRect(cx - 1, cy - 1, 2, 2);
         }
@@ -900,8 +935,8 @@ class CityMapSystem {
 
     // Landmark blips
     for (const lm of CITY_LANDMARKS) {
-      const lx = toX(lm.x);
-      const ly = toY(lm.z);
+      const lx = v.toX(lm.x, lm.z);
+      const ly = v.toY(lm.x, lm.z);
       if (Math.abs(lx) < w * 0.48 && Math.abs(ly) < h * 0.48) {
         ctx.fillStyle = MAP.halo;
         ctx.beginPath();
@@ -920,8 +955,8 @@ class CityMapSystem {
       for (let i = 0; i < blips.length; i += 3) {
         const style = BLIP_STYLES[blips[i]];
         if (!style) continue;
-        const bx = Math.max(-w * 0.46, Math.min(w * 0.46, toX(blips[i + 1])));
-        const by = Math.max(-h * 0.46, Math.min(h * 0.46, toY(blips[i + 2])));
+        const bx = Math.max(-w * 0.46, Math.min(w * 0.46, v.toX(blips[i + 1], blips[i + 2])));
+        const by = Math.max(-h * 0.46, Math.min(h * 0.46, v.toY(blips[i + 1], blips[i + 2])));
         ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
         ctx.beginPath();
         ctx.arc(bx, by, style[1] + 1.4, 0, Math.PI * 2);
@@ -938,7 +973,7 @@ class CityMapSystem {
     const camAngle = Math.atan2(camDir.x, camDir.z);
 
     ctx.save();
-    ctx.rotate(-camAngle + Math.PI);
+    ctx.rotate(-camAngle + Math.PI + MAP_ROT);
     const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, 58);
     grad.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
     grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
@@ -952,7 +987,7 @@ class CityMapSystem {
 
     // Player heading arrow
     ctx.save();
-    ctx.rotate(-ent.heading + Math.PI);
+    ctx.rotate(-ent.heading + Math.PI + MAP_ROT);
     drawPlayerArrow(ctx, -9, 6.5, 7);
     ctx.restore();
 
@@ -996,12 +1031,10 @@ class CityMapSystem {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.fullStatic, 0, 0);
     v.screen(ctx);
-    const toX = (wx) => v.toX(wx);
-    const toY = (wz) => v.toY(wz);
 
     // Live Player Blip & Heading Arrow, with a slow pulse to find it at a glance
-    const px = toX(ent.position.x);
-    const py = toY(ent.position.z);
+    const px = v.toX(ent.position.x, ent.position.z);
+    const py = v.toY(ent.position.x, ent.position.z);
 
     ctx.save();
     ctx.translate(px, py);
@@ -1014,7 +1047,7 @@ class CityMapSystem {
     ctx.beginPath();
     ctx.arc(0, 0, 13, 0, Math.PI * 2);
     ctx.fill();
-    ctx.rotate(-ent.heading + Math.PI);
+    ctx.rotate(-ent.heading + Math.PI + MAP_ROT);
     drawPlayerArrow(ctx, -11, 7.5, 8);
     ctx.restore();
 
@@ -1033,16 +1066,14 @@ class CityMapSystem {
     this.drawWorld(ctx, v, false);
 
     v.screen(ctx);
-    const toX = (wx) => v.toX(wx);
-    const toY = (wz) => v.toY(wz);
 
     // 3. Iconic Landmark Pins & Collision-Free Labels (placed first: their boxes keep the other names clear)
     ctx.font = `700 11px ${FONT}`;
     const placed = [];
     const pins = [];
     for (const lm of CITY_LANDMARKS) {
-      const lx = toX(lm.x);
-      const ly = toY(lm.z);
+      const lx = v.toX(lm.x, lm.z);
+      const ly = v.toY(lm.x, lm.z);
       if (Math.abs(lx) > w * 0.48 || Math.abs(ly) > h * 0.48) continue;
       const labelW = this.textWidth(ctx, lm.short) + 6;
       const box = [lx + 6, ly - 8, lx + 8 + labelW, ly + 7];
@@ -1057,8 +1088,8 @@ class CityMapSystem {
     ctx.textBaseline = 'middle';
     const tracking = 'letterSpacing' in ctx;
     for (const [label, x, z] of s < 0.035 || s > 1.2 ? [] : AREA_LABELS) {
-      const dx = toX(x);
-      const dy = toY(z);
+      const dx = v.toX(x, z);
+      const dy = v.toY(x, z);
       if (Math.abs(dx) > w * 0.47 || Math.abs(dy) > h * 0.47) continue;
       ctx.font = `700 10.5px ${FONT}`;
       ctx.fillStyle = 'rgba(168, 178, 192, 0.46)';
@@ -1075,20 +1106,21 @@ class CityMapSystem {
     const L = mapLayers();
     for (const r of s < 0.04 ? [] : L.riverNames) {
       if (!r.river && s < 0.25) continue;
-      const dx = toX(r.x);
-      const dy = toY(r.z);
+      const dx = v.toX(r.x, r.z);
+      const dy = v.toY(r.x, r.z);
       if (Math.abs(dx) > w * 0.46 || Math.abs(dy) > h * 0.46) continue;
       ctx.font = `italic 600 ${r.river ? 11 : 10}px ${FONT}`;
       const half = this.textWidth(ctx, r.name) * 0.5 + 3;
       // (the label's box, turned with the river: its axis-aligned bounds)
-      const c = Math.abs(Math.cos(r.angle)), sn = Math.abs(Math.sin(r.angle));
+      const ang = uprightAngle(r.angle);
+      const c = Math.abs(Math.cos(ang)), sn = Math.abs(Math.sin(ang));
       const bx = half * c + 7 * sn, by = half * sn + 7 * c;
       const box = [dx - bx, dy - by, dx + bx, dy + by];
       if (overlaps(placed, box)) continue;
       placed.push(box);
       ctx.save();
       ctx.translate(dx, dy);
-      ctx.rotate(Math.cos(r.angle) < 0 ? r.angle + Math.PI : r.angle); // (never upside down)
+      ctx.rotate(ang); // (never upside down)
       ctx.lineWidth = 3;
       ctx.strokeStyle = MAP.halo;
       ctx.strokeText(r.name, 0, 0);
