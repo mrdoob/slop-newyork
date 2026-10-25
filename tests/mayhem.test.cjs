@@ -112,3 +112,21 @@ test('a body thrown at a wall bounces off it instead of flying into the building
   assert.equal(slide(o, -0.3, 0, wall), true);
   assert.ok(Math.abs(o.px - 4.6) < 1e-9);
 });
+
+test('a body thrown fast tumbles on along the ground, head over heels, before it settles', () => {
+  // knocked along +z at 30 m/s (108 km/h)
+  const f = startTumble(0, 0, 0, 0, 30, 0, 1, () => 0.5);
+  let turnsOnGround = 0, landedAt = null, lastAngle = 0;
+  for (let t = 0; t < 15; t += 1 / 60) {
+    stepTumble(f, 1 / 60, 0);
+    if (f.landed && landedAt === null) { landedAt = f.pz; lastAngle = f.angle; }
+    if (landedAt !== null) {
+      turnsOnGround += Math.abs(f.angle - lastAngle) / (2 * Math.PI);
+      lastAngle = f.angle;
+    }
+  }
+  assert.ok(turnsOnGround > 4, `${turnsOnGround.toFixed(1)} turns rolling`);
+  assert.ok(f.pz - landedAt > 15, `rolled ${(f.pz - landedAt).toFixed(1)} m after landing`);
+  assert.ok(f.rest > 1 && Math.abs(Math.cos(f.angle)) < 0.02, 'then lies still on its back or front');
+  assert.ok(Math.abs(f.py - 0.16) < 0.02);
+});

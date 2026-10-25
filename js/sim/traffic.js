@@ -2171,8 +2171,13 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       v.wreck = null;
       return false;
     }
-    const draw = !hasView || visible(w.px, w.pz, 4);
-    if (!draw) return false;
+    // the rider, thrown far ahead of the bicycle, is drawn wherever the camera may see it, the bicycle likewise
+    const f = w.rider;
+    if (!hasView || visible(f.px, f.pz, 4, f.py)) {
+      tumblePose(v.rider.pose, v.fallBase, f);
+      riderCrowd.add(v.rider, Math.hypot(f.px - focusX, f.pz - focusZ));
+    }
+    if (hasView && !visible(w.px, w.pz, 4)) return false;
     dummy.position.set(w.px, 0.04 + hillAt(w.px, w.pz), w.pz);
     dummy.rotation.set(0, w.yaw, w.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
@@ -2180,8 +2185,6 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     bikeFrameInst.setMatrixAt(slot, dummy.matrix);
     bikeWheelInst.setMatrixAt(slot, dummy.matrix);
     bikeFrameInst.setColorAt(slot, v.color);
-    tumblePose(v.rider.pose, v.fallBase, w.rider);
-    riderCrowd.add(v.rider, Math.hypot(w.px - focusX, w.pz - focusZ));
     return true;
   }
 
@@ -2458,7 +2461,10 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       v.hy = hillAt(v.x, v.z);
       v.gp = groundPitch(v);
       if (v.bike) {
-        const hit = playerHits(v.x, v.z, 0.45);
+        // the rider at the saddle, and the bicycle's wheels ahead & behind it: run into from behind (or head on), the
+        // wheel is hit first, before the bike could be shoved out of the way (collideWithPlayer)
+        const hit = playerHits(v.x, v.z, 0.45) || playerHits(v.x - v.tx * 0.65, v.z - v.tz * 0.65, 0.35) ||
+          playerHits(v.x + v.tx * 0.65, v.z + v.tz * 0.65, 0.35);
         if (hit) {
           knockBike(v, hit);
           if (renderWreck(v, 0, bikesDrawn)) bikesDrawn++;
