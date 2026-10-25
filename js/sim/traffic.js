@@ -29,8 +29,9 @@ import { createTransit } from './transit.js';
 import { GEO } from '../world/city-geodata.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BONES, boxHit, riderKnocked, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
-import { TAXI_MODEL, POLICE_MODEL, CAR_MODEL_BY_ID, BODY_SHARE, paintsOf, pickModel, pickBody } from '../models/cars/index.js';
+import { TAXI_MODEL, POLICE_MODEL, BUS_MODEL, CAR_MODEL_BY_ID, BODY_SHARE, paintsOf, pickModel, pickBody } from '../models/cars/index.js';
 import { rayCircle, rayBox, blastFalloff } from './weapons.js';
+import { MIN_IMPACT, createDamage, applyImpact } from '../player/vehicle-damage.js';
 
 // js/sim/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
@@ -43,7 +44,9 @@ import { rayCircle, rayBox, blastFalloff } from './weapons.js';
 //   and with its name on the glass or the roof.
 // - 340 pedestrians follow connected sidewalks, meet to talk, and cross signalized crosswalks on WALK.
 // - Fixed-size local populations replenish distant roads and sidewalks in every direction, protecting the near view.
-// - The player's vehicle or character pushes and is pushed by the traffic (SAT contact, impulses, sparks).
+// - The player's vehicle or character pushes and is pushed by the traffic (SAT contact, impulses, sparks), and a crash
+//   bends what it hits (vehicle-damage.js): crushed in where it was hit, smoking, and once its engine is dead stopped
+//   for good, its driver out and away.
 
 const NUM_CARS = 200;
 const NUM_BUSES = 16;
@@ -91,6 +94,7 @@ const VEHICLE_RADIUS = 380;
 const PED_RADIUS = 320;
 const NEAR_RADIUS = 350;
 const VEHICLE_SPAWN_DISTANCE = 250;
+const ROUTE_HEADWAY = 320; // m: the nearest two units of one route (one way along it) are ever placed to each other
 const PED_SPAWN_DISTANCE = 150;
 
 // Liveries of Tepic's camiones ([body, trim]), the first three as photographed: Progreso 2 in green, Progreso 4 white
@@ -206,7 +210,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       // end of the next, how many moves since it last found its way along it, and the route's sign row (-1 none yet)
       fleet: null, path: null, pathS: 0, nextPathS: 0, lost: 0, sign: -1,
       pitch: 0, roll: 0, pitchVel: 0, rollVel: 0, vx: 0, vz: 0, yawOffset: 0, yawVel: 0,
-      pAhead: Infinity, pRight: 0, pSpeed: 0, pHalfW: 0.86, pHalfL: 2.18, wheelSpin: Math.random() * Math.PI * 2
+      pAhead: Infinity, pRight: 0, pSpeed: 0, pHalfW: 0.86, pHalfL: 2.18, wheelSpin: Math.random() * Math.PI * 2,
+      // crash damage (vehicle-damage.js createDamage, made on its first hit), and stopped for good once its engine is dead
+      damage: null, wrecked: false, smokeCarry: 0
     };
   }
 
@@ -295,7 +301,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const bodies = {};
   for (const kind of CAR_BODIES) {
     const spec = BODY_SPECS[kind];
-    const mat = createLoftedCarMaterial(spec);
+    const mat = createLoftedCarMaterial(spec, null, { crumple: true });
     const lodMesh = (g) => {
       g.setAttribute('paintColor', new THREE.InstancedBufferAttribute(new Float32Array(NUM_CARS * 3), 3));
       g.setAttribute('carState', new THREE.InstancedBufferAttribute(new Float32Array(NUM_CARS * 4), 4));
@@ -1141,7 +1147,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // pulling out of an intersection, nor in the last 12 m before the next.
   function changeLanes(v) {
     const e = v.edge;
-    if (v.conn || v.commit || Math.abs(v.dl) > 0.5 || v.s < v.half || e.len - v.s - v.half < 12) return;
+    if (v.wrecked || v.conn || v.commit || Math.abs(v.dl) > 0.5 || v.s < v.half || e.len - v.s - v.half < 12) return;
     let target = -1;
     if (v.move.out[v.lane] < 0) {
       const t = v.lane + Math.sign(nearestLane(v.move, v.lane) - v.lane);
@@ -1212,6 +1218,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // IDM acceleration for vehicles ahead in the lane (and, through the intersection, in the lane it leads to),
   // the stop line while v may not go, a red beyond, the player, and slowing down for turns and give-way lines
   function accelerate(v) {
+    if (v.wrecked) {
+      v.acc = -7; // (its engine dead: it rolls to a stop and stays there)
+      v.gap = Infinity;
+      return;
+    }
     const e = v.edge;
     let worst = 0;
     let cap = Infinity;
@@ -1558,8 +1569,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     v.vz -= nz * cImpulse;
     v.speed *= Math.max(0, 1 - 1.3 * massRatio); // (two cars: 0.35 of it left; a bus hit by a car keeps 0.87)
 
+    // (n in v's own frame: +z ahead, +x its left, pointing from its centre to where it was hit)
     const localNx = nx * cosY - nz * sinY;
     const localNz = nx * sinY + nz * cosY;
+    // the jump in its velocity is what bends it: a bus barely feels a car, a car hit by a bus is crushed
+    hurtVehicle(v, v.tx * v.speed + v.vx - cvx, v.tz * v.speed + v.vz - cvz, localNx, localNz, halfW, halfL);
     const vHeft = Math.min(1.8, 2 * massRatio); // how hard the vehicle is knocked about (1 between two cars)
     if (vHeft > 0.3) {
       const torque = localZ * localNx - localX * localNz;
@@ -1599,6 +1613,45 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     if (approachSpeed > 1.8) spawnCollisionSparks(contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed, v.hy || 0);
   }
 
+  // A crash changed v's velocity by (dvx, dvz) at once, the hit coming from (dirX, dirZ) in its own frame: its damage
+  // (vehicle-damage.js, as for the player's car), drawn crushed in there by the car material (renderCar packs it in carState). A dead
+  // engine stops it for good and its driver gets out
+  function hurtVehicle(v, dvx, dvz, dirX, dirZ, halfW, halfL) {
+    if (v.bike || v.moto) return;
+    const dv = Math.hypot(dvx, dvz);
+    if (!(dv > MIN_IMPACT)) return;
+    v.damage ??= createDamage();
+    applyImpact(v.damage, dirX, dirZ, dv, halfW, halfL);
+    killedIfDead(v);
+  }
+  function killedIfDead(v) {
+    if (v.damage.engine >= 1 && !v.wrecked) {
+      v.wrecked = true;
+      v.blink = 0;
+      const yaw = v.yaw + v.yawOffset;
+      const side = v.halfWidth + 0.55; // (out of the driver's door, on its left)
+      bail(v.x + Math.cos(yaw) * side, v.z - Math.sin(yaw) * side, yaw, null);
+    }
+  }
+
+  // Smoke from a damaged engine (grey, then black once it is about to die), through the player's smoke (main.js)
+  let smokeEmitter = null;
+  function setSmokeEmitter(emit) {
+    smokeEmitter = typeof emit === 'function' ? emit : null;
+  }
+  function smokeFrom(v, dt) {
+    const e = v.damage ? v.damage.engine : 0;
+    if (e <= 0.4 || !smokeEmitter || Math.hypot(v.x - focusX, v.z - focusZ) > 140) return;
+    v.smokeCarry += dt * (e >= 1 ? 10 : (e - 0.4) * 14);
+    if (v.smokeCarry < 1) return;
+    const n = Math.floor(v.smokeCarry);
+    v.smokeCarry -= n;
+    const yaw = v.yaw + v.yawOffset;
+    const ahead = v.bus ? 5.2 : v.half - 0.75; // (over the bonnet, or the bus's front engine)
+    smokeEmitter(v.x + Math.sin(yaw) * ahead, (v.hy || 0) + (v.bus ? 1.4 : 0.95 * v.sy), v.z + Math.cos(yaw) * ahead,
+      v.tx * v.speed + v.vx, v.tz * v.speed + v.vz, n, e >= 0.85 ? 0.1 : 0.5 - e * 0.4, v.bus ? 1.3 : 0.9);
+  }
+
   // =========================================================================
   // 6. PLACING VEHICLES
   // =========================================================================
@@ -1621,6 +1674,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     v.acc = 0;
     v.dl = v.dlv = 0;
     v.vx = v.vz = v.yawOffset = v.yawVel = v.pitch = v.pitchVel = v.roll = v.rollVel = 0;
+    v.damage = null; // (it comes back as another car, like new)
+    v.wrecked = false;
     locate(v);
     v.prevX = v.x;
     v.prevZ = v.z;
@@ -1630,12 +1685,18 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     occupy(e.occ[lane], v, s);
   }
 
-  // A route of v's fleet that road e runs along ({ path, s }), at random, or null
+  // A route of v's fleet that road e runs along ({ path, s }), at random, or null; only one whose last unit is
+  // ROUTE_HEADWAY m from (x, z) or more (a route runs every 10-20 minutes, its units kilometres apart: dropped all
+  // around the player at random they came in convoys of one route)
   const fleetRoutes = [];
-  function routeOn(e, fleet) {
+  function routeOn(e, fleet, x, z, v) {
     fleetRoutes.length = 0;
-    for (const on of e.transit) if (!on.path.fleet || on.path.fleet === fleet) fleetRoutes.push(on);
+    for (const on of e.transit) if ((!on.path.fleet || on.path.fleet === fleet) && routeFree(on.path, x, z, v)) fleetRoutes.push(on);
     return fleetRoutes.length ? fleetRoutes[Math.floor(Math.random() * fleetRoutes.length)] : null;
+  }
+  function routeFree(path, x, z, v) {
+    for (const u of vehicles) if (u !== v && u.edge && u.path === path && Math.hypot(u.x - x, u.z - z) < ROUTE_HEADWAY) return false;
+    return true;
   }
   function joinRoute(v, on) {
     v.path = on.path;
@@ -1654,8 +1715,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     for (let attempt = 0; attempt < 12; attempt++) {
       const e = pool[Math.floor(Math.random() * pool.length)];
       if (!e || (v.bus && !onRoutes && e.axis !== 'ave') || e.len < 2 * v.half + 10) continue;
-      const on = onRoutes ? routeOn(e, v.fleet) : null;
-      if (onRoutes && !on) continue;
+      if (onRoutes && !e.transit.length) continue;
       const lane = v.bike ? e.lanes.length - 1 : Math.floor(Math.random() * e.lanes.length);
       const along = (focusX - e.sx) * e.dx + (focusZ - e.sz) * e.dz;
       const minS = Math.max(v.half + 5, along - rMax);
@@ -1668,6 +1728,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       if (d < rMin || d > rMax || (protectView && nearView(x, z, v.half + 4, VEHICLE_SPAWN_DISTANCE))) continue;
       if (player.active && Math.hypot(x - player.x, z - player.z) < 25) continue;
       if (!laneClear(e.occ[lane], s, v.half + 8)) continue;
+      const on = onRoutes ? routeOn(e, v.fleet, x, z, v) : null;
+      if (onRoutes && !on) continue;
       if (on) joinRoute(v, on);
       else v.path = null;
       place(v, e, lane, s);
@@ -2026,7 +2088,10 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const b0 = c.acc < -0.8 || c.speed < 0.3 ? 1 : 0;
     const b1 = blinkOn && c.blink < 0 ? 1 : 0;
     const b2 = blinkOn && c.blink > 0 ? 1 : 0;
-    const b3 = c.isPolice ? 1 : 0;
+    // (the livery, and how crushed it is: 4 × 4 bits, see createLoftedCarMaterial's crumple)
+    const dm = c.damage;
+    const q = (x) => Math.round(Math.min(1, x) * 15);
+    const b3 = (c.isPolice ? 1 : 0) + (dm ? 2 * (q(dm.front) + 16 * q(dm.rear) + 256 * q(dm.left) + 4096 * q(dm.right)) : 0);
     if (state[o4] !== b0 || state[o4 + 1] !== b1 || state[o4 + 2] !== b2 || state[o4 + 3] !== b3) {
       state[o4] = b0;
       state[o4 + 1] = b1;
@@ -2472,6 +2537,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const m = massOf(v);
     v.vx += dx * 600 / m;
     v.vz += dz * 600 / m;
+    // a round through the bodywork: a little of its engine every time (a dozen or two kill it, fewer up front)
+    v.damage ??= createDamage();
+    const yaw = v.yaw + v.yawOffset;
+    const ahead = ((x - v.x) * Math.sin(yaw) + (z - v.z) * Math.cos(yaw)) / Math.max(1, v.half);
+    v.damage.engine = Math.min(1, v.damage.engine + (ahead > 0.4 ? 0.09 : 0.045));
+    killedIfDead(v);
   }
 
   // Sparks where something struck metal or stone (world y)
@@ -2516,6 +2587,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       v.yawVel += (across * 3 + (Math.random() - 0.5) * 2) * k * heft;
       v.rollVel += across * 9 * k * heft;
       v.pitchVel += (Math.random() - 0.5) * 6 * k * heft;
+      // ...and crushed on the side facing it as by a crash of that much
+      const yaw = v.yaw + v.yawOffset, cs = Math.cos(yaw), sn = Math.sin(yaw);
+      hurtVehicle(v, nx * shove * 1.6, nz * shove * 1.6, -(nx * cs - nz * sn), -(nx * sn + nz * cs), v.bus ? 1.3 : v.halfWidth, v.bus ? 5.72 : v.half);
       spawnCollisionSparks(v.x, 0.6, v.z, -nx, -nz, 6 + shove);
     }
     return thrown;
@@ -2743,13 +2817,14 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const FLEE_SPEED = 4.6; // m/s running away
   const BAIL_TURN = 7; // rad/s
 
-  // The car or bicycle the player on foot could take: the nearest whose body is within `reach` metres of (x, z),
-  // going slowly enough to be stopped (no buses, nor motorcycles: the player has none of their own to ride yet)
+  // The car, camión or bicycle the player on foot could take: the nearest whose body is within `reach` metres of
+  // (x, z), going slowly enough to be stopped (no motorcycles: the player has none of their own to ride yet), its
+  // engine not dead
   function vehicleNear(x, z, reach) {
     let best = null;
     let bestDistance = reach;
     for (const v of vehicles) {
-      if (v.bus || v.moto || v.wreck || !v.edge || v.speed > 7) continue;
+      if (v.moto || v.wreck || v.wrecked || !v.edge || v.speed > 7) continue;
       const dx = x - v.x;
       const dz = z - v.z;
       if (Math.abs(dx) > 10 || Math.abs(dz) > 10) continue;
@@ -2770,15 +2845,20 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // driver out on the street: what the player's own car or bicycle needs to take its place
   function hijack(v) {
     const yaw = v.yaw + v.yawOffset;
+    // (a camión or a combi keeps its route: its name on the glass or the roof, the camión its livery)
+    const route = v.bus || (v.fleet === 'combi' && v.sign >= 0) ? { sign: Math.max(0, v.sign), livery: v.bus ? v.livery : 0 } : null;
     const taken = v.bike
       ? { kind: 'cyclist', x: v.x, z: v.z, heading: yaw, speed: v.speed, color: v.color.getHex() }
-      : {
-          kind: 'car', x: v.x, z: v.z, heading: yaw, speed: v.speed, bodyType: v.bodyType, police: v.isPolice, model: v.model.id,
-          paint: new THREE.Color().setRGB(v.paint[0], v.paint[1], v.paint[2]).getHex()
-        };
-    // out of the driver's door (on the left: heading 0 faces +z, left is +x), or off the bicycle
+      : v.bus
+        ? { kind: 'car', bus: true, x: v.x, z: v.z, heading: yaw, speed: v.speed, bodyType: 'bus', police: false, model: BUS_MODEL.id, paint: 0xffffff, route }
+        : {
+            kind: 'car', x: v.x, z: v.z, heading: yaw, speed: v.speed, bodyType: v.bodyType, police: v.isPolice, model: v.model.id,
+            paint: new THREE.Color().setRGB(v.paint[0], v.paint[1], v.paint[2]).getHex(), route
+          };
+    // out of the driver's door (on the left: heading 0 faces +z, left is +x; a camión's driver sits at its nose), or
+    // off the bicycle
     const side = v.halfWidth + (v.bike ? 0.4 : 0.55);
-    const ahead = v.bike ? 0 : 0.35;
+    const ahead = v.bike ? 0 : v.bus ? 4.6 : 0.35;
     bail(v.x + Math.cos(yaw) * side + Math.sin(yaw) * ahead, v.z - Math.sin(yaw) * side + Math.cos(yaw) * ahead, yaw, v.bike ? v : null);
     v.edge = null;
     v.conn = null;
@@ -2786,6 +2866,48 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     v.commit = null;
     v.speed = 0;
     return taken;
+  }
+
+  // The player's own copy of a camión or a combi it took (controllers.js setCarLook, from its look: bodyType 'bus' or a
+  // route on a van), in the traffic's materials: one-instance meshes with their own route row and lamp state.
+  // { chassis: [meshes on the chassis], wheels: [{ steerPivot, tire, isFront, side }] (a camión's), lamps (its
+  // busState: brake, left & right signals, livery), label } or null
+  let busWheelGeos = null;
+  function lookKit(look) {
+    const route = look && look.route;
+    const row = (n) => new THREE.InstancedBufferAttribute(new Float32Array([Math.max(0, Math.min(signNames.length - 1, n | 0))]), 1);
+    const one = (geo, mat) => {
+      const mesh = new THREE.InstancedMesh(geo, mat, 1);
+      mesh.setMatrixAt(0, new THREE.Matrix4());
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.computeBoundingSphere();
+      return mesh;
+    };
+    const name = route ? signNames[Math.max(0, route.sign | 0)] : null;
+    if (look && look.bodyType === 'bus') {
+      const bodyGeo = busBodyGeo.clone();
+      const lamps = new THREE.InstancedBufferAttribute(new Float32Array([0, 0, 0, route ? route.livery : 2]), 4);
+      bodyGeo.setAttribute('busState', lamps);
+      const headerGeo = busHeaderGeo.clone();
+      headerGeo.setAttribute('signRow', row(route ? route.sign : 0));
+      busWheelGeos ??= [buildBusWheelGeo(-1), buildBusWheelGeo(1)];
+      const wheels = [];
+      for (const [side, isFront] of [[-1, true], [1, true], [-1, false], [1, false]]) {
+        const steerPivot = new THREE.Group();
+        steerPivot.position.set(side * BUS_SPEC.wheelX, BUS_SPEC.wheelRadius, isFront ? BUS_SPEC.wheelZ : -BUS_SPEC.wheelZ);
+        const tire = new THREE.Mesh(busWheelGeos[side < 0 ? 0 : 1], busWheelMat);
+        tire.castShadow = tire.receiveShadow = true;
+        steerPivot.add(tire);
+        wheels.push({ steerPivot, tire, isFront, side });
+      }
+      return { chassis: [one(bodyGeo, busBodyMat), one(headerGeo, busDestMat)], wheels, lamps, label: name ? `Camión ${name}` : 'Camión' };
+    }
+    if (route && look.bodyType === 'van') {
+      const signGeo = combiSignGeo.clone();
+      signGeo.setAttribute('signRow', row(route.sign));
+      return { chassis: [one(signGeo, combiSignInst.material)], wheels: null, lamps: null, label: name ? `Combi ${name}` : 'Combi' };
+    }
+    return null;
   }
 
   // A pedestrian out of sight (or not yet placed) becomes the driver, standing at (x, z); a cyclist keeps its own
@@ -3013,6 +3135,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         }
       } else if (player.active) collideWithPlayer(v, v.yaw + v.yawOffset, v.bus ? 1.30 : v.halfWidth, v.bus ? 5.72 : v.half - 0.07);
       if (v.vx * v.vx + v.vz * v.vz > 0.36) knockOn(v);
+      if (v.damage) smokeFrom(v, dt);
 
       if (v.kit) {
         if (!hasView || visible(v.x, v.z, 3, (v.hy || 0) + 1)) renderBike(v, dt);
@@ -3145,6 +3268,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     setParked,
     vehicleNear,
     hijack,
+    lookKit,
+    setSmokeEmitter,
     cars,
     buses,
     bikes,

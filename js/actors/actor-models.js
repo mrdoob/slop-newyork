@@ -4,6 +4,7 @@ import {
   Fn,
   float,
   vec2,
+  vec3,
   color,
   attribute,
   sin,
@@ -12,6 +13,7 @@ import {
   floor,
   min,
   max,
+  mod,
   clamp,
   mix,
   step,
@@ -1154,12 +1156,14 @@ function carPlateTexture() {
  * Creates the TSL material for lofted vehicles.
  * Instanced traffic reads the per-instance `paintColor` (vec3) and `carState` (vec4: brake, left (+x) & right (-x)
  * turn signal, livery: 1 = NYPD) attributes; with a fixed `fixedColorHex` (the player's taxi, wheels) the state is the
- * `material.userData.carState` uniform instead.
+ * `material.userData.carState` uniform instead. With `crumple` (the city's traffic) carState's w also carries how crushed
+ * the car is (traffic.js renderCar: livery + 2 × (front + 16 rear + 256 left (+x) + 4096 right (-x)), each in 15ths:
+ * one more vertex buffer would be past WebGPU's 8), and the body is pushed in there and dulled.
  * Every mask is built once and shared by the colour, roughness, metalness & emissive graphs (TSL turns nodes used
  * more than once into temporaries), so the fragment shader evaluates each SDF a single time.
  */
-function createLoftedCarMaterial(spec, fixedColorHex = null) {
-  const cacheKey = `${spec.name}_${fixedColorHex ?? 'instanced'}`;
+function createLoftedCarMaterial(spec, fixedColorHex = null, { crumple = false } = {}) {
+  const cacheKey = `${spec.name}_${fixedColorHex ?? 'instanced'}${crumple ? '_crumple' : ''}`;
   if (_carMaterialCache.has(cacheKey)) {
     return _carMaterialCache.get(cacheKey);
   }
@@ -1169,6 +1173,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const fixed = fixedColorHex !== null;
   const stateUniform = fixed ? uniform(new THREE.Vector4(0, 0, 0, 0)) : null;
   const state = fixed ? stateUniform : attribute('carState', 'vec4');
+  const livery = crumple ? mod(state.w, 2.0) : state.w;
   const paint = fixed ? color(fixedColorHex) : attribute('paintColor', 'vec3');
 
   const axleZ = float(spec.wheelZ);
@@ -1340,7 +1345,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   // ---- Colour ---------------------------------------------------------------------------------------------------
   // Liveries: NYPD (white with blue & light-blue side stripes, lettering on the front doors); the taxi's door badges
   // and medallion number
-  const isPolice = step(0.5, state.w).mul(isSide).mul(isBody);
+  const isPolice = step(0.5, livery).mul(isSide).mul(isBody);
   const doorMid = (spec.doors[0] + spec.doors[1]) / 2;
   const along = smoothstep(spec.zRear + 0.22, spec.zRear + 0.3, p.z).mul(smoothstep(spec.zFront - 0.28, spec.zFront - 0.36, p.z));
   const band = smoothstep(0.495, 0.5, p.y).mul(smoothstep(0.645, 0.64, p.y)).mul(along);
@@ -1417,7 +1422,13 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const tyreBase = smoothstep(wheelR.mul(0.85), wheelR.mul(0.94), wheelDist).mul(0.22).add(0.78);
   const tyreCol = color(0x16181b).mul(tyreBase.add(spokes.mul(treadZone).mul(0.24)));
 
-  let col = mix(body, windowCol, isWindow);
+  // a crushed car's paint dulled and dirtied (scraped, dusty, oil-smoked) with its worst damage
+  const crushed = crumple ? state.w.mul(0.5).floor() : null;
+  const crush = (k) => mod(crushed.div(k).floor(), 16.0).div(15.0);
+  const damage = crumple ? { x: crush(1), y: crush(16), z: crush(256), w: crush(4096) } : null;
+  const worst = crumple ? max(max(damage.x, damage.y), max(damage.z, damage.w)) : null;
+  let col = crumple ? mix(body, body.mul(0.42).add(color(0x26221e).mul(0.2)), worst.mul(0.7)) : body;
+  col = mix(col, windowCol, isWindow);
   col = mix(col, mirrorCol, isMirror);
   col = mix(col, signCol, isSign);
   col = mix(col, color(0x1b1e21), isTrim);
@@ -1454,6 +1465,22 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
 
   const mat = new THREE.MeshStandardNodeMaterial();
   if (fixed) mat.userData.carState = stateUniform;
+  if (crumple) {
+    // The crush: the end or side that was hit pushed in, most at its bumper or door skin and nothing ~0.9 m in, the
+    // bonnet or boot folding down with it, wrinkled so it reads as bent sheet metal rather than a shorter car. The
+    // wheels stay where they are (they are not part of the body)
+    const hw = Math.max(...(spec.halfWidth || [[0, 0.9]]).map((h) => h[1]));
+    const zf = float(spec.zFront), zr = float(spec.zRear), w = float(hw);
+    const wrinkle = sin(p.y.mul(17.0).add(p.x.mul(9.0)).add(p.z.mul(5.0))).mul(0.3).add(0.85);
+    const shell = one.sub(isTyre).sub(isAlloy);
+    // (as the square root of the damage: the first hard knock already shows, the next ones crush it further)
+    const inF = damage.x.sqrt().mul(smoothstep(zf.sub(1.0), zf, p.z)).mul(0.55);
+    const inR = damage.y.sqrt().mul(smoothstep(zr.add(1.0), zr, p.z)).mul(0.48);
+    const inL = damage.z.sqrt().mul(smoothstep(w.sub(0.55), w, p.x)).mul(0.3);
+    const inRt = damage.w.sqrt().mul(smoothstep(w.negate().add(0.55), w.negate(), p.x)).mul(0.3);
+    const fold = inF.add(inR).mul(smoothstep(0.55, 1.1, p.y)).mul(0.45);
+    mat.positionNode = p.add(vec3(inRt.sub(inL), fold.negate(), inR.sub(inF)).mul(wrinkle).mul(shell));
+  }
   mat.colorNode = col;
   mat.roughnessNode = rough;
   mat.metalnessNode = metal;
