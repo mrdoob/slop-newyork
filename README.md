@@ -2,7 +2,7 @@
 
 A Tepic, Nayarit (with Xalisco) GTA-style simulation built with [three.js](https://threejs.org/), WebGPURenderer, and TSL, forked from [Slop New York](https://github.com/mrdoob/slop-newyork). Explore the city on foot, by car, by bicycle, or by helicopter, starting at the Plaza Principal, and knock over pedestrians, cyclists, lamp posts and hydrants.
 
-The city lies on its real ground: its streets climb and fall with the valley floor (some 300 m from its lowest streets up to the lomas), with the hills around it. Add `?slopes=0` to the URL for the flat city.
+The city lies on its real ground: its streets climb and fall with the valley floor (some 300 m from its lowest streets up to the lomas), with the hills around it. Add `?slopes=0` to the URL for the flat city. Its overpasses stand where OpenStreetMap has a road bridged over another road or the railway: decks on piers with ramps up to them, drivable and walkable. The railway through town is laid with ballast, sleepers and rails. Roads through a tunnel stay at grade, and the road over them is raised instead, because the ground is a single surface.
 
 ## Run it
 

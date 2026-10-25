@@ -1875,6 +1875,55 @@ function createCurbMaterial() {
 }
 
 /**
+ * Cast Concrete for the overpasses' decks, walls & piers (js/world/bridges.js): board-formed tone that varies by the
+ * pour, faint 1.2 m form-tie lines on the walls, and run-off streaks darkening down from the deck's edge, wetter in rain
+ */
+function createBridgeConcreteMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.86 });
+  mat.aoNode = canyonSkyAONode();
+  mat.colorNode = Fn(() => {
+    const p = positionWorld;
+    const detail = smoothstep(220.0, 20.0, length(p.sub(cameraPosition)));
+    const pour = noise2D(vec2(p.x.add(p.z).mul(0.07), p.y.mul(0.3)));
+    const grain = noise2D(vec2(p.x.add(p.z).mul(3.1), p.y.mul(3.1))).sub(0.5).mul(0.07).mul(detail);
+    const base = mix(color(0x8d8a83), color(0xa7a39a), pour).add(grain);
+    // walls only: horizontal form joints & vertical streaks from the parapet down
+    const wall = float(1.0).sub(smoothstep(0.4, 0.8, abs(normalWorldGeometry.y)));
+    const joints = gridLine(p.y, 1.2, 0.03).mul(detail).mul(wall);
+    const streak = smoothstep(0.55, 0.9, noise2D(vec2(p.x.add(p.z).mul(1.7), p.y.mul(0.12)))).mul(wall);
+    const wetFilm = smoothstep(0.2, 0.8, cityUniforms.uRoadWetness);
+    return base.mul(float(1.0).sub(joints.mul(0.25))).mul(float(1.0).sub(streak.mul(0.22))).mul(mix(float(1.0), float(0.74), wetFilm));
+  })();
+  mat.roughnessNode = mix(float(0.86), float(0.55), smoothstep(0.2, 0.8, cityUniforms.uRoadWetness));
+  return mat;
+}
+
+/**
+ * Railway Track Bed: crushed-stone ballast with concrete sleepers every 0.6 m (box-filtered over the pixel footprint so
+ * they settle to a mean far off instead of shimmering). attribute `track` = (metres along the line, metres across it)
+ */
+function createTrackBedMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.95 });
+  mat.aoNode = canyonSkyAONode();
+  const track = attribute('track', 'vec2');
+  mat.colorNode = Fn(() => {
+    const p = positionWorld;
+    const detail = smoothstep(120.0, 10.0, length(p.sub(cameraPosition)));
+    const stones = mix(float(0.5), noise2D(p.xz.mul(9.0)), detail);
+    const ballast = mix(color(0x4f4a43), color(0x7a736a), stones.mul(0.7).add(noise2D(p.xz.mul(0.4)).mul(0.3)));
+    // sleepers: on for 0.26 m of each 0.6 m, 2.6 m long across the line (exact box filter of the on/off pattern)
+    const t = track.x.div(0.6);
+    const fw = max(fwidth(t), 0.0001);
+    const on = (x) => floor(x).mul(0.43).add(clamp(fract(x), 0.0, 0.43));
+    const sleepers = on(t.add(fw.mul(0.5))).sub(on(t.sub(fw.mul(0.5)))).div(fw);
+    const across = smoothstep(1.3, 1.25, abs(track.y)).mul(step(0.0, normalWorldGeometry.y.sub(0.9)));
+    const sleeper = mix(color(0x5e5a54), color(0x6f6b64), noise2D(p.xz.mul(2.0))); // weathered concrete
+    return mix(ballast, sleeper, sleepers.mul(across));
+  })();
+  return mat;
+}
+
+/**
  * Park Lush Multi-Octave Turf, Clover & Mowing Stripes TSL Material
  */
 function createParkLawnMaterial(isMeadow = false) {
@@ -2076,6 +2125,8 @@ export {
   createTreeGrateMaterial,
   createRoadSurfaceMaterial,
   createRoadPaintMaterial,
+  createBridgeConcreteMaterial,
+  createTrackBedMaterial,
   createSidewalkMaterial,
   createCurbMaterial,
   createParkLawnMaterial,

@@ -93,7 +93,8 @@ function driveSpeed(speed, throttle, boost, dt, drive) {
 }
 
 // Walking surface for the player's pedestrian (its rig samples it around its feet)
-const personGround = (controllers, x, z) => controllers.getGroundHeight(x, z, 'person');
+// (on a bridge the walker's own height keeps its feet on the deck rather than the ground under it)
+const personGround = (controllers, x, z) => controllers.getGroundHeight(x, z, 'person', controllers.entities.person.position.y);
 
 // (size: the car's { halfW, halfL }, the model it is; a 4.5 m sedan's by default)
 function collisionBody(mode, radius, heading, margin = 0, size = null) {
@@ -448,7 +449,7 @@ class ThirdPersonControllerManager {
     const mode = this.activeMode;
     if (mode === 'person') return false;
     const v = this.entities[mode];
-    const ground = this.getGroundHeight(v.position.x, v.position.z, mode);
+    const ground = this.getGroundHeight(v.position.x, v.position.z, mode, v.position.y);
     if (mode === 'helicopter' && v.position.y - ground > 3) return false;
     if (mode === 'helicopter') v.position.y = ground + 0.25;
     this.settle(v);
@@ -460,7 +461,7 @@ class ThirdPersonControllerManager {
     const spots = [[lx * side, lz * side], [-lx * side, -lz * side], [-fx * end, -fz * end], [fx * end, fz * end]];
     const shape = collisionBody('person', 0.48, 0, 0.05);
     const fits = (x, z) => {
-      const y = this.getGroundHeight(x, z, 'person');
+      const y = this.getGroundHeight(x, z, 'person', v.position.y);
       return !this.nearColliders(x, z, 1).some((c) => buildingContact(c, x, y, z, shape));
     };
     const [ox, oz] = spots.find(([sx, sz]) => fits(v.position.x + sx, v.position.z + sz)) || spots[0];
@@ -468,7 +469,7 @@ class ThirdPersonControllerManager {
     const x = v.position.x + ox, z = v.position.z + oz;
     this.setMode('person');
     this.resetInput();
-    p.position.set(x, this.getGroundHeight(x, z, 'person'), z);
+    p.position.set(x, this.getGroundHeight(x, z, 'person', v.position.y), z);
     p.heading = v.heading;
     this.settle(p);
     return true;
@@ -594,7 +595,8 @@ class ThirdPersonControllerManager {
       ent.position.x = destination.x;
       ent.position.z = destination.z;
       ent.heading = heading;
-      ent.position.y = heli ? altitude : this.getGroundHeight(destination.x, destination.z, this.activeMode);
+      // (on top of a bridge's deck where one passes over: the street up there rather than the ground under it)
+      ent.position.y = heli ? altitude : this.getGroundHeight(destination.x, destination.z, this.activeMode, Infinity);
     }
     this.settle(ent);
     return { x: ent.position.x, z: ent.position.z };
@@ -642,7 +644,7 @@ class ThirdPersonControllerManager {
   // with the wheels & contact shadow; a bicycle only pitches (its rider leans it, see updateCyclist)
   tiltToGround(ent, k) {
     const car = ent.type === 'car';
-    const t = this.groundTilt(ent.position.x, ent.position.z, ent.heading, car ? 1.35 : 0.55, car ? 0.8 : 0.3, (this._tilt ??= {}));
+    const t = this.groundTilt(ent.position.x, ent.position.z, ent.heading, car ? 1.35 : 0.55, car ? 0.8 : 0.3, (this._tilt ??= {}), ent.position.y);
     ent.groundPitch = (ent.groundPitch || 0) + (t.pitch - (ent.groundPitch || 0)) * k;
     ent.groundRoll = car ? (ent.groundRoll || 0) + (t.roll - (ent.groundRoll || 0)) * k : 0;
     ent.mesh.rotation.order = 'YXZ';
@@ -1287,8 +1289,11 @@ class ThirdPersonControllerManager {
   getGroundHeight(x, z, mode = 'person', fromY = undefined) {
     // the ground (ground.js): the town's floor, the hills over it & the river channels cut into it (under a bridge
     // for a body coming from `fromY` down in the channel); everyone stands on it, a walker on the curbs over the
-    // town's floor (unless a hill rises above them, or it is down in a channel)
+    // town's floor (unless a hill rises above them, or it is down in a channel). With `fromY`, a road bridge's deck
+    // the body is on or reaches up a ramp, never one overhead (ground.js deckLift; Infinity: the topmost)
     const ground = this.terrainAt ? this.terrainAt(x, z, fromY) : 0;
+    const deck = this.deckAt && fromY !== undefined ? this.deckAt(x, z, fromY - ground) : 0;
+    if (deck > 0) return ground + deck;
     if (mode === 'person') {
       const town = this.floorHeight(x, z);
       if (ground < town - 0.01) return ground;
@@ -1305,20 +1310,20 @@ class ThirdPersonControllerManager {
 
   // The tilt of the ground under a body reaching `along` m ahead & behind and `across` m to either side of (x, z) facing
   // `heading`, into out: { pitch, roll } for its root (Euler order YXZ: the nose up is a negative pitch, three's sense)
-  groundTilt(x, z, heading, along, across, out) {
+  groundTilt(x, z, heading, along, across, out, y = undefined) {
     out.pitch = out.roll = 0;
-    const g = this.terrainAt;
-    if (!g) return out;
+    if (!this.terrainAt) return out;
+    const g = (px, pz) => this.getGroundHeight(px, pz, 'car', y); // (with y, a deck it is on)
     const fx = Math.sin(heading), fz = Math.cos(heading); // ahead; left is (fz, -fx)
     out.pitch = -Math.atan2(g(x + fx * along, z + fz * along) - g(x - fx * along, z - fz * along), 2 * along);
     out.roll = Math.atan2(g(x + fz * across, z - fx * across) - g(x - fz * across, z + fx * across), 2 * across);
     return out;
   }
 
-  // Speed gained (m/s², down the slope) by a wheeled entity rolling along `heading` on the ground at (x, z)
-  slopeAcceleration(x, z, heading) {
-    const g = this.terrainAt;
-    if (!g) return 0;
+  // Speed gained (m/s², down the slope) by a wheeled entity rolling along `heading` on the ground (or a deck) at (x, z)
+  slopeAcceleration(x, z, heading, y = undefined) {
+    if (!this.terrainAt) return 0;
+    const g = (px, pz) => this.getGroundHeight(px, pz, 'car', y);
     const fx = Math.sin(heading), fz = Math.cos(heading);
     const grade = (g(x + fx * 0.5, z + fz * 0.5) - g(x - fx * 0.5, z - fz * 0.5));
     return -9.81 * grade / Math.hypot(1, grade);
@@ -1471,7 +1476,7 @@ class ThirdPersonControllerManager {
   poseCharacters(dt) {
     const p = this.entities.person;
     if (this.activeMode === 'person') {
-      const air = p.position.y - this.getGroundHeight(p.position.x, p.position.z, 'person');
+      const air = p.position.y - this.getGroundHeight(p.position.x, p.position.z, 'person', p.position.y);
       p.rig.update(dt, p.position.x, p.position.z, p.heading, personGround, this, air > 0.02 ? air : 0);
       p.crowd.begin();
       p.crowd.add(p.rig, 0);
@@ -1503,10 +1508,12 @@ class ThirdPersonControllerManager {
   // where everyone stands, the town's floor alone (townHeight), and the land without the channels (landHeight) for the
   // slopes the player can't climb (a channel's banks are climbed out of, whatever their pitch). The vehicles left
   // standing are set on it (they were built at y = 0)
-  setTerrain(ground, floor = null, land = null) {
+  // `deck(x, z, over)`: the lift of a bridge's deck at (x, z) a body `over` m over the ground reaches (ground.js deckLift)
+  setTerrain(ground, floor = null, land = null, deck = null) {
     this.terrainAt = typeof ground === 'function' ? ground : null;
     this.floorAt = typeof floor === 'function' ? floor : null;
     this.landAt = typeof land === 'function' ? land : null;
+    this.deckAt = typeof deck === 'function' ? deck : null;
     for (const mode of ['person', 'car', 'cyclist', 'moto']) {
       const e = this.entities[mode];
       if (!e) continue;
@@ -1595,7 +1602,7 @@ class ThirdPersonControllerManager {
     // the walker's contact shadow lies on the slope under it
     if (this.activeMode === 'person') {
       const p = this.entities.person;
-      const t = this.groundTilt(p.position.x, p.position.z, p.heading, 0.45, 0.45, (this._tilt ??= {}));
+      const t = this.groundTilt(p.position.x, p.position.z, p.heading, 0.45, 0.45, (this._tilt ??= {}), p.position.y);
       p.shadow.rotation.set(t.pitch, 0, t.roll, 'YXZ');
     }
 
@@ -1669,7 +1676,7 @@ class ThirdPersonControllerManager {
     input.handbrake = handbrake;
     input.nitro = Boolean(this.keys.boost);
     input.shift = shift;
-    input.slope = c.flying ? 0 : this.slopeAcceleration(c.position.x, c.position.z, c.heading);
+    input.slope = c.flying ? 0 : this.slopeAcceleration(c.position.x, c.position.z, c.heading, c.position.y);
     input.power = enginePower(dmg);
     const driven = stepDrive(d, spec, input, c.speed, dt);
     // in the air the wheels push on nothing (the engine still revs): only the air slows it
@@ -1969,7 +1976,7 @@ class ThirdPersonControllerManager {
     else if (this.keys.backward) throttle = -0.6 * this.keys.backward;
 
     b.speed = driveSpeed(b.speed, throttle, this.keys.boost && this.canSprint, dt, BICYCLE_DRIVE);
-    if (throttle || Math.abs(b.speed) > 0.3) b.speed += this.slopeAcceleration(b.position.x, b.position.z, b.heading) * dt;
+    if (throttle || Math.abs(b.speed) > 0.3) b.speed += this.slopeAcceleration(b.position.x, b.position.z, b.heading, b.position.y) * dt;
 
     let turnInput = 0;
     if (this.keys.left) turnInput = this.keys.left;
@@ -2016,7 +2023,7 @@ class ThirdPersonControllerManager {
     input.handbrake = false;
     input.nitro = Boolean(this.keys.boost);
     input.shift = shift;
-    input.slope = this.slopeAcceleration(m.position.x, m.position.z, m.heading);
+    input.slope = this.slopeAcceleration(m.position.x, m.position.z, m.heading, m.position.y);
     input.power = 1;
     m.speed = stepDrive(d, spec, input, m.speed, dt);
 
@@ -2038,7 +2045,7 @@ class ThirdPersonControllerManager {
     const px = m.position.x - wantX, pz = m.position.z - wantZ;
     const push = Math.hypot(px, pz);
     if (push > 1e-4) m.speed *= 1 - 0.85 * Math.abs(fx * px + fz * pz) / push;
-    m.position.y = this.getGroundHeight(m.position.x, m.position.z, 'moto');
+    m.position.y = this.getGroundHeight(m.position.x, m.position.z, 'moto', m.position.y);
 
     const targetLean = -Math.max(-0.85, Math.min(0.85, Math.atan(u * m.yawRate / G)));
     m.leanAngle += (targetLean - m.leanAngle) * Math.min(1, dt * 8);

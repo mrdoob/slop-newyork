@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { buildRoadNetwork } from '../world/road-network.js';
+import { buildRoadNetwork, edgeLift } from '../world/road-network.js';
 import { createPedestrianRoutes } from './pedestrian-routes.js';
 import { signalPhase, walkSignal, blockAt } from '../world/city-config.js';
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from '../render/tsl-materials.js';
@@ -129,11 +129,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   }
 
   // Synchronous notification: listeners must copy any fields they retain. Normal points from b toward a; y is the
-  // height over the ground there (the event carries the world's)
-  function reportCollision(a, b, x, y, z, nx, nz, speed) {
+  // height over `base`, the road surface there (the ground, or a bridge's deck; the event carries the world's)
+  function reportCollision(a, b, x, y, z, nx, nz, speed, base = hillAt(x, z)) {
     if (!collisionListener || speed <= 0.5) return;
     collisionEvent.a = a; collisionEvent.b = b;
-    collisionEvent.x = x; collisionEvent.y = y + hillAt(x, z); collisionEvent.z = z;
+    collisionEvent.x = x; collisionEvent.y = y + base; collisionEvent.z = z;
     collisionEvent.nx = nx; collisionEvent.nz = nz; collisionEvent.speed = speed;
     collisionListener(collisionEvent);
   }
@@ -290,12 +290,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   for (let s = 0; s < MAX_SPARKS; s++) {
     sparks.push({ x: 0, y: -10, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0.4 });
   }
-  // (y over the ground there: the sparks bounce on it)
-  function spawnCollisionSparks(x, y, z, nx, nz, impactSpeed) {
+  // (y over `base`, the road surface there: the sparks bounce on it)
+  function spawnCollisionSparks(x, y, z, nx, nz, impactSpeed, base = hillAt(x, z)) {
     const count = Math.min(24, Math.max(8, Math.floor(impactSpeed * 1.4)));
     const tx = -nz;
     const tz = nx;
-    const ground = hillAt(x, z);
+    const ground = base;
     for (let k = 0; k < count; k++) {
       const sp = sparks[sparkCursor];
       sparkCursor = (sparkCursor + 1) % MAX_SPARKS;
@@ -1300,7 +1300,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // The ground's pitch under v between its axles (its body, wheels & shadow tilt with it; the nose up is negative)
   function groundPitch(v) {
     const a = v.axle || 1.3;
-    return -Math.atan2(hillAt(v.x + v.tx * a, v.z + v.tz * a) - hillAt(v.x - v.tx * a, v.z - v.tz * a), 2 * a);
+    const fx = v.x + v.tx * a, fz = v.z + v.tz * a, bx = v.x - v.tx * a, bz = v.z - v.tz * a;
+    return -Math.atan2(hillAt(fx, fz) + roadLift(v, fx, fz) - hillAt(bx, bz) - roadLift(v, bx, bz), 2 * a);
   }
 
   // Move v along and across its path by (dx, dz), as far as the road allows
@@ -1362,7 +1363,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       if (relVn <= 0.5) continue;
       const approachSpeed = (v.tx * v.speed + v.vx - o.tx * o.speed - o.vx) * nx
         + (v.tz * v.speed + v.vz - o.tz * o.speed - o.vz) * nz;
-      reportCollision(o, v, (v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, approachSpeed);
+      const base = ((v.hy || 0) + (o.hy || 0)) / 2; // (their road's surface: the ground, or a bridge's deck)
+      reportCollision(o, v, (v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, approachSpeed, base);
       // the momentum traded by their masses: a bus shoves a car aside and rolls on, a car bounces off a bus (two cars
       // as they always did: the one hit takes 0.68 of the closing speed, the other gives back 0.31)
       const mv = massOf(v), mo = massOf(o);
@@ -1378,7 +1380,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       o.yawVel += across * Math.min(2.8, relVn * 0.22) * heft;
       o.rollVel += across * Math.min(8.0, relVn) * 0.18 * heft;
       o.pitchVel -= along * Math.min(8.0, relVn) * 0.14 * heft;
-      if (relVn > 2.2) spawnCollisionSparks((v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, relVn);
+      if (relVn > 2.2) spawnCollisionSparks((v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, relVn, base);
     }
   }
 
@@ -1498,7 +1500,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const contactLocalZ = clamp(localZ, -halfL, halfL);
     const contactX = v.x + contactLocalX * cosY + contactLocalZ * sinY;
     const contactZ = v.z - contactLocalX * sinY + contactLocalZ * cosY;
-    if (pe.type !== 'person') reportCollision(pe, v, contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed);
+    if (pe.type !== 'person') reportCollision(pe, v, contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed, v.hy || 0);
 
     if (typeof pe.speed === 'number') {
       const headOnDot = Math.abs(pSin * nx + pCos * nz);
@@ -1521,7 +1523,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         pe.heaveVel = (pe.heaveVel || 0) + Math.min(1.6, approachSpeed * 0.11 * pHeft);
       }
     }
-    if (approachSpeed > 1.8) spawnCollisionSparks(contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed);
+    if (approachSpeed > 1.8) spawnCollisionSparks(contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed, v.hy || 0);
   }
 
   // =========================================================================
@@ -2166,6 +2168,20 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function setHillQuery(fn) {
     hillQuery = typeof fn === 'function' ? fn : null;
   }
+  // The surface under something at height y: the ground, or a bridge's deck it is on (ground.js surfaceHeight)
+  let surfaceQuery = null;
+  const surfaceAt = (x, z, y) => (surfaceQuery ? surfaceQuery(x, z, y) : hillAt(x, z));
+  function setSurfaceQuery(fn) {
+    surfaceQuery = typeof fn === 'function' ? fn : null;
+  }
+  // The lift (m over the ground) of the road v drives on at (x, z): up a ramp or over a bridge (road-network.js), at a
+  // junction its node's
+  function roadLift(v, x, z) {
+    const e = v.edge;
+    if (!e) return 0;
+    if (v.conn) return e.to.lift || 0;
+    return e.lift ? edgeLift(e, (x - e.x0) * e.dx + (z - e.z0) * e.dz) : 0;
+  }
 
   // Does the player's vehicle hit a body of radius r at (x, z) fast enough to knock it over?
   function playerHits(x, z, r) {
@@ -2257,7 +2273,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function knockRider(v, nx, nz, bvx, bvz) {
     const own = Math.hypot(bvx, bvz) > player.speed;
     throwRider(v, nx, nz, own ? bvx : player.vx, own ? bvz : player.vz, own ? Infinity : player.mass);
-    reportCollision(player.entity, v, v.x, 0.9, v.z, -nx, -nz, Math.hypot(player.vx - bvx, player.vz - bvz));
+    reportCollision(player.entity, v, v.x, 0.9, v.z, -nx, -nz, Math.hypot(player.vx - bvx, player.vz - bvz), v.hy);
     if (knockListener) knockListener('bike', v.x, v.z, player.speed);
     if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mass / (player.mass + massOf(v));
   }
@@ -2269,7 +2285,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     poseRider(v); // (a bike out of sight hasn't posed its rider lately)
     v.fallBase = v.fallBase || new Float32Array(BONES * 8);
     v.fallBase.set(r.pose.subarray(0, BONES * 8));
-    const g = hillAt(v.x, v.z);
+    const g = v.hy; // (on its road: the ground, or a bridge's deck)
     const f = startTumble(v.x, g, v.z, tvx, tvz, nx, nz);
     // the rider's pivot as it sat (the hips over the saddle)
     f.y0 = f.py = g + v.kit.seat.seat.y + 0.07;
@@ -2290,7 +2306,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     v.edge = null; // off the road graph (lanes & junctions rebuild their occupancy every frame)
     v.speed = 0;
     v.vx = v.vz = 0;
-    if (v.moto) spawnCollisionSparks(v.x, 0.3 + g, v.z, nx, nz, Math.hypot(tvx, tvz));
+    if (v.moto) spawnCollisionSparks(v.x, 0.3, v.z, nx, nz, Math.hypot(tvx, tvz), g); // (0.3 m over its road)
   }
 
   // =========================================================================
@@ -2554,13 +2570,18 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // The fallen rider and the bike on its side; both cleared once they've lain still a while
   function renderWreck(v, dt) {
     const w = v.wreck;
-    const riderGround = hillAt(w.rider.px, w.rider.pz);
-    const restR = stepTumble(w.rider, dt, riderGround, solidAt);
-    if (restR > 0.5 && !w.rider.down) {
-      w.rider.down = true;
-      if (mayhemListener) mayhemListener('down', w.rider.px, riderGround, w.rider.pz, 0, MASS.person);
+    // (each on the surface under it: the deck of a bridge it was knocked over on, the ground once off its edge)
+    const r = w.rider;
+    const riderGround = surfaceAt(r.px, r.pz, r.py - 0.9);
+    const restR = stepTumble(r, dt, riderGround, solidAt);
+    if (restR > 0.5 && !r.down) {
+      r.down = true;
+      if (mayhemListener) mayhemListener('down', r.px, riderGround, r.pz, 0, MASS.person);
     }
-    // the bicycle in the air (py over the ground) turns over freely; down, it skids and comes to lie on one side
+    // the bicycle in the air (py over the surface under it) turns over freely; down, it skids and lies on one side
+    const gy = surfaceAt(w.px, w.pz, (w.gy ?? v.hy ?? 0) + w.py);
+    w.py += (w.gy ?? gy) - gy; // (its height kept as the surface under it changes)
+    w.gy = gy;
     w.vy -= 9.8 * dt;
     w.py += w.vy * dt;
     slide(w, w.vx * dt, w.vz * dt, solidAt);
@@ -2596,7 +2617,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     if (hasView && !visible(w.px, w.pz, 4)) return;
     const kit = v.kit;
     const slot = kit.drawn++;
-    dummy.position.set(w.px, 0.04 + w.py + hillAt(w.px, w.pz), w.pz);
+    dummy.position.set(w.px, 0.04 + w.py + w.gy, w.pz);
     dummy.rotation.set(0, w.yaw, w.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -2823,7 +2844,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
     // (on the street: not up on a roof, nor flying; measured from the ground, which the town's slopes raise)
     player.active = Boolean(playerEntity && activeMode !== 'helicopter' &&
-      playerEntity.position.y - hillAt(playerEntity.position.x, playerEntity.position.z) < 2.6);
+      playerEntity.position.y - surfaceAt(playerEntity.position.x, playerEntity.position.z, playerEntity.position.y) < 2.6);
     if (playerEntity) {
       const heading = playerEntity.heading || 0;
       const speed = playerEntity.speed || 0;
@@ -2880,7 +2901,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       locate(v);
       knock(v, dt);
       pose(v, dt);
-      v.hy = hillAt(v.x, v.z);
+      v.hy = hillAt(v.x, v.z) + roadLift(v, v.x, v.z); // (over a bridge or up a ramp, its deck)
       v.gp = groundPitch(v);
       if (v.kit) {
         if (player.active && contactRider(v)) {
@@ -2988,7 +3009,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     // 3. Collision sparks, including the player's own impacts against buildings
     if (playerEntity && playerEntity.lastCollisionSpark) {
       const bs = playerEntity.lastCollisionSpark;
-      spawnCollisionSparks(bs.x, bs.y, bs.z, bs.nx, bs.nz, bs.speed);
+      spawnCollisionSparks(bs.x, bs.y, bs.z, bs.nx, bs.nz, bs.speed, playerEntity.position.y); // (over its road)
       playerEntity.lastCollisionSpark = null;
     }
     updateSparks(dt);
@@ -3012,6 +3033,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     sidewalkSpot,
     setSolidQuery,
     setHillQuery,
+    setSurfaceQuery,
     setParked,
     vehicleNear,
     hijack,
