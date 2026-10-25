@@ -25,5 +25,6 @@ To add a car: add an entry to its make's file (or a new `<make>.js` listed in `i
 | `paints` | optional body colours (hex); a sensible palette otherwise |
 | `class` | `economy`, `family`, `truck`, `premium`, `sport` or `super`: tyres & brakes |
 | `traffic` | `false` keeps it out of the random traffic (the taxi and the police car have their own slots) |
+| `nitro` | optional: whether it has a nitrous kit (Shift); by default the `sport` and `super` cars do, electric ones never |
 
 Figures are the Mexican-market versions where there is one (manufacturer data sheets); top speeds are the makers'.

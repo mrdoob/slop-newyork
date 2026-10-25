@@ -57,7 +57,7 @@ test('a limited car stops pulling at its limiter', () => {
 });
 
 test('nitro adds power while it lasts, then refills', () => {
-  const s = spec('nissan-sentra');
+  const s = spec('volkswagen-golf-gti');
   // (from 60 km/h: below that a front-drive car can't put more power down anyway)
   const run = (nitro) => {
     const d = createDriveState(s);
@@ -73,6 +73,25 @@ test('nitro adds power while it lasts, then refills', () => {
   const d = nitro.d;
   stepDrive(d, s, { throttle: 1, nitro: false, power: 1 }, 30, 1);
   assert.ok(d.nitro > 0 && d.nitro < 0.1, 'and refills slowly off it');
+});
+
+test('only the sports cars and supercars have a nitrous kit', () => {
+  for (const m of CAR_MODELS) {
+    const kit = spec(m.id).nitro;
+    assert.equal(kit, !m.electric && (m.class === 'sport' || m.class === 'super'), `${m.id}: ${kit ? 'a kit' : 'none'}`);
+  }
+  const s = spec('nissan-sentra');
+  const d = createDriveState(s);
+  assert.equal(d.nitro, 0);
+  d.gear = 3;
+  const v0 = 60 / 3.6;
+  const plain = createDriveState(s);
+  plain.gear = 3;
+  assert.equal(stepDrive(d, s, { throttle: 1, nitro: true, power: 1 }, v0, DT), stepDrive(plain, s, { throttle: 1, nitro: false, power: 1 }, v0, DT),
+    'Shift does nothing in a Sentra');
+  assert.equal(d.nitroOn, false);
+  stepDrive(d, s, { throttle: 0, nitro: false, power: 1 }, v0, 30);
+  assert.equal(d.nitro, 0, 'and there is no tank to refill');
 });
 
 test('S brakes a moving car, then reverses it from a standstill; W brings it back into first', () => {

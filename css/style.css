@@ -1341,6 +1341,7 @@ body[data-mode='moto'] .tacho {
 }
 
 .tacho-bar { display: grid; gap: 5px; }
+.tacho-bar[hidden] { display: none; }
 
 .tacho-bar-label {
   font-size: 10px;
