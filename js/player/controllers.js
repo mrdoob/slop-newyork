@@ -210,7 +210,8 @@ class ThirdPersonControllerManager {
       right: false,
       up: false,
       down: false,
-      boost: false
+      boost: false,
+      fire: false // (crime.js: the right mouse button fires too)
     };
 
     this.entities = {
@@ -263,7 +264,8 @@ class ThirdPersonControllerManager {
       right: ['KeyD', 'ArrowRight'],
       up: ['Space', 'KeyE'],
       down: ['KeyQ', 'KeyC'],
-      boost: ['ShiftLeft', 'ShiftRight']
+      boost: ['ShiftLeft', 'ShiftRight'],
+      fire: ['KeyX']
     };
     const actionsByCode = new Map(Object.entries(bindings).flatMap(([action, codes]) => codes.map((code) => [code, action])));
     this._pressedCodes = new Set();

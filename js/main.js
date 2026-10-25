@@ -22,6 +22,8 @@ import { buildTerrain } from './world/terrain.js';
 import { groundHeight, townHeight, liftAt } from './world/ground.js';
 import { buildTepicLandmarks } from './world/tepic-landmarks.js';
 import { buildCotos } from './world/cotos.js';
+import { CrimeSystem } from './sim/crime.js';
+import { CrimeHud } from './ui/crime-hud.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -179,6 +181,24 @@ async function initApp() {
   }
   soundButton?.addEventListener('click', () => audioSystem.setEnabled(!audioSystem.enabled));
   updateSoundButton();
+  // Guns, the police, gangs & thieves (crime.js); killed or arrested, the player comes round at the nearest teleport
+  // spot, on foot
+  const crimeSystem = new CrimeSystem({
+    scene, controllers: controllerManager, traffic: trafficSystem, groundHeight, solidAt, canvas: renderer.domElement,
+    audio: audioSystem,
+    onRespawn: () => {
+      if (controllerManager.activeMode !== 'person') controllerManager.exitVehicle();
+      const p = controllerManager.entities.person.position;
+      let spot = null;
+      for (const t of Object.values(TELEPORT_LOCATIONS)) {
+        if (!spot || Math.hypot(t.x - p.x, t.z - p.z) < Math.hypot(spot.x - p.x, spot.z - p.z)) spot = t;
+      }
+      if (spot) teleportTo(spot.x, spot.z, spot.heading);
+      syncMode();
+    }
+  });
+  audioSystem.sources.pursuers = crimeSystem.cruisers;
+  const crimeHud = new CrimeHud();
   // pagehide also covers navigation away on mobile; preserve the context across back-forward cache restores.
   window.addEventListener('pagehide', (event) => {
     savePlayerState();
@@ -295,15 +315,17 @@ async function initApp() {
   const gamepadControls = new GamepadControls(controllerManager, cameraSystem, {
     onBoard: board,
     onCycleCamera: cycleCamera,
+    onCycleWeapon: (dir) => crimeSystem.cycleWeapon(dir),
     onToggleMap: () => mapSystem.toggleFullMap(!mapSystem.isFullMapOpen),
     onCloseMap: () => mapSystem.toggleFullMap(false)
   });
 
   // Keyboard guide for each mode: [keys, action]
   const controlHints = {
-    person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['F'], 'Robar / Subir']],
-    car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['B'], 'Horn'], [['F'], 'Bajar']],
-    cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['F'], 'Bajar']],
+    person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['RMB', 'X'], 'Fire'],
+      [['1-4', 'R'], 'Weapon'], [['F'], 'Robar / Subir']],
+    car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['RMB', 'X'], 'Shoot'], [['B'], 'Horn'], [['F'], 'Bajar']],
+    cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['RMB', 'X'], 'Shoot'], [['F'], 'Bajar']],
     helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['F'], 'Bajar']]
   };
   // Boosted top speeds in mph (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
@@ -358,7 +380,7 @@ async function initApp() {
     return own ? { mode: own.mode } : null;
   }
   function board() {
-    if (mapSystem.isFullMapOpen) return;
+    if (mapSystem.isFullMapOpen || crimeSystem.state !== 'play') return;
     if (controllerManager.activeMode !== 'person') {
       if (controllerManager.exitVehicle()) syncMode();
       return;
@@ -368,6 +390,10 @@ async function initApp() {
     if (target.taken) {
       const taken = trafficSystem.hijack(target.taken);
       controllerManager.enterVehicle(taken.kind, taken);
+      // taking a patrol car is always a crime; any other car, if the police see it
+      const p = controllerManager.entities.person.position;
+      if (taken.police) crimeSystem.report('stealCop');
+      else crimeSystem.report('carjack', crimeSystem.copNear(p.x, p.z, 40));
     } else {
       controllerManager.enterVehicle(target.mode);
     }
@@ -591,6 +617,7 @@ async function initApp() {
   });
 
   const openMapBtn = document.getElementById('btn-open-map');
+  mapSystem.setBlipSource(() => crimeSystem.blips()); // (the police, gangs & pickups on the radar)
   if (openMapBtn) openMapBtn.addEventListener('click', () => mapSystem.toggleFullMap(true));
 
   if (hudToggleBtn) {
@@ -678,7 +705,7 @@ async function initApp() {
   markInit('ui');
   // Debugging handle for the console, only with ?debug in the URL
   if (new URLSearchParams(location.search).has('debug')) {
-    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem };
+    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, crimeSystem };
   }
 
   // The loading screen stays up while the shaders compile (precompileShaders() & the warm-up frame, see the loop) and
@@ -789,7 +816,7 @@ async function initApp() {
     controllerManager.update(dt, elapsed);
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
-    trafficSystem.setParked(controllerManager.parkedVehicles());
+    trafficSystem.setParked(crimeSystem.addObstacles(controllerManager.parkedVehicles()));
     trafficSystem.update(
       dt,
       elapsed,
@@ -801,6 +828,10 @@ async function initApp() {
     highwayTraffic.update(dt, cameraSystem.camera, controllerManager.getActiveEntity(), controllerManager.activeMode);
     // Lamp posts & hydrants the player's car or bicycle runs into (mayhem.js)
     if (streetDetails.breaker) streetDetails.breaker.update(dt, controllerManager.getActiveEntity(), controllerManager.activeMode);
+    // Gunfire, the police, gangs & thieves (crime.js), and a blast's shake of the camera
+    crimeSystem.update(dt, elapsed, cameraSystem.camera);
+    crimeSystem.shakeCamera(cameraSystem.camera);
+    crimeHud.update(crimeSystem, dt);
     if (!document.hidden && now >= nextPlayerSave) {
       savePlayerState();
       nextPlayerSave = now + 5000;

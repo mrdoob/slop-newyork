@@ -24,11 +24,11 @@ node --test tests/*.test.*           # client and tool tests (Node ≥ 22; no in
 |---|---|
 | `render/` | Sky and sun light, IBL and fog (`lighting.js`), post-processing and grading, TSL materials and shared uniforms (`tsl-materials.js`), culling |
 | `world/` | Map data and everything built from it: `city-config.js` (street database and frame helpers over the generated geodata), blocks and buildings, landmarks, street furniture, trees, the road graph and paint, terrain, storefronts, `weather.js` (real sun and Open-Meteo conditions) |
-| `sim/` | Traffic, pedestrians and their routes, knock-downs (`mayhem.js`) |
+| `sim/` | Traffic, pedestrians and their routes, knock-downs (`mayhem.js`), crime (`crime.js`: guns, the wanted level and the police, gangs, thieves; rules in `weapons.js` and `crime-rules.js`, effects in `gunfire-fx.js`) |
 | `actors/` | Vehicle and helicopter geometry and materials, vehicle lights |
 | `player/` | The four player controllers (person, car, cyclist, helicopter) and the camera rigs |
 | `input/` | Touch and gamepad controls (keyboard lives in `player/controllers.js`) |
-| `ui/` | The minimap and full map (`city-map.js`) |
+| `ui/` | The minimap and full map (`city-map.js`), the crime HUD (`crime-hud.js`: stars, health, money, weapon) |
 | `audio/` | Procedural city audio, synthesised (no audio files) |
 | `net/` | Multiplayer client (`multiplayer.js`), loaded only with `?multiplayer=1` |
 

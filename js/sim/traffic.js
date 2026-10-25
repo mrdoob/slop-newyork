@@ -22,6 +22,7 @@ import {
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BONES, boxHit, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
+import { rayCircle, rayBox, blastFalloff } from './weapons.js';
 
 // js/sim/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
@@ -2085,7 +2086,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     return boxHit(player.x, player.z, player.heading, player.halfW, player.halfL, x, z, r);
   }
 
-  function knockPed(p, hit) {
+  // Throws pedestrian p to the ground, hit at velocity (vx, vz) and pushed out along (nx, nz)
+  function throwPed(p, vx, vz, nx, nz) {
     // a fresh solved pose to fall from (hidden pedestrians only advance their gait)
     const partner = p.conversation && (p.conversation.a === p ? p.conversation.b : p.conversation.a);
     const facing = p.bail ? p.bail.heading : partner ? Math.atan2(partner.x - p.x, partner.z - p.z) : Math.atan2(p.ux * p.dir, p.uz * p.dir);
@@ -2093,14 +2095,19 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const ground = pedGround(p, p.x, p.z);
     p.fallBase = p.fallBase || new Float32Array(BONES * 8);
     p.fallBase.set(p.rig.pose.subarray(0, BONES * 8));
-    p.fallen = startTumble(p.x, ground, p.z, player.vx, player.vz, hit.nx, hit.nz);
+    p.fallen = startTumble(p.x, ground, p.z, vx, vz, nx, nz);
     p.fallen.lift = ground - hillAt(p.x, p.z); // the sidewalk or crosswalk over the hill it lands on
     if (p.conversation) endConversation(p.conversation);
     p.node = null; // off any crosswalk queue (gatherCurbs)
     p.waiting = false;
     p.v = 0;
     p.bail = null;
+  }
+
+  function knockPed(p, hit) {
+    throwPed(p, player.vx, player.vz, hit.nx, hit.nz);
     reportCollision(player.entity, p, p.x, 1.0, p.z, -hit.nx, -hit.nz, player.speed);
+    if (knockListener) knockListener('ped', p.x, p.z, player.speed);
     // (a car hardly slows for a person; a bicycle loses about half its speed)
     if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mass / (player.mass + MASS.person);
   }
@@ -2122,22 +2129,23 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     pedCrowd.add(p.rig, Math.hypot(p.x - focusX, p.z - focusZ));
   }
 
-  function knockBike(v, hit) {
+  // Throws cyclist v off its bicycle, hit at velocity (vx, vz) by a body of mass `mass`, pushed out along (nx, nz)
+  function throwBike(v, vx, vz, nx, nz, mass) {
     const r = v.rider;
     poseRider(v); // (a bike out of sight hasn't posed its rider lately)
     v.fallBase = v.fallBase || new Float32Array(BONES * 8);
     v.fallBase.set(r.pose.subarray(0, BONES * 8));
     const g = hillAt(v.x, v.z);
-    const f = startTumble(v.x, g, v.z, player.vx, player.vz, hit.nx, hit.nz);
+    const f = startTumble(v.x, g, v.z, vx, vz, nx, nz);
     // the rider's pivot as it sat (the hips over the saddle)
     f.y0 = f.py = g + 1.05;
-    // the bicycle, a fraction of the player's weight, is flung too: up & along, cartwheeling, then skids on its side
-    const speed = player.speed;
-    const share = player.mass / (player.mass + MASS.bike); // of the player's velocity it takes (a car: nearly all)
+    // the bicycle, a fraction of the hitter's weight, is flung too: up & along, cartwheeling, then skids on its side
+    const speed = Math.hypot(vx, vz);
+    const share = mass / (mass + MASS.bike); // of the hitter's velocity it takes (a car: nearly all)
     v.wreck = {
       rider: f,
       px: v.x, pz: v.z, py: 0, yaw: v.yaw,
-      vx: player.vx * 0.8 * share + hit.nx * 1.5, vz: player.vz * 0.8 * share + hit.nz * 1.5,
+      vx: vx * 0.8 * share + nx * 1.5, vz: vz * 0.8 * share + nz * 1.5,
       vy: Math.min(7, 0.8 + speed * 0.2 * share),
       roll: 0, rollVel: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.min(14, speed * 0.35)),
       yawVel: (Math.random() - 0.5) * Math.min(12, 1 + speed * 0.3),
@@ -2145,8 +2153,247 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     };
     v.edge = null; // off the road graph (lanes & junctions rebuild their occupancy every frame)
     v.speed = 0;
+  }
+
+  function knockBike(v, hit) {
+    throwBike(v, player.vx, player.vz, hit.nx, hit.nz, player.mass);
     reportCollision(player.entity, v, v.x, 0.9, v.z, -hit.nx, -hit.nz, player.speed);
+    if (knockListener) knockListener('bike', v.x, v.z, player.speed);
     if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mass / (player.mass + MASS.bike);
+  }
+
+  // =========================================================================
+  // 8C. GUNFIRE & BLASTS (crime.js): the street's people and vehicles shot at, blown about and running for cover
+  // =========================================================================
+  // Told when the player runs someone over: fn(kind 'ped' | 'bike', x, z, speed)
+  let knockListener = null;
+  function setKnockListener(fn) {
+    knockListener = typeof fn === 'function' ? fn : null;
+  }
+
+  const halfWidthOf = (v) => (v.bus ? 1.3 : v.bike ? 0.32 : v.isSUV ? 0.92 : 0.86);
+  const halfLengthOf = (v) => (v.bus ? 5.72 : v.bike ? 0.95 : v.isSUV ? 2.22 : 2.18);
+
+  // The first pedestrian or vehicle a shot from (ox, oz) along the unit direction (dx, dz) meets within `range`:
+  // { kind: 'ped' | 'vehicle', target, t } (reused), or null
+  const rayResult = { kind: '', target: null, t: 0 };
+  function rayHit(ox, oz, dx, dz, range) {
+    let best = range;
+    let target = null;
+    let kind = '';
+    for (const p of peds) {
+      if (!p.placed || p.fallen) continue;
+      const fx = p.x - ox, fz = p.z - oz;
+      if (Math.abs(fx) > range + 1 || Math.abs(fz) > range + 1) continue;
+      const t = rayCircle(ox, oz, dx, dz, p.x, p.z, 0.34);
+      if (t >= 0 && t < best) {
+        best = t;
+        target = p;
+        kind = 'ped';
+      }
+    }
+    for (const v of vehicles) {
+      if (!v.edge) continue;
+      const fx = v.x - ox, fz = v.z - oz;
+      if (Math.abs(fx) > range + 6 || Math.abs(fz) > range + 6) continue;
+      const t = rayBox(ox, oz, dx, dz, v.x, v.z, v.yaw + v.yawOffset, halfWidthOf(v), halfLengthOf(v));
+      if (t >= 0 && t < best) {
+        best = t;
+        target = v;
+        kind = 'vehicle';
+      }
+    }
+    if (!target) return null;
+    rayResult.kind = kind;
+    rayResult.target = target;
+    rayResult.t = best;
+    return rayResult;
+  }
+
+  // A pedestrian shot (or punched) along (dx, dz): knocked to the ground, `power` m/s
+  function shootPed(p, dx, dz, power = 3) {
+    if (!p.placed || p.fallen) return;
+    throwPed(p, dx * power, dz * power, dx, dz);
+  }
+
+  // A vehicle shot at (x, y, z) along (dx, dz): sparks off its body; a cyclist is knocked off
+  function shootVehicle(v, x, y, z, dx, dz) {
+    if (v.bike) {
+      if (v.edge) throwBike(v, dx * 4, dz * 4, dx, dz, MASS.person);
+      return;
+    }
+    spawnCollisionSparks(x, y - hillAt(x, z), z, -dx, -dz, 5);
+    const m = massOf(v);
+    v.vx += dx * 600 / m;
+    v.vz += dz * 600 / m;
+  }
+
+  // Sparks where something struck metal or stone (world y)
+  function sparksAt(x, y, z, nx, nz, speed) {
+    spawnCollisionSparks(x, y - hillAt(x, z), z, nx, nz, speed);
+  }
+
+  // An explosion at (x, z): people within `radius` m are thrown off their feet, cyclists off their bikes, vehicles shoved
+  // and spun by up to `power` m/s (by their weight). Returns how many people it threw.
+  function blast(x, z, radius, power) {
+    let thrown = 0;
+    for (const p of peds) {
+      if (!p.placed || p.fallen) continue;
+      const dx = p.x - x, dz = p.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > radius) continue;
+      const k = blastFalloff(d, radius);
+      const nx = d > 0.01 ? dx / d : 1, nz = d > 0.01 ? dz / d : 0;
+      throwPed(p, nx * power * k, nz * power * k, nx, nz);
+      p.fallen.vy += 6 * k;
+      thrown++;
+    }
+    for (const v of vehicles) {
+      if (!v.edge) continue;
+      const dx = v.x - x, dz = v.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > radius + v.half) continue;
+      const k = blastFalloff(Math.max(0, d - v.half * 0.5), radius);
+      if (k <= 0) continue;
+      const nx = d > 0.01 ? dx / d : 1, nz = d > 0.01 ? dz / d : 0;
+      if (v.bike) {
+        throwBike(v, nx * power * k, nz * power * k, nx, nz, 4000);
+        thrown++;
+        continue;
+      }
+      const heft = Math.min(1.5, MASS.car / massOf(v)); // a bus hardly moves
+      const shove = power * k * heft;
+      v.vx += nx * shove;
+      v.vz += nz * shove;
+      v.speed *= 1 - k;
+      const across = nz * v.tx - nx * v.tz;
+      v.yawVel += (across * 3 + (Math.random() - 0.5) * 2) * k * heft;
+      v.rollVel += across * 9 * k * heft;
+      v.pitchVel += (Math.random() - 0.5) * 6 * k * heft;
+      spawnCollisionSparks(v.x, 0.6, v.z, -nx, -nz, 6 + shove);
+    }
+    return thrown;
+  }
+
+  // Gunfire or a blast at (x, z): the people within `radius` m run from it
+  function panic(x, z, radius) {
+    for (const p of peds) {
+      if (!p.placed || p.fallen) continue;
+      const dx = p.x - x, dz = p.z - z;
+      if (dx * dx + dz * dz > radius * radius) continue;
+      if (p.bail && p.bail.flee && p.bail.time >= BAIL_STUN && p.bail.time < BAIL_STUN + p.bail.runFor) {
+        p.bail.fromX = x; // already running: away from the latest shot
+        p.bail.fromZ = z;
+        continue;
+      }
+      if (p.conversation) endConversation(p.conversation);
+      const heading = p.bail ? p.bail.heading : Math.atan2(p.ux * p.dir, p.uz * p.dir);
+      Object.assign(p, { node: null, waiting: false, v: 0, pause: 0 });
+      p.bail = {
+        time: BAIL_STUN * Math.random(), heading, flee: true, runFor: 6 + Math.random() * 5, goal: null, nextSearch: 0,
+        best: Infinity, since: 0, fromX: x, fromZ: z
+      };
+    }
+  }
+
+  // People a moving box (centre x, z, facing heading, half width hw & length hl, velocity vx, vz) runs into: thrown like
+  // the player's car throws them. Returns how many.
+  function knockBox(x, z, heading, hw, hl, vx, vz) {
+    if (vx * vx + vz * vz < KNOCK_SPEED * KNOCK_SPEED) return 0;
+    let thrown = 0;
+    for (const p of peds) {
+      if (!p.placed || p.fallen) continue;
+      if (Math.abs(p.x - x) > hl + 1 || Math.abs(p.z - z) > hl + 1) continue;
+      const hit = boxHit(x, z, heading, hw, hl, p.x, p.z, 0.3);
+      if (!hit) continue;
+      throwPed(p, vx, vz, hit.nx, hit.nz);
+      thrown++;
+    }
+    return thrown;
+  }
+
+  // A vehicle not in the traffic (a police car chasing the player: { x, z, heading, halfW, halfL, speed, vx, vz,
+  // mass }) shoving the traffic it drives into, and shoved back: the vehicles' masses share the push
+  function bumpBody(b) {
+    const reach = b.halfL + 6;
+    for (const v of vehicles) {
+      if (!v.edge) continue;
+      const relX = b.x - v.x;
+      const relZ = b.z - v.z;
+      if (Math.abs(relX) > reach || Math.abs(relZ) > reach) continue;
+      const hit = overlapWithPlayer(relX, relZ, v.yaw + v.yawOffset, halfWidthOf(v), halfLengthOf(v), b.heading, b.halfW, b.halfL);
+      if (!hit) continue;
+      const { nx, nz, pen } = hit;
+      const bvx = Math.sin(b.heading) * b.speed + b.vx;
+      const bvz = Math.cos(b.heading) * b.speed + b.vz;
+      const approach = (bvx - (v.tx * v.speed + v.vx)) * -nx + (bvz - (v.tz * v.speed + v.vz)) * -nz;
+      if (v.bike) {
+        if (approach > KNOCK_SPEED) throwBike(v, bvx, bvz, -nx, -nz, b.mass);
+        continue;
+      }
+      const mv = massOf(v);
+      const ratio = b.mass / (b.mass + mv); // the vehicle's share of the separation and the momentum change
+      b.x += nx * pen * (1 - ratio);
+      b.z += nz * pen * (1 - ratio);
+      shove(v, -nx * pen * ratio, -nz * pen * ratio);
+      if (approach <= 0) continue;
+      const j = 1.28 * approach;
+      v.vx -= nx * j * ratio * 0.92;
+      v.vz -= nz * j * ratio * 0.92;
+      v.speed *= Math.max(0, 1 - 1.3 * ratio);
+      v.yawVel += (Math.random() - 0.5) * Math.min(3, approach * 0.25);
+      b.vx += nx * j * (1 - ratio) * 0.48;
+      b.vz += nz * j * (1 - ratio) * 0.48;
+      b.speed *= 1 - Math.min(0.9, 1 - ratio) * Math.abs(Math.sin(b.heading) * nx + Math.cos(b.heading) * nz);
+      reportCollision(b, v, b.x - nx * b.halfW, 0.58, b.z - nz * b.halfW, nx, nz, approach);
+      if (approach > 1.8) spawnCollisionSparks(b.x - nx * b.halfW, 0.58, b.z - nz * b.halfW, nx, nz, approach);
+    }
+  }
+
+  // A spot in a lane `rMin`..`rMax` m from (x, z), out of the camera's view when it can be: { x, z, heading } (reused),
+  // or null. Where police cars turn up.
+  const spot = { x: 0, z: 0, heading: 0 };
+  function roadSpot(x, z, rMin, rMax) {
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const e = nearEdges[Math.floor(Math.random() * nearEdges.length)];
+      if (!e || e.len < 12) continue;
+      const lane = Math.floor(Math.random() * e.lanes.length);
+      const s = 5 + Math.random() * (e.len - 10);
+      const px = e.sx + e.dx * s + e.rx * e.lanes[lane];
+      const pz = e.sz + e.dz * s + e.rz * e.lanes[lane];
+      const d = Math.hypot(px - x, pz - z);
+      if (d < rMin || d > rMax) continue;
+      if (attempt < 16 && hasView && visible(px, pz, 3)) continue;
+      spot.x = px;
+      spot.z = pz;
+      spot.heading = Math.atan2(e.dx, e.dz);
+      return spot;
+    }
+    return null;
+  }
+
+  // A spot on a sidewalk `rMin`..`rMax` m from (x, z) (where someone walks), out of view when it can be: { x, z } or null.
+  // Where officers on foot, gangs and thieves turn up.
+  function sidewalkSpot(x, z, rMin, rMax) {
+    let fallback = null;
+    const start = Math.floor(Math.random() * NUM_PEDS);
+    for (let k = 0; k < NUM_PEDS; k++) {
+      const p = peds[(start + k) % NUM_PEDS];
+      if (!p.placed || p.fallen || p.bail) continue;
+      const d = Math.hypot(p.x - x, p.z - z);
+      if (d < rMin || d > rMax) continue;
+      if (hasView && visible(p.x, p.z, 3)) {
+        fallback = fallback || p;
+        continue;
+      }
+      spot.x = p.x;
+      spot.z = p.z;
+      return spot;
+    }
+    if (!fallback) return null;
+    spot.x = fallback.x;
+    spot.z = fallback.z;
+    return spot;
   }
 
   function renderBike(v, dt, slot) {
@@ -2346,10 +2593,13 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     b.time += dt;
     let target = b.heading;
     let speed = 0;
+    // (what they run from: the player, or the shot or blast that scared them, see panic)
+    const fromX = b.fromX ?? player.x;
+    const fromZ = b.fromZ ?? player.z;
     if (b.time < BAIL_STUN) {
-      target = Math.atan2(player.x - p.x, player.z - p.z); // what just happened?
+      target = Math.atan2(fromX - p.x, fromZ - p.z); // what just happened?
     } else if (b.flee && b.time < BAIL_STUN + b.runFor) {
-      target = Math.atan2(p.x - player.x, p.z - player.z);
+      target = Math.atan2(p.x - fromX, p.z - fromZ);
       speed = FLEE_SPEED;
     } else {
       if (!b.goal && b.time >= b.nextSearch) {
@@ -2618,6 +2868,17 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     group,
     update,
     setCollisionListener,
+    setKnockListener,
+    rayHit,
+    shootPed,
+    shootVehicle,
+    sparks: sparksAt,
+    blast,
+    panic,
+    knockBox,
+    bumpBody,
+    roadSpot,
+    sidewalkSpot,
     setSolidQuery,
     setHillQuery,
     setParked,

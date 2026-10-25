@@ -323,6 +323,185 @@ body.hud-minimized .toolbar > :not(#btn-toggle-hud) {
 }
 
 /* ------------------------------------------------------------------------------------------------------------------
+   Crime: wanted stars, health, money & weapon under the toolbar; messages, the hurt edges, WASTED / BUSTED
+   ------------------------------------------------------------------------------------------------------------------ */
+.hud-crime {
+  top: calc(var(--edge) + var(--bar-h) + 12px);
+  right: var(--edge);
+}
+
+.crime-card {
+  width: 196px;
+  padding: 10px 12px 9px;
+  display: grid;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.crime-weapon {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.crime-ammo {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.crime-money {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #6fe39a;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.crime-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.crime-bar[hidden] {
+  display: none;
+}
+
+.crime-bar > span {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  transition: transform 0.25s var(--ease-out);
+}
+
+.crime-health > span { background: linear-gradient(90deg, #e2414b, #ff6b6b); }
+.crime-armor > span { background: linear-gradient(90deg, #3d7bff, #7fb0ff); }
+
+.crime-health.is-low > span {
+  animation: low-health 0.8s ease-in-out infinite;
+}
+
+@keyframes low-health {
+  50% { opacity: 0.35; }
+}
+
+.wanted {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  font-size: 19px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.16);
+}
+
+.wanted-star.is-lit {
+  color: var(--taxi);
+  text-shadow: 0 0 10px rgba(255, 194, 26, 0.55);
+}
+
+.wanted.is-evading .wanted-star.is-lit {
+  animation: star-flash 0.7s steps(2, jump-none) infinite;
+}
+
+@keyframes star-flash {
+  50% { color: rgba(255, 255, 255, 0.35); text-shadow: none; }
+}
+
+.crime-toast {
+  position: fixed;
+  z-index: 12;
+  top: calc(var(--edge) + var(--bar-h) + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: var(--r-ctl);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.crime-toast.is-in {
+  animation: rise-in 0.3s var(--ease-out) both;
+}
+
+.crime-toast[hidden] {
+  display: none;
+}
+
+.crime-banner {
+  position: fixed;
+  z-index: 14;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(56px, 11vw, 140px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #d8262f;
+  text-shadow: 0 4px 0 #2a0507, 0 0 40px rgba(0, 0, 0, 0.7);
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.1) 30%, rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+  animation: banner-in 1.2s var(--ease-out) both;
+}
+
+.crime-banner.is-busted {
+  color: #3d7bff;
+  text-shadow: 0 4px 0 #061334, 0 0 40px rgba(0, 0, 0, 0.7);
+}
+
+.crime-banner[hidden] {
+  display: none;
+}
+
+@keyframes banner-in {
+  from { opacity: 0; transform: scale(1.25); }
+  to { opacity: 1; transform: none; }
+}
+
+body.is-down #canvas-container {
+  filter: grayscale(0.85) brightness(0.8);
+  transition: filter 1.2s ease;
+}
+
+.hurt-vignette {
+  position: fixed;
+  z-index: 9;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(190, 10, 20, 0.75) 100%);
+}
+
+body.hud-minimized .crime-toast,
+body.hud-minimized .hud-crime {
+  opacity: 0;
+}
+
+@media (max-width: 620px) {
+  .crime-card {
+    width: 158px;
+    padding: 8px 10px;
+  }
+
+  .crime-money {
+    font-size: 17px;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------------------------
    Top left: brand
    ------------------------------------------------------------------------------------------------------------------ */
 .brand {
@@ -1329,6 +1508,7 @@ body.is-boosting #hud-speed-meter {
 .touch-action > [aria-hidden] { font-size: 23px; line-height: 1; }
 .touch-boost { grid-column: 2; border-color: rgba(255, 194, 26, 0.65); color: var(--taxi); }
 .touch-board { grid-column: 1; grid-row: 2; color: var(--taxi-ink); background: var(--taxi); border-color: var(--taxi); }
+.touch-fire { grid-column: 2; grid-row: 2; border-color: rgba(255, 107, 107, 0.7); color: #ff8a8a; }
 .touch-action[hidden] { display: none; }
 .touch-action.is-pressed { color: var(--taxi-ink); background: var(--taxi); border-color: var(--taxi); }
 
