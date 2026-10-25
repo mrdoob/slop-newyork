@@ -23,14 +23,14 @@ const FOLDERS = {
   render: ['lighting.js', 'rain.js', 'post-processing.js', 'tsl-materials.js', 'scene-culling.js'],
   world: [
     'city-config.js', 'city-geodata.js', 'city-grid.js', 'buildings.js', 'tepic-landmarks.js', 'cotos.js', 'street-details.js',
-    'storefronts', 'terrain.js', 'ground.js', 'drape.js', 'waterways.js', 'river-channels.js', 'trees.js', 'lot-greenery.js', 'medians.js', 'venues.js', 'road-network.js', 'road-paint.js', 'pavements.js', 'pavement-data.js', 'bridges.js', 'airport.js', 'weather.js'
+    'storefronts', 'terrain.js', 'ground.js', 'drape.js', 'waterways.js', 'river-channels.js', 'trees.js', 'lot-greenery.js', 'medians.js', 'venues.js', 'street-food.js', 'flood-model.js', 'floods.js', 'road-network.js', 'road-paint.js', 'pavements.js', 'pavement-data.js', 'bridges.js', 'airport.js', 'weather.js'
   ],
-  sim: ['traffic.js', 'traffic-demand.js', 'pedestrians.js', 'pedestrian-routes.js', 'transit.js', 'mayhem.js', 'weapons.js', 'crime-rules.js', 'gunfire-fx.js', 'crime.js'],
+  sim: ['traffic.js', 'traffic-demand.js', 'pedestrians.js', 'pedestrian-routes.js', 'transit.js', 'mayhem.js', 'weapons.js', 'crime-rules.js', 'gunfire-fx.js', 'crime.js', 'bystanders.js'],
   actors: ['actor-models.js', 'vehicle-lights.js'],
   player: ['controllers.js', 'cameras.js', 'drivetrain.js', 'vehicle-damage.js', 'stats.js', 'aim.js'],
   input: ['touch-controls.js', 'gamepad-controls.js'],
   ui: ['city-map.js', 'tachometer.js', 'crime-hud.js', 'weapon-wheel.js'],
-  audio: ['audio-acoustics.js', 'audio-events.js', 'audio-sources.js', 'audio-synthesis.js', 'audio-system.js'],
+  audio: ['audio-acoustics.js', 'audio-ambience.js', 'audio-events.js', 'audio-sources.js', 'audio-synthesis.js', 'audio-system.js'],
   net: ['multiplayer.js'],
   models: [] // (born in its folder: body shapes & the car models' data, js/models/cars/README.md)
 };

@@ -36,6 +36,10 @@ import { WeaponWheel } from './ui/weapon-wheel.js';
 import { AimControl } from './player/aim.js';
 import { cityUniforms } from './render/tsl-materials.js';
 import { grassDryness } from './world/lot-greenery.js';
+import { GEO } from './world/city-geodata.js';
+import { findVenues } from './world/venues.js';
+import { StreetFood } from './world/street-food.js';
+import { Floods } from './world/floods.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -104,7 +108,7 @@ async function initApp() {
   buildTerrain(scene);
   markInit('terrain');
   // The Río Mololoa & the arroyos in their channels, under the deck the city grid opened over them
-  buildRiverChannels(scene);
+  const rivers = buildRiverChannels(scene);
   markInit('rivers');
   const { colliders: landmarkColliders } = buildTepicLandmarks(scene);
   markInit('landmarks');
@@ -247,6 +251,15 @@ async function initApp() {
     }
   });
   if (Number.isFinite(savedMoney)) crimeSystem.money = Math.max(0, Math.round(savedMoney));
+  // The city's eating & drinking places, off the real shop signs (venues.js), and the night's street food stands in
+  // front of them and at the parks (street-food.js)
+  const venues = findVenues(GEO.houses || [], GEO.signs || [], GEO.houseStride || 8);
+  const streetFood = new StreetFood({ scene, venues, pois: GEO.pois || [], controllers: controllerManager, crime: crimeSystem });
+  // The Live weather's storms flood the low streets & the Mololoa's banks (floods.js); ?flood=<0..1> to preview
+  const floodParam = Number.parseFloat(new URLSearchParams(location.search).get('flood'));
+  const floods = new Floods({ scene, rivers, hold: Number.isFinite(floodParam) ? floodParam : null });
+  controllerManager.waterAt = (x, z) => floods.depthAt(x, z);
+  let floodWarned = false;
   audioSystem.sources.pursuers = crimeSystem.cruisers;
   const crimeHud = new CrimeHud();
   // The weapon wheel, held open with Tab (ui/weapon-wheel.js): the game runs slowed meanwhile
@@ -466,7 +479,10 @@ async function initApp() {
       return;
     }
     const target = boardTarget();
-    if (!target) return;
+    if (!target) {
+      streetFood.buy(); // (on foot at a taco stand: something to eat)
+      return;
+    }
     if (target.taken) {
       const taken = trafficSystem.hijack(target.taken);
       if (taken.kind === 'car') controllerManager.leaveCarBehind(); // (the player's own car stays where it is)
@@ -494,6 +510,7 @@ async function initApp() {
         text = v.bike ? 'Robar la bici' : v.isPolice ? 'Robar la patrulla' : v.bus ? 'Robar el camión' : v.fleet === 'combi' ? 'Robar la combi' : 'Robar el coche';
       }
       else if (target) text = promptNames[target.mode];
+      else text = streetFood.prompt();
     } else if (controllerManager.activeMode === 'helicopter') {
       const h = controllerManager.entities.helicopter;
       const air = h.position.y - controllerManager.getGroundHeight(h.position.x, h.position.z, 'helicopter');
@@ -507,7 +524,7 @@ async function initApp() {
       // the touch button: get in or take what is at hand, or get out
       boardButton.hidden = onFoot && !text;
       const label = boardButton.querySelector('[data-board-label]');
-      if (label) label.textContent = !onFoot ? 'Bajar' : text.startsWith('Robar') ? 'Robar' : 'Subir';
+      if (label) label.textContent = !onFoot ? 'Bajar' : text.startsWith('Robar') ? 'Robar' : text.startsWith('Comprar') ? 'Comprar' : 'Subir';
     }
     if (!elPrompt) return;
     elPrompt.hidden = !text;
@@ -791,7 +808,7 @@ async function initApp() {
   markInit('ui');
   // Debugging handle for the console, only with ?debug in the URL
   if (new URLSearchParams(location.search).has('debug')) {
-    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, crimeSystem, stamina, aimControl, weaponWheel };
+    window.__slop = { scene, renderer, streetFood, venues, floods, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, crimeSystem, stamina, aimControl, weaponWheel };
   }
 
   // The loading screen stays up while the shaders compile (precompileShaders() & the warm-up frame, see the loop) and
@@ -888,11 +905,15 @@ async function initApp() {
   function updateRain(dt, elapsed) {
     const w = lightingSystem.activePresetId === 'live' ? lightingSystem.liveWeather || CLEAR_WEATHER : CLEAR_WEATHER;
     roadWater.update(dt, w);
+    floods.update(dt, w, cameraSystem.camera);
+    // word of a flood once it is deep
+    if (floods.level > 0.3 && !floodWarned) crimeSystem.toast('¡Se inunda la ciudad! Cuidado con los bajos y el Mololoa');
+    floodWarned = floods.level > 0.3 || (floodWarned && floods.level > 0.15);
     // wind blows from windDirection (° clockwise from true north): toward the opposite bearing, in the grid frame
     const toward = (w.windDirection + 180 - (CITY.bearingDeg || 0)) * Math.PI / 180;
     const wind = (w.windSpeed || 0) / 3.6;
     rain.update(roadWater.rain, Math.sin(toward) * wind, -Math.cos(toward) * wind, elapsed, cameraSystem.camera);
-    controllerManager.roadWet = roadWater.wet;
+    controllerManager.roadWet = floods.level > 0.05 ? 1 : roadWater.wet; // (a flood soaks every street)
     controllerManager.roadGrip = wetGrip(roadWater.wet);
     trafficSystem.setRoadWater(roadWater.wet, roadWater.rain, controllerManager.roadGrip);
     audioSystem.setRain(roadWater.rain);
@@ -908,6 +929,7 @@ async function initApp() {
     } else nextLightning = 0;
   }
 
+  const ambience = [];
   let lastTime = performance.now();
   let elapsed = 0;
   let frameCount = 0;
@@ -940,6 +962,7 @@ async function initApp() {
     aimControl.update(dt);
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
+    cityUniforms.uClock.value = elapsed;
     // the hour sets how much traffic and how many people are out (traffic-demand.js): rush hours on the avenues
     trafficSystem.setHour(lightingSystem.hourOfDay);
     trafficSystem.setParked(crimeSystem.addObstacles(controllerManager.parkedVehicles()));
@@ -956,6 +979,11 @@ async function initApp() {
     if (streetDetails.breaker) streetDetails.breaker.update(dt, controllerManager.getActiveEntity(), controllerManager.activeMode);
     // Gunfire, the police, gangs & thieves (crime.js), and a blast's shake of the camera
     crimeSystem.update(dt, elapsed, cameraSystem.camera);
+    streetFood.update(dt, lightingSystem.hourOfDay, cameraSystem.camera);
+    // the sounds that stay put (audio-ambience.js): the planchas, the antros' & parties' music, the fires
+    ambience.length = 0;
+    streetFood.sounds(ambience);
+    audioSystem.setAmbience(ambience);
     crimeSystem.shakeCamera(cameraSystem.camera);
     stamina.update(dt, crimeSystem.state === 'play' ? controllerManager.sprintingMode() : null);
     crimeHud.update(crimeSystem, dt, stamina);
@@ -1033,6 +1061,7 @@ async function initApp() {
       }
       // the grass greens in the rains & browns in the dry season (lot-greenery.js), by the month shown
       cityUniforms.uDryness.value = grassDryness(lightingSystem.liveClock().getMonth());
+      cityUniforms.uHour.value = lightingSystem.hourOfDay; // (the lit rooms & the shops' shutters)
       if (elSpeed) elSpeed.textContent = String(kmh);
       if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, kmh / (topSpeedKmh[mode] || 130))})`;
       document.body.classList.toggle('is-boosting', controllerManager.keys.boost && kmh > 0);

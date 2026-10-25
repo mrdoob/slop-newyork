@@ -25,23 +25,25 @@ function draped(data) {
 function buildRiverChannels(scene) {
   const group = new THREE.Group();
   group.name = 'Rivers';
+  let waterMesh = null;
   if (waterways) {
     const { banks, water, bridges } = waterways.meshData();
     const add = (data, material, shadows) => {
-      if (!data.position.length) return;
+      if (!data.position.length) return null;
       const mesh = new THREE.Mesh(draped(data), material);
       mesh.receiveShadow = true;
       mesh.castShadow = shadows;
       group.add(mesh);
+      return mesh;
     };
     add(banks, createRiverBankMaterial(), false);
-    add(water, createRiverWaterMaterial(), false);
+    waterMesh = add(water, createRiverWaterMaterial(), false); // (it rises with a flood, floods.js)
     const slab = createCurbMaterial();
     slab.side = THREE.DoubleSide;
     add(bridges, slab, true);
   }
   scene.add(group);
-  return { group };
+  return { group, water: waterMesh };
 }
 
 /** The road deck's geometry (non-indexed or indexed, as city-grid.js leaves it) with the channels' holes taken out */

@@ -41,6 +41,7 @@ import {
 } from '../render/tsl-materials.js';
 import { GEO } from './city-geodata.js';
 import { STOREFRONTS } from './storefronts/index.js';
+import { venueKind, VENUE_KINDS } from './venues.js';
 import { LANDMARK_RESERVES as TEPIC_RESERVES } from './tepic-landmarks.js';
 import { SLOPES, groundHeight, liftAt } from './ground.js';
 import { pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
@@ -1948,7 +1949,9 @@ function buildCityBlocks(scene) {
         const tone = strip || coto ? plazaTone : rand();
         const side = big || strip ? WALL_KINDS.bigSide : WALL_KINDS.rear;
         const faces = [side, side, side, side];
-        faces[front] = chain ? WALL_KINDS.chainStore + sign.store : big || strip ? WALL_KINDS.bigFront : shop ? WALL_KINDS.shop : WALL_KINDS.entry;
+        // (a taquería's, a bar's front: WALL_KINDS.shop + 0.25, its shutter up at night, tsl-materials.js)
+        const nightShop = hasSign && !chain && VENUE_KINDS[venueKind(sign.text)]?.night ? 0.25 : 0;
+        faces[front] = chain ? WALL_KINDS.chainStore + sign.store : big || strip ? WALL_KINDS.bigFront : shop ? WALL_KINDS.shop + nightShop : WALL_KINDS.entry;
         const hx = w * 0.5, hz = d * 0.5;
         const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;
         const ez = Math.abs(sn) * hx + Math.abs(cs) * hz;

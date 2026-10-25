@@ -2,6 +2,7 @@ import { createSynthResources, createMotorVoice, setControlRate } from './audio-
 import { createEventResources, playEvent, createWindVoice, createRainVoice } from './audio-events.js';
 import { CityAudioSources } from './audio-sources.js';
 import { CityAcoustics } from './audio-acoustics.js';
+import { createAmbienceResources, createLoopVoice } from './audio-ambience.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const smooth = (param, value, now, time = 0.035, immediate = false) => {
@@ -97,8 +98,12 @@ class CityAudioSystem {
     this.enabled = true;
     try { this.enabled = localStorage.getItem('nyc-sound') !== 'off'; } catch { /* Private browsing. */ }
     const smallDevice = navigator.hardwareConcurrency <= 4 || matchMedia('(pointer: coarse)').matches;
-    this.limits = smallDevice ? { motors: 6, sirens: 1, events: 5 } : { motors: 8, sirens: 2, events: 8 };
+    this.limits = smallDevice ? { motors: 6, sirens: 1, events: 5, loops: 3 } : { motors: 8, sirens: 2, events: 8, loops: 5 };
     this.motors = new Map();
+    // The sounds that stay where they are (audio-ambience.js): music, planchas, fires, crowds; setAmbience() hands
+    // them over every frame, the nearest few play
+    this.loops = new Map();
+    this.ambientSources = [];
     this.sirens = new Map();
     this.events = [];
     this.states = new WeakMap();
@@ -159,6 +164,7 @@ class CityAudioSystem {
       listener.upX, listener.upY, listener.upZ
     );
     this.resources = createEventResources(context, createSynthResources(context));
+    this.ambience = createAmbienceResources(context);
     this.mix = context.createGain();
     this.compressor = context.createDynamicsCompressor();
     this.compressor.threshold.value = -16;
@@ -206,7 +212,7 @@ class CityAudioSystem {
   }
 
   reset() {
-    for (const pool of [this.motors, this.sirens]) {
+    for (const pool of [this.motors, this.sirens, this.loops]) {
       for (const slot of pool.values()) { slot.voice.dispose(); slot.emitter.dispose(); }
       pool.clear();
     }
@@ -453,6 +459,7 @@ class CityAudioSystem {
       }
     }
     this.updatePool(this.motors, sources.motors, this.limits.motors, now, dt);
+    this.updateLoops(now);
     this.updatePool(this.sirens, sources.sirens, this.limits.sirens, now, dt, true);
     for (const source of sources.people) {
       const state = this.state(source, now);
@@ -514,6 +521,48 @@ class CityAudioSystem {
     const mode = this.controllers?.activeMode;
     Object.assign(this.rainParams, { enclosure, inCar: mode === 'car' || mode === 'helicopter' });
     this.rainVoice.update(this.rainParams, now);
+  }
+
+  // The sounds that stay where they are this frame: [{ kind (audio-ambience.js), id, x, y, z, gain, range? }]
+  setAmbience(list) {
+    this.ambientSources = list;
+  }
+
+  // The nearest few of them play, each through its own spatial emitter (walls muffle a club's music like the rest)
+  updateLoops(now) {
+    const L = this.listener;
+    const list = this.ambientSources;
+    for (const s of list) s.d2 = (s.x - L.x) ** 2 + (s.y - L.y) ** 2 + (s.z - L.z) ** 2;
+    list.sort((a, b) => a.d2 - b.d2);
+    for (const slot of this.loops.values()) slot.selected = false;
+    let count = 0;
+    for (const source of list) {
+      const range = source.range ?? 120;
+      if (source.d2 > range * range || ++count > this.limits.loops) break;
+      let slot = this.loops.get(source.id);
+      if (!slot) {
+        const ref = source.kind === 'sizzle' ? 1.5 : source.kind === 'crowd' ? 3 : 7;
+        const emitter = new SpatialEmitter(this.context, this.mix, this.reflections, this.acoustics, ref, 0);
+        slot = { emitter, voice: createLoopVoice(this.context, this.ambience, source.kind, emitter.input, source.seed || count), fresh: true };
+        this.loops.set(source.id, slot);
+      }
+      slot.selected = true;
+      slot.retire = 0;
+      slot.emitter.update(source, this.listener, now, range, slot.fresh);
+      slot.voice.update({ gain: 1 }, now);
+      slot.fresh = false;
+    }
+    for (const [id, slot] of this.loops) {
+      if (slot.selected) continue;
+      if (!slot.retire) {
+        smooth(slot.emitter.input.gain, 0, now, 0.2);
+        slot.retire = now + 0.8;
+      } else if (now >= slot.retire) {
+        slot.voice.dispose();
+        slot.emitter.dispose();
+        this.loops.delete(id);
+      }
+    }
   }
 
   // How hard it rains (rainIntensity, 0..1), for the rain's hiss
