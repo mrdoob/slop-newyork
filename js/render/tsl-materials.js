@@ -351,8 +351,11 @@ const evaluateApartmentInterior = Fn(([uCoord, vCoord, winUV, cellId, winWNode, 
  * with storefronts on the ground floor; entry: residential street front, windows down to the ground floor and one
  * entrance door; rear: yard, court & air-shaft walls, plain common brick with windows on every floor; lotLine:
  * windowless lot-line (party) wall, common brick or grey parging; blankStone: windowless wall in the facade's stone.
+ * The Mexican house material alone also draws a big box's walls (a supermarket's or mall's hall, a strip plaza):
+ * bigFront, its glazed front under a canopy; bigSide, ribbed metal cladding (negative, below every other kind; chain
+ * stores run from chainStore up, one kind per store).
  */
-const WALL_KINDS = { shop: 0, entry: 1, rear: 2, lotLine: 3, blankStone: 4, chainStore: 5 };
+const WALL_KINDS = { bigSide: -2, bigFront: -1, shop: 0, entry: 1, rear: 2, lotLine: 3, blankStone: 4, chainStore: 5 };
 
 /**
  * Facade cell coordinates shared by the curtain-wall & pre-war materials: wall UV (u runs along whichever horizontal
@@ -480,7 +483,8 @@ function atlasSlotUV(slot, cols, rows) {
  * with aluminium frames behind iron bars (rejas); on the street front's ground floor a door and a garage gate, or a
  * shop's rolled-down steel shutter (cortina); side & rear walls partly bare grey block (obra negra); flat concrete roofs,
  * some coated red (impermeabilizante). WALL_KINDS.chainStore fronts get a convenience store's glazing under a yellow
- * stripe and a red band. Lit windows & open stores glow at night.
+ * stripe and a red band. Big boxes (WALL_KINDS.bigFront / bigSide) are halls in pale metal cladding with a glazed
+ * front under a dark canopy and a white membrane roof. Lit windows & open stores glow at night.
  */
 let _mexicanHouseMat = null;
 // `chains`: [{ band, stripe }] colours of each chain store front (js/world/storefronts), picked by the wall kind
@@ -516,10 +520,13 @@ function createMexicanHouseMaterial({ floorHeight = 3.0, chains = [] } = {}) {
     // which kind of wall
     const isChain = step(4.5, kind);
     const chainNo = int(clamp(floor(kind.sub(5.0).add(0.5)), 0.0, chainList.length - 1));
-    const isShop = float(1.0).sub(step(0.5, kind));
+    const isBigSide = float(1.0).sub(step(-1.5, kind));
+    const isBigFront = step(-1.5, kind).mul(float(1.0).sub(step(-0.5, kind)));
+    const isBig = isBigSide.add(isBigFront);
+    const isShop = step(-0.5, kind).mul(float(1.0).sub(step(0.5, kind)));
     const isEntry = step(0.5, kind).mul(float(1.0).sub(step(1.5, kind)));
     const isFront = isShop.add(isEntry);
-    const isBack = float(1.0).sub(isFront).sub(isChain).max(0.0);
+    const isBack = float(1.0).sub(isFront).sub(isChain).sub(isBig).max(0.0);
     const rawBlock = isBack.mul(step(wallSeed, 0.42));
 
     // the house's paint
@@ -554,7 +561,7 @@ function createMexicanHouseMaterial({ floorHeight = 3.0, chains = [] } = {}) {
     const backWin = step(0.55, hash2D(vec2(cellK.add(seed), fl.add(wallSeed.mul(13.0)))));
     const freeCell = float(1.0).sub(ground.mul(isFront).mul(step(abs(cellK.sub(doorK)), 0.5).add(step(abs(cellK.sub(gateK)), 0.5).mul(hasGate)).min(1.0)));
     const win = step(abs(u), 0.62).mul(step(1.0, fv)).mul(step(fv, 2.2)).mul(mix(float(1.0), backWin, isBack)).mul(float(1.0).sub(rawBlock.mul(0.6)))
-      .mul(freeCell).mul(float(1.0).sub(isShop.mul(ground))).mul(float(1.0).sub(isChain)).mul(step(0.3, fromTop));
+      .mul(freeCell).mul(float(1.0).sub(isShop.mul(ground))).mul(float(1.0).sub(isChain)).mul(float(1.0).sub(isBig)).mul(step(0.3, fromTop));
     // frame, glass & bars
     const frame = win.mul(float(1.0).sub(step(abs(u), 0.56).mul(step(1.06, fv)).mul(step(fv, 2.14))));
     const bars = win.mul(max(step(0.82, fract(u.mul(6.0).add(0.5))), step(0.88, fract(fv.sub(1.0).mul(1.6)))));
@@ -581,11 +588,35 @@ function createMexicanHouseMaterial({ floorHeight = 3.0, chains = [] } = {}) {
     c = mix(c, chainStripes.element(chainNo), stripe);
     c = mix(c, chainBands.element(chainNo).mul(float(1.0).sub(step(0.97, fract(sx.div(2.0))).mul(0.3))), band);
 
-    // roofs: concrete, some coated red
-    const roof = mix(color(0x9c988f), color(0xa64b3d), step(hash2D(vec2(seed, 2.7)), 0.35))
+    // big box: ribbed cladding in a pale neutral (white, sand, light or mid grey by the tone) over a concrete plinth,
+    // a darker coping; the front glazed to ~4 m between piers every 7.5 m (mullions every 1.5 m), the doors in the
+    // middle bay, a dark canopy over the glazing
+    const panel = mix(mix(color(0xe9e6df), color(0xd6cfbf), step(0.3, tone)), mix(color(0xc3c8cb), color(0x9da5aa), step(0.85, tone)), step(0.6, tone));
+    const rib = lineAA(fract(sx.div(0.6)).sub(0.5), 0.07).mul(isBigSide);
+    let hall = panel.mul(float(1.0).sub(rib.mul(0.16)));
+    hall = mix(hall, color(0x9a978f), step(y, 0.9)); // plinth
+    hall = mix(hall, panel.mul(0.72), step(fromTop, 0.5)); // coping
+    const hallGlazH = min(float(4.2), box.y.mul(0.55));
+    const hallBays = max(floor(wallW.div(7.5)), 1.0);
+    const hallBay = wallW.div(hallBays);
+    const hallU = fract(sx.div(hallBay)).sub(0.5).mul(hallBay); // metres from the bay's centre
+    const hallPier = step(hallBay.mul(0.5).sub(0.35), abs(hallU));
+    const hallMull = lineAA(fract(sx.div(1.5)).sub(0.5), 0.05);
+    const hallGlass = isBigFront.mul(step(y, hallGlazH)).mul(float(1.0).sub(hallPier)).mul(step(0.35, y));
+    const hallDoors = hallGlass.mul(step(abs(floor(sx.div(hallBay)).sub(floor(hallBays.mul(0.5)))), 0.5)).mul(step(y, 2.6));
+    const canopy = isBigFront.mul(step(hallGlazH, y)).mul(step(y, hallGlazH.add(0.7)));
+    hall = mix(hall, color(0x3a3f44), canopy);
+    hall = mix(hall, mix(color(0x2a3a42), color(0x8f979c), hallMull), hallGlass);
+    hall = mix(hall, color(0x1f2a30), hallDoors);
+    c = mix(c, hall, isBig);
+
+    // roofs: concrete, some coated red; a big box's white membrane (a box over 900 m2 and 18 m across)
+    const bigRoof = step(900.0, box.x.mul(box.z)).mul(step(18.0, min(box.x, box.z)));
+    const roof = mix(mix(color(0x9c988f), color(0xa64b3d), step(hash2D(vec2(seed, 2.7)), 0.35)), color(0xd9d8d2), bigRoof)
       .mul(noise2D(positionWorld.xz.mul(0.4)).mul(0.12).add(0.94));
     const glowWin = win.mul(float(1.0).sub(frame)).mul(float(1.0).sub(bars)).mul(step(0.5, hash2D(vec2(cellK.add(seed.mul(3.0)), fl.add(1.7)))));
-    return { color: mix(c, roof, isRoof), glowWin: glowWin.mul(float(1.0).sub(isRoof)), store: glass.mul(float(1.0).sub(pier)).mul(float(1.0).sub(isRoof)), shiny: win.add(glass).min(1.0).mul(float(1.0).sub(isRoof)) };
+    const storeGlass = glass.mul(float(1.0).sub(pier)).add(hallGlass.mul(float(1.0).sub(hallMull)));
+    return { color: mix(c, roof, isRoof), glowWin: glowWin.mul(float(1.0).sub(isRoof)), store: storeGlass.mul(float(1.0).sub(isRoof)), shiny: win.add(glass).add(hallGlass).min(1.0).mul(float(1.0).sub(isRoof)) };
   })();
 
   mat.colorNode = wall.color;

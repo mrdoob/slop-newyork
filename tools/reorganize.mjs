@@ -22,7 +22,7 @@ const JS = path.join(ROOT, 'js');
 const FOLDERS = {
   render: ['lighting.js', 'post-processing.js', 'tsl-materials.js', 'scene-culling.js'],
   world: [
-    'city-config.js', 'city-geodata.js', 'city-grid.js', 'buildings.js', 'tepic-landmarks.js', 'street-details.js',
+    'city-config.js', 'city-geodata.js', 'city-grid.js', 'buildings.js', 'tepic-landmarks.js', 'cotos.js', 'street-details.js',
     'storefronts', 'terrain.js', 'trees.js', 'road-network.js', 'road-paint.js', 'weather.js'
   ],
   sim: ['traffic.js', 'pedestrians.js', 'pedestrian-routes.js', 'mayhem.js'],

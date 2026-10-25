@@ -20,6 +20,7 @@ import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js
 import { CityAudioSystem } from './audio/audio-system.js';
 import { buildTerrain, hillGround } from './world/terrain.js';
 import { buildTepicLandmarks } from './world/tepic-landmarks.js';
+import { buildCotos } from './world/cotos.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -86,7 +87,9 @@ async function initApp() {
   markInit('landmarks');
   const cityBlocks = buildCityBlocks(scene);
   markInit('blocks');
-  const allColliders = [...landmarkColliders, ...cityBlocks.colliders, ...(cityGrid.colliders || [])];
+  // The gated communities' walls & guard booths (the houses inside are among the blocks')
+  const { colliders: cotoColliders } = buildCotos(scene);
+  const allColliders = [...landmarkColliders, ...cityBlocks.colliders, ...cotoColliders, ...(cityGrid.colliders || [])];
 
   const streetDetails = buildStreetDetails(scene);
   markInit('streetDetails');

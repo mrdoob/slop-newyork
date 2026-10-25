@@ -286,6 +286,14 @@ function classify(comps, labels) {
   return out;
 }
 const { blocks, lab, prop } = extractBlocks({ land, w: W, h: H, x0: X0, z0: Z0, res: RES, sidewalk: SIDEWALK, classify });
+// the raster cell under world (x, z) (-1 off the raster), the block label there (0: a roadway or off the raster) and
+// whether it lies inside a property line
+const cellAt = (x, z) => {
+  const i = Math.floor((x - X0) / RES), j = Math.floor((z - Z0) / RES);
+  return i >= 0 && j >= 0 && i < W && j < H ? j * W + i : -1;
+};
+const labAt = (x, z) => { const k = cellAt(x, z); return k < 0 ? 0 : lab[k]; };
+const propAt = (x, z) => { const k = cellAt(x, z); return k < 0 ? 0 : prop[k]; };
 
 // --- Parks, pitches, schoolyards, scrub & water onto the blocks ---------------------------------------------------------
 function elemRings(e) {
@@ -294,19 +302,59 @@ function elemRings(e) {
     return r.length > 3 && Math.hypot(r[0][0] - r[r.length - 1][0], r[0][1] - r[r.length - 1][1]) < 0.5 ? [r.slice(0, -1)] : [];
   }
   const parts = (e.members || []).filter((m) => m.role === 'outer' && m.geometry).map((m) => m.geometry.map((g) => toWorld(g.lon, g.lat)));
-  const rings = [];
+  return stitch(parts).filter((r) => r.pts.length > 3).map((r) => (r.closed ? r.pts.slice(0, -1) : r.pts));
+}
+// Polylines [[x, z], ...] joined end to end where they meet (within 0.5 m), either way round: [{ pts, closed }], a
+// closed one ending on its first point (a relation's outer ring, a roundabout drawn as several ways)
+function stitch(parts) {
+  parts = parts.slice();
   const close = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.5;
+  const out = [];
   while (parts.length) {
-    let ring = parts.shift();
-    for (let guard = 0; guard < 500 && !close(ring[0], ring[ring.length - 1]); guard++) {
-      const i = parts.findIndex((p) => close(p[0], ring[ring.length - 1]) || close(p[p.length - 1], ring[ring.length - 1]));
+    let pts = parts.shift();
+    for (let guard = 0; guard < 500 && !close(pts[0], pts[pts.length - 1]); guard++) {
+      const i = parts.findIndex((p) => close(p[0], pts[pts.length - 1]) || close(p[p.length - 1], pts[pts.length - 1]));
       if (i < 0) break;
       const p = parts.splice(i, 1)[0];
-      ring = ring.concat(close(p[0], ring[ring.length - 1]) ? p.slice(1) : p.reverse().slice(1));
+      pts = pts.concat(close(p[0], pts[pts.length - 1]) ? p.slice(1) : p.slice().reverse().slice(1));
     }
-    if (ring.length > 3) rings.push(close(ring[0], ring[ring.length - 1]) ? ring.slice(0, -1) : ring);
+    out.push({ pts, closed: close(pts[0], pts[pts.length - 1]) });
   }
-  return rings;
+  return out;
+}
+// a ring's vertices `d` m inwards (each vertex along the bisector of its two edges' inward normals)
+function insetRing(ring, d) {
+  return ring.map((_, i) => insetVertex(ring, i, d));
+}
+// the vertices `idx` of a ring, `d` m inwards: a stretch of its outline as an open polyline
+function insetRun(ring, idx, d) {
+  return idx.map((i) => insetVertex(ring, i, d));
+}
+function insetVertex(ring, i, d) {
+  const n = ring.length;
+  const p = ring[i], a = ring[(i + n - 1) % n], b = ring[(i + 1) % n];
+  const inward = (u, v) => {
+    const L = Math.hypot(v[0] - u[0], v[1] - u[1]) || 1;
+    let nx = (v[1] - u[1]) / L, nz = -(v[0] - u[0]) / L;
+    if (!inRing(ring, (u[0] + v[0]) / 2 + nx * 0.3, (u[1] + v[1]) / 2 + nz * 0.3)) { nx = -nx; nz = -nz; }
+    return [nx, nz];
+  };
+  const [n1x, n1z] = inward(a, p), [n2x, n2z] = inward(p, b);
+  let bx = n1x + n2x, bz = n1z + n2z;
+  const bl = Math.hypot(bx, bz);
+  if (bl < 1e-3) return [p[0] + n1x * d, p[1] + n1z * d];
+  bx /= bl; bz /= bl;
+  const k = Math.min(3, 1 / Math.max(0.33, bx * n1x + bz * n1z)); // the miter, capped at sharp corners
+  return [p[0] + bx * d * k, p[1] + bz * d * k];
+}
+// point (x, z) inside the ring [[x, z], ...] (even-odd rule)
+function inRing(ring, x, z) {
+  let c = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, zi] = ring[i], [xj, zj] = ring[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
 }
 const GREEN = (t) => {
   if (/^(park|garden|pitch|playground|stadium|track|sports_centre|recreation_ground|golf_course|nature_reserve|dog_park|common)$/.test(t.leisure || '')) return t.leisure;
@@ -342,6 +390,25 @@ for (const g of greens) {
 for (const b of blocks) {
   b.park = b.rural ? 1 : Math.min(1, Math.round(((b.parkCells || 0) / b.cells) * 100) / 100);
   b.parkName = parkOf.get(b)?.name || '';
+}
+// Roundabouts (junction=roundabout | circular, often mapped as several ways): the island inside the ring is a planted
+// glorieta, never a block of houses (an island 20-80 m across is too wide for a median and has no real footprints)
+{
+  const chains = ways.filter((w) => /^(roundabout|circular)$/.test(w.tags.junction || '') && DRIVE.has(w.tags.highway))
+    .map((w) => w.geometry.map((g) => toWorld(g.lon, g.lat)));
+  const rings = stitch(chains).filter((r) => r.closed && r.pts.length > 3).map((r) => r.pts.slice(0, -1));
+  let islands = 0;
+  for (const b of blocks) {
+    if (b.rural) continue;
+    const [cx, cz] = centroid(b.poly);
+    const ring = rings.find((r) => Math.abs(ringArea(b.poly)) < Math.abs(ringArea(r)) && inRing(r, cx, cz));
+    if (!ring) continue;
+    b.park = 1;
+    b.parkName = b.parkName || 'Glorieta';
+    b.roundabout = true;
+    islands++;
+  }
+  log(`${rings.length} roundabouts, ${islands} islands planted`);
 }
 log(`${greens.length} green/water areas; ${blocks.filter((b) => b.park > 0.6).length} park blocks`);
 const parks = greens.filter((g) => g.name || g.rings.some((r) => Math.abs(ringArea(r)) > 2500)).map((g) => ({
@@ -394,19 +461,27 @@ log(`${Object.keys(landmarks).length} notable footprints`);
 //     oriented box the game builds: kept inside the property line, its front towards the nearest street
 // =====================================================================================================================
 const HS = 8; // integers per house (see `houses` below)
+// bits of a house's kind (its 7th integer, over the front side 0-3): a shop on the ground floor, a big box (a hall: a
+// supermarket, department store, mall or warehouse), a strip plaza (a row of locales under one roof), a house of a
+// gated community (fraccionamiento / coto, see 5B2: its number + 1 from bit COTO_SHIFT up)
+const KIND = { shop: 4, big: 8, strip: 16, coto: 32 };
+const COTO_SHIFT = 6;
 const houses = [];
 {
   const file = path.join(DATA, 'overture', 'buildings.geojsonl');
-  const labAt = (x, z) => {
-    const i = Math.floor((x - X0) / RES), j = Math.floor((z - Z0) / RES);
-    return i >= 0 && j >= 0 && i < W && j < H ? lab[j * W + i] : 0;
-  };
-  const propAt = (x, z) => {
-    const i = Math.floor((x - X0) / RES), j = Math.floor((z - Z0) / RES);
-    return i >= 0 && j >= 0 && i < W && j < H ? prop[j * W + i] : 0;
-  };
   const hashf = (a, b) => { const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return v - Math.floor(v); };
-  let read = 0, small = 0, outside = 0, squeezed = 0;
+  // OpenStreetMap's commercial buildings (the malls, supermarkets & department stores mapped by hand), to tell the
+  // Overture footprint standing on one from the houses: the ML footprints carry no use at all (98.8% of them)
+  const STORE_SHOP = /^(mall|supermarket|department_store|wholesale|doityourself|hardware|furniture|car|garden_centre|variety_store|trade)$/;
+  const STORE_BUILDING = /^(retail|commercial|supermarket|warehouse|industrial)$/;
+  const stores = [];
+  for (const e of bldOSM.elements) {
+    const t = e.tags || {};
+    if (!STORE_SHOP.test(t.shop || '') && !STORE_BUILDING.test(t.building || '')) continue;
+    for (const ring of elemRings(e)) stores.push({ ring, box: bbox(ring), mall: t.shop === 'mall' || /^plaza\b|centro comercial/i.test(t.name || '') });
+  }
+  const storeAt = (x, z) => stores.find((s) => x > s.box.x0 && x < s.box.x1 && z > s.box.z0 && z < s.box.z1 && inRing(s.ring, x, z));
+  let read = 0, small = 0, outside = 0, squeezed = 0, bigBoxes = 0;
   if (fs.existsSync(file)) {
     const text = fs.readFileSync(file, 'utf8');
     let start = 0;
@@ -423,9 +498,10 @@ const houses = [];
       if (!outer || outer.length < 4) continue;
       const ring = outer.map(([lon, lat]) => toWorld(lon, lat));
       const area = Math.abs(ringArea(ring));
-      if (area < 25 || area > 30000) { small++; continue; }
+      if (area < 25 || area > 120000) { small++; continue; }
       const r = minAreaRect(ring);
       if (!r || !inBox(r.cx, r.cz) || !labAt(r.cx, r.cz)) { outside++; continue; }
+      if (byLab.get(labAt(r.cx, r.cz))?.roundabout) { outside++; continue; } // (a glorieta's monument base or kiosk)
       let { cx, cz, w, d } = r;
       const th = r.th, cs = Math.cos(th), sn = Math.sin(th);
       const toW = (u, v) => [cx + u * cs + v * sn, cz - u * sn + v * cs];
@@ -472,12 +548,254 @@ const houses = [];
         else floors = hr < 0.6 ? 1 : hr < 0.94 ? 2 : 3;
       }
       floors = Math.min(12, Math.max(1, floors));
+      // Big boxes (a supermarket, a department store, a mall, a warehouse): a building mapped as one in OpenStreetMap or
+      // Overture, or simply too big for a house (1500 m2 and 20 m deep: Tepic's houses run 60-300 m2), built as one hall
+      // with no house split, tinaco or rejas. Malls of OSM too small to be a hall are a row of locales (a strip plaza)
+      const store = storeAt(...centroid(ring));
+      const big = (area >= 1500 && Math.min(w, d) >= 20) || (area >= 700 && (!!store || /supermarket|warehouse|industrial|retail|commercial/.test(cls)));
+      const strip = !big && !!store && store.mall;
+      if (big) {
+        floors = p.num_floors ? Math.min(3, Math.round(p.num_floors)) : area > 6000 ? 3 : 2; // (a hall 6-9 m high)
+        bigBoxes++;
+      }
       // Ground floor shops: tagged commercial buildings, most of the centro, a few on every street
-      const shop = /commercial|retail|office|supermarket|hotel/.test(cls) || (bestD < 6 && (centro ? hr > 0.25 : hashf(cz, cx) < 0.12));
-      houses.push(Math.round(cx * 10), Math.round(cz * 10), Math.round(w * 10), Math.round(d * 10), Math.round(th * 1000), floors, front + (shop ? 4 : 0), 0);
+      const shop = big || strip || /commercial|retail|office|supermarket|hotel/.test(cls) || (bestD < 6 && (centro ? hr > 0.25 : hashf(cz, cx) < 0.12));
+      houses.push(Math.round(cx * 10), Math.round(cz * 10), Math.round(w * 10), Math.round(d * 10), Math.round(th * 1000), floors,
+        front + (shop ? KIND.shop : 0) + (big ? KIND.big : 0) + (strip ? KIND.strip : 0), 0);
     }
   }
-  log(`houses: ${houses.length / HS} built of ${read} Overture footprints (${small} too small or large, ${outside} off the blocks, ${squeezed} squeezed out by the streets)`);
+  log(`houses: ${houses.length / HS} built of ${read} Overture footprints (${small} too small or large, ${outside} off the blocks, ${squeezed} squeezed out by the streets), ${bigBoxes} big boxes`);
+}
+
+// =====================================================================================================================
+// 5B2. GATED COMMUNITIES (fraccionamientos cerrados, cotos): the blocks along streets mapped access=private, each
+//      network of such streets one coto. Walled round along the property line where it faces a public street (a barda
+//      of ~2.6 m), a guard booth (caseta) & barrier arm where a private street meets a public one, and the same house
+//      over and over inside: one colour, one height, no shops (one developer built them all)
+// =====================================================================================================================
+const cotos = [];
+{
+  // (drivable streets only: a private service road or driveway is a car park's or a house's, not a coto's)
+  const PRIVATE = (t) => /^(private|residents)$/.test(t.access || '') && /^(residential|living_street|unclassified)$/.test(t.highway);
+  const priv = ways.filter((w) => PRIVATE(w.tags) && w.geometry.length > 1);
+  // the private streets' roadways on a raster (1: a private street)
+  const privRaster = new Uint8Array(W * H).fill(1);
+  const privSegs = priv.map((w) => {
+    const r = roadSpec(w.tags).w / 2 + 0.3;
+    const pts = w.geometry.map((g) => toWorld(g.lon, g.lat));
+    for (let i = 0; i + 1 < pts.length; i++) clearCapsule(privRaster, W, H, X0, Z0, RES, { x0: pts[i][0], z0: pts[i][1], x1: pts[i + 1][0], z1: pts[i + 1][1], r });
+    return { w, r, pts };
+  });
+  const isPriv = (x, z) => { const k = cellAt(x, z); return k >= 0 && privRaster[k] === 0; };
+  // where a private street meets a public one: the gates (the public streets' nodes, and those a public street ends on)
+  const pubNodes = new Set();
+  const pubEnds = new Map(); // node -> [{ w, pts, e }], a public street ending there (its end index e)
+  for (const w of ways) {
+    if (!DRIVE.has(w.tags.highway) || PRIVATE(w.tags)) continue;
+    for (const g of w.geometry) pubNodes.add(nodeKey(g));
+    for (const e of [0, w.geometry.length - 1]) {
+      const k = nodeKey(w.geometry[e]);
+      if (!pubEnds.has(k)) pubEnds.set(k, []);
+      pubEnds.get(k).push({ w, e });
+    }
+  }
+  // the point `dist` m along a polyline from its vertex i, stepping `step` (±1) vertices at a time (at most 80% of the
+  // way to its end), and the direction there
+  const walk = (pts, i, step, dist) => {
+    let total = 0;
+    for (let k = i; k + step >= 0 && k + step < pts.length; k += step) total += Math.hypot(pts[k + step][0] - pts[k][0], pts[k + step][1] - pts[k][1]);
+    let left = Math.min(dist, total * 0.8);
+    let last = null;
+    for (let k = i; k + step >= 0 && k + step < pts.length; k += step) {
+      const a = pts[k], b = pts[k + step];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (L < 1e-6) continue;
+      last = { x: b[0], z: b[1], ux: (b[0] - a[0]) / L, uz: (b[1] - a[1]) / L };
+      if (L >= left) return { x: a[0] + last.ux * left, z: a[1] + last.uz * left, ux: last.ux, uz: last.uz };
+      left -= L;
+    }
+    return last;
+  };
+  // footprints per block (how many, how many house-sized), to tell a coto from a campus or an industrial park that
+  // also has private streets
+  const HOUSE_SIZED = 300; // m2: Tepic's houses run 60-300 m2
+  const blockHouses = new Map();
+  for (let i = 0; i < houses.length; i += HS) {
+    const b = byLab.get(labAt(houses[i] / 10, houses[i + 1] / 10));
+    if (!b) continue;
+    const st = blockHouses.get(b) || { n: 0, small: 0 };
+    st.n++;
+    if ((houses[i + 2] * houses[i + 3]) / 100 <= HOUSE_SIZED) st.small++;
+    blockHouses.set(b, st);
+  }
+  // networks of private streets (sharing a node)
+  const parent = priv.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const byNode = new Map();
+  priv.forEach((w, i) => {
+    for (const g of w.geometry) {
+      const k = nodeKey(g);
+      if (byNode.has(k)) parent[find(i)] = find(byNode.get(k));
+      else byNode.set(k, i);
+    }
+  });
+  const nets = new Map();
+  privSegs.forEach((s, i) => {
+    const root = find(i);
+    if (!nets.has(root)) nets.set(root, []);
+    nets.get(root).push(s);
+  });
+  const owner = new Map(); // block -> coto number
+  let walled = 0;
+  for (const segs of nets.values()) {
+    // the blocks lining the network: probed from both sides of each street, clear of its mouths onto public streets
+    const members = new Set();
+    let length = 0;
+    for (const { w, r, pts } of segs) {
+      const mouths = w.geometry.filter((g) => pubNodes.has(nodeKey(g))).map((g) => toWorld(g.lon, g.lat));
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+        const L = Math.hypot(bx - ax, bz - az);
+        length += L;
+        if (L < 0.1) continue;
+        const nx = -(bz - az) / L, nz = (bx - ax) / L;
+        for (let t = 1; t < L; t += 2) {
+          const x = ax + ((bx - ax) * t) / L, z = az + ((bz - az) * t) / L;
+          if (mouths.some(([mx, mz]) => Math.hypot(x - mx, z - mz) < 18)) continue;
+          for (const side of [-1, 1]) {
+            const b = byLab.get(labAt(x + nx * side * (r + SIDEWALK + 2), z + nz * side * (r + SIDEWALK + 2)));
+            if (b && !b.rural && b.park <= 0.6 && b.area < 150000 && !owner.has(b)) members.add(b);
+          }
+        }
+      }
+    }
+    if (!members.size || length < 60) continue; // (a private lane or two: a gated cul-de-sac, not a coto)
+    // (mostly bigger buildings than houses: a campus, a hospital, an industrial park)
+    let n = 0, small = 0;
+    for (const b of members) { const st = blockHouses.get(b); if (st) { n += st.n; small += st.small; } }
+    if (n >= 10 && small < n * 0.6) continue;
+    const id = cotos.length;
+    for (const b of members) owner.set(b, id);
+    // the barda: each member block's outline where it faces neither a private street nor another block of the coto,
+    // pulled in to the property line
+    const walls = [];
+    for (const b of members) {
+      const poly = b.poly;
+      const n = poly.length;
+      const wallEdge = poly.map((a, i) => {
+        const c = poly[(i + 1) % n];
+        const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+        if (L < 0.5) return false;
+        let nx = (c[1] - a[1]) / L, nz = -(c[0] - a[0]) / L;
+        const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
+        if (inRing(poly, mx + nx * 0.5, mz + nz * 0.5)) { nx = -nx; nz = -nz; }
+        const px = mx + nx * 3, pz = mz + nz * 3;
+        if (isPriv(px, pz)) return false;
+        const other = byLab.get(labAt(px, pz));
+        return !(other && owner.get(other) === id);
+      });
+      // runs of wall edges as polylines (starting after a gap, so a run never wraps)
+      const start = wallEdge.findIndex((e) => !e);
+      if (start < 0 && wallEdge.length) {
+        walls.push(insetRing(poly, SIDEWALK + 0.15).concat([insetRing(poly, SIDEWALK + 0.15)[0]]));
+        continue;
+      }
+      let run = null;
+      for (let k = 1; k <= n; k++) {
+        const i = (start + k) % n;
+        if (wallEdge[i]) {
+          if (!run) run = [i];
+          run.push((i + 1) % n);
+        } else if (run) { walls.push(insetRun(poly, run, SIDEWALK + 0.15)); run = null; }
+      }
+      if (run) walls.push(insetRun(poly, run, SIDEWALK + 0.15));
+    }
+    // the gates: each mouth of the network onto a public street, the booth 12 m inside along the private street (past
+    // the public one's half width & sidewalk); where a public street ends on a private one part way along, 10 m back
+    // along the public street, facing the coto
+    const gates = [];
+    const addGate = (at, width) => {
+      if (!at) return;
+      for (let g = 0; g < gates.length; g += 4) if (Math.hypot(gates[g] - at.x, gates[g + 1] - at.z) < 12) return; // (entry & exit drawn as two ways: one booth)
+      gates.push(q(at.x), q(at.z), Math.round(Math.atan2(at.uz, at.ux) * 1000), q(width));
+    };
+    for (const { w, r, pts } of segs) {
+      const last = pts.length - 1;
+      w.geometry.forEach((g, e) => {
+        const k = nodeKey(g);
+        if (!pubNodes.has(k)) return;
+        if (e === 0 || e === last) {
+          addGate(walk(pts, e, e === 0 ? 1 : -1, 12), r * 2 - 0.6);
+          return;
+        }
+        for (const end of pubEnds.get(k) || []) {
+          const pp = end.w.geometry.map((p) => toWorld(p.lon, p.lat));
+          const at = walk(pp, end.e, end.e === 0 ? 1 : -1, 10);
+          if (at) addGate({ x: at.x, z: at.z, ux: -at.ux, uz: -at.uz }, roadSpec(end.w.tags).w - 0.6);
+        }
+      });
+    }
+    const lots = walls.filter((pl) => pl.length > 1).map((pl) => flat(rdp(pl, 0.4)));
+    cotos.push([lots, gates]);
+    walled += members.size;
+  }
+  // the houses inside: one look per coto (a colour, two storeys mostly), no shops; anything bigger than a house (the
+  // clubhouse, a school, a tower of flats) keeps its own
+  let cotoHouses = 0;
+  const built = new Set();
+  for (let i = 0; i < houses.length; i += HS) {
+    const b = byLab.get(labAt(houses[i] / 10, houses[i + 1] / 10));
+    const id = b ? owner.get(b) : undefined;
+    if (id === undefined) continue;
+    built.add(b);
+    if (houses[i + 6] & (KIND.big | KIND.strip) || (houses[i + 2] * houses[i + 3]) / 100 > HOUSE_SIZED) continue;
+    houses[i + 5] = id % 5 === 3 ? 1 : 2;
+    houses[i + 6] = (houses[i + 6] & 3) | KIND.coto | ((id + 1) << COTO_SHIFT);
+    cotoHouses++;
+  }
+  // Blocks of a coto none of the footprints stand on (newer fraccionamientos than the ML imagery): rows of the coto's
+  // house, 7 m fronts by 12 m deep, along the sides facing its private streets
+  let rowHouses = 0;
+  const taken = new Set(); // raster cells under the row houses placed so far
+  // the cells under a house centred on (cx, cz), w along (ex, ez) by d along (nx, nz), sampled every 0.7 m
+  const cellsUnder = (cx, cz, ex, ez, nx, nz, w, d) => {
+    const out = [];
+    for (let u = -w / 2 + 0.2; u <= w / 2 - 0.2; u += 0.7) for (let v = -d / 2 + 0.2; v <= d / 2 - 0.2; v += 0.7) out.push(cellAt(cx + ex * u + nx * v, cz + ez * u + nz * v));
+    return out;
+  };
+  for (const [b, id] of owner) {
+    if (built.has(b) || b.area > 40000) continue;
+    const poly = b.poly, n = poly.length;
+    for (let e = 0; e < n; e++) {
+      const a = poly[e], c = poly[(e + 1) % n];
+      const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      if (L < 9) continue;
+      const ex = (c[0] - a[0]) / L, ez = (c[1] - a[1]) / L;
+      let nx = ez, nz = -ex; // inward normal
+      if (!inRing(poly, (a[0] + c[0]) / 2 + nx * 0.5, (a[1] + c[1]) / 2 + nz * 0.5)) { nx = -nx; nz = -nz; }
+      if (!isPriv((a[0] + c[0]) / 2 - nx * 3, (a[1] + c[1]) / 2 - nz * 3)) continue; // a side on a private street
+      const th = Math.atan2(-ez, ex); // local u along the edge, local v = (-ez, ex)
+      const front = -ez * nx + ex * nz > 0 ? 2 : 3; // the street lies against the inward normal
+      const W0 = 7, D0 = 12, set = SIDEWALK + 0.4;
+      const count = Math.floor((L - 2) / W0);
+      const t0 = (L - count * W0) / 2;
+      for (let k = 0; k < count; k++) {
+        const t = t0 + (k + 0.5) * W0;
+        const cx = a[0] + ex * t + nx * (set + D0 / 2), cz = a[1] + ez * t + nz * (set + D0 / 2);
+        const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([su, sv]) => [cx + ex * su * W0 * 0.48 + nx * sv * D0 * 0.48, cz + ez * su * W0 * 0.48 + nz * sv * D0 * 0.48]);
+        if (!corners.every(([x, z]) => propAt(x, z) && byLab.get(labAt(x, z)) === b)) continue;
+        // (a house already there from another side of the block: the opposite one, or round the corner)
+        const under = cellsUnder(cx, cz, ex, ez, nx, nz, W0, D0);
+        if (under.some((k) => taken.has(k))) continue;
+        for (const k of under) taken.add(k);
+        houses.push(Math.round(cx * 10), Math.round(cz * 10), W0 * 10, D0 * 10, Math.round(th * 1000), id % 5 === 3 ? 1 : 2,
+          front | KIND.coto | ((id + 1) << COTO_SHIFT), 0);
+        rowHouses++;
+      }
+    }
+  }
+  log(`gated communities: ${rowHouses} row houses on their empty blocks`);
+  log(`gated communities: ${cotos.length} cotos of ${priv.length} private streets, ${walled} blocks, ${cotoHouses} houses (${owner.size - built.size} blocks with none), ${cotos.reduce((t, c) => t + c[1].length / 4, 0)} gates`);
 }
 
 // =====================================================================================================================
@@ -549,10 +867,22 @@ const signs = [];
     }
     return bd <= reach ? best : -1;
   };
+  // the biggest building within `reach` m (a supermarket's pin often falls on its car park, its kiosk or the street)
+  const biggestAt = (x, z, reach) => {
+    let best = -1, ba = 0;
+    const ix = Math.floor(x / CELL), iz = Math.floor(z / CELL);
+    for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
+      for (const i of cells.get(`${ix + a},${iz + b}`) || []) {
+        const area = houses[i + 2] * houses[i + 3];
+        if (area > ba && Math.hypot(x - houses[i] / 10, z - houses[i + 1] / 10) - Math.hypot(houses[i + 2], houses[i + 3]) / 20 <= reach) { ba = area; best = i; }
+      }
+    }
+    return best;
+  };
 
   const file = path.join(DATA, 'overture', 'places.geojsonl');
   const locals = [];
-  let chains = 0, named = 0, generic = 0;
+  let chains = 0, named = 0, generic = 0, plazas = 0;
   if (fs.existsSync(file)) {
     for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
       if (!line.trim()) continue;
@@ -565,18 +895,27 @@ const signs = [];
       if (/school|place_of_learning|government|worship|college|university|real_estate|attorney|professional_service|home_service|event_or_party|manufacturer/.test(cat)) continue;
       const [x, z] = toWorld(f.geometry.coordinates[0], f.geometry.coordinates[1]);
       if (!inBox(x, z)) continue;
+      // a shopping centre (Plaza Cigarrera, Plaza del Valle...; not a public square): the building it stands in is a row
+      // of locales, unless it's a hall already
+      if ((cat === 'shopping_mall' || /^plaza\b|centro comercial/i.test(name)) && !/public_plaza|park/.test(cat)) {
+        const i = houseAt(x, z, 12);
+        if (i >= 0 && !(houses[i + 6] & (KIND.big | KIND.coto))) { houses[i + 6] |= KIND.strip | KIND.shop; plazas++; }
+      }
       const chain = CHAINS.find((sf) => sf.match.test(name) || sf.match.test(brand));
       if (chain) {
-        const i = houseAt(x, z, chain.big ? 40 : 15);
+        const i = chain.big ? biggestAt(x, z, 40) : houseAt(x, z, 15);
         if (i < 0) continue;
+        // (a convenience store or pharmacy inside a hall or a mall: the hall keeps its own front, height & name)
+        if (!chain.big && houses[i + 6] & KIND.big) continue;
         houses[i + 7] = signIndex.get(`chain:${chain.id}`);
-        houses[i + 6] |= 4; // a shop
-        houses[i + 5] = Math.min(houses[i + 5], chain.big ? 2 : 1);
+        houses[i + 6] |= KIND.shop;
+        if (chain.big) houses[i + 6] = (houses[i + 6] | KIND.big) & ~KIND.strip;
+        houses[i + 5] = chain.big ? Math.max(2, Math.min(houses[i + 5], 3)) : 1;
         chains++;
         continue;
       }
       const i = houseAt(x, z, 8);
-      if (i < 0 || houses[i + 7]) continue;
+      if (i < 0 || houses[i + 7] || houses[i + 6] & KIND.coto) continue; // (no shops inside a coto)
       locals.push({ i, name, cat, d: Math.hypot(x, z) });
     }
   }
@@ -589,20 +928,21 @@ const signs = [];
     const [bg, fg] = LOCAL_COLOURS[hashS(text) % LOCAL_COLOURS.length];
     let k = addSign(`name:${text}`, { text, bg, fg, border: fg });
     if (k) named++;
+    else if (houses[l.i + 6] & KIND.big) continue; // (a hall carries its own name or none, never a trade's)
     else {
       k = signIndex.get(`trade:${tradeOf(l.name, l.cat) || 'MISCELÁNEA'}`);
       generic++;
     }
     houses[l.i + 7] = k;
-    houses[l.i + 6] |= 4;
+    houses[l.i + 6] |= KIND.shop;
   }
   // shops with no business on record: a trade by the house's hash
   for (let i = 0; i < houses.length; i += HS) {
-    if (houses[i + 6] < 4 || houses[i + 7]) continue;
+    if (!(houses[i + 6] & KIND.shop) || houses[i + 7] || houses[i + 6] & KIND.big) continue;
     const t = STREET_TRADES[hashS(`${houses[i]},${houses[i + 1]}`) % STREET_TRADES.length];
     houses[i + 7] = signIndex.get(`trade:${t}`);
   }
-  log(`shop signs: ${chains} chain stores, ${named + generic} shops from ${locals.length} local businesses (${named} named, ${generic} by trade), ${signs.length} sign faces`);
+  log(`shop signs: ${plazas} shopping centres, ${chains} chain stores, ${named + generic} shops from ${locals.length} local businesses (${named} named, ${generic} by trade), ${signs.length} sign faces`);
 }
 
 // =====================================================================================================================
@@ -654,11 +994,24 @@ const terrain = (() => {
     }
     return dst;
   };
-  const builtNear = dilate(built, 1), builtArea = dilate(built, 3);
-  const labAt = (x, z) => {
-    const i = Math.floor((x - X0) / RES), j = Math.floor((z - Z0) / RES);
-    return i >= 0 && j >= 0 && i < W && j < H ? lab[j * W + i] : -1;
-  };
+  const builtNear = dilate(built, 1), builtArea = dilate(built, 3), outskirts = dilate(built, 6);
+  // The grid points around every roadway (the four corners of each cell a street crosses): the streets are drawn flat,
+  // so no triangle under one may rise, or a stretch of street vanishes under a brown hump of hillside and comes out
+  // the other side (the streets of the colonias up the lomas, the boulevards past empty lots)
+  const roadV = new Uint8Array(TW * TH);
+  for (const s of drivePieces) {
+    const L = Math.hypot(s.x1 - s.x0, s.z1 - s.z0);
+    for (let t = 0; t <= L; t += CELL / 6) {
+      const x = s.x0 + ((s.x1 - s.x0) * t) / Math.max(L, 1e-6), z = s.z0 + ((s.z1 - s.z0) * t) / Math.max(L, 1e-6);
+      // (the roadway's edges too: a wide avenue near a cell line reaches into the next cell)
+      for (const [ox, oz] of [[0, 0], [s.r, 0], [-s.r, 0], [0, s.r], [0, -s.r]]) {
+        const i = Math.floor((x + ox - TX0) / CELL), j = Math.floor((z + oz - TZ0) / CELL);
+        if (i < 0 || j < 0 || i >= TW - 1 || j >= TH - 1) continue;
+        roadV[j * TW + i] = roadV[j * TW + i + 1] = roadV[(j + 1) * TW + i] = roadV[(j + 1) * TW + i + 1] = 1;
+      }
+    }
+  }
+  const roadAt = (x, z) => { const k = cellAt(x, z); return k >= 0 && lab[k] === 0; }; // (off the raster: no road)
   let missing = 0;
   for (let j = 0; j < TH; j++) {
     for (let i = 0; i < TW; i++) {
@@ -670,7 +1023,7 @@ const terrain = (() => {
       // the city: built-up cells, and streets near them (a 4 x 4 sample of the cell)
       let road = 0;
       if (builtArea[j * TW + i]) {
-        for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) if (labAt(x + (a - 1.5) * CELL / 4, z + (b - 1.5) * CELL / 4) === 0) road++;
+        for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) if (roadAt(x + (a - 1.5) * CELL / 4, z + (b - 1.5) * CELL / 4)) road++;
       }
       U[j * TW + i] = builtNear[j * TW + i] || road >= 3 ? 1 : 0;
     }
@@ -702,47 +1055,65 @@ const terrain = (() => {
     }
     return a;
   };
-  const EU = E.map((e, k) => e * U[k]);
-  const near = [blur(EU, 7), blur(U, 7)];
-  const far = [blur(EU, 30), blur(U, 30)];
-  let usum = 0, ucnt = 0;
-  for (let k = 0; k < E.length; k++) if (U[k]) { usum += E[k]; ucnt++; }
-  const floorMean = ucnt ? usum / ucnt : sum / cnt;
-  // distance (m) to the city: two-pass chamfer
-  const D = new Float32Array(TW * TH).fill(1e9);
-  for (let k = 0; k < D.length; k++) if (U[k]) D[k] = 0;
-  const DG = CELL * Math.SQRT2;
-  for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
-    const k = j * TW + i;
-    if (i > 0) D[k] = Math.min(D[k], D[k - 1] + CELL);
-    if (j > 0) {
-      D[k] = Math.min(D[k], D[k - TW] + CELL);
-      if (i > 0) D[k] = Math.min(D[k], D[k - TW - 1] + DG);
-      if (i < TW - 1) D[k] = Math.min(D[k], D[k - TW + 1] + DG);
-    }
-  }
-  for (let j = TH - 1; j >= 0; j--) for (let i = TW - 1; i >= 0; i--) {
-    const k = j * TW + i;
-    if (i < TW - 1) D[k] = Math.min(D[k], D[k + 1] + CELL);
-    if (j < TH - 1) {
-      D[k] = Math.min(D[k], D[k + TW] + CELL);
-      if (i < TW - 1) D[k] = Math.min(D[k], D[k + TW + 1] + DG);
-      if (i > 0) D[k] = Math.min(D[k], D[k + TW - 1] + DG);
-    }
-  }
   const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+  // The hills' heights h (m) over the valley floor, the floor being the elevation of the city cells U (1) nearby (near,
+  // far: the blurred floor & its weights; D: metres to the city)
+  const shape = (U) => {
+    const EU = E.map((e, k) => e * U[k]);
+    const near = [blur(EU, 7), blur(U, 7)];
+    const far = [blur(EU, 30), blur(U, 30)];
+    let usum = 0, ucnt = 0;
+    for (let k = 0; k < E.length; k++) if (U[k]) { usum += E[k]; ucnt++; }
+    const floorMean = ucnt ? usum / ucnt : sum / cnt;
+    // distance (m) to the city: two-pass chamfer
+    const D = new Float32Array(TW * TH).fill(1e9);
+    for (let k = 0; k < D.length; k++) if (U[k]) D[k] = 0;
+    const DG = CELL * Math.SQRT2;
+    for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
+      const k = j * TW + i;
+      if (i > 0) D[k] = Math.min(D[k], D[k - 1] + CELL);
+      if (j > 0) {
+        D[k] = Math.min(D[k], D[k - TW] + CELL);
+        if (i > 0) D[k] = Math.min(D[k], D[k - TW - 1] + DG);
+        if (i < TW - 1) D[k] = Math.min(D[k], D[k - TW + 1] + DG);
+      }
+    }
+    for (let j = TH - 1; j >= 0; j--) for (let i = TW - 1; i >= 0; i--) {
+      const k = j * TW + i;
+      if (i < TW - 1) D[k] = Math.min(D[k], D[k + 1] + CELL);
+      if (j < TH - 1) {
+        D[k] = Math.min(D[k], D[k + TW] + CELL);
+        if (i < TW - 1) D[k] = Math.min(D[k], D[k + TW + 1] + DG);
+        if (i > 0) D[k] = Math.min(D[k], D[k + TW - 1] + DG);
+      }
+    }
+    const h = new Float32Array(TW * TH);
+    for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
+      const k = j * TW + i;
+      // the valley floor here: the city's elevation nearby, else further out, else its mean
+      const wN = near[1][k], wF = far[1][k];
+      const base = wN > 0.05 ? near[0][k] / wN : wF > 0.01 ? far[0][k] / wF : floorMean;
+      h[k] = Math.max(0, E[k] - base) * smooth(15, 150, D[k]);
+      // fade out at the edge of the grid
+      const edge = Math.min(i, j, TW - 1 - i, TH - 1 - j) * CELL;
+      h[k] *= smooth(0, 2500, edge);
+    }
+    return { h, near, far, D, floorMean };
+  };
+  // The streets in town and out to 450 m from it under up to 30 m of hill join the valley floor (the colonias' streets
+  // up the lomas, the boulevards past empty lots: a cut sloping back ~20° over the next 75-150 m); the ones deeper in a
+  // hill stay under it rather than cut a canyon into the cerro
+  const h0 = shape(U).h;
+  let lifted = 0;
+  for (let k = 0; k < U.length; k++) if (!U[k] && roadV[k] && outskirts[k] && h0[k] < 30) { U[k] = 1; lifted++; }
+  const { h: hills, near, far, D, floorMean } = shape(U);
   const out = new Int16Array(TW * TH);
   let peak = 0;
-  for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
-    const k = j * TW + i;
-    // the valley floor here: the city's elevation nearby, else further out, else its mean
-    const wN = near[1][k], wF = far[1][k];
-    const base = wN > 0.05 ? near[0][k] / wN : wF > 0.01 ? far[0][k] / wF : floorMean;
-    let h = Math.max(0, E[k] - base);
-    h *= smooth(15, 150, D[k]);
-    // fade out at the edge of the grid
-    const edge = Math.min(i, j, TW - 1 - i, TH - 1 - j) * CELL;
-    h *= smooth(0, 2500, edge);
+  for (let k = 0; k < hills.length; k++) {
+    let h = hills[k];
+    // out in the country a road cuts through the low rises (up to 8 m) instead of under them; the highways over the
+    // sierra stay where they are
+    if (roadV[k] && h < 8) h = 0;
     out[k] = Math.round(Math.min(3200, h) * 10);
     if (h > peak) peak = h;
   }
@@ -788,6 +1159,7 @@ const terrain = (() => {
       log(`  ${name}: elevation ${E[k].toFixed(0)}, floor ${base.toFixed(0)}, urban ${U[k]}, ${D[k].toFixed(0)} m from the city, height ${out[k] / 10}`);
     }
   }
+  log(`terrain: ${lifted} grid points under streets brought down to the valley floor`);
   log(`terrain: ${TW} x ${TH} cells of ${CELL} m, highest ${Math.round(peak)} m over the valley floor (${Math.round(floorMean)} m a.s.l.), ${missing} cells off the tiles`);
   return { x0: TX0, z0: TZ0, cell: CELL, w: TW, h: TH, floor: Math.round(floorMean), data: Buffer.from(out.buffer).toString('base64'), cross, paths };
 })();
@@ -880,10 +1252,13 @@ const GEO = {
   pois,
   teleports,
   // Real buildings (Overture Maps), 8 integers each: centre x, z (dm), width, depth (dm, local x / z), turn θ
-  // (mrad, world = c + R_y(θ)·local), storeys, front side (0 w, 1 e, 2 n, 3 s of the local frame) + 4 with a shop, sign
+  // (mrad, world = c + R_y(θ)·local), storeys, front side (0 w, 1 e, 2 n, 3 s of the local frame) + KIND bits (4 a shop, 8 a big box, 16 a strip plaza, 32 a coto's house, its number + 1 from bit 6 up), sign
   // (1-based index into `signs`, 0 none)
   houseStride: HS,
   houses,
+  // Gated communities (5B2), [walls, gates] each: walls, polylines along the property line (flat x, z); gates, 4 numbers
+  // each: booth x, z (m), heading into the coto (mrad, atan2 of z over x), private street width (m)
+  cotos,
   // Shop sign faces: { text, bg, fg, border, chain?, big? } (chains carry parody names)
   signs,
   // The hills around the valley: heights (dm, Int16 little-endian, base64) over the flat city on a w x h grid of

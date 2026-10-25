@@ -46,8 +46,9 @@ import { hillGround } from './terrain.js';
 import { pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
 
 // js/world/buildings.js
-// Generates the city's buildings: Tepic's real building footprints (Overture Maps) as Mexican houses & shops, and the
-// lots of every other block filled for its district (centro, colonia, industrial), indexed by a spatial 2D quadtree
+// Generates the city's buildings: Tepic's real building footprints (Overture Maps) as Mexican houses & shops, halls
+// (supermarkets, malls, warehouses), strip plazas and gated communities' houses (a city without the footprints has its
+// blocks' lots filled for their district: centro, colonia, industrial), indexed by a spatial 2D quadtree
 // that streams the high-detail architectural elements (cornices, rooftop gear, awnings, storefront signs) around the
 // player.
 //
@@ -1835,8 +1836,11 @@ function buildCityBlocks(scene) {
     houseBlock[i / HS] = b;
     if (b) houseBlocks.add(b);
   }
+  // With the real footprints loaded, a block none stands on is really empty (a vacant lot, a parking lot, a traffic
+  // island): only a city without them is filled with made-up lots
+  const madeUp = !HOUSES.length;
   for (const b of BLOCKS) {
-    if (b.park > 0.6 || b.median || houseBlocks.has(b)) continue;
+    if (!madeUp || b.park > 0.6 || b.median || houseBlocks.has(b)) continue;
     minLot = b.frames ? 12 : 15;
     for (const [th, px, pz, rects] of b.frames || [[0, 0, 0, b.rects]]) {
       xf = th ? { th, cs: Math.cos(th), sn: Math.sin(th), px, pz } : null;
@@ -1854,7 +1858,9 @@ function buildCityBlocks(scene) {
   // A2. THE REAL BUILDINGS (Overture Maps footprints as oriented boxes, see tools/build-tepic-geodata.mjs), as Mexican
   //     houses: a long street front is split into houses 6-10 m wide, each its own colour & height; the front towards
   //     the street with a door & gate, a shop's shutter & sign, or a chain store's front (js/world/storefronts); flat roofs
-  //     with a black water tank (tinaco) on most. Grouped per block for the maps & the streaming of roof details
+  //     with a black water tank (tinaco) on most. Big boxes (supermarkets, department stores, malls, warehouses) are one
+  //     hall in metal cladding with a glazed front and units on the roof; strip plazas a row of locales 5-7 m wide under
+  //     one roof, in one colour. Grouped per block for the maps & the streaming of roof details
   {
     const byBlock = new Map();
     const blockOf = (b, cx, cz) => {
@@ -1876,8 +1882,12 @@ function buildCityBlocks(scene) {
       const w0 = HOUSES[i + 2] / 10, d0 = HOUSES[i + 3] / 10;
       const th = HOUSES[i + 4] / 1000;
       const floors0 = HOUSES[i + 5];
-      const front = HOUSES[i + 6] & 3;
-      const shop0 = HOUSES[i + 6] >= 4;
+      const kind = HOUSES[i + 6]; // front side + KIND bits (tools/build-tepic-geodata.mjs)
+      const front = kind & 3;
+      const shop0 = (kind & 4) !== 0;
+      const big = (kind & 8) !== 0; // a hall
+      const strip = !big && (kind & 16) !== 0; // a row of locales
+      const coto = (kind & 32) !== 0 ? kind >> 6 : 0; // a gated community's house: its number + 1
       const signNo = HS > 7 ? HOUSES[i + 7] : 0; // 1-based into SIGNS
       const sign = signNo ? SIGNS[signNo - 1] : null;
       const chain = sign && sign.chain ? STOREFRONTS[sign.store] : null;
@@ -1889,29 +1899,34 @@ function buildCityBlocks(scene) {
       // the street front runs along local z (fronts w / e) or local x (fronts n / s)
       const alongZ = ou !== 0;
       const along0 = alongZ ? d0 : w0;
-      // split long fronts into houses (never a chain store)
+      // split long fronts into houses, a strip plaza into its locales (never a chain store or a hall)
       const parts = [];
-      if (!chain && along0 > 13) {
-        let n = Math.max(2, Math.round(along0 / range(6.5, 9.5)));
+      if (!chain && !big && along0 > (strip ? 9 : 13)) {
+        let n = Math.max(2, Math.round(along0 / (strip ? range(5, 7) : range(6.5, 9.5))));
         const cuts = [0];
         for (let k = 1; k < n; k++) cuts.push((k / n + (rand() - 0.5) * 0.25 / n) * along0);
         cuts.push(along0);
         for (let k = 0; k < n; k++) parts.push([cuts[k], cuts[k + 1]]);
       } else parts.push([0, along0]);
       const signPart = Math.floor(parts.length / 2);
+      // a strip plaza's one colour; a coto's houses all in the developer's
+      const plazaTone = coto ? 0.1 + 0.8 * (((Math.imul(coto, 2654435761) >>> 0) % 1000) / 1000) : rand();
+      const plazaAwning = irange(0, 4);
+      const plazaFloors = Math.min(2, floors0);
       parts.forEach(([t0, t1], k) => {
         const len = t1 - t0;
         const mid = (t0 + t1) * 0.5 - along0 * 0.5; // along the front, from the footprint's centre
         const u = alongZ ? 0 : mid, v = alongZ ? mid : 0;
         const cx = cx0 + u * cs + v * sn, cz = cz0 - u * sn + v * cs;
         const w = alongZ ? w0 : len, d = alongZ ? len : d0;
-        const floors = chain ? floors0 : Math.max(1, Math.min(4, floors0 + (parts.length > 1 ? pickW([[0, 5], [1, 2], [-1, 1.5]]) : 0)));
+        const floors = chain || big || coto ? floors0 : strip ? plazaFloors : Math.max(1, Math.min(4, floors0 + (parts.length > 1 ? pickW([[0, 5], [1, 2], [-1, 1.5]]) : 0)));
         const hasSign = k === signPart && !!sign;
-        const shop = (shop0 && k === signPart) || (shop0 && chance(0.3));
-        const h = floors * storeys[MEX] + (chain ? 0.6 : range(0, 0.35));
-        const tone = rand();
-        const faces = [WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear, WALL_KINDS.rear];
-        faces[front] = chain ? WALL_KINDS.chainStore + sign.store : shop ? WALL_KINDS.shop : WALL_KINDS.entry;
+        const shop = strip || (shop0 && k === signPart) || (shop0 && chance(0.3));
+        const h = floors * storeys[MEX] + (chain || big || strip ? 0.6 : range(0, 0.35));
+        const tone = strip || coto ? plazaTone : rand();
+        const side = big || strip ? WALL_KINDS.bigSide : WALL_KINDS.rear;
+        const faces = [side, side, side, side];
+        faces[front] = chain ? WALL_KINDS.chainStore + sign.store : big || strip ? WALL_KINDS.bigFront : shop ? WALL_KINDS.shop : WALL_KINDS.entry;
         const hx = w * 0.5, hz = d * 0.5;
         const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;
         const ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
@@ -1934,14 +1949,25 @@ function buildCityBlocks(scene) {
         blk.minZ = Math.min(blk.minZ, cz - ez);
         blk.maxZ = Math.max(blk.maxZ, cz + ez);
         if (top > blk.maxH) blk.maxH = top;
+        // a hall's air handlers on the roof, one per ~600 m2
+        if (big) {
+          const n = Math.max(2, Math.min(8, Math.floor((w * d) / 600)));
+          for (let m = 0; m < n; m++) {
+            const tu = range(-0.35, 0.35) * w, tv = range(-0.35, 0.35) * d;
+            blk.hvacUnits.push({ x: cx + tu * cs + tv * sn, y: top, z: cz - tu * sn + tv * cs, w: range(2.4, 4.2), h: range(1.4, 2.2), d: range(2.4, 4.2) });
+          }
+        }
         // a black water tank on most roofs, back from the street
-        if (!chain && chance(0.72) && w > 3.2 && d > 3.2) {
+        if (!chain && !big && !strip && chance(0.72) && w > 3.2 && d > 3.2) {
           const tu = (alongZ ? -ou : 0) * range(0.1, 0.35) * w + (alongZ ? 0 : range(-0.3, 0.3) * w);
           const tv = (alongZ ? range(-0.3, 0.3) * d : -ov * range(0.1, 0.35) * d);
           blk.tinacos.push({ x: cx + tu * cs + tv * sn, y: top, z: cz - tu * sn + tv * cs, s: range(0.85, 1.15) });
         }
-        // The street front: a chain's fascia, or a shop's awning with its sign above it
+        // The street front: a chain's (or a named hall's) fascia, or a shop's awning with its sign above it
         if (!shop && !chain) return;
+        const fascia = chain || (big && hasSign);
+        const wide = chain ? chain.big : big;
+        if (big && !fascia) return; // (no awning on a hall)
         const toFront = (out) => {
           const r = (ou ? hx : hz) + out;
           return [cx + (ou * r) * cs + (ov * r) * sn, cz - (ou * r) * sn + (ov * r) * cs];
@@ -1949,20 +1975,20 @@ function buildCityBlocks(scene) {
         // awnings are laid out along local z facing ±x: a front on a local n / s side turns a quarter more
         const ry = th + (ov ? (ov > 0 ? -Math.PI / 2 : Math.PI / 2) : 0);
         const gf = g1 > 0 ? hillGround(...toFront(0.9)) : 0; // the ground at the street front
-        if (chain) {
+        if (fascia) {
           // the logo box over the middle of the front (a supermarket's runs further along it)
           const [sx, sz] = toFront(0.25);
-          const boxH = chain.big ? 1.8 : 1.3;
-          blk.awnings.push({ x: sx, y: 0, z: sz, w: 0, d: Math.min(len - 1.0, chain.big ? 26 : 5.2), sideDir: ou || 1, colorIdx: 0, ry,
+          const boxH = wide ? 1.8 : 1.3;
+          blk.awnings.push({ x: sx, y: 0, z: sz, w: 0, d: Math.min(len - 1.0, wide ? (chain ? 26 : 16) : 5.2), sideDir: ou || 1, colorIdx: 0, ry,
             noAwning: true, sign: signNo - 1, signY: top - boxH * 0.5 + 0.35, signH: boxH, signW: 0.5 });
-          if (chain.pylon) pylons.push({ front: toFront(1.4), y: g1 > 0 ? hillGround(...toFront(1.4)) : 0, ry, along: len, slot: signNo - 1, ou, ov, cs, sn, pylon: chain.pylon });
+          if (chain && chain.pylon) pylons.push({ front: toFront(1.4), y: g1 > 0 ? hillGround(...toFront(1.4)) : 0, ry, along: len, slot: signNo - 1, ou, ov, cs, sn, pylon: chain.pylon });
         } else if (hasSign || chance(0.55)) {
           const [ax, az] = toFront(0.9);
           const [sx, sz] = toFront(0.16); // the sign flat on the wall above the awning
           const signY = Math.max(gf, base) + (floors < 2 ? h - 0.45 : storeys[MEX] + 0.6);
           const sg = hasSign ? signNo - 1 : undefined;
           blk.awnings.push({ x: ax, y: Math.max(gf, base) + Math.min(2.7, storeys[MEX] * 0.9) - 0.15, z: az, w: 1.5, d: Math.min(7, len - 1.2), sideDir: ou || 1,
-            colorIdx: irange(0, 4), ry, sign: sg, signY, signPX: sx, signPZ: sz, signW: 0.12, signH: 0.62, noSign: sg === undefined && floors < 2 });
+            colorIdx: strip ? plazaAwning : irange(0, 4), ry, sign: sg, signY, signPX: sx, signPZ: sz, signW: 0.12, signH: 0.62, noSign: sg === undefined && floors < 2 });
         }
       });
     }
