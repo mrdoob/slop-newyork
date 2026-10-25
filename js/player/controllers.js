@@ -71,8 +71,9 @@ const AIM_WALK = 2.4; // m/s: walking (and strafing) with the gun up (player/aim
 const CORNER_GRIP = 1.25;
 const SMOKE_PUFFS = 64;
 // The car off the ground (rideGround): the gap (m) under its wheels from which it flies (no grip, no steering: smaller
-// dips the suspension rides out), the landing it takes without losing speed (m/s down), and the air's drag in flight
-const CAR_AIR = { flying: 0.15, hardLanding: 6, drag: 0.0012 };
+// dips the suspension rides out), the landing it takes without losing speed (m/s down), the air's drag in flight, and
+// how fast the ground's rise can speed it up (m/s²: ~3 g, a ramp's foot at any speed, no step)
+const CAR_AIR = { flying: 0.15, hardLanding: 6, drag: 0.0012, lift: 30 };
 const BICYCLE_DRIVE = {
   speed: 12.8, boostSpeed: 19, reverseSpeed: 4.5, acceleration: 9, boostAcceleration: 13.5,
   rolling: 0.08, drag: 0.004, coast: 0.2, brake: 7.5 // Backward input is scaled to 0.6, giving 4.5 m/s² braking.
@@ -1950,7 +1951,13 @@ class ThirdPersonControllerManager {
       // the ballistic path from where it was: still on the ground, or leaving it
       const free = c.position.y + (c.vy - g * dt) * dt;
       if (free <= ground) {
-        c.vy = Math.max(-40, Math.min(40, (ground - c.position.y) / dt));
+        // The ground's rise carries the car up with it, but no faster than the suspension can lift it (CAR_AIR.lift):
+        // a step (a deck's joint, onto a junction's disc) is climbed in one frame, and taken whole as the rise's speed
+        // (its height / dt: 17 m/s for 28 cm at 60 fps) it would throw the car metres into the air. The springs take it
+        const rise = (ground - c.position.y) / dt;
+        const vy = Math.max(-40, Math.min(rise, Math.max(0, c.vy) + CAR_AIR.lift * dt));
+        if (rise - vy > 2) c.heaveVel -= Math.min(2.5, (rise - vy) * dt * 6);
+        c.vy = vy;
         c.position.y = ground;
         c.flying = false;
         return;

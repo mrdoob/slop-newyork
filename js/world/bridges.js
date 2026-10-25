@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { GEO } from './city-geodata.js';
-import { groundHeight, decks } from './ground.js';
+import { groundHeight, landHeight, decks } from './ground.js';
 import { drapeGeometry } from './drape.js';
-import { createRoadSurfaceMaterial, createBridgeConcreteMaterial, createTrackBedMaterial } from '../render/tsl-materials.js';
+import { createRoadSurfaceMaterial, createBridgeConcreteMaterial, createTrackBedMaterial, createUnderpassEarthMaterial } from '../render/tsl-materials.js';
 
 // js/world/bridges.js
 // The overpasses, their ramps and the railway, drawn from the lifts the geodata builder solved for every road link and
@@ -10,7 +10,8 @@ import { createRoadSurfaceMaterial, createBridgeConcreteMaterial, createTrackBed
 // same heights the traffic drives (road-network.js edgeLift) and the player stands on (ground.js deckLift).
 // A deck is asphalt over concrete: its walls run down to the ground while it is low (a ramp's embankment), and once it
 // is OPEN m up it is a slab on piers, which stand off whatever road or track passes under it. Parapets line a deck from
-// PARAPET m up, and the at-grade bridges over the streams. The railway is a ballast bed with sleepers and two rails,
+// PARAPET m up, and the at-grade bridges over the streams. Under a span the ground is bare earth (the town's asphalt,
+// city-grid.js, runs everywhere but its blocks), but for the road or track it passes over. The railway is a ballast bed with sleepers and two rails,
 // set flush into the road where it crosses one at grade.
 // Everything is built flat (y = lift over the ground) and laid on the town's slopes like the other ground layers.
 
@@ -24,6 +25,8 @@ const GAUGE = 1.435; // standard gauge (Ferromex's line through Tepic)
 const BED_TOP = 0.25; // the ballast's top over the ground
 const RAIL_H = 0.16;
 const JUNCTION_GAP = 9; // m: parapets stop short of a junction on a deck so traffic can turn
+const EARTH_Y = 0.05; // the earth under a span, over the asphalt (0) and the meadows (0.03)
+const EARTH_PATCH = 2; // m: it is laid in patches about this big, each left out where a road passes under it
 
 // Non-indexed triangle soup (position, normal, optional track coordinates)
 function soup(withTrack = false) {
@@ -153,6 +156,7 @@ function buildBridges(scene) {
   const concrete = soup();
   const bed = soup(true);
   const steel = soup();
+  const earth = soup();
 
   // An oriented box collider from a to b (centre line), `off` to the left of it, half thickness ht, between heights
   const wallCollider = (ax, az, bx, bz, off, ht, y0, y1) => {
@@ -270,6 +274,7 @@ function buildBridges(scene) {
             }
             nextPier += PIER_EVERY;
           }
+          underSpan(a, b, ma, mb, half, l0, l1, line);
         }
         // parapets: from PARAPET m up, and not within a junction's reach
         const want = mid >= PARAPET && sAt > trim0 && sAt < total - trim1;
@@ -285,6 +290,28 @@ function buildBridges(scene) {
         } else railing = false;
       }
       walked += segLen;
+    }
+  }
+
+  // The ground under a span from a to b (lifts l0..l1): bare earth in patches, but where a road passes under (its own
+  // asphalt, half a metre wider) or a river's channel opens (river-channels.js)
+  function underSpan(a, b, ma, mb, half, l0, l1, line) {
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / EARTH_PATCH));
+    const m = Math.max(1, Math.ceil((2 * half) / EARTH_PATCH));
+    const at = (f, o) => {
+      const mx = ma[0] + (mb[0] - ma[0]) * f, mz = ma[1] + (mb[1] - ma[1]) * f;
+      return [a[0] + (b[0] - a[0]) * f + mx * o, EARTH_Y, a[1] + (b[1] - a[1]) * f + mz * o];
+    };
+    for (let i = 0; i < n; i++) {
+      const f0 = i / n, f1 = (i + 1) / n;
+      const lift = l0 + (l1 - l0) * (f0 + f1) / 2;
+      for (let j = 0; j < m; j++) {
+        const o0 = -half + (2 * half * j) / m, o1 = -half + (2 * half * (j + 1)) / m;
+        const [x, , z] = at((f0 + f1) / 2, (o0 + o1) / 2);
+        if (under(x, z, 0.5, lift - 1, line, 'road')) continue;
+        if (landHeight(x, z) - groundHeight(x, z) > 0.05) continue;
+        earth.quad(at(f0, o0), at(f1, o0), at(f1, o1), at(f0, o1), [0, 1, 0]);
+      }
     }
   }
 
@@ -408,6 +435,7 @@ function buildBridges(scene) {
   add(asphalt, createRoadSurfaceMaterial(), 'BridgeDecks', false);
   add(concrete, createBridgeConcreteMaterial(), 'BridgeConcrete', true);
   add(bed, createTrackBedMaterial(), 'TrackBed', false);
+  add(earth, createUnderpassEarthMaterial(), 'UnderpassEarth', false);
   add(steel, new THREE.MeshStandardNodeMaterial({ color: 0x6b6660, metalness: 0.75, roughness: 0.38 }), 'Rails', false);
   scene.add(group);
   return { group, colliders };
