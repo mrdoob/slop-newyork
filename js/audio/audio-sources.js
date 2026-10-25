@@ -95,6 +95,7 @@ class CityAudioSources {
     this.motos = trafficSystem.motos || [];
     this.peds = trafficSystem.peds;
     this.highwayCars = highwayTraffic.cars;
+    this.pursuers = []; // the patrol cars chasing the player (crime.js): sirens & engines
     this.signalSites = streetDetails.audioSignals;
     this.motors = new NearestSources(10);
     this.sirens = new NearestSources(2);
@@ -207,6 +208,11 @@ class CityAudioSources {
       }
     }
 
+    for (let i = 0; i < this.pursuers.length; i++) {
+      const c = this.pursuers[i];
+      if (!c.active || c.wreck) continue;
+      this.motor(c, c.police ? 'sedan' : 'suv', c.x, c.y + 0.7, c.z, Math.abs(c.speed), unit(Math.abs(c.speed) / 20), c.heading, !!c.police, false, seedAt(3000 + i), false);
+    }
     this.streetVehicles(this.cars, elapsed, 100);
     this.streetVehicles(this.buses, elapsed, 1000);
     this.streetVehicles(this.motos, elapsed, 2000);

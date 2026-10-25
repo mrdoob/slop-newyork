@@ -65,6 +65,11 @@
   <link rel="modulepreload" href="./js/world/bridges.js" />
   <link rel="modulepreload" href="./js/sim/traffic.js" />
   <link rel="modulepreload" href="./js/sim/pedestrian-routes.js" />
+  <link rel="modulepreload" href="./js/sim/weapons.js" />
+  <link rel="modulepreload" href="./js/sim/crime-rules.js" />
+  <link rel="modulepreload" href="./js/sim/gunfire-fx.js" />
+  <link rel="modulepreload" href="./js/sim/crime.js" />
+  <link rel="modulepreload" href="./js/ui/crime-hud.js" />
   <link rel="modulepreload" href="./js/player/drivetrain.js" />
   <link rel="modulepreload" href="./js/player/vehicle-damage.js" />
   <link rel="modulepreload" href="./js/player/controllers.js" />
@@ -86,7 +91,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&amp;family=Overpass:wght@600;700&amp;display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261024-cars-moto" />
+  <link rel="stylesheet" href="./css/style.css?v=20261024-crime-cars" />
 </head>
 <body>
   <!-- Icon sprite (24 × 24 stroke icons, drawn in currentColor) -->
@@ -183,6 +188,22 @@
     </div>
   </div>
 
+  <!-- Under the toolbar: wanted level, health & armour, money, the weapon in hand (crime.js, crime-hud.js) -->
+  <div class="hud hud-crime">
+    <section id="hud-crime" class="panel crime-card" aria-label="Status">
+      <div class="crime-weapon"><span id="hud-weapon-name">Pistol</span><span id="hud-ammo" class="crime-ammo">68</span></div>
+      <div id="hud-money" class="crime-money">$00000250</div>
+      <div class="crime-bar crime-health" aria-hidden="true"><span id="hud-health"></span></div>
+      <div id="hud-armor-row" class="crime-bar crime-armor" aria-hidden="true" hidden><span id="hud-armor"></span></div>
+      <div id="hud-wanted" class="wanted" role="img" aria-label="Wanted level: 0 of 5">
+        <span class="wanted-star" aria-hidden="true">★</span><span class="wanted-star" aria-hidden="true">★</span><span class="wanted-star" aria-hidden="true">★</span><span class="wanted-star" aria-hidden="true">★</span><span class="wanted-star" aria-hidden="true">★</span>
+      </div>
+    </section>
+  </div>
+  <div id="hud-toast" class="crime-toast" role="status" aria-live="polite" hidden></div>
+  <div id="hud-banner" class="crime-banner" aria-live="assertive" hidden></div>
+  <div id="hud-hurt" class="hurt-vignette" aria-hidden="true"></div>
+
   <!-- Teleport Destinations (native popover: light-dismiss & Esc) -->
   <div id="teleport-popover" class="popover" popover data-side="below" data-anchor="hud-toolbar" aria-label="Teleport the active player">
     <div class="pop-title">Teleport to</div>
@@ -260,6 +281,9 @@
       </button>
       <button class="touch-action touch-boost" data-touch-action="boost" type="button" aria-label="Boost" aria-pressed="false">
         <span aria-hidden="true">↟</span><span data-touch-label="boost">Boost</span>
+      </button>
+      <button class="touch-action touch-fire" data-touch-action="fire" type="button" aria-label="Fire" aria-pressed="false">
+        <span aria-hidden="true">✹</span><span data-touch-label="fire">Fire</span>
       </button>
       <button id="touch-board" class="touch-action touch-board" type="button" aria-label="Subir, robar o bajar" hidden>
         <span aria-hidden="true">⇄</span><span data-board-label>Subir</span>

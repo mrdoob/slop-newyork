@@ -45,6 +45,13 @@ const MAP = {
 };
 
 // The dry valley floor around the city
+// Radar blips for crime.js: [colour, radius in px]
+const BLIP_STYLES = {
+  cop: ['#4d8dff', 3], cruiser: ['#4d8dff', 4.2], rojos: ['#ff4d4d', 3], verdes: ['#45d16b', 3], thief: ['#f2f2f2', 3.4],
+  narcos: ['#c9a24a', 3.2], truck: ['#c9a24a', 4.4],
+  money: ['#6fe39a', 2.6], health: ['#ff6b6b', 3], armor: ['#7fb0ff', 3], pistol: ['#ffd24a', 2.6], smg: ['#ffa53a', 2.6],
+  rifle: ['#d6e04a', 2.8], bazooka: ['#ff7a2a', 3.4]
+};
 const MAP_BASE = '#101511';
 
 // The city's colonias (GEO.places) at their real places (world metres)
@@ -756,6 +763,11 @@ class CityMapSystem {
     ctx.textBaseline = 'alphabetic';
   }
 
+  // Where the radar's crime blips come from (crime.js blips())
+  setBlipSource(fn) {
+    this.blipSource = typeof fn === 'function' ? fn : null;
+  }
+
   update() {
     // The full map covers the whole screen, radar included
     if (this.isFullMapOpen) {
@@ -867,6 +879,25 @@ class CityMapSystem {
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(lx, ly, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // The police, gangs, thieves and pickups (crime.js blips: kind, x, z, ...), clamped to the radar's edge
+    if (this.blipSource) {
+      const blips = this.blipSource();
+      for (let i = 0; i < blips.length; i += 3) {
+        const style = BLIP_STYLES[blips[i]];
+        if (!style) continue;
+        const bx = Math.max(-w * 0.46, Math.min(w * 0.46, toX(blips[i + 1])));
+        const by = Math.max(-h * 0.46, Math.min(h * 0.46, toY(blips[i + 2])));
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.beginPath();
+        ctx.arc(bx, by, style[1] + 1.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = style[0];
+        ctx.beginPath();
+        ctx.arc(bx, by, style[1], 0, Math.PI * 2);
         ctx.fill();
       }
     }

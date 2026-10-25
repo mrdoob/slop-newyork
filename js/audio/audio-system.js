@@ -314,11 +314,13 @@ class CityAudioSystem {
   emit(kind, source, options = {}) {
     const now = this.context.currentTime;
     const crash = kind === 'crash';
+    const loud = kind === 'gun' || kind === 'explosion'; // (gunfire & blasts take their voices like crashes do)
     const severity = clamp(options.severity ?? options.intensity ?? 1, 0, 1);
-    const ref = crash ? 4 + severity * 8 : kind === 'horn' ? 8 : kind === 'talk' ? 2 : 1.8;
-    const range = crash ? 50 + severity * 110 : kind === 'horn' ? 140 : kind === 'talk' ? 30 : kind === 'footstep' ? 22 : 35;
+    const ref = crash ? 4 + severity * 8 : kind === 'explosion' ? 30 : kind === 'gun' ? 10 : kind === 'horn' ? 8 : kind === 'talk' ? 2 : 1.8;
+    const range = crash ? 50 + severity * 110 : kind === 'explosion' ? 600 : kind === 'gun' ? 300 : kind === 'horn' ? 140
+      : kind === 'talk' ? 30 : kind === 'footstep' ? 22 : 35;
     if (Math.hypot(source.x - this.listener.x, source.y - this.listener.y, source.z - this.listener.z) > range) return false;
-    if (crash) {
+    if (crash || loud) {
       // Impacts are immediate, between the 10 Hz ambience updates. Reclaim finished events first, then let
       // a strong impact displace a quieter crash or background event without increasing the voice budget.
       for (let i = this.events.length - 1; i >= 0; i--) {
@@ -327,7 +329,7 @@ class CityAudioSystem {
       let crashes = 0, weakest = -1;
       for (let i = 0; i < this.events.length; i++) {
         const event = this.events[i];
-        if (event.kind !== 'crash') continue;
+        if (event.kind !== kind) continue;
         crashes++;
         if (weakest < 0 || event.severity < this.events[weakest].severity) weakest = i;
       }
@@ -336,7 +338,7 @@ class CityAudioSystem {
         this.removeEvent(weakest);
       }
       if (this.events.length >= this.limits.events) {
-        const background = this.events.findIndex(event => event.kind !== 'crash' && event.kind !== 'horn');
+        const background = this.events.findIndex(event => event.kind !== 'crash' && event.kind !== 'horn' && event.kind !== 'explosion');
         if (background < 0) return false;
         this.removeEvent(background);
       }
@@ -345,7 +347,7 @@ class CityAudioSystem {
     const emitter = new SpatialEmitter(this.context, this.mix, this.reflections, this.acoustics,
       ref, kind === 'talk' ? 1.5 : 0, kind === 'horn');
     // Do not fade away the first few milliseconds of a crash: its spatial gain and filtering are ready at onset.
-    emitter.update(source, this.listener, now, range, true, crash);
+    emitter.update(source, this.listener, now, range, true, crash || loud);
     const voice = playEvent(this.context, this.resources, kind, emitter.input, { seed: source.seed, ...options });
     this.events.push({ kind, voice, emitter, id: source.id, range, severity, position: { ...source }, follow: kind === 'talk' || kind === 'horn' });
     return true;
@@ -381,6 +383,17 @@ class CityAudioSystem {
     contact.played = now;
     contact.speed = speed;
     return true;
+  }
+
+  // A shot, a punch, a blast or a pickup at (x, y, z) (crime.js): 'pistol' | 'smg' | 'bazooka' | 'punch' |
+  // 'explosion' | 'pickup'
+  gunfire(kind, x, y, z) {
+    if (!this.ready || !this.enabled || !this.haveListener || this.context?.state !== 'running' || document.hidden) return false;
+    const source = this.gunSource ??= { id: null, x: 0, y: 0, z: 0, seed: 0 };
+    source.id = this.gunSource; source.x = x; source.y = y; source.z = z; source.seed = ++this.collisionSequence;
+    if (kind === 'explosion') return this.emit('explosion', source, { severity: 1, intensity: 1 });
+    if (kind === 'pickup') return this.emit('pickup', source, { intensity: 1 });
+    return this.emit('gun', source, { weapon: kind, severity: kind === 'bazooka' ? 1 : kind === 'smg' ? 0.5 : 0.7, intensity: 1 });
   }
 
   honk(entity) {

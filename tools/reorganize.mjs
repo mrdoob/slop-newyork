@@ -25,11 +25,11 @@ const FOLDERS = {
     'city-config.js', 'city-geodata.js', 'city-grid.js', 'buildings.js', 'tepic-landmarks.js', 'cotos.js', 'street-details.js',
     'storefronts', 'terrain.js', 'ground.js', 'drape.js', 'trees.js', 'road-network.js', 'road-paint.js', 'bridges.js', 'weather.js'
   ],
-  sim: ['traffic.js', 'pedestrians.js', 'pedestrian-routes.js', 'mayhem.js'],
+  sim: ['traffic.js', 'pedestrians.js', 'pedestrian-routes.js', 'mayhem.js', 'weapons.js', 'crime-rules.js', 'gunfire-fx.js', 'crime.js'],
   actors: ['actor-models.js', 'vehicle-lights.js'],
   player: ['controllers.js', 'cameras.js', 'drivetrain.js', 'vehicle-damage.js'],
   input: ['touch-controls.js', 'gamepad-controls.js'],
-  ui: ['city-map.js', 'tachometer.js'],
+  ui: ['city-map.js', 'tachometer.js', 'crime-hud.js'],
   audio: ['audio-acoustics.js', 'audio-events.js', 'audio-sources.js', 'audio-synthesis.js', 'audio-system.js'],
   net: ['multiplayer.js'],
   models: [] // (born in its folder: body shapes & the car models' data, js/models/cars/README.md)

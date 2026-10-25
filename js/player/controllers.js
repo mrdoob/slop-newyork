@@ -233,7 +233,8 @@ class ThirdPersonControllerManager {
       handbrake: false,
       shiftUp: false,
       shiftDown: false,
-      gearbox: false
+      gearbox: false,
+      fire: false // (crime.js: the right mouse button fires too)
     };
 
     this.entities = {
@@ -294,7 +295,8 @@ class ThirdPersonControllerManager {
       handbrake: ['Space'],
       shiftUp: ['KeyE'],
       shiftDown: ['KeyQ'],
-      gearbox: ['KeyT']
+      gearbox: ['KeyT'],
+      fire: ['KeyX']
     };
     const actionsByCode = new Map();
     for (const [action, codes] of Object.entries(bindings)) {

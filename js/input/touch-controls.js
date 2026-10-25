@@ -102,11 +102,13 @@ class TouchControls {
     const labels = {
       boost: mode === 'person' || mode === 'cyclist' ? 'Sprint' : mode === 'car' || mode === 'moto' ? 'Nitro' : 'Boost',
       up: mode === 'helicopter' ? 'Ascend' : mode === 'car' ? 'Handbrake' : 'Jump',
-      down: 'Descend'
+      down: 'Descend',
+      fire: 'Fire'
     };
     for (const button of this.buttons) {
       const action = button.getAttribute('data-touch-action');
-      button.hidden = (action === 'up' && (mode === 'cyclist' || mode === 'moto')) || (action === 'down' && mode !== 'helicopter');
+      button.hidden = (action === 'up' && (mode === 'cyclist' || mode === 'moto')) || (action === 'down' && mode !== 'helicopter') ||
+        (action === 'fire' && mode === 'helicopter'); // (no guns from the helicopter, crime.js)
       button.setAttribute('aria-label', labels[action]);
       const label = this.root.querySelector(`[data-touch-label="${action}"]`);
       if (label) label.textContent = labels[action];
