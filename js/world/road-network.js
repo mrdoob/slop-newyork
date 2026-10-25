@@ -386,18 +386,24 @@ function buildRoadNetwork(sidewalks, obstacles) {
       junctions.set(r, node);
       return node;
     }
-    // Lanes by the street's real curb-to-curb width and direction of travel: one-way streets as wide as the grid's
-    // (two lanes from ~9 m), two-way ones a lane each way (two each way from 17 m). Wide or named avenues are major.
+    // Lanes by the street's real lane count (OpenStreetMap's lanes, or the builder's guess by road class) and
+    // curb-to-curb width: as many as fit at 2.9 m or wider, each up to 3.6 m wide (a one-way road 7 m wide with two
+    // lanes, like the Libramiento's carriageways, has two of 3.5 m). Two-way roads split them each way. Wide or
+    // named avenues are major.
     const MAJOR = /\bAVE\b|AVENUE|BROADWAY|BOWERY|BLVD|PARK ROW|^Avenida\b|^Av\.|Boulevard|Bulevar|Calzada|Libramiento|Perif[eé]rico|^Carretera|Prolongaci[oó]n Avenida/;
     function lanesOf(l) {
       const w = l.w > 3 ? l.w : MAJOR.test(l.name) ? 18 : 9.1;
       const half = w / 2;
       const axis = w >= 14.5 || l.lanes >= 3 || MAJOR.test(l.name) ? 'ave' : 'st';
       if (l.dir !== 0) {
-        const lanes = laneOffsets(half) || [0];
+        const n = Math.max(1, Math.min(l.lanes || 1, Math.floor(w / 2.9)));
+        const lw = Math.min(3.6, w / n);
+        const lanes = Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * lw);
         return { half, axis, fwd: l.dir > 0 ? lanes : [], back: l.dir < 0 ? lanes : [] };
       }
-      const each = half >= 8.5 ? [1.8, 5.4] : [1.8];
+      const n = Math.max(1, Math.min(Math.round((l.lanes || 2) / 2), Math.floor(half / 2.9)));
+      const lw = Math.min(3.6, half / n);
+      const each = Array.from({ length: n }, (_, i) => (i + 0.5) * lw);
       return { half, axis, fwd: each, back: each };
     }
     const DEG = Math.PI / 180;
