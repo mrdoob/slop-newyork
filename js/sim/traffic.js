@@ -15,27 +15,35 @@ import {
   createLightbarMaterial,
   buildLoftedBusBodyGeometry,
   buildBusSignGeometry,
+  routeSignTexture,
+  createRouteSignMaterial,
+  busLiveryTexture,
+  buildCombiSignGeometry,
   buildBusWheelGeo,
   createBusWheelMaterial,
   createLoftedBusMaterial
 } from '../actors/actor-models.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
+import { createTransit } from './transit.js';
+import { GEO } from '../world/city-geodata.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BONES, boxHit, riderKnocked, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
 
 // js/sim/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
-// - 200 cars (taxis, sedans, SUVs, pickups, vans, hatchbacks, police cruisers), 12 buses, 28 cyclists and 26
+// - 200 cars (taxis, sedans, SUVs, pickups, vans, hatchbacks, police cruisers), 16 buses, 28 cyclists and 26
 //   motorcyclists keep to their lanes and follow the vehicle ahead (Intelligent Driver Model), change lanes to
 //   overtake or to reach a turn lane, turn into other streets,
 //   stop for the signals street-details.js shows, give way to oncoming traffic when turning left, to the avenue at
 //   unsignalized corners and to pedestrians on crosswalks, and never enter an intersection they can't clear.
+// - The buses (camiones) and the combis among the vans run Tepic's real routes (transit.js), in their route's livery
+//   and with its name on the glass or the roof.
 // - 340 pedestrians follow connected sidewalks, meet to talk, and cross signalized crosswalks on WALK.
 // - Fixed-size local populations replenish distant roads and sidewalks in every direction, protecting the near view.
 // - The player's vehicle or character pushes and is pushed by the traffic (SAT contact, impulses, sparks).
 
 const NUM_CARS = 200;
-const NUM_BUSES = 12;
+const NUM_BUSES = 16;
 const NUM_PEDS = 340;
 const NUM_BIKES = 28; // cyclists riding with the traffic (the player can knock them off)
 const NUM_MOTOS = 26; // motorcyclists, likewise
@@ -82,27 +90,19 @@ const NEAR_RADIUS = 350;
 const VEHICLE_SPAWN_DISTANCE = 250;
 const PED_SPAWN_DISTANCE = 150;
 
-function createBusDestinationTexture() {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 64;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#0c0f14';
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = '#0058b8';
-  ctx.fillRect(6, 8, 62, 48);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '900 26px Inter, Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('M1', 37, 33);
-  ctx.fillStyle = '#ff9d1c';
-  ctx.font = '800 22px JetBrains Mono, monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText('5 AV / HARLEM', 78, 33);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+// Liveries of Tepic's camiones ([body, trim]), the first three as photographed: Progreso 2 in green, Progreso 4 white
+// with a gold pinstripe, Mololoa white over blue. Other routes take one by their name (liveryOf: an index)
+const LIVERIES = [
+  [0x1f9a3c, 0x1f9a3c], [0xf1f2ee, 0xc9a133], [0xf1f2ee, 0x1d3480], [0xf1f2ee, 0x1f9a3c], [0xf2c21a, 0x1d3480],
+  [0xf1f2ee, 0xb3221c], [0x1d4fa8, 0xf1f2ee], [0xe36a1a, 0xf1f2ee], [0xf1f2ee, 0x6a2a8a]
+];
+const ROUTE_LIVERIES = [[/^Progreso 2/, 0], [/^Progreso 4/, 1], [/^Mololoa/, 2]];
+function liveryOf(name) {
+  const known = ROUTE_LIVERIES.find(([re]) => re.test(name));
+  if (known) return known[1];
+  let h = 7;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return h % LIVERIES.length;
 }
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
@@ -152,6 +152,19 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     n.walkers = []; // pedestrians on its crosswalks
     n.curb = []; // pedestrians at the curbs of its crosswalks, standing or about to (who to queue behind)
   }
+  // Bus & combi routes (transit.js): the roads each route runs along (e.transit: [{ path, s }], s where the road ends
+  // on it), to put its vehicles on
+  const transit = createTransit(GEO.transit, GEO.roadGraph);
+  {
+    let onRoutes = 0;
+    for (const e of edges) {
+      const on = transit.pathsAlong(e.sx, e.sz, e.sx + e.dx * e.len, e.sz + e.dz * e.len);
+      e.transit = on.length ? on : null;
+      if (e.transit) onRoutes++;
+    }
+    if (transit.paths.length) console.info(`[transit] ${transit.routeNames.length} routes run along ${onRoutes} of ${edges.length} roads`);
+  }
+
   for (const e of edges) {
     e.occ = e.lanes.map(() => []); // vehicles in each lane, sorted by position
     // e.inSide / e.outSide: the crosswalks crossed on the way into e.to / out of e.from; e.axisIndex: its group at e.to;
@@ -178,6 +191,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       wait: 0, laneTimer: Math.random() * 0.5,
       dl: 0, dlv: 0, blink: 0, blinkPhase: Math.random() * 0.8,
       x: 0, z: 0, prevX: 0, prevZ: 0, tx: 0, tz: 1, nose: 0, yaw: 0, yawRate: 0, steer: 0,
+      // on a bus or combi route (transit.js): its fleet, the path, metres along it to the end of this road and to the
+      // end of the next, how many moves since it last found its way along it, and the route's sign row (-1 none yet)
+      fleet: null, path: null, pathS: 0, nextPathS: 0, lost: 0, sign: -1,
       pitch: 0, roll: 0, pitchVel: 0, rollVel: 0, vx: 0, vz: 0, yawOffset: 0, yawVel: 0,
       pAhead: Infinity, pRight: 0, pSpeed: 0, pHalfW: 0.86, pHalfL: 2.18, wheelSpin: Math.random() * Math.PI * 2
     };
@@ -207,11 +223,15 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const carCounts = Object.fromEntries(CAR_KINDS.map((k) => [k, 0]));
   let policeCount = 0;
 
+  const combiWhite = new THREE.Color(0xf4f5f2);
+  let combiCount = 0;
   for (let i = 0; i < NUM_CARS; i++) {
     const isPolice = (i % 40) === 6;
     const isTaxi = !isPolice && (i % 5) === 0;
+    const isCombi = !isPolice && !isTaxi && (i % 9) === 4; // white vans on the routes (see buses below)
     let bodyType = 'sedan';
     if (isTaxi) bodyType = 'taxi';
+    else if (isCombi) bodyType = 'van';
     else if (!isPolice) {
       let roll = ((i * 0.6180339887) % 1 + 1) % 1;
       for (const [kind, share] of carMix) {
@@ -219,16 +239,17 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         if ((roll -= share) < 0) break;
       }
     }
-    const col = isTaxi ? taxiYellow : isPolice ? policeWhite : palettes[bodyType][i % palettes[bodyType].length];
+    const col = isTaxi ? taxiYellow : isPolice ? policeWhite : isCombi ? combiWhite : palettes[bodyType][i % palettes[bodyType].length];
     carCounts[bodyType]++;
     if (isPolice) policeCount++;
+    if (isCombi) combiCount++;
 
     const spec = BODY_SPECS[bodyType];
     const widest = Math.max(...spec.halfWidth.map(([, w]) => w));
     const car = createVehicle(false, spec.zFront, widest - 0.07, spec.wheelZ, CAR_DRIVER, 10 + (i % 5) * 0.9);
     // paint as float32 values, so renderCar() can tell whether an instance slot's paint changes by comparing
     const paint = [Math.fround(col.r), Math.fround(col.g), Math.fround(col.b)];
-    Object.assign(car, { isTaxi, isPolice, heavy: !!carHeavy[bodyType], bodyType, paint });
+    Object.assign(car, { isTaxi, isPolice, heavy: !!carHeavy[bodyType], bodyType, paint, fleet: isCombi ? 'combi' : null });
     cars.push(car);
   }
 
@@ -287,6 +308,15 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     }
   }
 
+  // The routes' names, one atlas row each, for the buses' glass and the combis' roof signs
+  const signNames = transit.routeNames.length ? transit.routeNames : ['Tepic'];
+  const signTexture = routeSignTexture(signNames);
+  const combiSignGeo = buildCombiSignGeometry();
+  const combiSignRows = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, combiCount)), 1);
+  combiSignGeo.setAttribute('signRow', combiSignRows);
+  const combiSignInst = new THREE.InstancedMesh(combiSignGeo, createRouteSignMaterial(signTexture, signNames.length, 'box'), Math.max(1, combiCount));
+  combiSignInst.castShadow = true;
+
   // NYPD roof light bars (the blue & white livery is painted by the sedan material from the instance's carState)
   const policeLightbarInst = new THREE.InstancedMesh(buildLightbarGeometry(BODY_SPECS.sedan), createLightbarMaterial(), Math.max(1, policeCount));
   const carShadowInst = new THREE.InstancedMesh(unitPlane, contactShadowMat, NUM_CARS);
@@ -302,23 +332,25 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     carWheelLeftInst,
     carWheelRightInst,
     sparkInst,
-    policeLightbarInst
+    policeLightbarInst,
+    combiSignInst
   );
 
   // =========================================================================
-  // 2. LOFTED MTA SELECT BUS SERVICE BLUE & WHITE CITY BUSES (32 BUSES)
+  // 2. LOFTED CAMIONES ON TEPIC'S ROUTES (16 BUSES)
   // =========================================================================
   const busBodyGeo = buildLoftedBusBodyGeometry();
-  // Per-instance lamp state the bus material reads: brake lights, left (+x) & right (-x) turn signals (renderBus)
+  // Per-instance lamp state the bus material reads: brake lights, left (+x) & right (-x) turn signals (renderBus),
+  // and its route's livery (an index into LIVERIES)
   const busStates = new THREE.InstancedBufferAttribute(new Float32Array(NUM_BUSES * 4), 4);
   busBodyGeo.setAttribute('busState', busStates);
-  // Destination signs above the windshield, by the front door & above the rear window
+  // The route's name across the windshield, the first side windows & the rear window
   const busHeaderGeo = buildBusSignGeometry();
+  const busSignRows = new THREE.InstancedBufferAttribute(new Float32Array(NUM_BUSES), 1);
+  busHeaderGeo.setAttribute('signRow', busSignRows);
 
-  const busBodyMat = createLoftedBusMaterial();
-  const busDestMat = new THREE.MeshBasicNodeMaterial({
-    map: createBusDestinationTexture()
-  });
+  const busBodyMat = createLoftedBusMaterial(busLiveryTexture(LIVERIES));
+  const busDestMat = createRouteSignMaterial(signTexture, signNames.length, 'glass');
 
   const busWheelMat = createBusWheelMaterial();
   const busBodyInst = new THREE.InstancedMesh(busBodyGeo, busBodyMat, NUM_BUSES);
@@ -333,7 +365,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   busWheelRightInst.castShadow = busWheelRightInst.receiveShadow = true;
 
   const buses = [];
-  for (let i = 0; i < NUM_BUSES; i++) buses.push(createVehicle(true, 6.0, 1.3, 3.6, BUS_DRIVER, 8 + (i % 3)));
+  for (let i = 0; i < NUM_BUSES; i++) {
+    const bus = createVehicle(true, 6.0, 1.3, 3.6, BUS_DRIVER, 8 + (i % 3));
+    bus.fleet = 'bus';
+    bus.livery = 2; // its route's, once it has one
+    buses.push(bus);
+  }
 
   // Cyclists: vehicles of their own kind keeping to the right-hand lane, a frame & wheels instanced, the rider a
   // PersonRig posed on the pedals (pedestrians.js ride). Motorcyclists ride the same way, in any lane at car speeds,
@@ -514,7 +551,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   }
 
   // Nothing shows until it has been placed
-  const carInstances = [...bodyMeshes, carWheelLeftInst, carWheelRightInst, policeLightbarInst, carShadowInst];
+  const carInstances = [...bodyMeshes, carWheelLeftInst, carWheelRightInst, policeLightbarInst, combiSignInst, carShadowInst];
   const busInstances = [busBodyInst, busHeaderInst, busWheelLeftInst, busWheelRightInst, busShadowInst];
   for (const inst of [...carInstances, ...busInstances, sparkInst]) {
     inst.frustumCulled = false;
@@ -677,6 +714,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
   // Edges and signalized intersections around the focus, to place vehicles and pedestrians on
   const nearEdges = [];
+  const nearTransitEdges = []; // those on a bus or combi route
   const nearSignals = [];
   let nearX = Infinity;
   let nearZ = Infinity;
@@ -685,11 +723,15 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     nearX = focusX;
     nearZ = focusZ;
     nearEdges.length = 0;
+    nearTransitEdges.length = 0;
     nearSignals.length = 0;
     for (const e of edges) {
       const s = clamp((focusX - e.sx) * e.dx + (focusZ - e.sz) * e.dz, 0, e.len);
       const dx = e.sx + e.dx * s - focusX, dz = e.sz + e.dz * s - focusZ;
-      if (dx * dx + dz * dz < NEAR_RADIUS * NEAR_RADIUS) nearEdges.push(e);
+      if (dx * dx + dz * dz < NEAR_RADIUS * NEAR_RADIUS) {
+        nearEdges.push(e);
+        if (e.transit) nearTransitEdges.push(e);
+      }
     }
     for (const n of nodes) {
       const dx = n.x - focusX, dz = n.z - focusZ;
@@ -798,11 +840,34 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     return stopAt(v, d);
   }
 
-  // Mostly straight on, sometimes a turn (buses keep to wide roads). Routes don't follow the camera;
+  // Buses & combis on a route take the move that runs on along it (transit.js pickMove); one that has strayed from it
+  // (its lane can't make the turn, the route runs where the road graph has no road) drives on like the rest while it
+  // looks further ahead for it, and gives it up after a few moves.
+  let laneOf = null;
+  const laneAllows = (m) => m.out[laneOf.lane] >= 0;
+  function routeMove(v, fromLane) {
+    const e = v.edge;
+    laneOf = v;
+    const r = transit.pickMove(v.path, v.pathS, e.moves, fromLane ? laneAllows : null, v.lost * 150);
+    if (r.index >= 0) {
+      v.nextPathS = r.s;
+      v.lost = 0;
+      return e.moves[r.index];
+    }
+    v.nextPathS = v.pathS;
+    if (++v.lost > 6) v.path = null;
+    return null;
+  }
+
+  // Mostly straight on, sometimes a turn (buses off their routes keep to wide roads). Routes don't follow the camera;
   // distant vehicles are recycled instead. With `fromLane`, only moves the current lane allows.
   const weights = [];
   function chooseMove(v, fromLane) {
     const e = v.edge;
+    if (v.path) {
+      const m = routeMove(v, fromLane);
+      if (m) return m;
+    }
     let total = 0;
     for (let k = 0; k < e.moves.length; k++) {
       const m = e.moves[k];
@@ -1196,6 +1261,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     v.trail = v.conn; // the rear axle is still on it
     v.conn = null;
     v.commit = null;
+    if (v.path) v.pathS = v.nextPathS;
     v.move = chooseMove(v, false);
   }
 
@@ -1523,11 +1589,31 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     occupy(e.occ[lane], v, s);
   }
 
-  // Put v in a free lane around the focus. Normal replenishment protects the near view; teleports can fill it.
+  // A route of v's fleet that road e runs along ({ path, s }), at random, or null
+  const fleetRoutes = [];
+  function routeOn(e, fleet) {
+    fleetRoutes.length = 0;
+    for (const on of e.transit) if (!on.path.fleet || on.path.fleet === fleet) fleetRoutes.push(on);
+    return fleetRoutes.length ? fleetRoutes[Math.floor(Math.random() * fleetRoutes.length)] : null;
+  }
+  function joinRoute(v, on) {
+    v.path = on.path;
+    v.pathS = on.s;
+    v.lost = 0;
+    v.sign = on.path.routeIndex;
+    if (v.bus) v.livery = liveryOf(on.path.name);
+  }
+
+  // Put v in a free lane around the focus. Normal replenishment protects the near view; teleports can fill it. Buses
+  // & combis go on the roads of their routes (where the map has any).
   function spawnVehicle(v, rMin, rMax, protectView) {
+    const onRoutes = !!v.fleet && transit.paths.length > 0;
+    const pool = onRoutes ? nearTransitEdges : nearEdges;
     for (let attempt = 0; attempt < 12; attempt++) {
-      const e = nearEdges[Math.floor(Math.random() * nearEdges.length)];
-      if (!e || (v.bus && e.axis !== 'ave') || e.len < 2 * v.half + 10) continue;
+      const e = pool[Math.floor(Math.random() * pool.length)];
+      if (!e || (v.bus && !onRoutes && e.axis !== 'ave') || e.len < 2 * v.half + 10) continue;
+      const on = onRoutes ? routeOn(e, v.fleet) : null;
+      if (onRoutes && !on) continue;
       const lane = v.bike ? e.lanes.length - 1 : Math.floor(Math.random() * e.lanes.length);
       const along = (focusX - e.sx) * e.dx + (focusZ - e.sz) * e.dz;
       const minS = Math.max(v.half + 5, along - rMax);
@@ -1540,6 +1626,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       if (d < rMin || d > rMax || (protectView && nearView(x, z, v.half + 4, VEHICLE_SPAWN_DISTANCE))) continue;
       if (player.active && Math.hypot(x - player.x, z - player.z) < 25) continue;
       if (!laneClear(e.occ[lane], s, v.half + 8)) continue;
+      if (on) joinRoute(v, on);
+      else v.path = null;
       place(v, e, lane, s);
       return true;
     }
@@ -1815,6 +1903,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   let wheelCars = 0;
   let visibleCars = 0;
   let policeDrawn = 0;
+  let combisDrawn = 0;
   let visibleBuses = 0;
   let updates = 0;
 
@@ -1875,6 +1964,10 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     dummy.updateMatrix();
     bodyInst.setMatrixAt(slot, dummy.matrix);
     if (c.isPolice) policeLightbarInst.setMatrixAt(policeDrawn++, dummy.matrix);
+    if (c.fleet === 'combi' && c.sign >= 0) {
+      combiSignInst.setMatrixAt(combisDrawn, dummy.matrix);
+      combiSignRows.array[combisDrawn++] = c.sign;
+    }
 
     const attrs = bodyInst.geometry.attributes;
     const paint = attrs.paintColor.array;
@@ -1955,6 +2048,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     busBodyInst.setMatrixAt(i, dummy.matrix);
     busHeaderInst.setMatrixAt(i, dummy.matrix);
     writeLampState(b, busStates.array, i * 4);
+    busStates.array[i * 4 + 3] = b.livery;
+    busSignRows.array[i] = Math.max(0, b.sign);
 
     const dxCam = b.x - camX;
     const dyCam = (b.hy || 0) - camY;
@@ -2570,6 +2665,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     wheelCars = 0;
     visibleCars = 0;
     policeDrawn = 0;
+    combisDrawn = 0;
     visibleBuses = 0;
     riderCrowd.begin();
     for (const kit of kits) kit.drawn = 0;
@@ -2647,13 +2743,18 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     syncInst(carWheelLeftInst, wheelCars * 2);
     syncInst(carWheelRightInst, wheelCars * 2);
     syncInst(policeLightbarInst, policeDrawn);
+    syncInst(combiSignInst, combisDrawn);
+    if (combisDrawn > 0) flagRange(combiSignRows, combisDrawn);
     syncInst(carShadowInst, visibleCars);
     syncInst(busBodyInst, visibleBuses);
     syncInst(busHeaderInst, visibleBuses);
     syncInst(busWheelLeftInst, visibleBuses * 2);
     syncInst(busWheelRightInst, visibleBuses * 2);
     syncInst(busShadowInst, visibleBuses);
-    if (visibleBuses > 0) flagRange(busStates, visibleBuses);
+    if (visibleBuses > 0) {
+      flagRange(busStates, visibleBuses);
+      flagRange(busSignRows, visibleBuses);
+    }
     updateTrafficLights();
 
     // 2. Pedestrians

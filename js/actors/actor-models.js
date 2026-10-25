@@ -21,7 +21,8 @@ import {
   uniform,
   texture,
   time,
-  instanceIndex
+  instanceIndex,
+  uv
 } from 'three/tsl';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -1468,7 +1469,7 @@ function limbSections(joints, segments = 6, phase = 0) {
 // A 40-ft low-floor MTA bus lofted with the car body machinery: rounded plan-view corners, a raked windshield, a
 // tight roof radius and arches over the wheels; bumpers, the folded front bike rack, stalk mirrors and the roof AC &
 // battery pods are separate pieces of the same mesh (partId). Windows, doors, livery & lamps are painted by
-// createLoftedBusMaterial(); destination signs are textured panels (buildBusSignGeometry).
+// createLoftedBusMaterial(); the route's name on the glass is textured panels (buildBusSignGeometry).
 const BUS_PARTS = {
   BODY: 0,
   TRIM: 1,
@@ -1555,26 +1556,124 @@ function buildLoftedBusBodyGeometry() {
 }
 
 /**
- * Destination sign panels for the bus's sign texture (route badge + destination): above the windshield, on the curb
- * side by the front door, and the route badge alone above the rear window. Same object space as the bus body.
+ * The route's name lettered on the glass, as Tepic's camiones carry it (PROGRESO 4, MOLOLOA CENTRO): across the foot of
+ * the windshield, on the first side window either side and across the rear window. Panels take a whole row of the
+ * route sign atlas (routeSignTexture); same object space as the bus body.
  */
 function buildBusSignGeometry() {
   const s = BUS_SPEC;
   const panels = [];
-  const yF = 2.55;
-  const front = new THREE.PlaneGeometry(1.9, 0.27);
-  front.rotateX(-Math.atan2(s.rake * 1.3 * 0.62, 1.75));
-  front.translate(0, yF, s.zFront - busRake(yF, s.zFront) + 0.012);
+  const yF = 1.56;
+  const front = new THREE.PlaneGeometry(1.86, 0.34);
+  front.rotateX(-Math.atan2(busRake(yF + 0.17, s.zFront) - busRake(yF - 0.17, s.zFront), 0.34));
+  front.translate(0, yF, s.zFront - busRake(yF, s.zFront) + 0.014);
   panels.push(front);
-  const side = new THREE.PlaneGeometry(1.15, 0.2).rotateY(-Math.PI / 2);
-  side.translate(-(carBodyHalfWidthAt(s, 3.9, 2.58) + 0.006), 2.58, 3.9);
-  panels.push(side);
-  const rear = new THREE.PlaneGeometry(0.52, 0.2);
-  const uv = rear.attributes.uv;
-  for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.29);
-  rear.rotateY(Math.PI).translate(0, 2.55, s.zRear - 0.012);
+  for (const side of [-1, 1]) {
+    const panel = new THREE.PlaneGeometry(1.5, 0.27).rotateY(side * Math.PI / 2);
+    panel.translate(side * (carBodyHalfWidthAt(s, 2.9, 1.95) + 0.008), 1.95, 2.9);
+    panels.push(panel);
+  }
+  const rear = new THREE.PlaneGeometry(1.5, 0.27);
+  rear.rotateY(Math.PI).translate(0, 1.96, s.zRear - 0.014);
   panels.push(rear);
   return mergeGeometries(panels);
+}
+
+// The bus liveries as a palette for createLoftedBusMaterial: a column per livery, [body, trim] (hex), linear colour
+function busLiveryTexture(liveries) {
+  const data = new Float32Array(liveries.length * 2 * 4);
+  const c = new THREE.Color();
+  liveries.forEach((pair, i) => pair.forEach((hex, row) => {
+    c.setHex(hex);
+    data.set([c.r, c.g, c.b, 1], (row * liveries.length + i) * 4);
+  }));
+  const tex = new THREE.DataTexture(data, liveries.length, 2, THREE.RGBAFormat, THREE.FloatType);
+  tex.magFilter = tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// One row per route of white lettering edged in black on clear (the buses' glass), ROUTE_SIGN_ROWS tall
+const ROUTE_SIGN_ROW = 64;
+function routeSignTexture(names) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = ROUTE_SIGN_ROW * Math.max(1, names.length);
+  const ctx = canvas.getContext('2d');
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  names.forEach((name, row) => {
+    const text = name.toUpperCase();
+    let size = 44;
+    ctx.font = `900 ${size}px Georgia, 'Times New Roman', serif`;
+    const w = ctx.measureText(text).width;
+    if (w > 470) {
+      size = Math.floor((size * 470) / w);
+      ctx.font = `900 ${size}px Georgia, 'Times New Roman', serif`;
+    }
+    const y = row * ROUTE_SIGN_ROW + ROUTE_SIGN_ROW / 2 + 2;
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = '#000000';
+    ctx.strokeText(text, 256, y);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, 256, y);
+  });
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/**
+ * Route sign material over routeSignTexture's atlas, reading the per-instance `signRow` (the route's row):
+ * - 'glass': the lettering itself, cut out of the clear (a bus's windows)
+ * - 'box': a combi's roof sign, white with the lettering in navy, lit from inside at night
+ */
+function createRouteSignMaterial(tex, rows, kind) {
+  const row = attribute('signRow', 'float');
+  const t = texture(tex, vec2(uv().x, uv().y.add(float(rows - 1).sub(row)).div(rows)));
+  const mat = new THREE.MeshStandardNodeMaterial();
+  if (kind === 'glass') {
+    mat.colorNode = t.rgb;
+    mat.opacityNode = t.a;
+    mat.alphaTest = 0.5;
+    mat.roughnessNode = float(0.5);
+    mat.metalnessNode = float(0.0);
+    return mat;
+  }
+  const ink = clamp(t.a.mul(1.4), 0.0, 1.0);
+  const face = mix(color(0xf4f6f8), color(0x1b3a8c), ink);
+  mat.colorNode = face;
+  mat.roughnessNode = float(0.45);
+  mat.metalnessNode = float(0.0);
+  mat.emissiveNode = face.mul(smoothstep(0.6, 1.15, cityUniforms.uInteriorGlow).mul(0.55));
+  return mat;
+}
+
+// A combi's roof sign: a white box across the front of the van's roof (BODY_SPECS.van), its name on both faces. The
+// box's own sides sample the atlas's blank left margin
+function buildCombiSignGeometry() {
+  const roof = 2.03;
+  const w = 1.36, h = 0.3, d = 0.13, z = 1.05;
+  const box = new THREE.BoxGeometry(w, h, d);
+  const buv = box.attributes.uv;
+  for (let i = 0; i < buv.count; i++) buv.setXY(i, 0.008, 0.5);
+  box.translate(0, roof + 0.04 + h / 2, z);
+  const faces = [];
+  for (const dir of [1, -1]) {
+    const face = new THREE.PlaneGeometry(w - 0.04, h - 0.04);
+    if (dir < 0) face.rotateY(Math.PI);
+    face.translate(0, roof + 0.04 + h / 2, z + dir * (d / 2 + 0.003));
+    faces.push(face);
+  }
+  const feet = [-0.5, 0.5].map((x) => {
+    const foot = new THREE.BoxGeometry(0.06, 0.06, 0.08);
+    const fuv = foot.attributes.uv;
+    for (let i = 0; i < fuv.count; i++) fuv.setXY(i, 0.008, 0.5);
+    return foot.translate(x, roof + 0.02, z);
+  });
+  return mergeGeometries([box, ...faces, ...feet]);
 }
 
 // Bus wheel: tall tyre with a deep steel disc, 10 lug nuts and a hub cap on both outer and inner faces (spins about x, centred on the origin)
@@ -1649,21 +1748,27 @@ function createBusWheelMaterial() {
 let _busLoftedMat = null;
 
 /**
- * Creates the TSL procedural material for MTA buses:
+ * Creates the TSL procedural material for Tepic's camiones (the lofted bus body):
  * - Wraparound split windshield with gasket & centre post, destination sign band above it; rear window & engine
  *   louvres on the rear face
  * - Continuous side window band with mullions, the driver's window, glazed curb-side front & rear doors
- * - MTA livery: pearl white with the vivid blue band & cyan ribbon below the windows and a dark skirt
+ * - Each route's livery, row `busState.w` of `liveries` (busLiveryTexture): the body colour, and the trim below the
+ *   windows and in a pinstripe above them; a dark skirt
  * - Headlamps, turn signals (per-instance `busState`: brake, left (+x), right (-x)), tail / brake light columns,
  *   NY plates; black trims & light-grey roof pods
  */
-function createLoftedBusMaterial() {
+function createLoftedBusMaterial(liveries = null) {
   if (_busLoftedMat) return _busLoftedMat;
   const s = BUS_SPEC;
   const p = attribute('position', 'vec3');
   const n = attribute('normal', 'vec3');
   const partId = attribute('partId', 'float');
   const state = attribute('busState', 'vec4');
+  // (each livery's colours from its column of the palette: the body in the bottom row, the trim in the top; a new
+  // instanced attribute would take the body past WebGPU's 8 vertex buffers)
+  const liveryAt = (v) => (liveries ? texture(liveries, vec2(state.w.add(0.5).div(liveries.image.width), v)).rgb : color(0xf0f4f8));
+  const paint = liveryAt(0.25);
+  const trim = liveryAt(0.75);
   const isBody = step(abs(partId.sub(BUS_PARTS.BODY)), 0.25);
   const isTrim = step(abs(partId.sub(BUS_PARTS.TRIM)), 0.25);
   const isPod = step(abs(partId.sub(BUS_PARTS.POD)), 0.25);
@@ -1705,12 +1810,12 @@ function createLoftedBusMaterial() {
   const glass = clamp(max(max(frontGlass, rearGlass), max(max(sideBand.mul(mullion), driverWin), max(d0.glass, d1.glass))), 0.0, 1.0);
   const seal = clamp(max(max(frontSeal, rearSeal), max(max(sideSeal, signBand), doorFrame)), 0.0, 1.0);
 
-  // MTA livery
+  // The route's livery: its colour, the trim colour below the windows and in a pinstripe above them
   const shadeY = smoothstep(0.34, 1.2, p.y).mul(0.2).add(0.8);
-  const blueStripe = smoothstep(0.9, 0.93, p.y).mul(smoothstep(1.2, 1.17, p.y));
-  const cyanRibbon = smoothstep(0.84, 0.86, p.y).mul(smoothstep(0.885, 0.865, p.y));
+  const lowerBody = smoothstep(1.2, 1.17, p.y);
+  const pinstripe = smoothstep(2.47, 2.49, p.y).mul(smoothstep(2.55, 2.53, p.y)).mul(side);
   const skirt = smoothstep(0.53, 0.5, p.y);
-  const livery = mix(mix(mix(color(0xf0f4f8), color(0x0058b8), blueStripe), color(0x00a8e8), cyanRibbon), color(0x1c2026), skirt).mul(shadeY);
+  const livery = mix(mix(paint, trim, max(lowerBody, pinstripe)), color(0x1c2026), skirt).mul(shadeY);
 
   // Lamps: twin round headlamps & amber turn signals in black pods; red tail / brake light columns, amber turn &
   // white reverse lamps at the rear corners; plates
@@ -2191,6 +2296,10 @@ export {
   BUS_SPEC,
   buildLoftedBusBodyGeometry,
   buildBusSignGeometry,
+  routeSignTexture,
+  createRouteSignMaterial,
+  busLiveryTexture,
+  buildCombiSignGeometry,
   buildBusWheelGeo,
   createBusWheelMaterial,
   createLoftedBusMaterial,
