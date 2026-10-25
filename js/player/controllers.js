@@ -213,6 +213,8 @@ class ThirdPersonControllerManager {
       down: false,
       boost: false
     };
+    // Out of breath (player/stats.js), shift no longer sprints on foot nor on the bicycle; the motors don't tire
+    this.canSprint = true;
 
     this.entities = {
       person: this.createPersonEntity(),
@@ -330,6 +332,14 @@ class ThirdPersonControllerManager {
     this._touchKeys = {};
     this._gamepadKeys = {};
     for (const action of Object.keys(this.keys)) this.keys[action] = false;
+  }
+
+  // The mode the player is sprinting in now ('person' | 'cyclist', shift held going forward at speed), or null: what
+  // runs the stamina down (player/stats.js)
+  sprintingMode() {
+    const mode = this.activeMode;
+    if (!this.keys.boost || !this.keys.forward || !this.canSprint || (mode !== 'person' && mode !== 'cyclist')) return null;
+    return this.entities[mode].speed > (mode === 'person' ? 4.6 : 3) ? mode : null;
   }
 
   setMode(mode) {
@@ -1342,7 +1352,7 @@ class ThirdPersonControllerManager {
 
   updatePerson(dt) {
     const p = this.entities.person;
-    const maxWalk = this.keys.boost ? 8.2 : 4.4;
+    const maxWalk = this.keys.boost && this.canSprint ? 8.2 : 4.4;
     const turnRate = 2.6;
 
     let targetSpeed = 0;
@@ -1449,7 +1459,7 @@ class ThirdPersonControllerManager {
     if (this.keys.forward) throttle = this.keys.forward;
     else if (this.keys.backward) throttle = -0.6 * this.keys.backward;
 
-    b.speed = driveSpeed(b.speed, throttle, this.keys.boost, dt, BICYCLE_DRIVE);
+    b.speed = driveSpeed(b.speed, throttle, this.keys.boost && this.canSprint, dt, BICYCLE_DRIVE);
     if (throttle || Math.abs(b.speed) > 0.3) b.speed += this.slopeAcceleration(b.position.x, b.position.z, b.heading) * dt;
 
     let turnInput = 0;

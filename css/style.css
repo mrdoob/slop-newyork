@@ -272,6 +272,10 @@ body::after {
 .hud-top-right {
   top: var(--edge);
   right: var(--edge);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
 }
 
 .hud-bottom-left {
@@ -318,7 +322,8 @@ body.hud-minimized .hud-bottom-left,
 body.hud-minimized .hud-bottom-right { transform: translateY(12px); }
 body.hud-minimized .hud-bottom-center { transform: translate(-50%, 12px); }
 
-body.hud-minimized .toolbar > :not(#btn-toggle-hud) {
+body.hud-minimized .toolbar > :not(#btn-toggle-hud),
+body.hud-minimized .stats {
   display: none;
 }
 
@@ -789,6 +794,136 @@ body.hud-minimized .icon-show {
   color: var(--taxi-ink);
   background: var(--taxi);
   box-shadow: none;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------
+   Top right, under the toolbar: money, health & stamina (js/player/stats.js), GTA-style straight over the city, so
+   they carry their own dark outline instead of a glass panel
+   ------------------------------------------------------------------------------------------------------------------ */
+.stats {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+  width: 190px;
+  pointer-events: none;
+}
+
+.stats-money {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: #8fe39a;
+  text-shadow: 0 0 1px #000, 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 0, 0, 0.45);
+}
+
+.stats-delta {
+  height: 0;
+  margin-top: -2px;
+  font-size: 15px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 1px #000, 0 1px 2px rgba(0, 0, 0, 0.9);
+  opacity: 0;
+  overflow: visible;
+}
+
+.stats-delta.is-gain { color: #8fe39a; }
+.stats-delta.is-loss { color: var(--bad); }
+.stats-delta.is-shown { height: auto; animation: stats-delta 2.6s ease-out both; }
+
+@keyframes stats-delta {
+  0% { opacity: 0; transform: translateY(4px); }
+  10%, 70% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.stats-bar {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.stats-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transform-origin: left;
+  transition: transform 0.25s ease-out, background-color 0.3s ease;
+}
+
+.stats-health > span { background: var(--ok); }
+.stats-health.is-low > span { background: var(--bad); animation: stats-pulse 0.9s ease-in-out infinite alternate; }
+.stats-stamina > span { background: #6cc3ff; }
+.stats-stamina.is-winded > span { background: rgba(108, 195, 255, 0.45); }
+/* the stamina bar only shows while it isn't full */
+.stats-stamina { transition: opacity 0.4s ease; }
+.stats-stamina.is-full { opacity: 0; }
+
+@keyframes stats-pulse {
+  to { opacity: 0.55; }
+}
+
+/* Wasted: the city goes grey behind a band with the word on it until the hospital */
+.wasted {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  -webkit-backdrop-filter: grayscale(1) brightness(0.75);
+  backdrop-filter: grayscale(1) brightness(0.75);
+  animation: wasted-in 0.9s ease-out both;
+  pointer-events: none;
+}
+
+.wasted[hidden] { display: none; }
+
+.wasted::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 150px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.62) 25%, rgba(0, 0, 0, 0.62) 75%, transparent);
+}
+
+.wasted-title {
+  position: relative;
+  font-size: clamp(48px, 9vw, 92px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #d8262f;
+  text-shadow: 0 2px 0 #000, 0 0 18px rgba(0, 0, 0, 0.6);
+  animation: wasted-title 2.2s ease-out both;
+}
+
+.wasted-sub {
+  position: relative;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-shadow: 0 1px 2px #000;
+}
+
+@keyframes wasted-in {
+  from { opacity: 0; }
+}
+
+@keyframes wasted-title {
+  from { opacity: 0; transform: scale(1.12); }
+  40% { opacity: 1; }
+  to { transform: none; }
 }
 
 /* ------------------------------------------------------------------------------------------------------------------
@@ -1347,7 +1482,7 @@ body.touch-enabled .tool-btn { min-width: 44px; min-height: 44px; }
 body.touch-enabled .tool-label { display: none; }
 body.touch-enabled .hud-bottom-center { bottom: max(var(--edge), env(safe-area-inset-bottom)); }
 body.touch-enabled .action-prompt { display: none; }
-body.touch-enabled .hud-bottom-right { top: calc(max(var(--edge), env(safe-area-inset-top)) + 62px); right: max(var(--edge), env(safe-area-inset-right)); bottom: auto; }
+body.touch-enabled .hud-bottom-right { top: calc(max(var(--edge), env(safe-area-inset-top)) + 124px); right: max(var(--edge), env(safe-area-inset-right)); bottom: auto; }
 body.touch-enabled .cluster { width: 230px; }
 body.touch-enabled .camera-switch { border: 0; }
 body.touch-enabled .camera-switch .icon-btn { width: 44px; height: 44px; }

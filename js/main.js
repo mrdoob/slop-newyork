@@ -3,13 +3,15 @@ import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { createPostProcessing } from './render/post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
-import { CITY, getLocationLabel, isTypingInField, ROADS, CITY_LANDMARKS, TELEPORT_LOCATIONS } from './world/city-config.js';
+import { CITY, getLocationLabel, isTypingInField, ROADS, CITY_LANDMARKS, TELEPORT_LOCATIONS, HOSPITALS } from './world/city-config.js';
 import { buildCityGrid } from './world/city-grid.js';
 import { buildCityBlocks } from './world/buildings.js';
 import { buildStreetDetails } from './world/street-details.js';
 import { createTrafficSystem, createHighwayTraffic } from './sim/traffic.js';
 import { buildRoadPaint } from './world/road-paint.js';
 import { ThirdPersonControllerManager } from './player/controllers.js';
+import { PlayerStats, struckDamage, hardness, crashDamage, walletAmount, nearest, MAX_HEALTH, MAX_STAMINA } from './player/stats.js';
+import { MoneyPickups } from './sim/pickups.js';
 import { TouchControls } from './input/touch-controls.js';
 import { GamepadControls } from './input/gamepad-controls.js';
 import { CameraSystem, CAMERA_PRESETS } from './player/cameras.js';
@@ -124,6 +126,7 @@ async function initApp() {
   // Reuse teleport placement so saved players return at rest, close to their last positions. The game always starts
   // on foot: someone who left driving steps out of that vehicle where it was.
   let savedMode = null;
+  let savedMoney;
   try {
     const saved = JSON.parse(localStorage.getItem(PLAYER_STATE_KEY));
     if (saved?.version === 1) {
@@ -137,6 +140,7 @@ async function initApp() {
       if (car && Number.isFinite(car.paint)) controllerManager.setCarLook(car.bodyType, car.paint, car.police);
       if (Number.isFinite(saved.looks?.cyclist?.color)) controllerManager.setBikeColor(saved.looks.cyclist.color);
       savedMode = saved.activeMode;
+      savedMoney = saved.stats?.money;
     }
   } catch { /* Missing or unavailable storage does not prevent playing. */ }
   controllerManager.setMode('person');
@@ -145,6 +149,10 @@ async function initApp() {
     controllerManager.setMode(savedMode);
     controllerManager.exitVehicle();
   }
+  // Health, stamina & money (player/stats.js); the money is kept with the saved position, the rest starts afresh
+  const stats = new PlayerStats({ money: savedMoney });
+  // The wallets people knocked over drop (sim/pickups.js)
+  const pickups = new MoneyPickups(scene);
 
   function savePlayerState() {
     try {
@@ -152,7 +160,9 @@ async function initApp() {
         x: entity.position.x, y: entity.position.y, z: entity.position.z, heading: entity.heading
       }]));
       const looks = { car: controllerManager.entities.car.look, cyclist: controllerManager.entities.cyclist.look };
-      localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities, looks }));
+      localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify({
+        version: 1, activeMode: controllerManager.activeMode, entities, looks, stats: { money: stats.money }
+      }));
     } catch { /* Storage may be disabled or full. */ }
   }
 
@@ -179,6 +189,18 @@ async function initApp() {
   }
   soundButton?.addEventListener('click', () => audioSystem.setEnabled(!audioSystem.enabled));
   updateSoundButton();
+  // Crashes hurt as well as sound: each system has a single collision listener, shared here with the audio's
+  for (const system of [controllerManager, trafficSystem, streetDetails.breaker]) {
+    system?.setCollisionListener?.((impact) => {
+      audioSystem.onCollision(impact);
+      crashed(impact);
+    });
+  }
+  // A vehicle driving into the player on foot hurts; whoever the player knocked over leaves a wallet where they lie
+  trafficSystem.setMayhemListener((type, x, y, z, speed, mass) => {
+    if (type === 'struck') stats.hurt(struckDamage(speed, mass));
+    else if (type === 'down') pickups.drop(x, y, z, walletAmount());
+  });
   // pagehide also covers navigation away on mobile; preserve the context across back-forward cache restores.
   window.addEventListener('pagehide', (event) => {
     savePlayerState();
@@ -358,7 +380,7 @@ async function initApp() {
     return own ? { mode: own.mode } : null;
   }
   function board() {
-    if (mapSystem.isFullMapOpen) return;
+    if (mapSystem.isFullMapOpen || !stats.alive) return;
     if (controllerManager.activeMode !== 'person') {
       if (controllerManager.exitVehicle()) syncMode();
       return;
@@ -553,6 +575,82 @@ async function initApp() {
     elLocation.replaceChildren(...nodes);
   }
 
+  // Money, health & stamina: GTA-style over the top right corner, written only when what they show changes
+  const elMoney = document.getElementById('hud-money');
+  const elMoneyDelta = document.getElementById('hud-money-delta');
+  const elHealth = document.getElementById('hud-health');
+  const elStamina = document.getElementById('hud-stamina');
+  const elWasted = document.getElementById('wasted-overlay');
+  const elWastedSub = document.getElementById('wasted-sub');
+  const shown = { money: -1, health: -1, stamina: -1, winded: null, wasted: false };
+  const pesos = (n) => `$${n.toLocaleString('en-US')}`;
+  function renderStats() {
+    if (!stats.alive !== shown.wasted) showWasted(shown.wasted = !stats.alive);
+    if (stats.money !== shown.money && elMoney) elMoney.textContent = pesos(shown.money = stats.money);
+    const health = Math.ceil(stats.health);
+    if (health !== shown.health && elHealth) {
+      shown.health = health;
+      elHealth.style.transform = `scaleX(${health / MAX_HEALTH})`;
+      elHealth.parentElement.classList.toggle('is-low', health <= 25);
+    }
+    const stamina = Math.round(stats.stamina);
+    if ((stamina !== shown.stamina || stats.winded !== shown.winded) && elStamina) {
+      shown.stamina = stamina;
+      shown.winded = stats.winded;
+      elStamina.style.transform = `scaleX(${stamina / MAX_STAMINA})`;
+      elStamina.parentElement.classList.toggle('is-winded', stats.winded);
+      elStamina.parentElement.classList.toggle('is-full', stamina >= MAX_STAMINA);
+    }
+  }
+  // "+$120" picked up, "−$1,000" for the hospital, fading out under the money
+  function showMoneyDelta(amount) {
+    if (!elMoneyDelta || !amount) return;
+    elMoneyDelta.textContent = `${amount > 0 ? '+' : '−'}${pesos(Math.abs(amount))}`;
+    elMoneyDelta.classList.remove('is-shown', 'is-gain', 'is-loss');
+    void elMoneyDelta.offsetWidth; // (restarts the fade)
+    elMoneyDelta.classList.add('is-shown', amount > 0 ? 'is-gain' : 'is-loss');
+  }
+
+  // The hospital a wasted player wakes up at: the nearest one, or the town's centre where the data has none
+  function hospitalNear(x, z) {
+    return nearest(HOSPITALS, x, z) || { name: '', ...(TELEPORT_LOCATIONS.plaza || { x: 0, z: 0 }) };
+  }
+  // Wasted: the city goes grey and the player stops where they fell (see the loop) until the hospital
+  function showWasted(wasted) {
+    if (elWasted) elWasted.hidden = !wasted;
+    if (!wasted) return;
+    controllerManager.resetInput();
+    touchControls.reset();
+    gamepadControls.reset();
+    const p = controllerManager.getActiveEntity().position;
+    const hospital = hospitalNear(p.x, p.z);
+    if (elWastedSub) elWastedSub.textContent = hospital.name ? `Te llevan al ${hospital.name}` : '';
+  }
+  // The car, bicycle or helicopter the player is in, hitting something hard enough (crashDamage)
+  function crashed(impact) {
+    const mode = controllerManager.activeMode;
+    if (mode === 'person') return;
+    const me = controllerManager.getActiveEntity();
+    if (impact.a !== me && impact.b !== me) return;
+    const other = impact.a === me ? impact.b : impact.a;
+    stats.hurt(crashDamage(mode, impact.speed, hardness(impact.kind, other), impact.kind));
+  }
+  // Out of the vehicle and on foot at the hospital, less the bill
+  function respawn() {
+    const mode = controllerManager.activeMode;
+    if (mode === 'helicopter') {
+      controllerManager.setMode('person');
+      controllerManager.landHelicopter();
+    } else if (mode !== 'person') {
+      controllerManager.exitVehicle();
+    }
+    syncMode();
+    const p = controllerManager.entities.person.position;
+    const hospital = hospitalNear(p.x, p.z);
+    teleportTo(hospital.x, hospital.z);
+    showMoneyDelta(-stats.respawn());
+  }
+
   function teleportTo(x, z, heading = Math.PI) {
     const destination = controllerManager.teleportActiveTo(x, z, heading);
     touchControls.reset();
@@ -678,7 +776,7 @@ async function initApp() {
   markInit('ui');
   // Debugging handle for the console, only with ?debug in the URL
   if (new URLSearchParams(location.search).has('debug')) {
-    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem };
+    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, stats, pickups };
   }
 
   // The loading screen stays up while the shaders compile (precompileShaders() & the warm-up frame, see the loop) and
@@ -786,7 +884,9 @@ async function initApp() {
 
     // Update 3rd-person controllers, camera, signals, traffic & vehicle collisions, building LODs, and dynamic shadow focus
     gamepadControls.update(dt);
-    controllerManager.update(dt, elapsed);
+    // wasted, the player stays where they fell; out of breath, no sprinting
+    controllerManager.canSprint = stats.canSprint;
+    controllerManager.update(stats.alive ? dt : 0, elapsed);
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
     trafficSystem.setParked(controllerManager.parkedVehicles());
@@ -801,6 +901,14 @@ async function initApp() {
     highwayTraffic.update(dt, cameraSystem.camera, controllerManager.getActiveEntity(), controllerManager.activeMode);
     // Lamp posts & hydrants the player's car or bicycle runs into (mayhem.js)
     if (streetDetails.breaker) streetDetails.breaker.update(dt, controllerManager.getActiveEntity(), controllerManager.activeMode);
+    // Wallets picked up, health & stamina coming back, the hospital once the wasted screen is over
+    const cash = pickups.update(dt, elapsed, stats.alive ? controllerManager.getActiveEntity() : null, controllerManager.activeMode);
+    if (cash > 0) {
+      stats.earn(cash);
+      showMoneyDelta(cash);
+    }
+    if (stats.update(dt, controllerManager.sprintingMode()) === 'respawn') respawn();
+    renderStats();
     if (!document.hidden && now >= nextPlayerSave) {
       savePlayerState();
       nextPlayerSave = now + 5000;

@@ -235,6 +235,12 @@ function cityLandmarks() {
   return out;
 }
 const CITY_LANDMARKS = cityLandmarks();
+// Where a wasted player wakes up (player/stats.js): the town's hospitals and clinics in OpenStreetMap, inside the
+// playable box (not the opticians that call themselves "hospital de lentes")
+const HOSPITALS = (GEO.pois || [])
+  .filter((p) => p.kind === 'hospital' && !/lentes/i.test(p.name))
+  .filter((p) => !CITY.box || (p.x >= CITY.box.x0 && p.x <= CITY.box.x1 && p.z >= CITY.box.z0 && p.z <= CITY.box.z1))
+  .map((p) => ({ name: p.name, x: p.x, z: p.z }));
 
 const ISLAND_BOUNDS = (() => {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -301,6 +307,7 @@ export {
   CITY_LANDMARKS,
   LANDMARK_SITES,
   TELEPORT_LOCATIONS,
+  HOSPITALS,
   ISLAND_BOUNDS,
   BLOCKS,
   SIGNAL_TIMING,

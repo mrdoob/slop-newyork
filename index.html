@@ -50,6 +50,8 @@
   <link rel="modulepreload" href="./js/sim/traffic.js" />
   <link rel="modulepreload" href="./js/sim/pedestrian-routes.js" />
   <link rel="modulepreload" href="./js/player/controllers.js" />
+  <link rel="modulepreload" href="./js/player/stats.js" />
+  <link rel="modulepreload" href="./js/sim/pickups.js" />
   <link rel="modulepreload" href="./js/input/touch-controls.js" />
   <link rel="modulepreload" href="./js/input/gamepad-controls.js" />
   <link rel="modulepreload" href="./js/player/cameras.js" />
@@ -67,7 +69,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&amp;family=Overpass:wght@600;700&amp;display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261024-multiplayer" />
+  <link rel="stylesheet" href="./css/style.css?v=20261024-stats" />
 </head>
 <body>
   <!-- Icon sprite (24 × 24 stroke icons, drawn in currentColor) -->
@@ -162,6 +164,19 @@
         <svg class="icon icon-hide" aria-hidden="true"><use href="#i-eye"/></svg><svg class="icon icon-show" aria-hidden="true"><use href="#i-eye-off"/></svg>
       </button>
     </div>
+    <!-- Money, health & stamina (js/player/stats.js) -->
+    <section id="hud-stats" class="stats" aria-label="Dinero, vida y stamina">
+      <div id="hud-money" class="stats-money" aria-label="Dinero">$500</div>
+      <div id="hud-money-delta" class="stats-delta" aria-live="polite"></div>
+      <div class="stats-bar stats-health" title="Vida"><span id="hud-health"></span></div>
+      <div class="stats-bar stats-stamina" title="Stamina"><span id="hud-stamina"></span></div>
+    </section>
+  </div>
+
+  <!-- Wasted: the player at no health, before waking up at the nearest hospital -->
+  <div id="wasted-overlay" class="wasted" role="alert" hidden>
+    <div class="wasted-title">Wasted</div>
+    <div id="wasted-sub" class="wasted-sub"></div>
   </div>
 
   <!-- Teleport Destinations (native popover: light-dismiss & Esc) -->

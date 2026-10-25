@@ -117,6 +117,14 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     collisionListener = typeof listener === 'function' ? listener : null;
   }
 
+  // The player's own mayhem, for health & money (player/stats.js): listener('struck', x, y, z, speed, mass) when a
+  // vehicle of that mass drives into the player on foot at that speed, listener('down', x, y, z) when someone the
+  // player knocked over has come to rest there (y: the ground under them)
+  let mayhemListener = null;
+  function setMayhemListener(listener) {
+    mayhemListener = typeof listener === 'function' ? listener : null;
+  }
+
   // Synchronous notification: listeners must copy any fields they retain. Normal points from b toward a; y is the
   // height over the ground there (the event carries the world's)
   function reportCollision(a, b, x, y, z, nx, nz, speed) {
@@ -1444,6 +1452,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const cvz = v.tz * v.speed + v.vz;
     const approachSpeed = (pvx - cvx) * (-nx) + (pvz - cvz) * (-nz);
     if (approachSpeed <= 0) return;
+    // on foot, what hurts is the vehicle's own speed into the player (n points from it to them), not their running
+    if (pe.type === 'person' && mayhemListener) {
+      const into = cvx * nx + cvz * nz;
+      if (into > 0) mayhemListener('struck', pe.position.x, pe.position.y, pe.position.z, into, massOf(v));
+    }
 
     const jImpulse = (1.0 + 0.28) * approachSpeed;
     const cImpulse = jImpulse * massRatio * 0.92;
@@ -2163,7 +2176,13 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function tumblePed(p, dt) {
     const f = p.fallen;
     // it lands on the hill where it comes down, not where it was hit
-    if (stepTumble(f, dt, f.lift + hillAt(f.px, f.pz), solidAt) > DOWN_TIME) {
+    const ground = f.lift + hillAt(f.px, f.pz);
+    const still = stepTumble(f, dt, ground, solidAt);
+    if (still > 0.5 && !f.down) {
+      f.down = true;
+      if (mayhemListener) mayhemListener('down', f.px, ground, f.pz, 0, MASS.person);
+    }
+    if (still > DOWN_TIME) {
       p.fallen = null;
       p.placed = false;
       p.rig.placed = false;
@@ -2270,7 +2289,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // The fallen rider and the bike on its side; both cleared once they've lain still a while
   function renderWreck(v, dt) {
     const w = v.wreck;
-    const restR = stepTumble(w.rider, dt, hillAt(w.rider.px, w.rider.pz), solidAt);
+    const riderGround = hillAt(w.rider.px, w.rider.pz);
+    const restR = stepTumble(w.rider, dt, riderGround, solidAt);
+    if (restR > 0.5 && !w.rider.down) {
+      w.rider.down = true;
+      if (mayhemListener) mayhemListener('down', w.rider.px, riderGround, w.rider.pz, 0, MASS.person);
+    }
     // the bicycle in the air (py over the ground) turns over freely; down, it skids and comes to lie on one side
     w.vy -= 9.8 * dt;
     w.py += w.vy * dt;
@@ -2706,6 +2730,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     group,
     update,
     setCollisionListener,
+    setMayhemListener,
     setSolidQuery,
     setHillQuery,
     setParked,
