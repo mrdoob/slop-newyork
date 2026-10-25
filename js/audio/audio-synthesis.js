@@ -276,7 +276,8 @@ export function createSynthResources(context) {
     combustion: {
       sedan: combustionBuffers(context, 4, false, 0x73656461),
       suv: combustionBuffers(context, 6, false, 0x73757631),
-      bus: combustionBuffers(context, 6, true, 0x64696573)
+      bus: combustionBuffers(context, 6, true, 0x64696573),
+      moto: combustionBuffers(context, 1, false, 0x6d6f746f)
     },
     rotor: helicopter.rotor,
     rotorEnvelope: helicopter.envelope,
@@ -303,7 +304,7 @@ function smoothParameter(parameter, timeConstant = 0.07, epsilon = 0.0001, snapI
 }
 
 export function createMotorVoice(context, resources, kind, output) {
-  if (!['sedan', 'suv', 'bus', 'helicopter', 'cyclist', 'siren'].includes(kind)) {
+  if (!['sedan', 'suv', 'bus', 'moto', 'helicopter', 'cyclist', 'siren'].includes(kind)) {
     throw new RangeError(`Unknown motor voice: ${kind}`);
   }
   const nodes = [];
@@ -347,13 +348,14 @@ export function createMotorVoice(context, resources, kind, output) {
   mix.connect(output);
   let render;
 
-  if (kind === 'sedan' || kind === 'suv' || kind === 'bus') {
+  if (kind === 'sedan' || kind === 'suv' || kind === 'bus' || kind === 'moto') {
     const bus = kind === 'bus';
     const suv = kind === 'suv';
+    const moto = kind === 'moto'; // a small single-cylinder street bike, revving high through short gears
     const sound = resources.combustion[kind];
     const bankRatio = sound.highExhaust.duration / sound.exhaust.duration;
-    const idle = bus ? 620 : suv ? 710 : 780;
-    const ratios = bus ? [320, 205, 145, 108, 82] : [500, 325, 230, 170, 130];
+    const idle = bus ? 620 : suv ? 710 : moto ? 1400 : 780;
+    const ratios = bus ? [320, 205, 145, 108, 82] : moto ? [1150, 820, 640, 520, 440] : [500, 325, 230, 170, 130];
     let gear = 0, rpm = idle, throttle = 0, previousTime = -1, gearLock = 0, shiftUntil = 0;
     const exhaust = loop(sound.exhaust);
     const highExhaust = loop(sound.highExhaust);
@@ -390,7 +392,7 @@ export function createMotorVoice(context, resources, kind, output) {
       const dt = first ? 0.1 : clamp(now - previousTime, 0, 0.5);
       previousTime = now;
       throttle = first ? load : throttle + (load - throttle) * (1 - Math.exp(-dt / (load > throttle ? 0.14 : 0.32)));
-      const shiftRPM = (bus ? 1700 : 2700) + throttle * (bus ? 950 : 2900);
+      const shiftRPM = (bus ? 1700 : moto ? 4800 : 2700) + throttle * (bus ? 950 : moto ? 3200 : 2900);
       if (speed < 0.6) {
         // A fresh launch starts in first immediately, even after a hard stop from top gear.
         gear = 0;
@@ -402,7 +404,7 @@ export function createMotorVoice(context, resources, kind, output) {
         const wheelRPM = speed * ratios[gear];
         if (gear < ratios.length - 1 && wheelRPM > shiftRPM) gear++;
         else if (gear > 0 && speed * ratios[gear - 1] < shiftRPM * 0.82
-          && (wheelRPM < (bus ? 1000 : 1600) || (throttle > 0.65 && wheelRPM < shiftRPM * 0.55))) gear--;
+          && (wheelRPM < (bus ? 1000 : moto ? 3000 : 1600) || (throttle > 0.65 && wheelRPM < shiftRPM * 0.55))) gear--;
         if (gear !== oldGear) {
           gearLock = now + 0.65;
           if (gear > oldGear) shiftUntil = now + 0.14;
@@ -410,8 +412,8 @@ export function createMotorVoice(context, resources, kind, output) {
       }
       // Wheel-coupled RPM, with torque-converter slip at low speed. Coasting retains engine braking rather than
       // dropping straight to idle; hysteresis and a minimum gear dwell prevent hunting around a shift boundary.
-      const slip = throttle * (bus ? 600 : 1500) * Math.max(0.12, 1 - speed / 16);
-      const targetRPM = clamp(Math.max(idle, speed * ratios[gear]) + slip, idle, bus ? 2900 : 6200);
+      const slip = throttle * (bus ? 600 : moto ? 1100 : 1500) * Math.max(0.12, 1 - speed / 16);
+      const targetRPM = clamp(Math.max(idle, speed * ratios[gear]) + slip, idle, bus ? 2900 : moto ? 9500 : 6200);
       rpm = first ? targetRPM : rpm + (targetRPM - rpm) * (1 - Math.exp(-dt / (targetRPM > rpm ? 0.12 : 0.075)));
       const pitch = (0.97 + variation * 0.06) * doppler;
       const effort = Math.min(1, throttle + speed * 0.005);
@@ -427,11 +429,11 @@ export function createMotorVoice(context, resources, kind, output) {
       highBankLevel(Math.sin(blend * Math.PI / 2), now);
       mechanicalRate(rpm / sound.referenceRPM * pitch, now);
       exhaustCutoff((bus ? 480 : 650) + effort * (bus ? 1400 : 1800) + rpm * 0.24, now);
-      exhaustLevel(((bus ? 0.16 : suv ? 0.13 : 0.11) + effort * (bus ? 0.22 : 0.26)) * torque, now);
+      exhaustLevel(((bus ? 0.16 : suv ? 0.13 : moto ? 0.1 : 0.11) + effort * (bus ? 0.22 : 0.26)) * torque, now);
       mechanicalFrequency(((bus ? 1050 : 1250) + rpm * 0.12) * doppler, now);
       mechanicalLevel(((bus ? 0.10 : 0.03) + effort * (bus ? 0.15 : 0.085)) * torque, now);
       // Tire contact is broadband and becomes the dominant sound of a car passing at speed off-throttle.
-      roadLevel(Math.pow(rolling, 1.25) * (bus ? 0.44 : 0.36) * (1 - throttle * 0.5), now);
+      roadLevel(Math.pow(rolling, 1.25) * (bus ? 0.44 : moto ? 0.16 : 0.36) * (1 - throttle * 0.5), now);
       roadFrequency((2200 + Math.min(1, rolling) * 2400) * doppler, now);
       noiseRate(doppler * (0.96 + variation * 0.08), now);
     };

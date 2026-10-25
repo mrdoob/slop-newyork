@@ -91,6 +91,7 @@ class CityAudioSources {
     this.players = Object.values(controllerManager.entities);
     this.cars = trafficSystem.cars;
     this.buses = trafficSystem.buses;
+    this.motos = trafficSystem.motos || [];
     this.peds = trafficSystem.peds;
     this.highwayCars = highwayTraffic.cars;
     this.signalSites = streetDetails.audioSignals;
@@ -158,7 +159,7 @@ class CityAudioSources {
       }
       const green = !v.edge.to.signal || signalPhase(elapsed, v.edge.axisIndex === 0) === 'green';
       const blocked = v.wait > 2 && v.speed < 0.5 && v.gap < 8 && v.leaderSpeed < 0.5 && green && !v.conn && !v.yielding;
-      this.motor(v, v.bus ? 'bus' : v.isSUV ? 'suv' : 'sedan', v.x, y, v.z,
+      this.motor(v, v.bus ? 'bus' : v.moto ? 'moto' : v.heavy ? 'suv' : 'sedan', v.x, y, v.z,
         v.speed, roadLoad(v.speed, v.acc, v.driver.a), v.yaw + v.yawOffset, !!v.isPolice, false, seedAt(seedOffset + i), blocked);
     }
   }
@@ -203,6 +204,7 @@ class CityAudioSources {
 
     this.streetVehicles(this.cars, elapsed, 100);
     this.streetVehicles(this.buses, elapsed, 1000);
+    this.streetVehicles(this.motos, elapsed, 2000);
     for (let i = 0; i < this.highwayCars.length; i++) {
       const car = this.highwayCars[i];
       // Lane ends sink into the road and the Battery tunnel is underground; neither should sound above ground.
