@@ -609,6 +609,6 @@ export async function startHongKong() {
   });
 
   // 除錯／驗證用（不會影響正常遊玩）
-  globalThis.__slopHK = { build: BUILD, scene, renderer, city, traffic, pedestrians, player, camera, HK, lighting, testPattern, gpuErrors };
+  globalThis.__slopHK = { build: BUILD, scene, renderer, city, traffic, pedestrians, player, camera, HK, lighting, map, teleportTo, testPattern, gpuErrors };
   return { scene, renderer, city, traffic, player };
 }

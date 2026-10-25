@@ -42,17 +42,22 @@ function make2dContext(canvas) {
     drawImage() {},
     getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })
   };
-  return new Proxy(base, {
+  // 每次呼叫任何 2D 指令都 +1：測試可以用來證明「地圖真係畫過嘢」。
+  canvas.__ctx2dCalls = 0;
+  const proxy = new Proxy(base, {
     get(target, prop) {
-      if (prop in target) return target[prop];
       if (typeof prop === 'symbol') return undefined;
-      const value = target[prop];
-      if (value !== undefined) return value;
-      // 任何未實作的方法都當成 no-op；任何屬性是可寫的
-      return target[prop] = () => undefined;
+      let value = target[prop];
+      if (value === undefined) value = target[prop] = () => undefined; // 未實作的方法當 no-op
+      if (typeof value !== 'function') return value;
+      return (...args) => {
+        canvas.__ctx2dCalls += 1;
+        return value.apply(target, args);
+      };
     },
     set(target, prop, value) { target[prop] = value; return true; }
   });
+  return proxy;
 }
 window.HTMLCanvasElement.prototype.getContext = function getContext(kind) {
   if (!this.__ctx) this.__ctx = make2dContext(this);
@@ -109,6 +114,37 @@ check('HUD 左上角見到建置版本（唔使開診斷面板）', () => {
   assert.ok(badge, '#hk-hud .hk-build 唔存在：用戶就係見唔到版本');
   assert.match(badge.textContent, /^v\d{4}-\d{2}-\d{2}\.\d+$/, `版本字串：${badge.textContent}`);
   assert.equal(badge.textContent, 'v' + BUILD, 'HUD 版本要同 js/hk/build.js 一致');
+});
+check('地圖存在，而且 M 鍵真係開關得到（用戶問：地圖在哪裡?）', () => {
+  const map = globalThis.__slopHK?.map;
+  assert.ok(map, '__slopHK.map 唔存在');
+  const root = doc.querySelector('.hk-map');
+  assert.ok(root, 'DOM 搵唔到 .hk-map');
+  assert.equal(root.hidden, true, '地圖預設要收埋');
+  assert.ok(doc.querySelector('#hk-hud .hk-map-toggle'), 'HUD 要有「地圖」按鈕');
+  const key = (code) => new window.KeyboardEvent('keydown', { code, bubbles: true });
+  window.dispatchEvent(key('KeyM'));
+  assert.equal(map.isOpen, true, '按 M 應該開地圖');
+  assert.equal(root.hidden, false);
+  window.dispatchEvent(key('KeyM'));
+  assert.equal(map.isOpen, false, '再按 M 應該收埋');
+});
+check('地圖畫得出（真 canvas 2D 指令），而且點擊會傳送', () => {
+  const map = globalThis.__slopHK.map;
+  map.setOpen(true);
+  const calls = doc.querySelector('.hk-map canvas').__ctx2dCalls;
+  assert.ok(calls > 150, `地圖只畫了 ${calls} 條 2D 指令`);
+  const target = { x: 320, z: -1500 };
+  const m = map.projection.toMap(target.x, target.z);
+  const canvas = doc.querySelector('.hk-map canvas');
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 300, right: 300, bottom: 300 });
+  canvas.dispatchEvent(new window.MouseEvent('click', { clientX: m.x, clientY: m.y, bubbles: true }));
+  const player = globalThis.__slopHK.player.state;
+  assert.ok(Math.abs(player.x - target.x) < 3, `點地圖之後玩家 x = ${player.x}`);
+  assert.ok(Math.abs(player.z - target.z) < 3, `點地圖之後玩家 z = ${player.z}`);
+  map.setOpen(false);
+  globalThis.__slopHK.teleportTo(32, -217); // 還原，唔好影響之後的檢查
+  assert.ok(Math.abs(globalThis.__slopHK.player.state.x - 32) < 1, 'teleportTo 應該把車放回中環');
 });
 check('body 標記為 hk（紐約 HUD 靠這個隱藏）', () => assert.equal(doc.body.dataset.world, 'hk'));
 check('位置標籤係香港地名', () => {

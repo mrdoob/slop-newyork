@@ -508,6 +508,7 @@ node --test "tests/hk-*.test.*"
 | `&low=1` | 跳過樓宇 |
 | `&post=1` | 試 TSL 後處理管線 |
 | `&sky=1` | 試完整大氣天空（Preetham + PMREM） |
+| `&blackcheck=1` | 才做 canvas 像素讀回（WebGPU present 之後讀回永遠係黑，所以預設關閉，亦**永不自動 reload**） |
 
 **怎樣一次過判斷黑畫面是誰的錯**
 
@@ -726,7 +727,14 @@ TypeError: traffic.collidePlayer is not a function
 
 順手修好一個**假警報**：WebGPU 的 canvas 讀回在 present 之後永遠拿到黑色，所以監測器會誤報「全黑」並自動重新載入頁面（用戶明明見到畫面正常）。現在 `blackScreenWatchdog()` 只在 `?blackcheck=1` 時執行，而且**永遠唔會自動重新載入**；畫面中央的診斷文字亦已改為說明「讀回可能本來就係黑」。
 
-> 這一輪新增 `tests/hk-boot-graph.test.mjs`（4 個測試）：全部模組的語法／early error、香港入口的依賴白名單（唔准靜態匯入紐約模組）、`index.html` 唔准靜態 `<script src>` 紐約入口、版本號三個位都在。連同地圖投影來回轉換測試，全套 **162 pass / 0 fail**。
+> **這一輪的證據**（全套 **163 pass / 0 fail**，另加開機工具 21 項檢查）：
+>
+> | 測試 | 驗什麼 |
+> |---|---|
+> | `tests/hk-boot-graph.test.mjs`（4） | 全部模組的語法／early error、香港入口的依賴白名單（唔准靜態匯入紐約模組）、`index.html` 唔准靜態 `<script src>` 紐約入口、版本號三個位都在 |
+> | `tests/hk-streets.test.mjs` 第 5 個 | 地圖投影 `toMap`↔`toWorld` 來回轉換、全部落在地圖之內、北朝上 |
+> | `tests/hk-map.test.mjs` | 用 jsdom **真正建立地圖 DOM**、真正畫一次（>150 條 2D 指令、`arc`/`fillText`/`rotate` 都有用到）、**真正按下 canvas** 之後玩家傳送到正確座標、關閉後唔會重畫 |
+> | `tools/boot-hk.mjs` 新增兩項 | 按 `M` 真係開關得到地圖；點地圖真係改到玩家座標，`teleportTo()` 可以還原 |
 
 ### 15.1 先講結論
 
