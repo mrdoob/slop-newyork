@@ -1899,6 +1899,24 @@ function createBridgeConcreteMaterial() {
 }
 
 /**
+ * Bare Earth under the overpasses' spans (js/world/bridges.js): packed dry dirt with gravel, darker in patches where
+ * the run-off from the deck's drains has soaked it, so the town's asphalt doesn't run on under a bridge
+ */
+function createUnderpassEarthMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0.0, roughness: 0.97 });
+  mat.aoNode = canyonSkyAONode();
+  mat.colorNode = Fn(() => {
+    const p = positionWorld;
+    const detail = smoothstep(120.0, 10.0, length(p.sub(cameraPosition)));
+    const soil = mix(color(0x8f7a5e), color(0xab9474), noise2D(p.xz.mul(0.09))); // (light: it lies in the deck's shade)
+    const gravel = mix(float(0.5), noise2D(p.xz.mul(7.0)), detail).sub(0.5).mul(0.16);
+    const damp = smoothstep(0.62, 0.8, noise2D(p.xz.mul(0.045)));
+    return soil.add(gravel).mul(mix(float(1.0), float(0.72), damp));
+  })();
+  return mat;
+}
+
+/**
  * Railway Track Bed: crushed-stone ballast with concrete sleepers every 0.6 m (box-filtered over the pixel footprint so
  * they settle to a mean far off instead of shimmering). attribute `track` = (metres along the line, metres across it)
  */
@@ -2127,6 +2145,7 @@ export {
   createRoadPaintMaterial,
   createBridgeConcreteMaterial,
   createTrackBedMaterial,
+  createUnderpassEarthMaterial,
   createSidewalkMaterial,
   createCurbMaterial,
   createParkLawnMaterial,

@@ -158,3 +158,25 @@ test("a bridge's deck holds what is on it and lets what passes under it through;
   assert.equal(deckLift(104, -5, 6), 6);
   assert.equal(deckLift(100, 30), 0);
 });
+
+test("a ramp's deck rises smoothly through its vertices, and its run past an end still fills a bend's outside", async () => {
+  const { createDecks } = await import('../js/world/ground.js');
+  // a 7 % ramp east along z = 0 in three pieces (vertices at x = 40 and 80), then turning north at x = 120
+  const geo = {
+    roadGraph: {
+      nodes: [0, 0, 120, -60],
+      links: [[0, 1, 0, 8, 2, 0, [40, 0, 80, 0, 120, 0], [0, 28, 56, 84, 84], 1]]
+    }
+  };
+  const { deckLift } = createDecks(geo);
+  // up it 0.25 m at a time: the lift is the ramp's own, no step where the pieces meet (it used to hold the next
+  // vertex's lift from half the deck's width before it, a 30 cm step a car took as a launch)
+  let over = 0;
+  for (let x = 0; x <= 118; x += 0.25) {
+    const lift = deckLift(x, 2, over);
+    assert.ok(Math.abs(lift - Math.min(8.4, 0.07 * x)) < 1e-9, `on the ramp at ${x}: ${lift}`);
+    over = lift;
+  }
+  // the outside of the bend at x = 120 is past the end of both pieces meeting there: the deck holds it
+  assert.equal(deckLift(123, 3, 8.4), 8.4);
+});
