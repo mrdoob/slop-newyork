@@ -1,4 +1,5 @@
 import { GEO } from '../hk-geodata.js';
+import { COAST as COAST_DATA } from '../hk-coastline.js';
 
 // js/hk/config.js
 // 香港世界觀（Hong Kong world config）— 由 js/hk-geodata.js 推導出來的執行期世界。
@@ -281,8 +282,39 @@ function placeLandmarksOffRoad(list, roads, margin = 2.5) {
 }
 
 export const LANDMARKS = placeLandmarksOffRoad(GEO.landmarks, ROADS);
-export const BUILDINGS = GEO.buildings;
+/**
+ * 真實海岸線（地政總署陸地邊界，見 js/hk-coastline.js）。
+ * LAND 仍然是手繪的種子輪廓（3D 地面板塊沿用），而地圖用 COAST —— 因為地圖要「似香港」，
+ * 手繪輪廓只會變成兩塊雲。所有 ring 都已 close，項目是 {x, z}。
+ */
+export const COAST = {
+  /** 玩樂範圍的精細海岸線（中環—銅鑼灣、尖沙咀—旺角）。 */
+  land: COAST_DATA.land.map(closedRing),
+  /** 全港其餘陸地（新界、大嶼山、西貢、離島）—— 地圖縮細時用來認出香港。 */
+  territory: COAST_DATA.territory.map(closedRing)
+};
+/** 全部陸地環（先畫 territory，再畫 land）。 */
+export const COAST_ALL = [...COAST.territory, ...COAST.land];
+
+/** 地圖／地理查詢用：這一點是否在真實海岸線的陸地上。 */
+export function onCoastLand(x, z, rings = COAST_ALL) {
+  return rings.some((ring) => pointInRing(x, z, ring));
+}
+
+/**
+ * 樓宇。種子資料用「手繪陸地」生成，換成真實海岸線之後有 18 棟（1,349 棟之中）
+ * 會落在海面（填海前的舊地界）。這裡直接剔除，唔會出現「海中心有樓」。
+ */
+const BUILT_ON_REAL_LAND = GEO.buildings.filter((b) => onCoastLand(b.x, b.z));
+export const BUILDINGS = BUILT_ON_REAL_LAND;
+export const BUILDING_STATS = {
+  total: GEO.buildings.length,
+  dropped: GEO.buildings.length - BUILT_ON_REAL_LAND.length,
+  note: '剔除原因是真實海岸線（地政總署）與手繪種子陸地的差異'
+};
 export const LAND = GEO.land.map((l) => ({ ...l, pts: closedRing(l.ring) }));
+
+
 export const TRAM = pairs(GEO.tram);
 export const FERRY = { from: { x: GEO.ferry.from[0], z: GEO.ferry.from[1] }, to: { x: GEO.ferry.to[0], z: GEO.ferry.to[1] }, minutes: GEO.ferry.minutes };
 export const TUNNELS = GEO.tunnels.map((t) => ({ ...t, pts: pairs(t.pts) }));

@@ -209,7 +209,8 @@ const CAR_PARTS = {
   MIRROR: 5,
   SIGN: 6,
   FRONT: 7,
-  REAR: 8
+  REAR: 8,
+  CHROME: 9 // 鉻件（香港的士的沙板鏡、水牌邊）：共用同一個 instanced 材質
 };
 
 // Design tables. Curves are [z, value] control points (z = +front); nose / tail entries are [length, tip value,
@@ -793,10 +794,12 @@ function taxiSignPlacement(spec) {
 function buildTaxiSign(spec) {
   const { z, y } = taxiSignPlacement(spec);
   const shape = new THREE.Shape();
-  const hw0 = 0.3;
-  const hw1 = 0.27;
-  const h = 0.15;
-  const r = 0.035;
+  // 車頂牌尺寸可以由 spec 指定（香港的士的「TAXI／的士」牌比紐約的 medallion 燈箱更大更方）
+  const size = spec.signSize || {};
+  const hw0 = size.hw0 ?? 0.3;
+  const hw1 = size.hw1 ?? 0.27;
+  const h = size.h ?? 0.15;
+  const r = Math.min(0.035, h * 0.3);
   shape.moveTo(-hw0, 0);
   shape.lineTo(hw0, 0);
   shape.lineTo(hw1, h - r);
@@ -805,14 +808,14 @@ function buildTaxiSign(spec) {
   shape.quadraticCurveTo(-hw1 + 0.004, h, -hw1, h - r);
   shape.lineTo(-hw0, 0);
   const sign = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.12,
+    depth: size.depth ?? 0.12,
     bevelEnabled: true,
     bevelThickness: 0.025,
     bevelSize: 0.012,
     bevelSegments: 2,
     curveSegments: 3
   }).translate(0, y + 0.03, z - 0.06);
-  const mount = new THREE.BoxGeometry(0.46, 0.04, 0.12).translate(0, y + 0.012, z);
+  const mount = new THREE.BoxGeometry(hw0 * 1.55, 0.04, (size.depth ?? 0.12) + 0.02).translate(0, y + 0.012, z);
   return [part(sign, CAR_PARTS.SIGN), part(mount, CAR_PARTS.TRIM)];
 }
 
@@ -843,8 +846,31 @@ function buildBumpers(spec) {
   });
 }
 
+// 沙板鏡（fender mirror）—— 香港的士最易認的細節：鏡裝在沙板上，唔係車門。
+// 兩支鉻柱 + 兩個鉻鏡殼，位置由 spec 控制，唔影響紐約的車。
+function buildFenderMirrors(spec) {
+  const list = [];
+  const L = carLayout(spec);
+  const z = spec.fenderMirror?.z ?? spec.zFront * 0.6;
+  const y = spec.fenderMirror?.y ?? L.belt.cowl.y - 0.02;
+  const x = spec.fenderMirror?.x ?? spec.halfWidth[1][1] - 0.05;
+  for (const side of [-1, 1]) {
+    const stalk = new THREE.CylinderGeometry(0.02, 0.028, 0.24, 8)
+      .rotateZ(side * 0.5)
+      .translate(side * (x + 0.045), y + 0.1, z);
+    const housing = roundedBox(0.05, 0.072, 0.145, 0.028, 0.01)
+      .translate(side * (x + 0.115), y + 0.21, z);
+    const glass = roundedBox(0.032, 0.055, 0.11, 0.02, 0.006)
+      .translate(side * (x + 0.115), y + 0.21, z - 0.03);
+    list.push(part(stalk, CAR_PARTS.CHROME), part(housing, CAR_PARTS.CHROME), part(glass, CAR_PARTS.MIRROR));
+  }
+  return list;
+}
+
 function buildCarGeometry(spec, includeWheels = true) {
-  const parts = [buildCarBody(spec, 1), buildCarCabin(spec, 1), ...buildMirrors(spec), ...buildBumpers(spec)];
+  // doorMirrors === false：車門鏡換成沙板鏡的車款（香港的士）唔要門鏡，否則車闊會多 0.3 m
+  const mirrors = spec.doorMirrors === false ? [] : buildMirrors(spec);
+  const parts = [buildCarBody(spec, 1), buildCarCabin(spec, 1), ...mirrors, ...buildBumpers(spec)];
   for (const side of [-1, 1]) {
     for (const z of [-spec.wheelZ, spec.wheelZ]) {
       if (includeWheels) parts.push(...buildWheelParts(spec, side, true, z));
@@ -853,6 +879,7 @@ function buildCarGeometry(spec, includeWheels = true) {
   }
   if (spec.rails) parts.push(...buildRoofRails(spec));
   if (spec.sign) parts.push(...buildTaxiSign(spec));
+  if (spec.fenderMirror) parts.push(...buildFenderMirrors(spec));
   return mergeGeometries(parts);
 }
 
@@ -1053,6 +1080,9 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const isTrim = isPart(CAR_PARTS.TRIM);
   const isMirror = isPart(CAR_PARTS.MIRROR);
   const isSign = isPart(CAR_PARTS.SIGN);
+  const isChrome = isPart(CAR_PARTS.CHROME);
+  // 雙色車身（香港的士：上半身銀白、下半身紅）：只影響玻璃艙的「車漆」部分（車頂、A/C 柱）
+  const upperPaint = spec.twoTone ? color(spec.twoTone) : paint;
   const ax = abs(p.x);
   const isSide = smoothstep(0.45, 0.7, abs(n.x));
   const front = smoothstep(0.12, 0.38, n.z).mul(step(frontZone, p.z)).mul(isBody);
@@ -1239,7 +1269,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
 
   // Glasshouse: tinted glass, black seals & B / C pillars, painted roof & A pillars, chrome sill strip, CHMSL
   const glassCol = mix(color(0x0a1016), color(0x1a2632), smoothstep(0.2, 0.9, n.y));
-  let windowCol = mix(mix(mix(mix(paint, color(0x111315), seal), glassCol, glass), color(0xc9ced3), chromeBelt), color(0x6a0a0e), chmsl);
+  let windowCol = mix(mix(mix(mix(upperPaint, color(0x111315), seal), glassCol, glass), color(0xc9ced3), chromeBelt), color(0x6a0a0e), chmsl);
   windowCol = mix(windowCol, color(0x15181b), rearWiper);
 
   // Mirror caps (paint, glass facing back), taxi roof light, trims, alloys & tyres
@@ -1256,6 +1286,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   col = mix(col, color(0x1b1e21), isTrim);
   col = mix(col, alloyCol, isAlloy);
   col = mix(col, tyreCol, isTyre);
+  col = mix(col, color(0xe6eaee), isChrome);
 
   // ---- Roughness & metalness ---------------------------------------------------------------------------------------
   const alloySpokes = max(spokes, rimRing).mul(isAlloy);
@@ -1265,7 +1296,9 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   rough = mix(rough, float(0.35), isSign);
   rough = mix(rough, float(0.82), max(matte, isAlloy.sub(alloySpokes)));
 
+  rough = mix(rough, float(0.14), isChrome);
   let metal = mix(float(0.34), float(0.14), glass);
+  metal = mix(metal, float(0.96), isChrome);
   metal = mix(metal, float(0.6), max(lamp, mirrorGlass));
   metal = mix(metal, float(0.95), chromeBelt);
   metal = mix(metal, float(0.86), alloySpokes);

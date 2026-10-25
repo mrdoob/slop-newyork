@@ -143,8 +143,10 @@ export const LANDMARKS = [
   { id: 'k11', zh: 'K11 MUSEA', en: 'K11 MUSEA', lonlat: [114.1742, 22.2940], h: 60, w: 70, d: 55, kind: 'hall' },
   { id: 'i-square', zh: '國際廣場', en: 'iSQUARE', lonlat: [114.1724, 22.2970], h: 100, w: 45, d: 40, kind: 'tower' },
   { id: 'langham', zh: '朗豪坊', en: 'Langham Place', lonlat: [114.1685, 22.3180], h: 255, w: 50, d: 50, kind: 'tower' },
-  { id: 'central-pier', zh: '中環天星碼頭', en: 'Central Star Ferry Pier', lonlat: [114.1585, 22.2848], h: 12, w: 70, d: 34, kind: 'pier' },
-  { id: 'tst-pier', zh: '尖沙咀天星碼頭', en: 'TST Star Ferry Pier', lonlat: [114.1683, 22.2935], h: 12, w: 70, d: 34, kind: 'pier' }
+  // 天星小輪的兩個真實碼頭（中環 7 號碼頭、尖沙咀碼頭）。用真實經緯度，唔係「大概位置」——
+  // 之前用大約位置，航線會橫過九龍半島，船會在海面上「駛過陸地」。
+  { id: 'central-pier', zh: '中環天星碼頭', en: 'Central Star Ferry Pier', lonlat: [114.16144, 22.28635], h: 12, w: 70, d: 34, kind: 'pier' },
+  { id: 'tst-pier', zh: '尖沙咀天星碼頭', en: 'TST Star Ferry Pier', lonlat: [114.16852, 22.29453], h: 12, w: 70, d: 34, kind: 'pier' }
 ];
 
 // Neighbourhoods as lon/lat rectangles, tested in order (first match wins). Bilingual, because Hong Kong is.

@@ -313,53 +313,99 @@ body[data-world="hk"] #canvas-container {
 
 .hk-map {
   position: fixed;
-  right: 20px;
-  bottom: 180px;
+  right: 18px;
+  bottom: 150px;
   z-index: 40;
-  width: 320px;
-  padding: 10px;
-  border-radius: 14px;
-  background: rgba(9, 12, 16, 0.94);
+  width: min(560px, 46vw);
+  padding: 10px 10px 8px;
+  border-radius: 16px;
+  background: rgba(7, 12, 16, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.6);
   color: #e8eef4;
   font-family: Inter, "Noto Sans HK", system-ui, sans-serif;
 }
 
 .hk-map-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   margin-bottom: 8px;
-  font-size: 12px;
+}
+
+.hk-map-head strong {
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
 }
 
 .hk-map-hint {
-  flex: 1;
-  color: rgba(232, 238, 244, 0.55);
-  font-size: 10.5px;
+  font-size: 0.7rem;
+  opacity: 0.6;
 }
 
 .hk-map-close {
-  border: 0;
-  background: transparent;
-  color: rgba(232, 238, 244, 0.7);
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
   cursor: pointer;
-  font-size: 13px;
+  line-height: 1;
+}
+
+.hk-map-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.hk-map-body {
+  position: relative;
 }
 
 .hk-map-canvas {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 9px;
+  border-radius: 10px;
   cursor: crosshair;
+  background: #071820;
+}
+
+.hk-map-legend {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: rgba(4, 10, 14, 0.72);
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  color: rgba(232, 238, 244, 0.85);
+}
+
+.hk-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hk-map-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
 }
 
 .hk-map-foot {
-  margin-top: 7px;
-  font-size: 10.5px;
-  color: rgba(232, 238, 244, 0.7);
+  margin-top: 6px;
+  font-size: 0.72rem;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 建置版本：載入畫面同 HUD 左上角都要見到（唔使開診斷面板） */

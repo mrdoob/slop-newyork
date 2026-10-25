@@ -103,19 +103,35 @@ function buildHarbour(group) {
   const quayMat = new THREE.MeshStandardNodeMaterial({ color: 0x6f6a60, roughness: 0.9, metalness: 0.04 });
   const slabs = [];
   const quays = [];
-  for (const l of HK.LAND) {
-    const shape = new THREE.Shape();
-    l.pts.forEach((p, i) => {
-      // Shape 在 XY 平面；rotated -90° 之後 world z = −y，所以這裡要餵 −z
-      if (i === 0) shape.moveTo(p.x, -p.z);
-      else shape.lineTo(p.x, -p.z);
-    });
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: -Y.water, bevelEnabled: false });
-    geo.rotateX(-Math.PI / 2);
-    geo.translate(0, Y.water, 0);
-    slabs.push(geo);
-    quays.push({ id: l.id, zh: l.zh });
+  // 用真實海岸線（地政總署陸地邊界，見 js/hk-coastline.js）而唔係手繪的三塊「雲」：
+  // 之前中環、尖沙咀、紅磡灣的海岸線全部係直線，水面同陸地的交界一眼就假。
+  const buildSlab = (rings) => {
+    const geos = [];
+    for (const ring of rings) {
+      const shape = new THREE.Shape();
+      ring.forEach((p, i) => {
+        // Shape 在 XY 平面；rotated -90° 之後 world z = −y，所以這裡要餵 −z
+        if (i === 0) shape.moveTo(p.x, -p.z);
+        else shape.lineTo(p.x, -p.z);
+      });
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: -Y.water, bevelEnabled: false });
+      geo.rotateX(-Math.PI / 2);
+      geo.translate(0, Y.water, 0);
+      geos.push(geo);
+    }
+    return geos;
+  };
+  // 遠景（新界、大嶼山、離島）：只鋪一條低矮的陸地，主要用來擋住「海到天邊」的假象
+  const farRings = (HK.COAST?.territory || []).map((ring) => ring.filter((_, i) => i % 2 === 0));
+  if (farRings.length) {
+    const far = new THREE.Mesh(mergeGeometries(buildSlab(farRings)), landMat);
+    far.receiveShadow = false;
+    far.name = 'HongKongTerritory';
+    group.add(far);
   }
+  const nearRings = HK.COAST?.land?.length ? HK.COAST.land : HK.LAND.map((l) => l.pts);
+  slabs.push(...buildSlab(nearRings));
+  for (const l of HK.LAND) quays.push({ id: l.id, zh: l.zh });
   const land = new THREE.Mesh(mergeGeometries(slabs), landMat);
   land.receiveShadow = true;
   land.name = 'HongKongLand';

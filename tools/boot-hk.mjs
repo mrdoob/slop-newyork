@@ -137,7 +137,7 @@ check('地圖畫得出（真 canvas 2D 指令），而且點擊會傳送', () =>
   const target = { x: 320, z: -1500 };
   const m = map.projection.toMap(target.x, target.z);
   const canvas = doc.querySelector('.hk-map canvas');
-  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 300, right: 300, bottom: 300 });
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: canvas.width, height: canvas.height, right: canvas.width, bottom: canvas.height });
   canvas.dispatchEvent(new window.MouseEvent('click', { clientX: m.x, clientY: m.y, bubbles: true }));
   const player = globalThis.__slopHK.player.state;
   assert.ok(Math.abs(player.x - target.x) < 3, `點地圖之後玩家 x = ${player.x}`);

@@ -74,7 +74,7 @@ test('香港預載清單不包含任何紐約模組', () => {
   for (const src of preloadList('HK_MODULES')) {
     assert.match(
       src,
-      /^\.\/js\/(world\.js|build\.js|hk\/[\w-]+\.js|hk-geodata\.js)(\?v=[\w.-]+)?$/,
+      /^\.\/js\/(world\.js|hk\/[\w-]+\.js|hk-geodata\.js|hk-coastline\.js)(\?v=[\w.-]+)?$/,
       `香港唔應該預載 ${src}`
     );
   }

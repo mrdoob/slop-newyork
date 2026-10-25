@@ -736,6 +736,28 @@ TypeError: traffic.collidePlayer is not a function
 > | `tests/hk-map.test.mjs` | 用 jsdom **真正建立地圖 DOM**、真正畫一次（>150 條 2D 指令、`arc`/`fillText`/`rotate` 都有用到）、**真正按下 canvas** 之後玩家傳送到正確座標、關閉後唔會重畫 |
 > | `tools/boot-hk.mjs` 新增兩項 | 按 `M` 真係開關得到地圖；點地圖真係改到玩家座標，`teleportTo()` 可以還原 |
 
+**第十輪（打橫行的巴士、唔似樣的地圖、要跟足實車的紅的）**
+
+三件事，三種不同的根因：
+
+| 你見到 | 根因 | 修正 |
+|---|---|---|
+| **巴士打橫行** | 車流的朝向約定是「車頭 = +Z」（`place()` 用 `rotation.y = heading`、`heading = atan2(dx, dz)`），但巴士／電車／小巴／小輪是用 `BoxGeometry(L, H, W)` 建的 —— 長度沿 **X**。整架車被轉了 90°，於是「打橫行」；車輪又排在 Z 上，所以飛到車身兩側 5 米外 | 四款車全部按 **+Z** 重建：車身、上下層窗帶、擋風玻璃、目的地牌、裙腳、電車圓頂與集電弓、小巴斜擋風玻璃、小輪雙頭斜台。車輪改成軸向 X（橫跨左右）＋**加咗輪圈**，前後軸按真實軸距放。`tests/hk-vehicles.test.mjs` 釘死「長邊一定沿 Z」「車輪唔可以飛出車身」 |
+| **地圖唔掂** | 上一版用種子資料（3 個手繪多邊形、17 條折線）畫圖 —— 結果是兩團雲加幾條頭髮 | 換成**真實海岸線**：地政總署陸地邊界（`hk_terrestrial_2m.geojson`，經 aknopla/hk-terrestrial-geojson），RDP 簡化後投影到世界座標（玩樂範圍 ~12 m、其餘 ~150 m）。地圖現在畫：真實海岸線（**維港、中環填海、尖沙咀、紅磡灣的形狀都對得返**）＋ 1,331 個樓宇腳印 ＋ 按等級分粗細的道路（帶深色路肩）＋ 電車虛線 ＋ 天星航線 ＋ 9 個傳送點 ＋ 地區名 ＋ 指北針 ＋ 比例尺。3D 世界的地面板塊亦換成同一條海岸線 |
+| **紅的要跟足實車** | 之前直接用紐約房車的 `BODY_SPECS.taxi`（圓潤、低頂、斜擋風玻璃） | 新增 `HK_TAXI_SPEC`：按 **豐田 Crown Comfort** 的真實尺吋重建 —— 4.69 × 1.70 × 1.50 m、軸距 2.69 m、**近乎垂直的 A/C 柱**、平頂、超橢圓四角（`lowerRound 4.6`／`upperRound 5.2`）、**上半身銀白／下半身紅**（`twoTone`）、**沙板鏡**（`fenderMirror`，全車最易認的特徵，同時取消車門鏡）、加大的車頂「的士」牌、鍍鉻泵把與水牌邊（新增 `CAR_PARTS.CHROME`） |
+
+**在 sandbox 怎樣「用眼」驗證**（冇瀏覽器、冇 GPU）：
+
+| 工具 | 做什麼 |
+|---|---|
+| `tools/render-model.mjs` | 自己寫的光柵化器（z-buffer、flat shading、按 `partId` 上色）把任何車／巴士模型畫成 PNG。`node --import ./tools/hk-boot/register.mjs tools/render-model.mjs taxi bus --views=iso,side,front,rear` |
+| `tools/canvas2d.mjs` | 一個夠用的 Canvas 2D 光柵化器（路徑、虛線、旋轉、文字示意），塞進 jsdom 就可以把**真正的地圖**畫成 PNG |
+| `tools/render-map.mjs` | 真的建立地圖 DOM、真的 `draw()`，輸出 `tools/out/map-<size>.png` |
+
+> 這一輪靠 `tools/render-map.mjs` 抓到一個真 bug：我的光柵化器一開始 `fillRect` 完全畫唔出東西 —— 因為掃描線填充沒有把未封閉的多邊形補回封閉邊。這個 bug 只在**工具**裡，但正因為有這個工具，我才發現「土地填色」其實一直沒有發生，而地圖看起來「兩團雲」。**沒有這一步，我就只會盲改。**
+
+**這一輪的證據**：`node --test tests/*.test.*` → **171 pass / 0 fail**；`tools/boot-hk.mjs` 21 項檢查全過（build `2026-10-25.9`，1,331 棟樓、25 個地標、96 架車、99 條車道、300 個行人）。
+
 ### 15.1 先講結論
 
 **這不是「換字串」的工作。**（下面這些是動手前的量測，之後 Phase 0/1/3 已經落地，見 15.0。）我實際掃過耦合度（每檔出現 `streetZ|avenueX|CENTRAL_PARK|BROADWAY|MANHATTAN|NYC_` 的次數）：

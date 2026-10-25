@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GEO } from '../js/hk-geodata.js';
+import { COAST } from '../js/hk-coastline.js';
 import { toWorld, toLatLon, pointInRing, ringArea } from '../tools/hk/frame.mjs';
 
 // Polygons & polylines are flat [x0, z0, x1, z1, ...] in the app, [[x, z]] in these helpers.
@@ -9,8 +10,11 @@ const pairs = (flat) => {
   for (let i = 0; i + 1 < flat.length; i += 2) out.push([flat[i], flat[i + 1]]);
   return out;
 };
+// 權威的陸地界線：真實海岸線（地政總署，js/hk-coastline.js）。
+// GEO.land 只是手繪種子（供生成街廓用），碼頭之類貼岸的建築物會落在它的外面。
+const coastRings = () => [...COAST.land, ...COAST.territory].map((ring) => pairs(ring));
 const rings = () => GEO.land.map((l) => pairs(l.ring));
-const onLand = (x, z) => rings().some((ring) => pointInRing(ring, x, z));
+const onLand = (x, z) => coastRings().some((ring) => pointInRing(ring, x, z));
 
 test('the Hong Kong pack is a v2 world with a true-north frame', () => {
   assert.equal(GEO.version, 2);

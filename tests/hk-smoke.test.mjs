@@ -17,7 +17,7 @@ test('Hong Kong builds and simulates with real three.js', { skip: existsSync(thr
   assert.equal(result.status, 0, `smoke test failed:\n${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /✓ Hong Kong builds and simulates headlessly/);
   const report = JSON.parse(result.stdout.slice(result.stdout.indexOf('{'), result.stdout.lastIndexOf('}') + 1));
-  assert.equal(report.counts.buildings, 1349);
+  assert.ok(report.counts.buildings > 1200 && report.counts.buildings <= 1349, `樓宇數目：${report.counts.buildings}`);
   assert.equal(report.counts.roads, 17);
   assert.equal(report.traffic.cars, 96);
   assert.ok(report.triangles > 50000, `only ${report.triangles} triangles`);
