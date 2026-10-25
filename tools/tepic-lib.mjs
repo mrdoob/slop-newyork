@@ -679,3 +679,248 @@ export function decodePNG(buf, inflate) {
   }
   return { width, height, channels, data };
 }
+
+/**
+ * Map matching for hand-drawn routes (the bus & combi lines of tools/data/tepic/semovi_routes.json): a hidden Markov
+ * model over the directed street graph, solved with Viterbi (Newson & Krumm, 2009). The drawn line is sampled every
+ * `step` m; each sample may lie on any street direction within `radius` m that runs its way (emission: the distance
+ * off the street, and how far the street turns from the line), and one sample leads to the next along the streets as
+ * the line does (transition: how much longer or shorter the drive is than the drawn stretch). One-way streets are only
+ * driven their way, so a line drawn against one goes round the block. Where no drive joins two samples (the line
+ * leaves the map, or the streets don't connect) the route breaks into pieces.
+ *
+ * links: [{ a, b, pts: [[x, z], ...] from node a to node b, dir: 0 both ways, 1 a to b only, -1 b to a only }]
+ * Returns match(line) for polylines [[x, z], ...] in the same frame: { pieces, samples, matched, loop }, where each
+ * piece is a list of refs, link index + 1 driven a to b and -(index + 1) b to a, `matched` counts the samples on a
+ * street, and `loop` says the one piece drives on from its end back into its start.
+ */
+export function createRouteMatcher(links, { step = 15, radius = 30, sigma = 8, beta = 12, k = 6, bridge = 1200 } = {}) {
+  // Directed states: 2·link driven a to b, 2·link + 1 driven b to a
+  const len = links.map((l) => {
+    let s = 0;
+    for (let i = 0; i + 1 < l.pts.length; i++) s += Math.hypot(l.pts[i + 1][0] - l.pts[i][0], l.pts[i + 1][1] - l.pts[i][1]);
+    return s;
+  });
+  const allowed = (st) => { const d = links[st >> 1].dir; return d === 0 || (d > 0) === ((st & 1) === 0); };
+  const startOf = (st) => (st & 1 ? links[st >> 1].b : links[st >> 1].a);
+  const endOf = (st) => (st & 1 ? links[st >> 1].a : links[st >> 1].b);
+  const out = new Map(); // node -> the states leaving it
+  for (let st = 0; st < links.length * 2; st++) {
+    if (!allowed(st)) continue;
+    const n = startOf(st);
+    if (!out.has(n)) out.set(n, []);
+    out.get(n).push(st);
+  }
+  // Segments in 64 m cells
+  const CELL = 64;
+  const grid = new Map();
+  links.forEach((l, li) => {
+    for (let i = 0; i + 1 < l.pts.length; i++) {
+      const [ax, az] = l.pts[i], [bx, bz] = l.pts[i + 1];
+      for (let ix = Math.floor(Math.min(ax, bx) / CELL); ix <= Math.floor(Math.max(ax, bx) / CELL); ix++) {
+        for (let iz = Math.floor(Math.min(az, bz) / CELL); iz <= Math.floor(Math.max(az, bz) / CELL); iz++) {
+          const key = ix * 100003 + iz;
+          if (!grid.has(key)) grid.set(key, []);
+          grid.get(key).push(li);
+        }
+      }
+    }
+  });
+  const stamp = new Int32Array(links.length).fill(-1);
+  let stampNo = 0;
+
+  // Where (x, z) projects onto link li: distance off it, metres from its node a, and its direction there
+  function project(li, x, z) {
+    const p = links[li].pts;
+    let best = Infinity, u = 0, tx = 0, tz = 0, s0 = 0;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const dx = p[i + 1][0] - p[i][0], dz = p[i + 1][1] - p[i][1];
+      const L = Math.hypot(dx, dz);
+      if (L < 1e-6) continue;
+      const t = Math.max(0, Math.min(1, ((x - p[i][0]) * dx + (z - p[i][1]) * dz) / (L * L)));
+      const d = Math.hypot(p[i][0] + dx * t - x, p[i][1] + dz * t - z);
+      if (d < best) { best = d; u = s0 + t * L; tx = dx / L; tz = dz / L; }
+      s0 += L;
+    }
+    return { d: best, u, tx, tz };
+  }
+
+  function candidates(x, z, tx, tz) {
+    stampNo++;
+    const list = [];
+    const ix0 = Math.floor(x / CELL), iz0 = Math.floor(z / CELL);
+    for (let ix = ix0 - 1; ix <= ix0 + 1; ix++) {
+      for (let iz = iz0 - 1; iz <= iz0 + 1; iz++) {
+        for (const li of grid.get(ix * 100003 + iz) || []) {
+          if (stamp[li] === stampNo) continue;
+          stamp[li] = stampNo;
+          const pr = project(li, x, z);
+          if (pr.d > radius) continue;
+          for (const back of [0, 1]) {
+            const st = li * 2 + back;
+            if (!allowed(st)) continue;
+            const cos = back ? -(pr.tx * tx + pr.tz * tz) : pr.tx * tx + pr.tz * tz;
+            if (cos < -0.3) continue; // the line runs the other way along this street
+            list.push({ st, pos: back ? len[li] - pr.u : pr.u, cost: 0.5 * (pr.d / sigma) ** 2 + 3 * (1 - cos) });
+          }
+        }
+      }
+    }
+    list.sort((p, q) => p.cost - q.cost);
+    return list.slice(0, k);
+  }
+
+  // Shortest drives from a node, out to `limit` m (binary heap); prev: the state that reached each node
+  function dijkstra(src, limit) {
+    const dist = new Map([[src, 0]]);
+    const prev = new Map();
+    const heap = [[0, src]];
+    while (heap.length) {
+      const [d, n] = heap[0];
+      const last = heap.pop();
+      if (heap.length) {
+        heap[0] = last;
+        for (let i = 0; ;) {
+          const l = 2 * i + 1, r = l + 1;
+          let m = i;
+          if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+          if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+          if (m === i) break;
+          [heap[i], heap[m]] = [heap[m], heap[i]];
+          i = m;
+        }
+      }
+      if (d > dist.get(n)) continue;
+      for (const st of out.get(n) || []) {
+        const m = endOf(st);
+        const dm = d + len[st >> 1];
+        if (dm > limit || dm >= (dist.has(m) ? dist.get(m) : Infinity)) continue;
+        dist.set(m, dm);
+        prev.set(m, st);
+        heap.push([dm, m]);
+        for (let i = heap.length - 1; i > 0;) {
+          const p = (i - 1) >> 1;
+          if (heap[p][0] <= heap[i][0]) break;
+          [heap[i], heap[p]] = [heap[p], heap[i]];
+          i = p;
+        }
+      }
+    }
+    return { dist, prev };
+  }
+
+  return function match(line) {
+    // Samples every `step` m along the drawn line, with its direction there
+    const samples = [];
+    let carry = 0;
+    for (let i = 0; i + 1 < line.length; i++) {
+      const [ax, az] = line[i], [bx, bz] = line[i + 1];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 1e-6) continue;
+      let s = carry;
+      for (; s < L; s += step) samples.push({ x: ax + ((bx - ax) * s) / L, z: az + ((bz - az) * s) / L, tx: (bx - ax) / L, tz: (bz - az) / L });
+      carry = s - L;
+    }
+    const cands = samples.map((p) => candidates(p.x, p.z, p.tx, p.tz));
+    // Viterbi, breaking into a new piece where no candidate is reachable from the last sample's
+    const score = [], from = [], trees = [];
+    const pieceStart = [];
+    let open = false;
+    for (let i = 0; i < samples.length; i++) {
+      const cs = cands[i];
+      score[i] = cs.map((c) => c.cost);
+      from[i] = cs.map(() => -1);
+      trees[i] = new Map();
+      if (!cs.length) { open = false; continue; }
+      if (!open || !cands[i - 1].length) { pieceStart.push(i); open = true; continue; }
+      const limit = step * 3 + 80;
+      let any = false;
+      for (let b = 0; b < cs.length; b++) {
+        let best = Infinity, arg = -1;
+        for (let a = 0; a < cands[i - 1].length; a++) {
+          const p = cands[i - 1][a], c = cs[b];
+          let D;
+          if (p.st === c.st && c.pos >= p.pos - 2) D = Math.max(0, c.pos - p.pos);
+          else {
+            const n = endOf(p.st);
+            if (!trees[i].has(n)) trees[i].set(n, dijkstra(n, limit));
+            const t = trees[i].get(n).dist.get(startOf(c.st));
+            if (t === undefined) continue;
+            D = len[p.st >> 1] - p.pos + t + c.pos;
+            if ((p.st ^ 1) === c.st) D += 40; // a U-turn
+          }
+          const s = score[i - 1][a] + Math.abs(D - step) / beta;
+          if (s < best) { best = s; arg = a; }
+        }
+        if (arg >= 0) { score[i][b] += best; from[i][b] = arg; any = true; }
+      }
+      if (!any) pieceStart.push(i); // nothing joins it to the last sample: a new piece, on its emissions alone
+      else for (let b = 0; b < cs.length; b++) if (from[i][b] < 0) score[i][b] = Infinity;
+    }
+    // Back-track each piece from its best last candidate, then spell out the drive between candidates
+    const pieces = [];
+    const ends = [];
+    for (let j = 0; j < pieceStart.length; j++) {
+      let e = pieceStart[j];
+      const stop = j + 1 < pieceStart.length ? pieceStart[j + 1] : samples.length;
+      while (e + 1 < stop && cands[e + 1].length && from[e + 1].some((f) => f >= 0)) e++;
+      ends.push([pieceStart[j], e]);
+    }
+    let matched = 0;
+    for (const [s0, e] of ends) {
+      let b = 0;
+      for (let q = 1; q < score[e].length; q++) if (score[e][q] < score[e][b]) b = q;
+      const chosen = [];
+      for (let i = e; i >= s0; i--) { chosen.push(cands[i][b]); b = i > s0 ? from[i][b] : 0; }
+      chosen.reverse();
+      matched += chosen.length;
+      const states = [chosen[0].st];
+      for (let i = 1; i < chosen.length; i++) {
+        const p = chosen[i - 1], c = chosen[i];
+        if (p.st === c.st && c.pos >= p.pos - 2) continue;
+        const tree = trees[s0 + i].get(endOf(p.st)) || dijkstra(endOf(p.st), step * 3 + 80);
+        const path = [];
+        for (let n = startOf(c.st); n !== endOf(p.st);) {
+          const st = tree.prev.get(n);
+          if (st === undefined) break;
+          path.push(st);
+          n = startOf(st);
+        }
+        states.push(...path.reverse(), c.st);
+      }
+      const refs = [];
+      for (const st of states) {
+        const ref = st & 1 ? -((st >> 1) + 1) : (st >> 1) + 1;
+        if (refs[refs.length - 1] !== ref) refs.push(ref);
+      }
+      if (refs.length) pieces.push(refs);
+    }
+    // Bridge the breaks the streets can close (a line drawn the wrong way up a one-way street, a street missing from
+    // the map): drive from one piece's end to the next piece's start, if that's under `bridge` m. And close the loop
+    // when the line ends where it began, as most routes do (out and back), so the route runs round and round.
+    const toState = (ref) => (ref > 0 ? (ref - 1) * 2 : (-ref - 1) * 2 + 1);
+    const drive = (fromRef, toRef) => {
+      const src = endOf(toState(fromRef)), dst = startOf(toState(toRef));
+      if (src === dst) return [];
+      const tree = dijkstra(src, bridge);
+      if (!tree.dist.has(dst)) return null;
+      const path = [];
+      for (let n = dst; n !== src;) { const st = tree.prev.get(n); path.push(st & 1 ? -((st >> 1) + 1) : (st >> 1) + 1); n = startOf(st); }
+      return path.reverse();
+    };
+    for (let j = 0; j + 1 < pieces.length;) {
+      const a = pieces[j], b = pieces[j + 1];
+      const path = drive(a[a.length - 1], b[0]);
+      if (!path) { j++; continue; }
+      pieces.splice(j, 2, [...a, ...path, ...b.slice(b[0] === a[a.length - 1] ? 1 : 0)]);
+    }
+    let loop = false;
+    const [fx, fz] = line[0], [lx, lz] = line[line.length - 1];
+    if (pieces.length === 1 && Math.hypot(lx - fx, lz - fz) < 100) {
+      const p = pieces[0];
+      const path = drive(p[p.length - 1], p[0]);
+      if (path) { p.push(...path); loop = true; }
+    }
+    return { pieces, samples: samples.length, matched, loop };
+  };
+}

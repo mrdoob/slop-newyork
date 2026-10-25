@@ -1,6 +1,6 @@
 # Slop Tepic
 
-A Tepic, Nayarit (with Xalisco) GTA-style simulation built with [three.js](https://threejs.org/), WebGPURenderer, and TSL, forked from [Slop New York](https://github.com/mrdoob/slop-newyork). Explore the city on foot, by car, by bicycle, or by helicopter, starting at the Plaza Principal, and knock over pedestrians, cyclists, lamp posts and hydrants.
+A Tepic, Nayarit (with Xalisco) GTA-style simulation built with [three.js](https://threejs.org/), WebGPURenderer, and TSL, forked from [Slop New York](https://github.com/mrdoob/slop-newyork). Explore the city on foot, by car, by bicycle, or by helicopter, starting at the Plaza Principal, and knock over pedestrians, cyclists, lamp posts and hydrants. Its camiones and combis run Tepic's real routes, as the state's Secretaría de Movilidad maps them.
 
 The city lies on its real ground: its streets climb and fall with the valley floor (some 300 m from its lowest streets up to the lomas), with the hills around it. Add `?slopes=0` to the URL for the flat city. Its overpasses stand where OpenStreetMap has a road bridged over another road or the railway: decks on piers with ramps up to them, drivable and walkable. The railway through town is laid with ballast, sleepers and rails. Roads through a tunnel stay at grade, and the road over them is raised instead, because the ground is a single surface.
 
@@ -29,6 +29,10 @@ tools/data/tepic/fetch-terrain.sh
 ```
 
 ```bash
+tools/data/tepic/fetch-routes.sh
+```
+
+```bash
 node --max-old-space-size=12000 tools/build-tepic-geodata.mjs
 ```
 
@@ -36,4 +40,4 @@ node --max-old-space-size=12000 tools/build-tepic-geodata.mjs
 
 The project code is available under the [MIT License](LICENSE).
 
-Geographic data: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); building footprints from [Overture Maps](https://overturemaps.org/) (OpenStreetMap, Microsoft ML Buildings and Google Open Buildings; ODbL). Elevation: [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) by Mapzen on AWS (SRTM, GMTED2010, ETOPO1 and other sources, see [their attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)). Live weather: [Weather data by Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Third-party data and dependencies retain their respective licenses.
+Geographic data: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); building footprints from [Overture Maps](https://overturemaps.org/) (OpenStreetMap, Microsoft ML Buildings and Google Open Buildings; ODbL). Elevation: [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) by Mapzen on AWS (SRTM, GMTED2010, ETOPO1 and other sources, see [their attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)). Live weather: [Weather data by Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Bus & combi routes: [Secretaría de Movilidad del Estado de Nayarit](https://semovi.nayarit.gob.mx/muevete-transporte-publico/) (its public transport map). Third-party data and dependencies retain their respective licenses.

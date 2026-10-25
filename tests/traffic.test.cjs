@@ -191,7 +191,8 @@ function populationContext() {
     focusX: 0, focusZ: 0, player: { active: false },
     clock: 0,
     VEHICLE_SPAWN_DISTANCE: 250, PED_SPAWN_DISTANCE: 150, NEAR_RADIUS: 350,
-    nearEdges: [], nearSignals: [], track: {}, KERB: 1.6, QUEUE_GAP: 0.62,
+    nearEdges: [], nearTransitEdges: [], nearSignals: [], track: {}, KERB: 1.6, QUEUE_GAP: 0.62,
+    transit: { paths: [] }, fleetRoutes: [],
     atCurb: () => {}, laneClear: () => true, drawModel: () => {},
     place: (v, e, lane, s) => Object.assign(v, { edge: e, lane, s })
   };
@@ -245,6 +246,37 @@ test('long roads are available near their ends and spawn only in the local secti
   assert.equal(trafficFunction('spawnVehicle', context)(car, 0, 350, false), true);
   assert.ok(edge.sz + car.s <= 350);
   assert.ok(car.s >= car.half + 5);
+});
+
+test('combis and buses spawn on the roads of routes their fleet serves, joining the route there', () => {
+  const context = populationContext();
+  const shared = { fleet: '', routeIndex: 3, name: 'Insurgentes' };
+  const busOnly = { fleet: 'bus', routeIndex: 5, name: 'Progreso 4' };
+  const offRoute = straightEdge(100, 400);
+  const onRoute = Object.assign(straightEdge(100, 400), { transit: [{ path: shared, s: 1250 }] });
+  const busRoad = Object.assign(straightEdge(100, 400), { transit: [{ path: busOnly, s: 40 }] });
+  context.nearEdges.push(offRoute, onRoute, busRoad);
+  context.transit.paths.push(shared, busOnly);
+  context.routeOn = trafficFunction('routeOn', context);
+  context.joinRoute = trafficFunction('joinRoute', context);
+  const spawnVehicle = trafficFunction('spawnVehicle', context);
+
+  context.nearTransitEdges.push(onRoute);
+  const combi = { half: 2.45, fleet: 'combi', path: null };
+  assert.equal(spawnVehicle(combi, 0, 350, false), true);
+  assert.equal(combi.edge, onRoute);
+  assert.equal(combi.path, shared);
+  assert.equal(combi.pathS, 1250, 'its cursor starts where the road ends on the route');
+  assert.equal(combi.sign, 3);
+
+  context.nearTransitEdges.length = 0;
+  context.nearTransitEdges.push(busRoad);
+  const other = { half: 2.45, fleet: 'combi', path: null };
+  assert.equal(spawnVehicle(other, 0, 350, false), false, 'a camión route takes no combis');
+
+  const car = { half: 2.25, fleet: null };
+  assert.equal(spawnVehicle(car, 0, 350, false), true);
+  assert.equal(car.path, null, 'other traffic follows no route');
 });
 
 test('crossing pedestrians fall back to a sidewalk when nearby crosswalks are unusable', () => {
