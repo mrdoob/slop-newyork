@@ -65,6 +65,7 @@ function modelFor(look) {
 }
 
 const G = 9.81;
+const AIM_WALK = 2.4; // m/s: walking (and strafing) with the gun up (player/aim.js)
 // The car's tyres hold it in a corner up to its grip × this (an arcade allowance over a real road car's ~0.9 g, so
 // Tepic's corners can be taken at speed)
 const CORNER_GRIP = 1.25;
@@ -241,6 +242,8 @@ class ThirdPersonControllerManager {
     };
     // Out of breath (player/stats.js), shift no longer sprints on foot nor on the bicycle; the motors don't tire
     this.canSprint = true;
+    // Taking aim on foot (player/aim.js sets it every frame): the player walks and strafes instead of turning
+    this.aiming = false;
 
     this.entities = {
       person: this.createPersonEntity(),
@@ -541,7 +544,8 @@ class ThirdPersonControllerManager {
   // The player's car & bicycle left standing, for the traffic to stop behind (traffic.js setParked)
   parkedVehicles() {
     const slots = (this._parkedSlots ??= {
-      car: { x: 0, z: 0, halfW: 0.86, halfL: 2.18 }, cyclist: { x: 0, z: 0, halfW: 0.32, halfL: 0.95 }, moto: { x: 0, z: 0, halfW: 0.4, halfL: 1.0 }
+      car: { x: 0, z: 0, heading: 0, halfW: 0.86, halfL: 2.18 }, cyclist: { x: 0, z: 0, heading: 0, halfW: 0.32, halfL: 0.95 },
+      moto: { x: 0, z: 0, heading: 0, halfW: 0.4, halfL: 1.0 }
     });
     slots.car.halfW = this.entities.car.halfW || 0.86;
     slots.car.halfL = this.entities.car.halfL || 2.18;
@@ -552,6 +556,7 @@ class ThirdPersonControllerManager {
       const e = this.entities[mode];
       slots[mode].x = e.position.x;
       slots[mode].z = e.position.z;
+      slots[mode].heading = e.heading || 0;
       out.push(slots[mode]);
     }
     return out;
@@ -1332,10 +1337,12 @@ class ThirdPersonControllerManager {
   // The colliders whose bounds come within `r` of (x, z), in their original order. They never move, so they are
   // bucketed once into 48 m cells (tens of thousands of buildings: testing them all every frame cost ~0.5 ms)
   // Is ground point (x, z) inside a building below `height`? (Things thrown about by knock-downs, mayhem.js)
-  isSolidAt(x, z, height = 1.5, ground = 0) {
+  // (`minSize` m: leave out what is narrower than that both ways, the poles and bollards a walker steps round)
+  isSolidAt(x, z, height = 1.5, ground = 0, minSize = 0) {
     for (const c of this.nearColliders(x, z, 0)) {
       // (only what stands between the ground there, a hill's or the street's, and `height` over it)
       if ((c.minY ?? 0) > ground + height || (c.maxY ?? Infinity) <= ground || x < c.minX || x > c.maxX || z < c.minZ || z > c.maxZ) continue;
+      if (minSize > 0 && (c.obb ? Math.max(c.obb.hx, c.obb.hz) * 2 : Math.max(c.maxX - c.minX, c.maxZ - c.minZ)) < minSize) continue;
       if (!c.obb) return true;
       // the box's own frame: world = c + R_y(θ)·local, so local = R_y(−θ)·(p − c)
       const { cx, cz, hx, hz, cs, sn } = c.obb;
@@ -1631,16 +1638,28 @@ class ThirdPersonControllerManager {
     const turnRate = 2.6;
 
     let targetSpeed = 0;
-    if (this.keys.forward) targetSpeed = maxWalk * this.keys.forward;
-    else if (this.keys.backward) targetSpeed = -maxWalk * 0.65 * this.keys.backward;
+    let targetStrafe = 0;
+    if (this.aiming) {
+      // aiming (player/aim.js): the mouse turns the player, A / D step sideways, all at a walk
+      const ahead = (Number(this.keys.forward) || 0) - (Number(this.keys.backward) || 0);
+      const side = (Number(this.keys.right) || 0) - (Number(this.keys.left) || 0);
+      const k = AIM_WALK / Math.max(1, Math.hypot(ahead, side));
+      targetSpeed = ahead * k;
+      targetStrafe = side * k;
+    } else {
+      if (this.keys.forward) targetSpeed = maxWalk * this.keys.forward;
+      else if (this.keys.backward) targetSpeed = -maxWalk * 0.65 * this.keys.backward;
 
-    if (this.keys.left) p.heading += turnRate * dt * this.keys.left;
-    if (this.keys.right) p.heading -= turnRate * dt * this.keys.right;
+      if (this.keys.left) p.heading += turnRate * dt * this.keys.left;
+      if (this.keys.right) p.heading -= turnRate * dt * this.keys.right;
+    }
 
     p.speed += (targetSpeed - p.speed) * Math.min(1, dt * 10);
+    p.strafe = (p.strafe || 0) + (targetStrafe - (p.strafe || 0)) * Math.min(1, dt * 10);
 
-    p.position.x += Math.sin(p.heading) * p.speed * dt;
-    p.position.z += Math.cos(p.heading) * p.speed * dt;
+    // (to the right is (-cos, sin) of the heading)
+    p.position.x += (Math.sin(p.heading) * p.speed - Math.cos(p.heading) * p.strafe) * dt;
+    p.position.z += (Math.cos(p.heading) * p.speed + Math.sin(p.heading) * p.strafe) * dt;
     this.resolveHorizontalCollision(p.position, 0.48);
 
     const groundY = this.getGroundHeight(p.position.x, p.position.z, 'person', p.position.y);

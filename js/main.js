@@ -29,6 +29,8 @@ import { buildTepicLandmarks } from './world/tepic-landmarks.js';
 import { buildCotos } from './world/cotos.js';
 import { CrimeSystem } from './sim/crime.js';
 import { CrimeHud } from './ui/crime-hud.js';
+import { WeaponWheel } from './ui/weapon-wheel.js';
+import { AimControl } from './player/aim.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -133,6 +135,8 @@ async function initApp() {
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
   const solidAt = (x, z) => controllerManager.isSolidAt(x, z, 1.5, groundHeight(x, z));
   trafficSystem.setSolidQuery(solidAt);
+  // (the walls the sidewalks' walkers turn back at: the buildings', not the poles' they pass by)
+  trafficSystem.setWallQuery((x, z) => controllerManager.isSolidAt(x, z, 1.5, groundHeight(x, z), 2));
   streetDetails.breaker?.setSolidQuery(solidAt);
   streetDetails.breaker?.setGroundQuery(groundHeight);
   // Saved positions belong to one city's frame: the key carries the city's name
@@ -179,6 +183,9 @@ async function initApp() {
   }
 
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
+  // Free aim on foot: the right button (or Z) brings the camera over the shoulder with a crosshair (player/aim.js)
+  const aimControl = new AimControl({ canvas: renderer.domElement, controllers: controllerManager });
+  cameraSystem.aim = aimControl;
   cameraSystem.setGroundQuery(groundHeight); // the chase cameras stay over the ground
   // The scenic cameras frame the city's own spots (see cameras.js)
   const T = TELEPORT_LOCATIONS;
@@ -205,7 +212,7 @@ async function initApp() {
   // HOSPITALS), arrested at the nearest teleport spot, on foot either way
   const crimeSystem = new CrimeSystem({
     scene, controllers: controllerManager, traffic: trafficSystem, groundHeight, solidAt, canvas: renderer.domElement,
-    audio: audioSystem,
+    audio: audioSystem, aim: aimControl,
     onRespawn: (kind) => {
       if (controllerManager.activeMode === 'helicopter') {
         controllerManager.setMode('person');
@@ -224,6 +231,8 @@ async function initApp() {
   if (Number.isFinite(savedMoney)) crimeSystem.money = Math.max(0, Math.round(savedMoney));
   audioSystem.sources.pursuers = crimeSystem.cruisers;
   const crimeHud = new CrimeHud();
+  // The weapon wheel, held open with Tab (ui/weapon-wheel.js): the game runs slowed meanwhile
+  const weaponWheel = new WeaponWheel(crimeSystem, { aim: aimControl });
   // Crashes hurt as well as sound: each system has a single collision listener, shared here with the audio's
   let lastCrash = -Infinity;
   for (const system of [controllerManager, trafficSystem, streetDetails.breaker]) {
@@ -756,7 +765,7 @@ async function initApp() {
   markInit('ui');
   // Debugging handle for the console, only with ?debug in the URL
   if (new URLSearchParams(location.search).has('debug')) {
-    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, crimeSystem, stamina };
+    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, crimeSystem, stamina, aimControl, weaponWheel };
   }
 
   // The loading screen stays up while the shaders compile (precompileShaders() & the warm-up frame, see the loop) and
@@ -859,7 +868,7 @@ async function initApp() {
   renderer.setAnimationLoop((now) => {
     const rawDt = (now - lastTime) * 0.001;
     lastTime = now;
-    const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
+    const dt = Math.min(Math.max(rawDt, 0.001), 0.05) * weaponWheel.timeScale;
     elapsed += dt;
 
     // Update 3rd-person controllers, camera, signals, traffic & vehicle collisions, building LODs, and dynamic shadow focus
@@ -874,6 +883,9 @@ async function initApp() {
       const engine = v.damage ? 1 - v.damage.engine : 1;
       tachometer.update(v.spec, v.drive, Math.round(Math.abs(v.speed) * 3.6), engine, engine <= 0, v.drive ? gearLabel(v.drive, v.spec) : '1');
     }
+    // (aiming only on foot and in play, not while choosing a weapon)
+    aimControl.allowed = crimeSystem.state === 'play' && !weaponWheel.isOpen;
+    aimControl.update(dt);
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
     trafficSystem.setParked(crimeSystem.addObstacles(controllerManager.parkedVehicles()));
@@ -893,6 +905,7 @@ async function initApp() {
     crimeSystem.shakeCamera(cameraSystem.camera);
     stamina.update(dt, crimeSystem.state === 'play' ? controllerManager.sprintingMode() : null);
     crimeHud.update(crimeSystem, dt, stamina);
+    weaponWheel.update();
     if (!document.hidden && now >= nextPlayerSave) {
       savePlayerState();
       nextPlayerSave = now + 5000;

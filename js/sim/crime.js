@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { PersonCrowd, PersonRig, OUTFIT, OUTFIT_SEED } from './pedestrians.js';
 import { BONES, boxHit, startTumble, stepTumble, tumblePose } from './mayhem.js';
-import { WEAPONS, Arsenal, pickTarget, rayCircle, rayBox, boxOverlap, blastFalloff, hitChance, wrapAngle } from './weapons.js';
+import { WEAPONS, Arsenal, pickTarget, rayCircle, rayBox, boxOverlap, roundBox, blastFalloff, hitChance, wrapAngle } from './weapons.js';
 import { Wanted, POLICE, GANGS, NARCO, gangTurf } from './crime-rules.js';
 import { GunfireFX } from './gunfire-fx.js';
 import { BODY_SPECS, buildCarGeometry, createLoftedCarMaterial, buildLightbarGeometry, createLightbarMaterial } from '../actors/actor-models.js';
@@ -29,6 +29,11 @@ const MAX_TRUCKS = 2; // the cartel's
 const MAX_PICKUPS = 24;
 const PARKED_Y = -1000; // where unused meshes wait (still in the scene, so their pipelines compile at load)
 const BODY_R = 0.34; // m: a person's radius, to shots and to each other
+// m over the ground a shot aimed up or down still hits: a person, a car (or patrol car), a bus or combi
+const PERSON_H = 1.85;
+const CAR_H = 1.6;
+const BUS_H = 3.1;
+const inBody = (y, top) => y >= -0.05 && y <= top;
 const RUN = 5.4; // m/s: officers and gang members running
 const THIEF_RUN = 6.3; // a thief runs faster than the player walks (4.4) and slower than it sprints (8.2)
 const WALK = 1.4;
@@ -106,11 +111,13 @@ class Heap {
 class CrimeSystem {
   /**
    * @param {object} o - scene, controllers (player/controllers.js), traffic (traffic.js), groundHeight(x, z),
-   *   solidAt(x, z), canvas (right mouse button fires), audio (CityAudioSystem, optional),
+   *   solidAt(x, z), canvas (the right mouse button fires from a vehicle), audio (CityAudioSystem, optional),
+   *   aim (player/aim.js, optional: free aim on foot along the camera's crosshair),
    *   onRespawn(kind 'wasted' | 'busted') puts the player back somewhere safe
    */
-  constructor({ scene, controllers, traffic, groundHeight, solidAt, canvas = null, audio = null, onRespawn = null }) {
+  constructor({ scene, controllers, traffic, groundHeight, solidAt, canvas = null, audio = null, aim = null, onRespawn = null }) {
     this.scene = scene;
+    this.aim = aim;
     this.controllers = controllers;
     this.traffic = traffic;
     this.groundAt = groundHeight;
@@ -135,6 +142,9 @@ class CrimeSystem {
     this.aimHold = 0; // s the player keeps the gun up after a shot
     this.lockTarget = null;
     this.punchT = 0;
+    this.aimPoint = { x: 0, y: 0, z: 0 }; // where the crosshair's ray meets something (free aim)
+    this._camDir = new THREE.Vector3();
+    this._trace = { t: 0, kind: 'none', target: null };
 
     this.fx = new GunfireFX(scene);
     this.crowd = new PersonCrowd(MAX_AGENTS, { farDistance: 40 });
@@ -352,7 +362,8 @@ class CrimeSystem {
   }
 
   // =========================================================================
-  // 2. INPUT: fire (right mouse button, X; touch & gamepad through controllers.keys.fire), weapons 1-4, R to cycle
+  // 2. INPUT: fire (X, the left button while aiming on foot (aim.js), the right button from a vehicle; touch &
+  // gamepad through controllers.keys.fire), weapons 1-4, R to cycle, Tab for the wheel (ui/weapon-wheel.js)
   // =========================================================================
   bindInput(canvas) {
     if (canvas) {
@@ -467,7 +478,10 @@ class CrimeSystem {
   updatePlayer(dt, elapsed) {
     const c = this.controllers;
     const p = c.entities.person;
-    const held = Boolean(c.keys.fire) || this.mouseFire;
+    // aiming on foot (aim.js): the shots go where the crosshair is, and the right button aims rather than fires
+    const free = Boolean(this.aim?.active) && this.mode === 'person';
+    const mouse = free ? this.aim.fire : this.mouseFire && (this.mode !== 'person' || !this.aim);
+    const held = Boolean(c.keys.fire) || mouse;
     const w = this.arsenal.weapon;
     // what this weapon can do from here: no guns from the helicopter, no fists or bazooka from a car or a bicycle
     const usable = this.mode === 'person' || (this.mode !== 'helicopter' && !w.melee && !w.rocket);
@@ -475,8 +489,18 @@ class CrimeSystem {
     if (held && usable) this.aimHold = w.melee ? 0.2 : 0.7;
     else this.aimHold = Math.max(0, this.aimHold - dt);
 
+    if (free) {
+      this.lockTarget = null;
+      const hit = this.aimAlong(this.camera, w);
+      this.aim.onTarget = !w.melee && (hit.kind === 'agent' || hit.kind === 'ped' || hit.kind === 'cruiser' || hit.kind === 'vehicle');
+    } else if (this.aim) {
+      this.aim.onTarget = false;
+    }
+
     // lock-on while the trigger is held
-    if (held && usable && !w.melee) {
+    if (free) {
+      // (none: the player aims itself)
+    } else if (held && usable && !w.melee) {
       const range = w.range * (this.mode === 'person' ? 1 : 0.7);
       this.lockTarget = this.findTarget(this.px, this.pz, this.player.heading, range, this.mode === 'person' ? 0.6 : 0.3);
     } else if (!held) {
@@ -492,7 +516,7 @@ class CrimeSystem {
     // the arms: raised while aiming, a jab for a punch
     const rig = p.rig;
     this.punchT = Math.max(0, this.punchT - dt);
-    const aimWant = this.mode === 'person' ? (w.melee ? (this.punchT > 0 ? 1 : 0) : this.aimHold > 0 ? 1 : 0) : 0;
+    const aimWant = this.mode === 'person' ? (w.melee ? (this.punchT > 0 ? 1 : 0) : this.aimHold > 0 || free ? 1 : 0) : 0;
     rig.aim += (aimWant - rig.aim) * Math.min(1, dt * (aimWant ? 14 : 6));
     rig.aimYaw = this.lockTarget && this.mode === 'person' ? Math.atan2(this.lockTarget.x - this.px, this.lockTarget.z - this.pz) : p.heading;
     rig.aimBoth = w.id === 'smg' || w.id === 'rifle' || w.id === 'bazooka';
@@ -556,32 +580,87 @@ class CrimeSystem {
     }
     const m = this.muzzle(this._muzzle ??= { x: 0, y: 0, z: 0 });
     const t = this.lockTarget;
+    const free = Boolean(this.aim?.active) && this.mode === 'person';
     let yaw = t ? Math.atan2(t.x - m.x, t.z - m.z) : pe.heading;
+    let slope = null; // (free aim: m up per m along, from the gun to the crosshair's point)
+    if (free) {
+      const a = this.aimPoint;
+      const d = Math.hypot(a.x - m.x, a.z - m.z);
+      if (d > 0.6) {
+        yaw = Math.atan2(a.x - m.x, a.z - m.z);
+        slope = (a.y - m.y) / d;
+      } else {
+        slope = Math.tan(this.aim.pitch); // (right up against it: along the camera)
+      }
+      slope += (Math.random() - 0.5) * 2 * w.spread;
+    }
     yaw += (Math.random() - 0.5) * 2 * w.spread;
     this.fx.muzzle(m.x, m.y, m.z, yaw, Boolean(w.rocket));
     this.audio?.gunfire?.(w.id, m.x, m.y, m.z);
     this.traffic.panic(m.x, m.z, w.rocket ? 45 : 35);
     if (this.copNear(m.x, m.z, 40)) this.report('gunfire');
     if (w.rocket) {
-      const r = this.fx.launchRocket(m.x, m.y, m.z, yaw, 0);
-      if (r) this.rockets.push({ r, x: m.x, y: m.y, z: m.z, dx: Math.sin(yaw), dz: Math.cos(yaw), t: 0 });
+      const pitch = Math.atan(slope ?? 0);
+      const r = this.fx.launchRocket(m.x, m.y, m.z, yaw, -pitch);
+      if (r) this.rockets.push({ r, x: m.x, y: m.y, z: m.z, dx: Math.sin(yaw), dz: Math.cos(yaw), dh: Math.cos(pitch), dy: Math.sin(pitch), t: 0 });
       return;
     }
     // aimed at a target's chest (a person's hit is at 1.2 m over its feet), else level
     let ty = m.y;
     if (t) ty = (t.y ?? this.groundAt(t.x, t.z)) + (t.mesh ? 0.9 : 1.2);
-    this.hitScan(m.x, m.y, m.z, yaw, ty, w, true);
+    this.hitScan(m.x, m.y, m.z, yaw, ty, w, true, slope);
   }
 
-  // A shot from (ox, oy, oz) along `yaw`, sloping towards height ty at the end: the first thing in its way takes it
-  hitScan(ox, oy, oz, yaw, ty, w, byPlayer) {
+  // Free aim: what the crosshair's ray (the middle of the screen, from the camera) meets first, past the player, within
+  // the weapon's reach; its point goes into this.aimPoint (the shots are fired from the gun at it). Returns the trace.
+  aimAlong(camera, w) {
+    const a = this.aimPoint;
+    if (!camera) return this._trace;
+    const d = camera.getWorldDirection(this._camDir);
+    const o = camera.position;
+    const h = Math.max(0.05, Math.hypot(d.x, d.z));
+    const yaw = Math.atan2(d.x, d.z);
+    const slope = d.y / h;
+    // (from level with the player on: no one behind it, between it and the camera, takes the shot)
+    const from = Math.max(0, (this.px - o.x) * d.x / h + (this.pz - o.z) * d.z / h + 0.3);
+    const reach = from + (w.melee ? 6 : w.range);
+    const hit = this.trace(o.x, o.y, o.z, yaw, reach, slope, from);
+    const t = hit.kind === 'none' ? reach : hit.t;
+    a.x = o.x + Math.sin(yaw) * t;
+    a.z = o.z + Math.cos(yaw) * t;
+    a.y = o.y + slope * t;
+    return hit;
+  }
+
+  // What a shot from (ox, oy, oz) along `yaw` meets first within `range` m (past `from` m), into this._trace
+  // { t, kind: 'none' | 'wall' | 'ground' | 'agent' | 'cruiser' | 'ped' | 'vehicle', target }. Level (slope null), it
+  // takes whoever stands in the line on the map; with a `slope` (m up per m along: aimed up or down) it passes over or
+  // under people and vehicles, meets walls at its own height, and can hit the street.
+  trace(ox, oy, oz, yaw, range, slope = null, from = 0) {
     const dx = Math.sin(yaw), dz = Math.cos(yaw);
-    let best = w.range;
+    const out = this._trace;
+    let best = range;
     let kind = 'none';
     let target = null;
-    // walls, every 0.8 m
-    for (let t = 0.6; t < best; t += 0.8) {
-      if (this.solidAt(ox + dx * t, oz + dz * t)) {
+    const pitched = slope !== null;
+    // (the height of the shot over the ground at t m: on someone's body, or on a car's?)
+    const over = (t, x, z) => oy + slope * t - this.groundAt(x, z);
+    // walls (and the street), every 0.8 m
+    for (let t = Math.max(0.6, from); t < best; t += 0.8) {
+      const x = ox + dx * t, z = oz + dz * t;
+      if (pitched) {
+        const y = oy + slope * t;
+        if (y < this.groundAt(x, z)) {
+          best = Math.max(from, t - 0.4);
+          kind = 'ground';
+          break;
+        }
+        if (this.controllers.isSolidAt(x, z, 0.2, y - 0.1)) {
+          best = t;
+          kind = 'wall';
+          break;
+        }
+      } else if (this.solidAt(x, z)) {
         best = t;
         kind = 'wall';
         break;
@@ -590,35 +669,53 @@ class CrimeSystem {
     for (const a of this.agents) {
       if (a.fallen) continue;
       const t = rayCircle(ox, oz, dx, dz, a.x, a.z, BODY_R);
-      if (t >= 0 && t < best) {
-        best = t;
-        kind = 'agent';
-        target = a;
-      }
+      if (t < from || t >= best) continue;
+      if (pitched && !inBody(over(t, a.x, a.z), PERSON_H)) continue;
+      best = t;
+      kind = 'agent';
+      target = a;
     }
     for (const cr of this.cruisers) {
       if (!cr.active) continue;
       const t = rayBox(ox, oz, dx, dz, cr.x, cr.z, cr.heading, cr.halfW, cr.halfL);
-      if (t >= 0 && t < best) {
-        best = t;
-        kind = 'cruiser';
-        target = cr;
-      }
+      if (t < from || t >= best) continue;
+      if (pitched && !inBody(over(t, cr.x, cr.z), CAR_H)) continue;
+      best = t;
+      kind = 'cruiser';
+      target = cr;
     }
-    const street = this.traffic.rayHit(ox, oz, dx, dz, best);
+    const accept = pitched || from > 0
+      ? (k, o, t) => t >= from && (!pitched || inBody(over(t, o.x, o.z), k === 'ped' ? PERSON_H : o.bus ? BUS_H : CAR_H))
+      : null;
+    const street = this.traffic.rayHit(ox, oz, dx, dz, best, accept);
     if (street) {
       best = street.t;
       kind = street.kind;
       target = street.target;
     }
+    out.t = best;
+    out.kind = kind;
+    out.target = target;
+    return out;
+  }
+
+  // A shot from (ox, oy, oz) along `yaw`, sloping towards height ty at the end (or along `slope`, aimed freely): the
+  // first thing in its way takes it
+  hitScan(ox, oy, oz, yaw, ty, w, byPlayer, slope = null) {
+    const dx = Math.sin(yaw), dz = Math.cos(yaw);
+    const { t: best, kind, target } = this.trace(ox, oy, oz, yaw, w.range, slope);
     const ex = ox + dx * best, ez = oz + dz * best;
-    const slope = (ty - oy) / Math.max(1, best);
-    let ey = kind === 'none' || kind === 'wall' ? oy + slope * best : 0;
-    if (kind === 'agent' || kind === 'ped') ey = this.groundAt(ex, ez) + 1.2;
-    else if (kind === 'cruiser' || kind === 'vehicle') ey = this.groundAt(ex, ez) + 0.85;
+    let ey;
+    if (slope !== null) ey = oy + slope * best;
+    else {
+      ey = kind === 'none' || kind === 'wall' ? oy + (ty - oy) / Math.max(1, best) * best : 0;
+      if (kind === 'agent' || kind === 'ped') ey = this.groundAt(ex, ez) + 1.2;
+      else if (kind === 'cruiser' || kind === 'vehicle') ey = this.groundAt(ex, ez) + 0.85;
+    }
+    if (kind === 'ground') ey = this.groundAt(ex, ez) + 0.03;
     this.fx.tracer(ox, oy, oz, ex, ey, ez);
 
-    if (kind === 'wall') this.fx.impact(ex, ey, ez, 'dust', -dx, -dz);
+    if (kind === 'wall' || kind === 'ground') this.fx.impact(ex, ey, ez, 'dust', -dx, -dz);
     else if (kind === 'agent') {
       this.fx.impact(ex, ey, ez, 'blood', dx, dz);
       this.damageAgent(target, w.damage, dx, dz, byPlayer);
@@ -772,14 +869,18 @@ class CrimeSystem {
       while (!hit && travelled < step) {
         const s = Math.min(1, step - travelled);
         travelled += s;
-        k.x += k.dx * s;
-        k.z += k.dz * s;
-        if (this.solidAt(k.x, k.z) || k.y < this.groundAt(k.x, k.z) + 0.15) hit = true;
-        for (const a of this.agents) if (!hit && !a.fallen && Math.hypot(a.x - k.x, a.z - k.z) < 0.6) hit = true;
+        k.x += k.dx * (k.dh ?? 1) * s;
+        k.z += k.dz * (k.dh ?? 1) * s;
+        k.y += (k.dy || 0) * s;
+        const g = this.groundAt(k.x, k.z);
+        // (over the roofs and the people, aimed up: it flies on)
+        const low = k.y < g + 2.2;
+        if (k.y < g + 0.15 || (low ? this.solidAt(k.x, k.z) : this.controllers.isSolidAt(k.x, k.z, 0.3, k.y - 0.15))) hit = true;
+        for (const a of this.agents) if (!hit && low && !a.fallen && Math.hypot(a.x - k.x, a.z - k.z) < 0.6) hit = true;
         for (const cr of this.cruisers) {
-          if (!hit && cr.active && rayBox(k.x, k.z, k.dx, k.dz, cr.x, cr.z, cr.heading, cr.halfW, cr.halfL) === 0) hit = true;
+          if (!hit && low && cr.active && rayBox(k.x, k.z, k.dx, k.dz, cr.x, cr.z, cr.heading, cr.halfW, cr.halfL) === 0) hit = true;
         }
-        if (!hit) {
+        if (!hit && k.y < g + BUS_H) {
           const street = this.traffic.rayHit(k.x - k.dx * 0.5, k.z - k.dz * 0.5, k.dx, k.dz, 0.6);
           if (street) hit = true;
         }
@@ -789,7 +890,7 @@ class CrimeSystem {
         this.rockets.splice(i, 1);
         this.explode(k.x, Math.max(k.y, this.groundAt(k.x, k.z) + 0.4), k.z, w.blast, w.damage, true);
       } else {
-        this.fx.placeRocket(k.r, k.x, k.y, k.z, Math.atan2(k.dx, k.dz), 0);
+        this.fx.placeRocket(k.r, k.x, k.y, k.z, Math.atan2(k.dx, k.dz), -Math.asin(k.dy || 0));
       }
     }
   }
@@ -1112,17 +1213,33 @@ class CrimeSystem {
     }
   }
 
-  // Turns a towards `goalYaw` and walks it `speed` m/s, around walls (the first clear heading either side)
+  // Turns a towards `goalYaw` and walks it `speed` m/s, around walls and vehicles (the first clear heading either side)
   walkAgent(a, goalYaw, speed, dt) {
+    // a vehicle standing in its way: it makes for the nearer end and goes round it
+    const traffic = this.traffic;
+    if (speed > 0 && traffic.vehicleBoxAt) {
+      const sn = Math.sin(goalYaw), cs = Math.cos(goalYaw);
+      // (looked for a step and two steps ahead, so it doesn't cut across a corner either)
+      const box = traffic.vehicleBoxAt(a.x + sn * 0.3, a.z + cs * 0.3, BODY_R) || traffic.vehicleBoxAt(a.x + sn * 0.7, a.z + cs * 0.7, BODY_R);
+      if (box && !traffic.vehicleAt(a.x, a.z, BODY_R)) {
+        goalYaw = roundBox(a.x, a.z, a.x + Math.sin(goalYaw) * 20, a.z + Math.cos(goalYaw) * 20, box, BODY_R + 0.4);
+      }
+    }
     a.heading += clamp(wrapAngle(goalYaw - a.heading), -7 * dt, 7 * dt);
     a.speed = speed;
     if (speed <= 0) return;
     const step = speed * dt;
+    // (standing in a car already, one that drove up onto it: it walks on out rather than freeze)
+    const inCar = this.traffic.vehicleAt?.(a.x, a.z, BODY_R) ?? false;
     for (const veer of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4]) {
       const h = a.heading + veer;
-      const nx = a.x + Math.sin(h) * step;
-      const nz = a.z + Math.cos(h) * step;
-      if (this.solidAt(nx + Math.sin(h) * 0.4, nz + Math.cos(h) * 0.4)) continue;
+      const sn = Math.sin(h), cs = Math.cos(h);
+      const nx = a.x + sn * step;
+      const nz = a.z + cs * step;
+      // a wall ahead, at the middle of the body or either shoulder, so it can't cut a building's corner
+      const ax = nx + sn * 0.4, az = nz + cs * 0.4;
+      if (this.solidAt(ax, az) || this.solidAt(ax + cs * BODY_R, az - sn * BODY_R) || this.solidAt(ax - cs * BODY_R, az + sn * BODY_R)) continue;
+      if (!inCar && this.traffic.vehicleAt?.(nx + sn * 0.25, nz + cs * 0.25, BODY_R)) continue;
       a.x = nx;
       a.z = nz;
       if (veer) a.heading += veer * Math.min(1, dt * 4);

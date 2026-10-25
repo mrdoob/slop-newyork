@@ -30,7 +30,7 @@ import { GEO } from '../world/city-geodata.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BONES, boxHit, riderKnocked, startTumble, stepTumble, slide, tumblePose } from './mayhem.js';
 import { TAXI_MODEL, POLICE_MODEL, CAR_MODEL_BY_ID, BODY_SHARE, paintsOf, pickModel, pickBody } from '../models/cars/index.js';
-import { rayCircle, rayBox, blastFalloff } from './weapons.js';
+import { rayCircle, rayBox, roundBox, blastFalloff } from './weapons.js';
 
 // js/sim/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
@@ -1733,6 +1733,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const d = Math.hypot(x - focusX, z - focusZ);
       if (d < rMin || d > rMax || (protectView && nearView(x, z, 2, PED_SPAWN_DISTANCE))) continue;
       if (player.active && Math.hypot(x - player.x, z - player.z) < 10) continue;
+      if (vehicleAt(x, z, 0.4) || (wallAt && wallAt(x, z))) continue; // (not inside a car or a building)
       if (crosswalk && track.node.curb.some((q) => Math.hypot(q.x - x, q.z - z) < QUEUE_GAP)) continue;
       if (p.conversation) endConversation(p.conversation);
       Object.assign(p, track);
@@ -1778,6 +1779,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const PED_ACCEL = 1.3; // m/s^2 setting off
   const PED_BRAKE = 1.6; // m/s^2 easing to a stop
   const TURN_TIME = 0.85; // s turning round at the end of the track
+  const WALL_CHECK = 0.08; // s between a walker's looks for a wall ahead (~0.11 m at a walk)
   const walkedNodes = [];
   function walk(p, dt) {
     if (p.pause > 0) p.pause = Math.max(0, p.pause - dt);
@@ -1858,6 +1860,35 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     if (p.waiting) {
       t = p.dir > 0 ? Math.min(t, KERB) : Math.max(t, p.len - KERB);
       p.v = 0;
+    }
+    // A car standing across the way, or a building's wall reaching over the sidewalk: stop short of it (probed a little
+    // ahead, so the body stays out of it), and turn back at a wall, or once the car plainly isn't moving off
+    if (t !== p.t) {
+      const tc = clamp(t, 0, p.len);
+      const fx = p.ux * p.dir, fz = p.uz * p.dir;
+      const nx = p.ax + p.ux * tc, nz = p.az + p.uz * tc;
+      p.wallT = (p.wallT || 0) - dt;
+      let wall = false;
+      if (wallAt && !p.node && p.wallT <= 0) {
+        p.wallT = WALL_CHECK;
+        // (one who has grazed a step into the wall turns back out too; only one deep inside it, a step behind as well,
+        // walks on out of it)
+        wall = wallAt(nx + fx * 0.45, nz + fz * 0.45) && !wallAt(p.x - fx * 0.35, p.z - fz * 0.35);
+      }
+      if (wall || stepBlocked(p.x, p.z, nx + fx * 0.25, nz + fz * 0.25)) {
+        t = p.t;
+        p.v = 0;
+        p.blocked = (p.blocked || 0) + dt;
+        if (wall || p.blocked > (p.node ? 4 : 1.5)) {
+          p.dir = -p.dir;
+          p.nextRoute = null;
+          p.nextLeg = 0;
+          p.pause = TURN_TIME;
+          p.blocked = 0;
+        }
+      } else {
+        p.blocked = 0;
+      }
     }
     if (p.dir > 0 ? t >= p.len : t <= 0) {
       t = p.dir > 0 ? p.len : 0;
@@ -2264,6 +2295,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function setSolidQuery(fn) {
     solidAt = typeof fn === 'function' ? fn : null;
   }
+  // Where a building's wall stands (main.js: solidAt without the poles & bollards), for the people walking the
+  // sidewalks: a turned building whose lot reaches over its sidewalk turns them round instead of letting them through
+  let wallAt = null;
+  function setWallQuery(fn) {
+    wallAt = typeof fn === 'function' ? fn : null;
+  }
   // Height of the hills over the flat city (terrain.js): roads & sidewalks climbing them carry their traffic up
   let hillQuery = null;
   const hillAt = (x, z) => (hillQuery ? hillQuery(x, z) : 0);
@@ -2290,6 +2327,62 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     if (!player.knocks) return null;
     return boxHit(player.x, player.z, player.heading, player.halfW, player.halfL, x, z, r);
   }
+
+  // Every vehicle's footprint on the ground (the traffic's, the player's, those it left standing and the patrol cars),
+  // binned in BODY_CELL m cells once a frame: the people walking about stop at them or step round them (vehicleAt)
+  // instead of walking through a car standing in their way
+  const BODY_CELL = 8;
+  const BODY_REACH = 0.5; // m: the widest person a query asks about (each box is binned this much bigger)
+  const bodyCells = new Map(); // cell key -> boxes overlapping it
+  const usedCells = [];
+  const bodyBoxes = []; // pooled { x, z, sn, cs, hw, hl }
+  let bodyCount = 0;
+  const bodyKey = (ix, iz) => (ix + 32768) * 65536 + (iz + 32768);
+  function addBody(x, z, heading, hw, hl) {
+    let b = bodyBoxes[bodyCount++];
+    if (!b) bodyBoxes.push((b = { x: 0, z: 0, sn: 0, cs: 1, hw: 0, hl: 0 }));
+    b.x = x;
+    b.z = z;
+    b.sn = Math.sin(heading);
+    b.cs = Math.cos(heading);
+    b.hw = hw;
+    b.hl = hl;
+    const r = Math.hypot(hw, hl) + BODY_REACH;
+    for (let ix = Math.floor((x - r) / BODY_CELL); ix <= Math.floor((x + r) / BODY_CELL); ix++) {
+      for (let iz = Math.floor((z - r) / BODY_CELL); iz <= Math.floor((z + r) / BODY_CELL); iz++) {
+        const k = bodyKey(ix, iz);
+        let list = bodyCells.get(k);
+        if (!list) bodyCells.set(k, (list = []));
+        if (!list.length) usedCells.push(list);
+        list.push(b);
+      }
+    }
+  }
+  function gatherBodies() {
+    for (const list of usedCells) list.length = 0;
+    usedCells.length = 0;
+    bodyCount = 0;
+    for (const v of vehicles) {
+      if (!v.edge || v.wreck) continue;
+      addBody(v.x, v.z, v.yaw + v.yawOffset, v.bus ? 1.3 : v.halfWidth, v.bus ? 5.72 : v.half);
+    }
+    for (const o of parked) addBody(o.x, o.z, o.heading || 0, o.halfW, o.halfL);
+    if (player.active && player.mode !== 'person') addBody(player.x, player.z, player.heading, player.halfW, player.halfL);
+  }
+  // The vehicle a person of radius r (up to BODY_REACH) at (x, z) overlaps, as its box { x, z, sn, cs, hw, hl }, or null
+  function vehicleBoxAt(x, z, r = 0.3) {
+    const list = bodyCells.get(bodyKey(Math.floor(x / BODY_CELL), Math.floor(z / BODY_CELL)));
+    if (!list) return null;
+    for (const b of list) {
+      const dx = x - b.x, dz = z - b.z;
+      if (Math.abs(dx * b.sn + dz * b.cs) <= b.hl + r && Math.abs(dx * b.cs - dz * b.sn) <= b.hw + r) return b;
+    }
+    return null;
+  }
+  const vehicleAt = (x, z, r = 0.3) => vehicleBoxAt(x, z, r) !== null;
+  // Is the step from (x0, z0) to (x1, z1) into a vehicle? Not when already standing in one (a car that drove up onto
+  // someone): they walk on out of it rather than freeze there
+  const stepBlocked = (x0, z0, x1, z1, r = 0.3) => vehicleAt(x1, z1, r) && !vehicleAt(x0, z0, r);
 
   // Throws pedestrian p to the ground, hit at velocity (vx, vz) and pushed out along (nx, nz)
   function throwPed(p, vx, vz, nx, nz) {
@@ -2421,9 +2514,10 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   }
 
   // The first pedestrian or vehicle a shot from (ox, oz) along the unit direction (dx, dz) meets within `range`:
-  // { kind: 'ped' | 'vehicle', target, t } (reused), or null
+  // { kind: 'ped' | 'vehicle', target, t } (reused), or null. `accept(kind, target, t)` (optional) passes over those it
+  // turns down (a shot aimed over a car's roof, crime.js)
   const rayResult = { kind: '', target: null, t: 0 };
-  function rayHit(ox, oz, dx, dz, range) {
+  function rayHit(ox, oz, dx, dz, range, accept = null) {
     let best = range;
     let target = null;
     let kind = '';
@@ -2432,7 +2526,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const fx = p.x - ox, fz = p.z - oz;
       if (Math.abs(fx) > range + 1 || Math.abs(fz) > range + 1) continue;
       const t = rayCircle(ox, oz, dx, dz, p.x, p.z, 0.34);
-      if (t >= 0 && t < best) {
+      if (t >= 0 && t < best && (!accept || accept('ped', p, t))) {
         best = t;
         target = p;
         kind = 'ped';
@@ -2443,7 +2537,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const fx = v.x - ox, fz = v.z - oz;
       if (Math.abs(fx) > range + 6 || Math.abs(fz) > range + 6) continue;
       const t = rayBox(ox, oz, dx, dz, v.x, v.z, v.yaw + v.yawOffset, v.halfWidth, v.half);
-      if (t >= 0 && t < best) {
+      if (t >= 0 && t < best && (!accept || accept('vehicle', v, t))) {
         best = t;
         target = v;
         kind = 'vehicle';
@@ -2904,6 +2998,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         speed = Math.min(p.speed, distance / Math.max(dt, 1e-3));
       }
     }
+    // a car standing in the way: round it, by its nearer end
+    if (speed > 0) {
+      const sn = Math.sin(target), cs = Math.cos(target);
+      const box = vehicleBoxAt(p.x + sn * 0.3, p.z + cs * 0.3, 0.3) || vehicleBoxAt(p.x + sn * 0.7, p.z + cs * 0.7, 0.3);
+      if (box && !vehicleAt(p.x, p.z, 0.3)) target = roundBox(p.x, p.z, p.x + Math.sin(target) * 20, p.z + Math.cos(target) * 20, box, 0.7);
+    }
     let turn = Math.atan2(Math.sin(target - b.heading), Math.cos(target - b.heading));
     turn = clamp(turn, -BAIL_TURN * dt, BAIL_TURN * dt);
     b.heading += turn;
@@ -2915,6 +3015,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const nx = p.x + Math.sin(h) * step;
       const nz = p.z + Math.cos(h) * step;
       if (solidAt && solidAt(nx + Math.sin(h) * 0.4, nz + Math.cos(h) * 0.4)) continue;
+      if (stepBlocked(p.x, p.z, nx + Math.sin(h) * 0.25, nz + Math.cos(h) * 0.25)) continue; // (round the cars too)
       p.x = nx;
       p.z = nz;
       if (veer) b.heading += veer * Math.min(1, dt * 4);
@@ -3077,7 +3178,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     }
     updateTrafficLights();
 
-    // 2. Pedestrians
+    // 2. Pedestrians (who keep out of the vehicles where they now stand)
+    gatherBodies();
     for (const n of walkedNodes) n.walkers.length = 0;
     walkedNodes.length = 0;
     let pedBudget = jump ? NUM_PEDS : 6;
@@ -3143,6 +3245,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     setHillQuery,
     setSurfaceQuery,
     setParked,
+    vehicleAt,
+    vehicleBoxAt,
+    setWallQuery,
     vehicleNear,
     hijack,
     cars,

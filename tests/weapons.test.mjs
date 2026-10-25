@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { WEAPONS, Arsenal, pickTarget, rayCircle, rayBox, boxOverlap, blastFalloff, hitChance } from '../js/sim/weapons.js';
+import { WEAPONS, Arsenal, pickTarget, rayCircle, rayBox, boxOverlap, roundBox, blastFalloff, hitChance } from '../js/sim/weapons.js';
 
 const step = (arsenal, held, seconds, dt = 1 / 60) => {
   let shots = 0;
@@ -85,4 +85,30 @@ test('blasts weaken to nothing at their edge; shots are surer close up and at sl
   assert.ok(hitChance(5, 0, 0.8, 60) > hitChance(40, 0, 0.8, 60));
   assert.ok(hitChance(10, 0, 0.8, 60) > hitChance(10, 25, 0.8, 60));
   assert.equal(hitChance(70, 0, 1, 60), 0);
+});
+
+test('a walker goes round a car standing across its way, by the nearer end, without walking into it', () => {
+  // a car 4.4 m long lying across the way (its length along x), 5 m ahead of a walker heading for z = 10
+  const car = { x: 0, z: 5, sn: 1, cs: 0, hw: 0.9, hl: 2.2 };
+  const inside = (x, z, r) => Math.abs((x - car.x) * car.sn + (z - car.z) * car.cs) <= car.hl + r &&
+    Math.abs((x - car.x) * car.cs - (z - car.z) * car.sn) <= car.hw + r;
+  for (const startX of [0.4, -0.4, 1.8]) {
+    let x = startX, z = 0;
+    const gx = 0, gz = 10, r = 0.34;
+    let reached = false;
+    for (let i = 0; i < 400 && !reached; i++) {
+      let yaw = Math.atan2(gx - x, gz - z);
+      // (as crime.js looks: a step and two steps ahead)
+      const ahead = (d) => inside(x + Math.sin(yaw) * d, z + Math.cos(yaw) * d, r);
+      if (ahead(0.3) || ahead(0.7)) yaw = roundBox(x, z, gx, gz, car, r + 0.4);
+      x += Math.sin(yaw) * 0.05;
+      z += Math.cos(yaw) * 0.05;
+      assert.ok(!inside(x, z, r), `walked into the car at (${x.toFixed(2)}, ${z.toFixed(2)})`);
+      reached = Math.hypot(gx - x, gz - z) < 0.3;
+    }
+    assert.ok(reached, `from x = ${startX} it gets past the car`);
+  }
+  // starting off to one side it takes that end
+  const yaw = roundBox(1.5, 3.4, 0, 10, car, 0.7);
+  assert.ok(Math.sin(yaw) > 0, 'from the right of the middle it goes round the right-hand end');
 });

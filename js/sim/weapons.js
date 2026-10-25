@@ -181,6 +181,33 @@ function boxOverlap(a, b) {
   return { nx, nz, pen: best };
 }
 
+/**
+ * The way round a vehicle standing in a walker's way: the heading from (x, z) to just past the nearer end of the box's
+ * face it stands by, `margin` m out from it, the end that makes the shorter way on to the goal (gx, gz). Past that end
+ * the next face takes over, so a walker kept on it goes round the box to the goal. The box is { x, z, sn, cs, hw, hl }:
+ * centred at (x, z), its length (hl either side) along (sn, cs), its width (hw) along (cs, -sn).
+ */
+function roundBox(x, z, gx, gz, b, margin) {
+  const local = (px, pz) => [(px - b.x) * b.sn + (pz - b.z) * b.cs, (px - b.x) * b.cs - (pz - b.z) * b.sn];
+  const [u, v] = local(x, z);
+  const [gu, gv] = local(gx, gz);
+  const A = b.hl + margin, B = b.hw + margin;
+  const PAST = 0.6; // m beyond the corner, so that it is round it
+  let c1, c2;
+  if (Math.abs(u) / A > Math.abs(v) / B) {
+    const eu = Math.sign(u) * A; // by an end: round either side
+    c1 = [eu, B + PAST];
+    c2 = [eu, -B - PAST];
+  } else {
+    const ev = Math.sign(v || 1) * B; // along a side: round either end
+    c1 = [A + PAST, ev];
+    c2 = [-A - PAST, ev];
+  }
+  const cost = (c) => Math.hypot(c[0] - u, c[1] - v) + Math.hypot(gu - c[0], gv - c[1]);
+  const [cu, cv] = cost(c1) <= cost(c2) ? c1 : c2;
+  return Math.atan2(b.x + cu * b.sn + cv * b.cs - x, b.z + cu * b.cs - cv * b.sn - z);
+}
+
 // Share of a blast's force felt at distance d from its centre (1 at the centre, 0 at the edge of its radius)
 function blastFalloff(d, radius) {
   const k = clamp01(1 - d / radius);
@@ -193,4 +220,4 @@ function hitChance(distance, speed, skill, range) {
   return clamp01(skill * (1 - (distance / range) ** 2) / (1 + Math.max(0, speed) * 0.07));
 }
 
-export { WEAPONS, WEAPON_ORDER, Arsenal, pickTarget, rayCircle, rayBox, boxOverlap, blastFalloff, hitChance, wrapAngle };
+export { WEAPONS, WEAPON_ORDER, Arsenal, pickTarget, rayCircle, rayBox, boxOverlap, roundBox, blastFalloff, hitChance, wrapAngle };
