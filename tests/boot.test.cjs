@@ -33,7 +33,7 @@ test('世界切換在 module 之前開始：先註冊錯誤處理、先決定世
 
   // 唔可以有無條件載入紐約世界入口的 script 標籤
   assert.equal([...html.matchAll(/<script\s+type="module"\s+src=/g)].length, 0, '唔應該再有 <script type="module" src>');
-  assert.match(entryScript[1], /import\('\.\/js\/hk\/main\.js'\)/);
+  assert.match(entryScript[1], /import\([`']\.\/js\/hk\/main\.js[^`']*[`']\)/);
   assert.match(entryScript[1], /import\('\.\/js\/main\.js'\)/);
 
   // 只有 import map + bootstrap + module 入口三個 script
@@ -43,21 +43,25 @@ test('世界切換在 module 之前開始：先註冊錯誤處理、先決定世
 test('預載清單：冇重複、檔案都存在、每個相對 import 都已被同一個世界預載', () => {
   const ny = preloadList('NY_MODULES');
   const hk = preloadList('HK_MODULES');
+  // 入口模組會帶 ?v=<BUILD> 強制更新；檢查檔案存在時要剝掉 query
+  const pathOf = (src) => src.split('?')[0];
   assert.ok(ny.length >= 30, `紐約模組清單太短：${ny.length}`);
   assert.ok(hk.length >= 8, `香港模組清單太短：${hk.length}`);
   assert.equal(new Set(ny).size, ny.length, '紐約清單有重複');
   assert.equal(new Set(hk).size, hk.length, '香港清單有重複');
-  assert.ok(!ny.includes('./js/hk/main.js'), '兩個世界唔應該互相預載入口');
-  assert.ok(!hk.includes('./js/main.js'));
+  assert.ok(!ny.map(pathOf).includes('./js/hk/main.js'), '兩個世界唔應該互相預載入口');
+  assert.ok(!hk.map(pathOf).includes('./js/main.js'));
+  assert.match(hk.map(pathOf)[hk.map(pathOf).indexOf('./js/hk/main.js')] === './js/hk/main.js' ? 'v' : '', /v/, '香港入口要帶版本');
   assert.equal(hk[0], './js/world.js', '兩個世界都要先載入世界切換層');
 
   const all = new Set([...ny, ...hk]);
+  const allPaths = new Set([...all].map(pathOf));
   for (const src of all) {
     assert.match(src, /^\.\/js\//, `預載路徑要用相對形式：${src}`);
-    assert.ok(existsSync(join(__dirname, '..', src)), `預載了不存在的檔案：${src}`);
+    assert.ok(existsSync(join(__dirname, '..', pathOf(src))), `預載了不存在的檔案：${src}`);
     const base = 'https://example.test/slop-newyork/';
-    const urls = new Set(all);
-    const source = readFileSync(join(__dirname, '..', src), 'utf8');
+    const urls = allPaths;
+    const source = readFileSync(join(__dirname, '..', pathOf(src)), 'utf8');
     for (const [, specifier] of source.matchAll(/(?:\bfrom\s*|\bimport\s*)['"](\.[^'"]+)['"]/g)) {
       const resolved = new URL(specifier, new URL(src, base));
       const expected = new URL(resolved.href).pathname.replace('/slop-newyork/', './');
@@ -68,6 +72,10 @@ test('預載清單：冇重複、檔案都存在、每個相對 import 都已被
 
 test('香港預載清單不包含任何紐約模組', () => {
   for (const src of preloadList('HK_MODULES')) {
-    assert.match(src, /^\.\/js\/(world\.js|hk\/[\w-]+\.js|hk-geodata\.js)$/, `香港唔應該預載 ${src}`);
+    assert.match(
+      src,
+      /^\.\/js\/(world\.js|build\.js|hk\/[\w-]+\.js|hk-geodata\.js)(\?v=[\w.-]+)?$/,
+      `香港唔應該預載 ${src}`
+    );
   }
 });

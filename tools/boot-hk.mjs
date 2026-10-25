@@ -156,6 +156,24 @@ check('?test=1 會加一個唔受燈光影響的紅色探針方塊', () => {
     assert.equal(probe, undefined, '冇 test=1 就唔應該有探針');
   }
 });
+check('舊快取模組（缺 collidePlayer）唔會炸死世界', () => {
+  // 真實事故：main.js 呼叫 traffic.collidePlayer()，但快取中的舊 traffic.js 冇這個方法 →
+  // 第一幀 throw → 全屏錯誤卡蓋住整個世界。現在應該是「世界繼續行」。
+  assert.equal(typeof hk.traffic.collidePlayer, 'function', 'traffic 應該有 collidePlayer');
+  const saved = hk.traffic.collidePlayer;
+  delete hk.traffic.collidePlayer;
+  try {
+    const loop = hk.renderer.loop;
+    assert.equal(typeof loop, 'function', '動畫迴圈應該存在');
+    const t = globalThis.performance.now();
+    loop(t + 1000);
+    loop(t + 1016);
+  } finally {
+    hk.traffic.collidePlayer = saved;
+  }
+  assert.equal(bootFailures.length, 0, '缺少一個方法就觸發了全屏開機錯誤卡');
+  assert.equal(window.document.querySelector('.hk-black-warning'), null, '唔應該出現紅色提示條');
+});
 check('診斷面板有內容（?debug=1）', () => {
   const diag = doc.querySelector('.hk-diagnostics');
   assert.ok(diag, '.hk-diagnostics 唔存在');

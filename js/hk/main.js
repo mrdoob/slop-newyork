@@ -5,6 +5,7 @@ import * as HK from './config.js';
 import { buildHongKongCity } from './city.js';
 import { createHongKongTraffic } from './traffic.js';
 import { createHongKongPedestrians } from './pedestrians.js';
+import { BUILD } from './build.js';
 import { createPlayer, ChaseCamera } from './drive.js';
 
 // js/hk/main.js
@@ -92,9 +93,23 @@ export async function startHongKong() {
   const params = new URLSearchParams(location.search);
   const lowDetail = params.get('low') === '1';
 
-  // 例外一律顯示在畫面上，唔會留下一片黑 + Unresponsive
-  window.addEventListener('error', (e) => showBootError(e.error || e.message, PHASES));
-  window.addEventListener('unhandledrejection', (e) => showBootError(e.reason, PHASES));
+  // 例外一律顯示在畫面上，唔會留下一片黑 + Unresponsive。
+  // 但開機完成之後（bootDone）就唔可以再用全屏錯誤卡蓋住整個世界：
+  // 只要有一幀 throw（例如快取新舊模組混用，某個方法唔存在），用家就會乜都睇唔到。
+  // 所以開機後改為「紅色提示條 + console.error」，世界繼續行。
+  let bootDone = false;
+  const reportAfterBoot = (error) => {
+    const message = error && (error.stack || error.message) ? String(error.stack || error.message) : String(error);
+    console.error('[hk] runtime error', error);
+    if (!bootDone) { showBootError(error, PHASES); return; }
+    if (document.querySelector('.hk-black-warning')) return;
+    const bar = document.createElement('div');
+    bar.className = 'hk-black-warning';
+    bar.textContent = `香港世界執行錯誤（已繼續運行）：${message.split('\n')[0]}　→ 請 Ctrl+Shift+R 強制重新載入（很可能是舊快取）`;
+    document.body.appendChild(bar);
+  };
+  window.addEventListener('error', (e) => reportAfterBoot(e.error || e.message));
+  window.addEventListener('unhandledrejection', (e) => reportAfterBoot(e.reason));
 
   await yieldToBrowser('初始化 WebGPURenderer…');
   // `?webgl=1`：強制用 WebGL2 後端。用來分辨「香港場景畫唔出」同「WebGPU 後端有問題」。
@@ -498,7 +513,7 @@ export async function startHongKong() {
     const top = topElementAtCentre();
     const covered = !top.startsWith('canvas');
     diag.textContent = [
-      `three r${THREE.REVISION} · ${backendName()}`,
+      `slop-hk ${BUILD} · three r${THREE.REVISION} · ${backendName()}`,
       `canvas ${canvas.width}×${canvas.height} @ ${Math.round(rect.width)}×${Math.round(rect.height)} css · ${canvas.isConnected ? 'in DOM' : '唔在 DOM！'}`,
       `canvas style opacity ${style.opacity} · display ${style.display} · visibility ${style.visibility}`,
       `畫面中央最上層：${top}${covered ? '  ← 蓋住咗 canvas！' : ''}`,
@@ -538,7 +553,7 @@ export async function startHongKong() {
     player.update(0.016);
     chase.update(0.016, player.state);
     traffic.update(0.016, camera.position, player.state);
-    pedestrians.update(0.016);
+    pedestrians.update?.(0.016);
     await yieldToBrowser('第一幀…');
     renderFrame();
     const device = renderer.backend?.device;
@@ -546,8 +561,10 @@ export async function startHongKong() {
     await submitted.catch(() => {});
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
     mark('firstFrame');
+    bootDone = true;
     const info = renderer.info?.render || {};
     console.log('[hk] first frame', { drawCalls: info.drawCalls ?? info.calls, triangles: info.triangles, path: postPipeline ? 'post' : 'direct', sky: !!skyLighting });
+    console.log(`[hk] build ${BUILD}`);
     console.log(`[hk] boot ${PHASES.map(([l, t]) => `${l} ${t}ms`).join(', ')}`);
     console.log(`[hk] ${city.counts.buildings} buildings · ${city.counts.landmarks} landmarks · ${traffic.counts.cars} cars · ${traffic.counts.lanes} lanes (keep left) · ${pedestrians.counts.pedestrians} pedestrians`);
   } catch (error) {
@@ -562,11 +579,11 @@ export async function startHongKong() {
     elapsed += dt;
 
     player.update(dt);
-    const bump = traffic.collidePlayer(player.state);
+    const bump = typeof traffic.collidePlayer === 'function' ? traffic.collidePlayer(player.state) : { hit: false };
     if (bump.hit) bumpCount++;
     chase.update(dt, player.state);
     traffic.update(dt, camera.position, player.state);
-    pedestrians.update(dt);
+    pedestrians.update?.(dt);
     lighting.update(player.state);
     if (skyLighting) skyLighting.update(player.state);
     updateHud(dt);
@@ -576,6 +593,6 @@ export async function startHongKong() {
   });
 
   // 除錯／驗證用（不會影響正常遊玩）
-  globalThis.__slopHK = { scene, renderer, city, traffic, pedestrians, player, camera, HK, lighting, testPattern, gpuErrors };
+  globalThis.__slopHK = { build: BUILD, scene, renderer, city, traffic, pedestrians, player, camera, HK, lighting, testPattern, gpuErrors };
   return { scene, renderer, city, traffic, player };
 }

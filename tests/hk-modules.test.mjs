@@ -50,7 +50,7 @@ test('index.html 先決定世界，再只 import 一個世界', () => {
     /<script\s+type="module"\s+src="\.\/js\/main\.js"/,
     'index.html 唔應該再靜態 <script src="js/main.js">，否則香港要先吞下整個紐約模組圖'
   );
-  assert.match(html, /import\('\.\/js\/hk\/main\.js'\)/, '香港分支要動態 import js/hk/main.js');
+  assert.match(html, /import\([`']\.\/js\/hk\/main\.js[^`']*[`']\)/, '香港分支要動態 import js/hk/main.js');
   assert.match(html, /__slopBootFail/, '載入失敗一定要有畫面提示');
   assert.match(html, /applyBranding/, '世界未載入就要先換品牌，唔好顯示 Slop New York');
 });
@@ -61,6 +61,17 @@ test('index.html 預載清單內的檔案全部存在', () => {
   assert.ok(listed.length > 30, `預載清單應該包含紐約與香港的模組，實際 ${listed.length}`);
   const missing = [...new Set(listed)].filter((p) => !existsSync(fileURLToPath(new URL(p, root))));
   assert.deepEqual(missing, [], `index.html 預載了不存在的檔案：${missing.join(', ')}`);
+});
+
+test('建置版本在 index.html 與 js/hk/build.js 一致（避免新舊模組混用）', async () => {
+  const { BUILD } = await import('../js/hk/build.js');
+  const html = read('index.html');
+  const declared = html.match(/const HK_BUILD = '([^']+)'/);
+  assert.ok(declared, 'index.html 應該宣告 HK_BUILD');
+  assert.equal(declared[1], BUILD, 'index.html 與 js/hk/build.js 的版本唔一致');
+  assert.match(html, /import\(`\.\/js\/hk\/main\.js\?v=\$\{HK_BUILD\}`\)/, '入口模組要帶版本，強制重新抓取');
+  const source = read('js/hk/main.js');
+  assert.match(source, /from '\.\/build\.js'/, 'main.js 應該匯入建置版本');
 });
 
 test('香港的後處理與天空係可選的，唔會令預設路徑依賴 addon', () => {

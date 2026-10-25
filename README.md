@@ -527,7 +527,7 @@ node --test "tests/hk-*.test.*"
 **已驗證（可重跑）**
 
 - `node --test "tests/hk-*.test.*"` → **41 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
-- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **156 pass / 0 fail**（原 113 個紐約測試全數保留通過）；加 `hk-boot` / `hk-modules` 兩個開機測試。
+- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **157 pass / 0 fail**（原 113 個紐約測試全數保留通過）；加 `hk-boot` / `hk-modules` 兩個開機測試。
 - 開機端到端：`node --import ./tools/hk-boot/register.mjs tools/boot-hk.mjs` → 由 `?world=hk` 一路行到第一幀。
 - 語法檢查：`node tools/check-modules.mjs` → `✓ 全部模組語法正常`（這一項會在 CI 前抓到「重複宣告」這類令整個世界開唔到的 early error）。
 - 專案內所有相對 import 的名稱都存在（用腳本掃過 40 個模組），而且每個模組都通過語法檢查。
@@ -690,6 +690,27 @@ __BOOT_REPORT__ {"world":"hk","title":"Slop Hong Kong","hud":"Slop Hong Kong ←
 |---|---|
 | `hk-streets.test.mjs` | 冇地標壓住行車道（support function 淨空 ≥ 0）、被搬的地標冇入海、行人道在自己那條街的車道以外、120 個行人跑 120 幀後 s 有限且在範圍內 |
 | `hk-traffic.test.cjs`（加強） | 200 幀內 **0 架車換車道**（棋子跳的回歸測試）、同一車道最細間距 > 1.5 m（唔會疊車）、`collidePlayer` 真係推開 + 減速 |
+
+**第八輪（「traffic.collidePlayer is not a function」——新舊模組混用）**
+
+錯誤卡本身係新機制正常運作（開機失敗一定睇得見），但內容揭示一個更陰險的問題：
+
+```
+TypeError: traffic.collidePlayer is not a function
+    at Animation_.animationLoop (js/hk/main.js:565)
+```
+
+`js/hk/main.js` 是新的（會呼叫 `collidePlayer`），但瀏覽器快取裡的 `js/hk/traffic.js` 是舊的（冇這個方法）。`python -m http.server` 只送 `Last-Modified`，Chrome 用**啟發式快取**（約檔案年齡的 10%）—— 即係 `git pull` 之後幾分鐘內，完全有可能係「新 main.js + 舊 traffic.js」。
+
+三層修正：
+
+| # | 修正 |
+|---|---|
+| 1 | **建置版本**：新增 `js/hk/build.js` 的 `BUILD`，`index.html` 用 `import(\`./js/hk/main.js?v=${HK_BUILD}\`)` 載入入口，強制入口重新抓取；診斷面板第一行顯示 `slop-hk <BUILD> · three r…`，一睇就知係唔係新舊混用。有測試保證 index.html 與 build.js 的版本一致 |
+| 2 | **開機後的錯誤唔再蓋住整個世界**：以前任何一幀 throw 都會觸發全屏錯誤卡；現在 `bootDone` 之後改成「頂部紅色提示條 + console.error」，世界繼續行。只有真正開機失敗（第一幀之前）才用全屏卡 |
+| 3 | **optional call**：`traffic.collidePlayer?.()`、`pedestrians.update?.()` —— 舊快取模組頂多令該功能暫時失效，唔會炸死成個世界。`tools/boot-hk.mjs` 會**故意刪掉** `collidePlayer` 再跑兩幀，斷言唔會觸發錯誤卡 |
+
+> 這一個 bug 用家幫了大忙：錯誤卡上寫明 `js/hk/main.js:565`，所以一秒就分出「新模組叫舊模組的方法」。之前冇這個卡，只會見到黑畫面。
 
 ### 15.1 先講結論
 
