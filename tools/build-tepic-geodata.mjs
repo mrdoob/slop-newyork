@@ -440,14 +440,24 @@ for (const w of ways) {
   for (let i = 0; i + 1 < pts.length; i++) cutters.push({ x0: pts[i][0], z0: pts[i][1], x1: pts[i + 1][0], z1: pts[i + 1][1], r });
 }
 const bldOSM = load('osm_tepic_buildings.json');
+// The rivers, arroyos, canals & drains (OSM waterway=*, drawn downstream), for the maps and the channels cut in the
+// ground (js/world/waterways.js): [kind, half-width of the gap left between the blocks (m, 0: none), name, flags
+// (1 intermittent, 2 underground: a culvert or tunnel), flat points]
+const WATERWAY = /^(river|stream|canal|drain|ditch)$/;
+const waterways = [];
 for (const e of landOSM.elements) {
   if (e.type !== 'way' || !e.geometry || !e.tags) continue;
   const t = e.tags;
   const r = t.railway === 'rail' ? 5 : t.waterway === 'river' ? 6 : t.waterway === 'stream' ? 2.5 : 0;
-  if (!r) continue;
   const pts = e.geometry.map((g) => toWorld(g.lon, g.lat));
+  if (WATERWAY.test(t.waterway || '')) {
+    const flags = (t.intermittent === 'yes' || t.seasonal === 'yes' ? 1 : 0) | (t.tunnel || t.location === 'underground' ? 2 : 0);
+    for (const piece of clipChain(pts)) waterways.push([t.waterway, r, t.name || '', flags, flat(rdp(piece, 0.5))]);
+  }
+  if (!r) continue;
   for (let i = 0; i + 1 < pts.length; i++) cutters.push({ x0: pts[i][0], z0: pts[i][1], x1: pts[i + 1][0], z1: pts[i + 1][1], r });
 }
+log(`${waterways.length} waterways (${waterways.filter((w) => w[0] === 'river').length} river pieces)`);
 for (const s of drivePieces) clearCapsule(land, W, H, X0, Z0, RES, s);
 for (const s of cutters) clearCapsule(land, W, H, X0, Z0, RES, s);
 log(`${drivePieces.length} roadway pieces and ${cutters.length} other cuts stamped on a ${W} x ${H} raster`);
@@ -1538,6 +1548,9 @@ const GEO = {
   blocks: blocks.map((b) => [flat(b.poly), b.rects.map((r) => r.map(q)), b.park || 0, b.parkName || '', b.rect ? 1 : 0,
     b.frames ? b.frames.map(([th, px, pz, rs]) => [Math.round(th * 1e4) / 1e4, q(px), q(pz), rs.map((r) => r.map(q))]) : 0, b.rural ? 1 : 0]),
   parks,
+  // [kind (river, stream, canal, drain, ditch), half-width of the gap between the blocks (m), name, flags (1
+  // intermittent, 2 underground), flat points downstream]
+  waterways,
   centralPark: null,
   piers: [],
   bridges: {},

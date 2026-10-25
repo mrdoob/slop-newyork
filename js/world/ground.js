@@ -3,9 +3,12 @@
 // - GEO.terrain, the hills around the valley over its flat floor (zero under the town);
 // - GEO.ground, the town's own slopes (its blurred elevation over the datum, the town's lowest point), which ?slopes=0
 //   leaves out (the flat city, as it was built before).
+// The rivers & arroyos (GEO.waterways, waterways.js) are cut into it: their channels carve the ground everyone stands
+// on, but not the floor the city's layers are laid on (the road deck opens over them instead, river-channels.js).
 // Everything the city builds at y = 0 is raised by the ground under it (liftAt), its flat layers laid on it (drape.js).
 // No three.js here, so node --test imports it directly.
 import { GEO } from './city-geodata.js';
+import { createWaterways } from './waterways.js';
 
 const SINK = 0.08; // the flat parts of the hills' mesh sit just under the streets & meadows
 
@@ -48,8 +51,17 @@ function createGround(geo, { slopes = false } = {}) {
   const town = townHeights ? gridSampler(geo.ground, townHeights, geo.ground.floor) : null;
   /** Height (m) of the town's floor at (x, z): its slopes, or 0 in the flat city (?slopes=0) */
   const townHeight = town || (() => 0);
-  /** Height (m) of the ground at (x, z): the town's floor and the hills over it */
-  const groundHeight = town ? (x, z) => town(x, z) + hillGround(x, z) : hillGround;
+  /** Height (m) of the land at (x, z): the town's floor and the hills over it, the channels left out */
+  const landHeight = town ? (x, z) => town(x, z) + hillGround(x, z) : hillGround;
+  // the channels, sunk into the town's floor where the hills leave it bare, and bridged by the streets
+  const waterways = geo.waterways && geo.waterways.length
+    ? createWaterways(geo.waterways, { floor: townHeight, hills: terrainHeight, roads: (geo.roads || []).map((r) => ({ w: r[1], pts: r[5] })) })
+    : null;
+  /**
+   * Height (m) of the ground at (x, z): the land and the channels cut into it (under a bridge for a body coming from
+   * `fromY` down in the channel, else on it)
+   */
+  const groundHeight = waterways ? (x, z, fromY) => landHeight(x, z) + waterways.offset(x, z, fromY) : landHeight;
   /**
    * The ground's gradient at (x, z) into out: [rise per metre east (+x), rise per metre south (+z)], central differences
    * over a metre (the grids' triangles are 25-75 m, so this is their plane's tilt but for a metre at their edges)
@@ -69,6 +81,8 @@ function createGround(geo, { slopes = false } = {}) {
     terrainHeight,
     hillGround,
     townHeight,
+    landHeight,
+    waterways,
     groundHeight,
     groundSlope
   };
@@ -205,7 +219,7 @@ function clipToLattice(arrays, sizes, index, lattice) {
 // The town on its slopes, unless ?slopes=0 asks for the flat city
 const SLOPES = typeof location === 'undefined' || new URLSearchParams(location.search).get('slopes') !== '0';
 const ground = createGround(GEO, { slopes: SLOPES });
-const { townGrid, hillHeights, terrainHeight, hillGround, townHeight, groundHeight, groundSlope } = ground;
+const { townGrid, hillHeights, terrainHeight, hillGround, townHeight, landHeight, waterways, groundHeight, groundSlope } = ground;
 // The lattice of both grids' triangles: the town's, whose cells halve the hills' 75 m ones on their own lines (see the
 // geodata builder), so its triangles lie each in one of theirs
 const LATTICE = GEO.ground ? { x0: GEO.ground.x0, z0: GEO.ground.z0, cell: GEO.ground.cell }
@@ -303,13 +317,13 @@ const { deckLift } = decks;
  * The surface under a body at (x, z) whose feet (or wheels) are at height y: the ground, or a bridge's deck it is on or
  * reaches up a ramp; with y left out the ground alone
  */
-const surfaceHeight = (x, z, y = -Infinity) => {
-  const g = groundHeight(x, z);
-  return y === -Infinity ? g : g + deckLift(x, z, y - g);
+const surfaceHeight = (x, z, y = undefined) => {
+  const g = groundHeight(x, z, y); // (down in a river channel under a street, for a body already down there)
+  return y === undefined ? g : g + deckLift(x, z, y - g);
 };
 
 export {
   SINK, SLOPES, LATTICE, createGround, clipToLattice, liftAt, townGrid,
-  hillHeights, terrainHeight, hillGround, townHeight, groundHeight, groundSlope,
+  hillHeights, terrainHeight, hillGround, townHeight, landHeight, waterways, groundHeight, groundSlope,
   createDecks, decks, deckLift, surfaceHeight
 };

@@ -22,7 +22,8 @@ import { gearLabel } from './player/drivetrain.js';
 import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js';
 import { CityAudioSystem } from './audio/audio-system.js';
 import { buildTerrain } from './world/terrain.js';
-import { groundHeight, townHeight, liftAt, deckLift, surfaceHeight } from './world/ground.js';
+import { buildRiverChannels } from './world/river-channels.js';
+import { groundHeight, townHeight, landHeight, liftAt, deckLift, surfaceHeight } from './world/ground.js';
 import { buildTepicLandmarks } from './world/tepic-landmarks.js';
 import { buildCotos } from './world/cotos.js';
 import { CrimeSystem } from './sim/crime.js';
@@ -89,6 +90,9 @@ async function initApp() {
   // The hills around the valley (Tepic: Cerro de San Juan, Cerro de la Cruz...), over the flat city
   buildTerrain(scene);
   markInit('terrain');
+  // The Río Mololoa & the arroyos in their channels, under the deck the city grid opened over them
+  buildRiverChannels(scene);
+  markInit('rivers');
   const { colliders: landmarkColliders } = buildTepicLandmarks(scene);
   markInit('landmarks');
   const cityBlocks = buildCityBlocks(scene);
@@ -122,7 +126,7 @@ async function initApp() {
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   // The ground (ground.js): the town's own slopes and the hills over them (the flat city with ?slopes=0)
-  controllerManager.setTerrain(groundHeight, townHeight, deckLift); // (and the bridges' decks over it)
+  controllerManager.setTerrain(groundHeight, townHeight, landHeight, deckLift); // (and the bridges' decks over it)
   trafficSystem.setHillQuery(groundHeight);
   trafficSystem.setSurfaceQuery(surfaceHeight);
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
@@ -218,7 +222,7 @@ async function initApp() {
 
   // City-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
   // (scene-culling.js)
-  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails', 'Hills', 'Bridges']
+  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails', 'Hills', 'Rivers', 'Bridges']
     .map((name) => scene.getObjectByName(name))
     .filter(Boolean);
   setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);

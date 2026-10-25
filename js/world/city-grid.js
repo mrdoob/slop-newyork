@@ -13,6 +13,7 @@ import {
 import { GEO } from './city-geodata.js';
 import { SLOPES, liftAt, groundSlope } from './ground.js';
 import { drapeMeshes } from './drape.js';
+import { cutRiverHoles } from './river-channels.js';
 
 // Live construction data consumed by the building and street-detail builders after buildCityGrid().
 let parkTreeSites;
@@ -464,6 +465,8 @@ function buildCityGrid(scene) {
   batchStaticGroupMeshes(group, new Set([roadMat, meadowMat]));
   // ...and lay them on the town's slopes; the valley floor beyond the hills' grid stays flat
   drapeMeshes(group, new Set([valleyMesh]));
+  // ...and open the deck over the river channels (river-channels.js draws them sunk into the ground)
+  roadMesh.geometry = cutRiverHoles(roadMesh.geometry);
 
   scene.add(group);
 

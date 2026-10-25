@@ -39,6 +39,8 @@ const MAP = {
   buildings: ['#5a4f45', '#6b5e50', '#7c6c5b'],
   buildingEdge: '#2a241f',
   mainRoads: '#3a434f',
+  water: '#2f6fae', // the rivers, arroyos & reservoirs
+  waterLabel: '#8cc1ee',
   highway: '#b27a35',
   search: '#5fd0ff',
   halo: 'rgba(8, 11, 15, 0.9)'
@@ -170,7 +172,27 @@ function mapLayers() {
   // Parkland, the curb islands (blocks: raised sidewalks & lots) and the park blocks, exactly as city-grid.js /
   // buildings.js treat them
   L.parkLand = new TiledLayer();
-  for (const park of GEO.parks || []) for (const ring of park.rings || []) L.parkLand.ring(ring);
+  L.water = new TiledLayer();
+  for (const park of GEO.parks || []) for (const ring of park.rings || []) (park.cat === 'water' ? L.water : L.parkLand).ring(ring);
+  // The rivers & arroyos (GEO.waterways, above ground) by width: the Mololoa, the arroyos the blocks leave a gap for,
+  // the canals & drains; and anchors for the rivers' names along their course, every ~1.2 km
+  L.rivers = new TiledLayer(1000);
+  L.streams = new TiledLayer(1000);
+  L.drains = new TiledLayer(1000);
+  L.riverNames = [];
+  for (const [kind, , name, flags, pts] of GEO.waterways || []) {
+    if (flags & 2) continue;
+    (kind === 'river' ? L.rivers : kind === 'stream' ? L.streams : L.drains).line(pts);
+    if (!name || (kind !== 'river' && kind !== 'stream')) continue;
+    let along = 600;
+    for (let i = 2; i + 1 < pts.length; i += 2) {
+      const dx = pts[i] - pts[i - 2], dz = pts[i + 1] - pts[i - 1];
+      along += Math.hypot(dx, dz);
+      if (along < 1200) continue;
+      along = 0;
+      L.riverNames.push({ name, x: pts[i], z: pts[i + 1], angle: Math.atan2(dz, dx), river: kind === 'river' });
+    }
+  }
   L.blocks = new TiledLayer();
   L.parkBlocks = new TiledLayer();
   for (const b of BLOCKS) (b.park > 0.6 && !b.median ? L.parkBlocks : L.blocks).ring(b.poly);
@@ -663,6 +685,15 @@ class CityMapSystem {
       L.parkBlocks.each(v, (p) => ctx.stroke(p));
     }
 
+    // 2b. Water: reservoirs & ponds, then the rivers, arroyos & drains (their real widths, never under a pixel or two)
+    ctx.fillStyle = MAP.water;
+    L.water.each(v, (p) => ctx.fill(p));
+    ctx.strokeStyle = MAP.water;
+    for (const [layer, width, minPx] of [[L.rivers, 10, 2.6], [L.streams, 3.8, 1.3], [L.drains, 2, 0.8]]) {
+      ctx.lineWidth = Math.max(width, px(minPx));
+      layer.each(v, (p) => ctx.stroke(p));
+    }
+
     // 3. Building footprints, lowest first
     if (s >= 0.18) {
       const fp = footprintLayers(this.allBlocks);
@@ -1039,6 +1070,32 @@ class CityMapSystem {
       ctx.fillText(label, dx, dy);
     }
     if (tracking) ctx.letterSpacing = '0px';
+
+    // 4b. The rivers' names along their course (the arroyos' only closer in), in italics
+    const L = mapLayers();
+    for (const r of s < 0.04 ? [] : L.riverNames) {
+      if (!r.river && s < 0.25) continue;
+      const dx = toX(r.x);
+      const dy = toY(r.z);
+      if (Math.abs(dx) > w * 0.46 || Math.abs(dy) > h * 0.46) continue;
+      ctx.font = `italic 600 ${r.river ? 11 : 10}px ${FONT}`;
+      const half = this.textWidth(ctx, r.name) * 0.5 + 3;
+      // (the label's box, turned with the river: its axis-aligned bounds)
+      const c = Math.abs(Math.cos(r.angle)), sn = Math.abs(Math.sin(r.angle));
+      const bx = half * c + 7 * sn, by = half * sn + 7 * c;
+      const box = [dx - bx, dy - by, dx + bx, dy + by];
+      if (overlaps(placed, box)) continue;
+      placed.push(box);
+      ctx.save();
+      ctx.translate(dx, dy);
+      ctx.rotate(Math.cos(r.angle) < 0 ? r.angle + Math.PI : r.angle); // (never upside down)
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = MAP.halo;
+      ctx.strokeText(r.name, 0, 0);
+      ctx.fillStyle = MAP.waterLabel;
+      ctx.fillText(r.name, 0, 0);
+      ctx.restore();
+    }
     ctx.textBaseline = 'alphabetic';
 
     // 5. Street names along their real course (collision-free at all zoom levels)
