@@ -54,14 +54,51 @@ const { pathToFileURL } = require('node:url');
 
   // A few simulated frames, including lane recycling (cars reaching the end of their lane).
   const camera = new V3(0, 20, 0);
+  const startLanes = traffic.cars.map((c) => traffic.lanes.indexOf(c.lane));
+  const startHeavyLanes = traffic.heavy.map((v) => traffic.lanes.indexOf(v.lane));
+  let minSameLaneGap = Infinity;
   const ft0 = Date.now();
-  for (let i = 0; i < 120; i++) traffic.update(1 / 30, camera);
-  const frameMs = (Date.now() - ft0) / 120;
+  for (let frame = 0; frame < 200; frame++) {
+    traffic.update(1 / 30, camera);
+    for (const v of [...traffic.cars, ...traffic.heavy]) {
+      if (!v.lane || !Number.isFinite(v.s)) continue;
+      if (v.s < -1e-6 || v.s > v.lane.len + 1e-6) throw new Error(`s out of range: ${v.s} / ${v.lane.len}`);
+    }
+    // 同一條車道、同一個 frame 的「沿線間距」：唔可以疊車
+    const byLane = new Map();
+    for (const v of [...traffic.cars, ...traffic.heavy]) {
+      if (!v.lane) continue;
+      const list = byLane.get(v.lane) || [];
+      list.push(v.s);
+      byLane.set(v.lane, list);
+    }
+    for (const list of byLane.values()) {
+      if (list.length < 2) continue;
+      list.sort((a, b) => a - b);
+      for (let i = 1; i < list.length; i++) minSameLaneGap = Math.min(minSameLaneGap, list[i] - list[i - 1]);
+    }
+  }
+  const frameMs = (Date.now() - ft0) / 200;
+  const laneChanges = traffic.cars.filter((c, i) => traffic.lanes.indexOf(c.lane) !== startLanes[i]).length;
+  const heavyLaneChanges = traffic.heavy.filter((v, i) => traffic.lanes.indexOf(v.lane) !== startHeavyLanes[i]).length;
+
+  // 撞車：把玩家放在第一架車的位置上，應該被推開 + 大幅減速
+  const target = traffic.cars[0];
+  const pose = HK.poseAt(target.lane, target.s);
+  const player = { x: pose.x, z: pose.z, speed: 12 };
+  const bump = traffic.collidePlayer(player);
+  const pushed = Math.hypot(player.x - pose.x, player.z - pose.z);
 
   const positions = traffic.cars.map((c) => c.s);
   const finite = positions.every((s) => Number.isFinite(s));
   console.log(JSON.stringify({
     cars: traffic.counts.cars,
+    laneChanges,
+    heavyLaneChanges,
+    minSameLaneGap: +minSameLaneGap.toFixed(2),
+    bumpHit: bump.hit,
+    bumpedSpeed: +player.speed.toFixed(2),
+    pushedBy: +pushed.toFixed(2),
     lanes: traffic.counts.lanes,
     buses: traffic.counts.buses,
     minibuses: traffic.counts.minibuses,

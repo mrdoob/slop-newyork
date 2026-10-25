@@ -215,27 +215,61 @@ function buildBuildings(group) {
 
 function buildLandmarks(group, tallSet) {
   const meshes = [];
-  const mat = new THREE.MeshStandardNodeMaterial({ color: 0x9aa6b2, roughness: 0.35, metalness: 0.55 });
-  const civicMat = new THREE.MeshStandardNodeMaterial({ color: 0xcfc6b5, roughness: 0.7, metalness: 0.1 });
   const crownMat = new THREE.MeshStandardNodeMaterial({ color: 0xdfe8f2, roughness: 0.2, metalness: 0.8 });
+
+  // 地標唔再用「淨色盒」：塔樓用帷幕牆、civic / 會堂用戰前石牆，同沿街樓宇同一套 TSL 立面，
+  // 所以窗戶是真實米數的，唔會出現一塊冇材質的灰色大方塊（用家原話：「亦無材質」）。
+  const curtain = createCurtainWallMaterial({
+    boxLocal: true, glassTint: 0x254a63, frameTint: 0x39474f,
+    windowWidth: 2.4, floorHeight: 3.8, litProbability: 0.5, warmth: 0.45, reflectivity: 0.95, seed: 11
+  });
+  const stone = createPreWarBuildingMaterial({
+    boxLocal: true, stoneColor: 0xc9c0ad, trimColor: 0xe0d9c8,
+    windowWidth: 2.6, floorHeight: 3.6, litProbability: 0.3, warmth: 0.6, cornerPier: 0.8, seed: 13
+  });
+
+  const towerRecords = [];
+  const civicRecords = [];
   for (const lm of HK.LANDMARKS) {
     const isCivic = lm.kind === 'civic' || lm.kind === 'hall' || lm.kind === 'pier';
-    const geo = new THREE.BoxGeometry(lm.w, lm.h, lm.d);
-    const mesh = new THREE.Mesh(geo, isCivic ? civicMat : mat);
-    mesh.position.set(lm.x, lm.h / 2 + Y.land, lm.z);
+    const faces = [WALL_KINDS.lotLine, WALL_KINDS.lotLine, WALL_KINDS.shop, WALL_KINDS.entry];
+    const rec = { x: lm.x, y: lm.h / 2 + Y.land, z: lm.z, w: lm.w, h: lm.h, d: lm.d, ry: 0, tone: isCivic ? 0.95 : 0.8, faces };
+    (isCivic ? civicRecords : towerRecords).push(rec);
+  }
+  if (towerRecords.length) {
+    const mesh = createFacadeBoxes(curtain, towerRecords);
+    mesh.name = 'HKLMTowers';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.name = `HKLM_${lm.id}`;
     group.add(mesh);
     meshes.push(mesh);
-    if (lm.h > 150) {
-      // 天台冠／桅杆：ICC、國金、中銀、中環廣場的輪廓記憶點
-      const crown = new THREE.Mesh(new THREE.CylinderGeometry(lm.w * 0.16, lm.w * 0.22, lm.h * 0.06, 8), crownMat);
-      crown.position.set(lm.x, lm.h + (lm.h * 0.06) / 2, lm.z);
-      group.add(crown);
-      meshes.push(crown);
-    }
     tallSet.push(mesh);
+  }
+  if (civicRecords.length) {
+    const mesh = createFacadeBoxes(stone, civicRecords);
+    mesh.name = 'HKLMCivic';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    meshes.push(mesh);
+    tallSet.push(mesh);
+  }
+
+  // 天台冠／桅杆：ICC、國金、中銀、中環廣場的輪廓記憶點
+  const crowns = [];
+  const crownGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
+  for (const lm of HK.LANDMARKS) {
+    if (lm.h <= 150) continue;
+    const c = crownGeo.clone();
+    c.scale(lm.w * 0.16, lm.h * 0.06, lm.w * 0.16);
+    c.translate(lm.x, lm.h + (lm.h * 0.06) / 2, lm.z);
+    crowns.push(c);
+  }
+  if (crowns.length) {
+    const crown = new THREE.Mesh(mergeGeometries(crowns), crownMat);
+    crown.name = 'HKLMCrowns';
+    group.add(crown);
+    meshes.push(crown);
   }
   return meshes;
 }
@@ -326,7 +360,8 @@ export async function buildHongKongCity(scene, { onProgress = async () => {} } =
   return {
     group,
     colliders,
-    counts: { buildings: buildings.count, landmarks: landmarks.length, lamps: furniture.lampCount, roads: HK.ROADS.length },
+    // landmarks 數的是**地標數量**（不是 mesh 數）：塔樓／civic 合併成 2 個 facade mesh + 1 個冠
+    counts: { buildings: buildings.count, landmarks: HK.LANDMARKS.length, landmarkMeshes: landmarks.length, lamps: furniture.lampCount, roads: HK.ROADS.length },
     setNight(night) {
       // 街燈燈頭在夜間才亮（MeshBasic 不看光照，但可以整體調暗）
       furniture.lampHeads.visible = night > 0.15;

@@ -189,7 +189,98 @@ export function locationLabel(x, z) {
 }
 
 // --- 地標、建築、土地 -----------------------------------------------------------------------------------
-export const LANDMARKS = GEO.landmarks;
+/**
+ * 把地標「泊」到真正空得落的位置。
+ *
+ * 為什麼要做：地標座標直接來自 seed（真實經緯度），但我們的走廊是**加寬的近似線**，
+ * 兩者一撞，就會出現「IFC / 交易廣場 / 大會堂 企正喺干諾道中馬路中間」這種情況
+ * （實測 8 個地標壓住行車道，最近的中心距只有 4.8 m）。
+ *
+ * 做法：先算 support function（axis-aligned box 沿方向 n 的半寬 = |nx|·w/2 + |nz|·d/2），
+ * 得到「距離最近車道邊界仲差幾多」。有重疊就做**螺旋搜尋**：由 4 m 起、每次 +4 m，
+ * 16 個方向，揀第一個「完全離開所有行車道（含 margin）而且仍然在陸地上」的位置。
+ * 咁樣一定收斂、位移最小，而且唔會好似逐段推開咁喺兩條路之間彈來彈去（曾經把大會堂推到 435 m 外）。
+ */
+function landmarkClearance(item, x, z, roads) {
+  let worst = Infinity;
+  for (const road of roads) {
+    const roadHalf = road.w / 2;
+    for (let i = 1; i < road.pts.length; i++) {
+      const a = road.pts[i - 1];
+      const b = road.pts[i];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const segLen2 = dx * dx + dz * dz || 1e-6;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / segLen2));
+      const px = a.x + dx * t;
+      const pz = a.z + dz * t;
+      let nx = x - px;
+      let nz = z - pz;
+      const dist = Math.hypot(nx, nz);
+      if (dist > 1e-4) { nx /= dist; nz /= dist; } else { nx = 1; nz = 0; }
+      const extent = Math.abs(nx) * (item.w / 2) + Math.abs(nz) * (item.d / 2);
+      worst = Math.min(worst, dist - roadHalf - extent);
+    }
+  }
+  return worst;
+}
+
+function pointInRing(x, z, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i].x, zi = ring[i].z;
+    const xj = ring[j].x, zj = ring[j].z;
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+const LAND_RINGS = GEO.land.map((l) => pairs(l.ring));
+function onLand(x, z) {
+  return LAND_RINGS.some((ring) => pointInRing(x, z, ring));
+}
+
+function placeLandmarksOffRoad(list, roads, margin = 2.5) {
+  const out = [];
+  for (const item of list) {
+    if (landmarkClearance(item, item.x, item.z, roads) >= margin && onLand(item.x, item.z)) {
+      out.push({ ...item });
+      continue;
+    }
+    let best = null;
+    for (let radius = 4; radius <= 200 && !best; radius += 4) {
+      for (let k = 0; k < 16; k++) {
+        const angle = (k / 16) * Math.PI * 2;
+        const x = item.x + Math.cos(angle) * radius;
+        const z = item.z + Math.sin(angle) * radius;
+        if (!onLand(x, z)) continue;
+        if (landmarkClearance(item, x, z, roads) < margin) continue;
+        best = { x, z, moved: radius };
+        break;
+      }
+    }
+    if (!best) {
+      // 真係搵唔到位（例如被兩條主幹道夾死）：退而求其次，揀偏移最小、淨空最大的點
+      let fallback = { x: item.x, z: item.z, clear: landmarkClearance(item, item.x, item.z, roads) };
+      for (let radius = 4; radius <= 200; radius += 4) {
+        for (let k = 0; k < 16; k++) {
+          const angle = (k / 16) * Math.PI * 2;
+          const x = item.x + Math.cos(angle) * radius;
+          const z = item.z + Math.sin(angle) * radius;
+          if (!onLand(x, z)) continue;
+          const clear = landmarkClearance(item, x, z, roads);
+          if (clear > fallback.clear + 0.5) fallback = { x, z, clear };
+        }
+        if (fallback.clear >= margin) break;
+      }
+      best = { x: fallback.x, z: fallback.z, moved: Math.hypot(fallback.x - item.x, fallback.z - item.z) };
+    }
+    out.push({ ...item, x: best.x, z: best.z, shiftedByRoad: Math.round(best.moved * 10) / 10 });
+  }
+  return out;
+}
+
+export const LANDMARKS = placeLandmarksOffRoad(GEO.landmarks, ROADS);
 export const BUILDINGS = GEO.buildings;
 export const LAND = GEO.land.map((l) => ({ ...l, pts: closedRing(l.ring) }));
 export const TRAM = pairs(GEO.tram);

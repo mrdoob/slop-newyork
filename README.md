@@ -526,8 +526,8 @@ node --test "tests/hk-*.test.*"
 
 **已驗證（可重跑）**
 
-- `node --test "tests/hk-*.test.*"` → **37 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
-- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **152 pass / 0 fail**（原 113 個紐約測試全數保留通過）；加 `hk-boot` / `hk-modules` 兩個開機測試。
+- `node --test "tests/hk-*.test.*"` → **41 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
+- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **156 pass / 0 fail**（原 113 個紐約測試全數保留通過）；加 `hk-boot` / `hk-modules` 兩個開機測試。
 - 開機端到端：`node --import ./tools/hk-boot/register.mjs tools/boot-hk.mjs` → 由 `?world=hk` 一路行到第一幀。
 - 語法檢查：`node tools/check-modules.mjs` → `✓ 全部模組語法正常`（這一項會在 CI 前抓到「重複宣告」這類令整個世界開唔到的 early error）。
 - 專案內所有相對 import 的名稱都存在（用腳本掃過 40 個模組），而且每個模組都通過語法檢查。
@@ -662,6 +662,34 @@ __BOOT_REPORT__ {"world":"hk","title":"Slop Hong Kong","hud":"Slop Hong Kong ←
 | 移除 | 之前 `?test=1` 的離屏像素讀回（r187dev 的 `readRenderTargetPixelsAsync` 會拋 `invalid value used as weak map key`，冇用就唔好留住） |
 
 `tools/boot-hk.mjs` 亦加了斷言：**PMREM 環境光必須建立成功**（失敗的話玻璃帷幕會全黑，而畫面其他部分仍然正常 —— 正是這一輪的症狀）。
+
+**第七輪（畫面正常了，但街上「唔對路」：樓宇企喺馬路、無材質、巴士跳格、無人、撞車無反應）**
+
+`?world=hk&test=1` 的截圖（`light golden · shadow on · exposure 1.15 · env PMREM`）證明照明同 IBL 都通了。跟住用家點名五個問題，全部有得喺 headless 驗，所以逐個做：
+
+| 症狀（用家原話） | 真因 | 修法 |
+|---|---|---|
+| 「建築物無啦啦在條路中心」 | 25 個地標的座標直接來自 seed（真實經緯度），但我們的走廊是**加寬的近似線**：實測 8 個地標壓住行車道，最近的中心距只有 4.8 m | `config.js` 新增 `placeLandmarksOffRoad()`：用 box 的 support function 算淨空，有重疊就做**螺旋搜尋**（16 方向 × 4–200 m）找最近又「離開所有車道＋仍在陸地」的位置。8 個地標被搬 12–68 m，現在 **0 個壓路** |
+| 「亦無材質」 | 地標是淨色 `BoxGeometry`（`civicMat` 一塊米色） | 地標改用同沿街樓宇一樣的 TSL 立面：塔樓 = 帷幕牆、civic／會堂 = 戰前石牆，窗是真實米數。25 個地標合併成 **2 個 facade mesh + 1 個冠**（原本 25+ 個 draw call 變成 3 個） |
+| 「巴士打棋咁行」 | 車一到走廊盡頭就 `s = 0; lane = 隨機另一條` → **喺你眼前由一條街跳去另一條街** | 改為**只在自己條車道內繞回起點**；繞圈前先確認起點冇車（否則排隊等位） |
+| （同上）跨車種互穿 | 私家車同巴士各自計 gap，互不相識 | 全部車（96 私家車 + 8 巴士 + 10 小巴）放入同一張 **per-lane 表**，按 s 排序，「下一架」就是前車 —— 巴士會跟私家車，私家車會跟巴士 |
+| 「無人」 | 香港世界從來冇實作行人 | 新 `js/hk/pedestrians.js`：行人道由走廊推導（左右兩側、offset = 車道半寬 + 1.75 m），300 個行人 = **2 個 InstancedMesh**（身體＋頭），每人有自己顏色、速度、方向，行路有上下起伏 |
+| 「撞車無反應」 | 玩家同車流完全冇互動 | 車流會把玩家當成「前方路障」收油；`traffic.collidePlayer()` 會在撞到時把紅的士推開並把速度 ×0.15 |
+
+**順手加固：黑畫面自救**
+
+- `renderFrame()` 每次先 `renderer.setRenderTarget(null)`，令「渲染到離屏 target 之後冇還原」（PMREM／自訂 pass 常見）這一類 bug 唔會令 canvas 永遠黑。
+- 開機 2.5 秒後用 `createImageBitmap` 把 canvas 讀成 8×8 像素；如果**純黑**（且係 golden/midday、冇開 `?test=1`）：
+  1. 先重新 `setSize` + 再 render 一次；
+  2. 仍然黑就**自動用 WebGL2 後端重載一次**（`?webgl=1`，每個 session 只做一次，`?auto=0` 可關）；
+  3. 都唔得就顯示紅色提示條，並在診斷面板標「讀到全黑！」。
+
+**這一輪的新測試（156 pass / 0 fail）**
+
+| 測試 | 驗甚麼 |
+|---|---|
+| `hk-streets.test.mjs` | 冇地標壓住行車道（support function 淨空 ≥ 0）、被搬的地標冇入海、行人道在自己那條街的車道以外、120 個行人跑 120 幀後 s 有限且在範圍內 |
+| `hk-traffic.test.cjs`（加強） | 200 幀內 **0 架車換車道**（棋子跳的回歸測試）、同一車道最細間距 > 1.5 m（唔會疊車）、`collidePlayer` 真係推開 + 減速 |
 
 ### 15.1 先講結論
 

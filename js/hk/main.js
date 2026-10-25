@@ -4,6 +4,7 @@ import { applyBranding, getWorld } from '../world.js';
 import * as HK from './config.js';
 import { buildHongKongCity } from './city.js';
 import { createHongKongTraffic } from './traffic.js';
+import { createHongKongPedestrians } from './pedestrians.js';
 import { createPlayer, ChaseCamera } from './drive.js';
 
 // js/hk/main.js
@@ -171,6 +172,10 @@ export async function startHongKong() {
   const traffic = createHongKongTraffic(scene);
   mark('traffic');
 
+  await yieldToBrowser('安排行人…');
+  const pedestrians = createHongKongPedestrians(scene);
+  mark('pedestrians');
+
   const player = createPlayer(scene, city.colliders);
   const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.35, 40000);
   const chase = new ChaseCamera(camera, renderer.domElement);
@@ -234,8 +239,81 @@ export async function startHongKong() {
   }
 
   function renderFrame() {
+    // 每次都明確回到預設 framebuffer：任何「渲染到離屏 target 之後冇還原」的 bug
+    // （PMREM、自訂 pass、讀回像素）都會令之後所有 frame 畫去離屏 → canvas 永遠黑。
+    renderer.setRenderTarget(null);
     if (postPipeline) postPipeline.render();
     else renderer.render(scene, camera);
+  }
+
+  // --- 黑畫面自救 ---------------------------------------------------------------------------------
+  // 用 createImageBitmap / drawImage 把 canvas 讀成 8×8 像素，如果係純黑就當係「畫唔出」。
+  // 自救次序：① 重新 setSize + 再 render ② 自動 reload 一次並改用 WebGL2 後端（?webgl=1）。
+  // 只在 golden / midday（背景係晴天的淺藍）才做，避免夜景被誤判。
+  let blackDetected = false;
+  async function sampleCanvasMax() {
+    const canvas = renderer.domElement;
+    try {
+      const bitmap = await createImageBitmap(canvas);
+      const scratch = document.createElement('canvas');
+      scratch.width = 8;
+      scratch.height = 8;
+      const ctx = scratch.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(bitmap, 0, 0, 8, 8);
+      const data = ctx.getImageData(0, 0, 8, 8).data;
+      let max = 0;
+      for (let i = 0; i < data.length; i += 4) max = Math.max(max, data[i], data[i + 1], data[i + 2]);
+      return max;
+    } catch (bitmapError) {
+      try {
+        const scratch = document.createElement('canvas');
+        scratch.width = 8;
+        scratch.height = 8;
+        const ctx = scratch.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(canvas, 0, 0, 8, 8);
+        const data = ctx.getImageData(0, 0, 8, 8).data;
+        let max = 0;
+        for (let i = 0; i < data.length; i += 4) max = Math.max(max, data[i], data[i + 1], data[i + 2]);
+        return max;
+      } catch (drawError) {
+        return null; // 讀唔到就唔判斷（唔好誤報）
+      }
+    }
+  }
+
+  async function blackScreenWatchdog() {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    if (renderer.backend?.isWebGPUBackend !== true) return; // 已經係 WebGL2：唔再自動切
+    if (!['golden', 'midday'].includes(lighting.activeId) || testPattern) return;
+    const max = await sampleCanvasMax();
+    if (max === null || max > 6) return;
+    blackDetected = true;
+    console.error('[hk] canvas 讀出來係全黑（max channel = ' + max + '）');
+    // ① 先試最溫和的一步：重新設定尺寸 + 立即再 render 一次
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderFrame();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const retry = await sampleCanvasMax();
+    if (retry !== null && retry > 6) {
+      console.warn('[hk] 重新 setSize 之後畫面返嚟了（max = ' + retry + '）');
+      blackDetected = false;
+      return;
+    }
+    // ② 仍然黑：自動用 WebGL2 後端重載一次（每個 session 只做一次，避免無限 reload）
+    let alreadyTried = false;
+    try { alreadyTried = sessionStorage.getItem('hk-webgl-fallback') === '1'; } catch { /* 私隱模式 */ }
+    if (params.get('auto') !== '0' && !alreadyTried) {
+      try { sessionStorage.setItem('hk-webgl-fallback', '1'); } catch { /* 同上 */ }
+      const url = new URL(location.href);
+      url.searchParams.set('webgl', '1');
+      console.warn('[hk] WebGPU 畫唔出，改用 WebGL2 重載：' + url.href);
+      location.replace(url.href);
+      return;
+    }
+    const banner = document.createElement('div');
+    banner.className = 'hk-black-warning';
+    banner.textContent = '3D 畫面讀出來係全黑（已試過 WebGL2）。請開 F12 睇 console，並試 ?world=hk&test=1 對比。';
+    document.body.appendChild(banner);
   }
 
   // --- 預編譯（避免第一幀一次過編譯全部 pipeline 而卡死）----------------------------------------
@@ -424,8 +502,8 @@ export async function startHongKong() {
       `canvas ${canvas.width}×${canvas.height} @ ${Math.round(rect.width)}×${Math.round(rect.height)} css · ${canvas.isConnected ? 'in DOM' : '唔在 DOM！'}`,
       `canvas style opacity ${style.opacity} · display ${style.display} · visibility ${style.visibility}`,
       `畫面中央最上層：${top}${covered ? '  ← 蓋住咗 canvas！' : ''}`,
-      `draw calls ${r.drawCalls ?? r.calls ?? '?'} · tris ${r.triangles ?? '?'} · frames ${r.frame ?? '?'}`,
-      `scene children ${scene.children.length} · lights ${scene.children.filter((o) => o.isLight).length}`,
+      `draw calls ${r.drawCalls ?? r.calls ?? '?'} · tris ${r.triangles ?? '?'} · frames ${r.frame ?? '?'}${blackDetected ? ' · 讀到全黑！' : ''}`,
+      `scene children ${scene.children.length} · lights ${scene.children.filter((o) => o.isLight).length} · pedestrians ${pedestrians.counts.pedestrians}`,
       `background ${scene.background && scene.background.getHexString ? `#${scene.background.getHexString()}` : String(scene.background)}`,
       `camera ${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)} · near ${camera.near} far ${camera.far}`,
       `player ${player.state.x.toFixed(0)}, ${player.state.z.toFixed(0)} · ${HK.districtAt(player.state.x, player.state.z).zh}`,
@@ -454,11 +532,13 @@ export async function startHongKong() {
   // --- 主迴圈 ----------------------------------------------------------------------------------------
   let last = performance.now();
   let elapsed = 0;
+  let bumpCount = 0;
   // 第一幀先在 try/catch 內畫一次：着色器若編不過，會顯示錯誤而唔係黑畫面
   try {
     player.update(0.016);
     chase.update(0.016, player.state);
-    traffic.update(0.016, camera.position);
+    traffic.update(0.016, camera.position, player.state);
+    pedestrians.update(0.016);
     await yieldToBrowser('第一幀…');
     renderFrame();
     const device = renderer.backend?.device;
@@ -469,10 +549,12 @@ export async function startHongKong() {
     const info = renderer.info?.render || {};
     console.log('[hk] first frame', { drawCalls: info.drawCalls ?? info.calls, triangles: info.triangles, path: postPipeline ? 'post' : 'direct', sky: !!skyLighting });
     console.log(`[hk] boot ${PHASES.map(([l, t]) => `${l} ${t}ms`).join(', ')}`);
-    console.log(`[hk] ${city.counts.buildings} buildings · ${city.counts.landmarks} landmarks · ${traffic.counts.cars} cars · ${traffic.counts.lanes} lanes (keep left)`);
+    console.log(`[hk] ${city.counts.buildings} buildings · ${city.counts.landmarks} landmarks · ${traffic.counts.cars} cars · ${traffic.counts.lanes} lanes (keep left) · ${pedestrians.counts.pedestrians} pedestrians`);
   } catch (error) {
     showBootError(error, PHASES);
   }
+
+  if (!testPattern) blackScreenWatchdog();
 
   renderer.setAnimationLoop((now) => {
     const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
@@ -480,8 +562,11 @@ export async function startHongKong() {
     elapsed += dt;
 
     player.update(dt);
+    const bump = traffic.collidePlayer(player.state);
+    if (bump.hit) bumpCount++;
     chase.update(dt, player.state);
-    traffic.update(dt, camera.position);
+    traffic.update(dt, camera.position, player.state);
+    pedestrians.update(dt);
     lighting.update(player.state);
     if (skyLighting) skyLighting.update(player.state);
     updateHud(dt);
@@ -491,6 +576,6 @@ export async function startHongKong() {
   });
 
   // 除錯／驗證用（不會影響正常遊玩）
-  globalThis.__slopHK = { scene, renderer, city, traffic, player, camera, HK, lighting, testPattern, gpuErrors };
+  globalThis.__slopHK = { scene, renderer, city, traffic, pedestrians, player, camera, HK, lighting, testPattern, gpuErrors };
   return { scene, renderer, city, traffic, player };
 }

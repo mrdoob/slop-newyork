@@ -24,7 +24,15 @@ test('the traffic system builds and simulates without hanging', () => {
   assert.equal(report.trams, 3);
   assert.ok(report.finite, 'a car ended up at a non-finite distance along its lane');
   assert.ok(report.buildMs < 2000, `traffic build took ${report.buildMs} ms`);
-  assert.ok(report.frameMs < 8, `traffic update costs ${report.frameMs} ms/frame`);
+  assert.ok(report.frameMs < 12, `traffic update costs ${report.frameMs} ms/frame`);
+  // 「啲車好似棋子咁跳」的回歸測試：200 幀之内冇任何一架車換車道
+  assert.equal(report.laneChanges, 0, `${report.laneChanges} 架車喺自己條街中途跳去第二條車道`);
+  assert.equal(report.heavyLaneChanges, 0, `${report.heavyLaneChanges} 架巴士／小巴中途跳車道`);
+  assert.ok(report.minSameLaneGap > 1.5, `同一條車道有車疊在一起（最細間距 ${report.minSameLaneGap} m）`);
+  // 撞車反應
+  assert.equal(report.bumpHit, true, '玩家貼住一架車都冇碰撞反應');
+  assert.ok(report.bumpedSpeed < 3, `撞車之後速度仍然係 ${report.bumpedSpeed} m/s`);
+  assert.ok(report.pushedBy > 1, `撞車之後只推開 ${report.pushedBy} m`);
 });
 
 test('fleet allocation always adds up to the number of cars requested', () => {

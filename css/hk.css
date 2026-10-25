@@ -266,3 +266,20 @@ body[data-world="hk"] #canvas-container {
   background: rgba(38, 6, 8, 0.9);
   box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.25), 0 12px 32px rgba(0, 0, 0, 0.45);
 }
+
+/* 黑畫面自救失敗時的提示條 */
+.hk-black-warning {
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: min(680px, 92vw);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font: 600 13px/1.5 Inter, system-ui, sans-serif;
+  color: #ffd7d8;
+  background: rgba(120, 12, 18, 0.92);
+  border: 1px solid rgba(255, 120, 125, 0.55);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
