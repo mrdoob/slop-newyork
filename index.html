@@ -106,7 +106,11 @@
     applyBranding(getWorld(world));
 
     const status = document.getElementById('loading-status');
-    if (status) status.textContent = world === 'hk' ? '載入香港世界（js/hk/main.js）…' : '載入紐約世界…';
+    // 版本號一定要在畫面上出現：載入時就在狀態列寫住，之後 HUD 左上角亦長期顯示。
+    if (status) status.textContent = (world === 'hk' ? '載入香港世界（js/hk/main.js）…' : '載入紐約世界…') + ' · v' + (world === 'hk' ? HK_BUILD : 'NY');
+    // 載入畫面上長期顯示版本，唔需要開診斷面板都見到。
+    var loadingBuild = document.getElementById('loading-build');
+    if (loadingBuild) loadingBuild.textContent = world === 'hk' ? '版本 v' + HK_BUILD : 'build v' + HK_BUILD;
 
     try {
       if (world === 'hk') {
@@ -169,6 +173,7 @@
       <div class="loader-title">Slop New York</div>
       <div class="loader-track is-indeterminate" aria-hidden="true"><span id="loading-progress" class="loader-fill"></span></div>
       <div id="loading-status">Initializing WebGPURenderer &amp; TSL Shaders...</div>
+      <div id="loading-build" class="loader-build">版本 –</div>
     </div>
   </div>
 

@@ -72,6 +72,11 @@ test('建置版本在 index.html 與 js/hk/build.js 一致（避免新舊模組�
   assert.match(html, /import\(`\.\/js\/hk\/main\.js\?v=\$\{HK_BUILD\}`\)/, '入口模組要帶版本，強制重新抓取');
   const source = read('js/hk/main.js');
   assert.match(source, /from '\.\/build\.js'/, 'main.js 應該匯入建置版本');
+  // 用戶的抱怨：「我見唔到邊到寫住 version」→ 版本要出現在三個一定見得到的地方。
+  assert.match(html, /id="loading-build"/, '載入畫面要有版本位');
+  assert.match(html, /loadingBuild\.textContent = [^;]*HK_BUILD/, '載入畫面的版本要由 HK_BUILD 填');
+  assert.match(source, /class="hk-build"[^`]*\$\{BUILD\}/, 'HUD 要顯示建置版本');
+  assert.match(source, /版本 v\$\{BUILD\}/, '診斷面板第一行要寫版本');
 });
 
 test('香港的後處理與天空係可選的，唔會令預設路徑依賴 addon', () => {

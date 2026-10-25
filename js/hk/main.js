@@ -27,7 +27,7 @@ function buildHud(world) {
       <span class="hk-bullet">HK</span>
       <div class="hk-brand-text">
         <h1>${world.title} <a class="hk-world-link" href="?world=ny">← New York</a></h1>
-        <p>${world.subtitle} · <span id="hk-fps">–</span> fps</p>
+        <p>${world.subtitle} · <span id="hk-fps">–</span> fps · <span class="hk-build" title="建置版本 build">v${BUILD}</span></p>
       </div>
     </header>
     <div class="hk-telemetry">

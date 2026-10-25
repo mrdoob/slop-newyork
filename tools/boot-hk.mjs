@@ -11,6 +11,7 @@
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import { BUILD } from '../js/hk/build.js';
 
 const root = new URL('../', import.meta.url);
 
@@ -103,6 +104,12 @@ check('冇觸發開機錯誤卡', () => assert.equal(bootFailures.length, 0, JSO
 check('loading overlay 已隱藏', () => assert.ok(doc.getElementById('loading-overlay').classList.contains('hidden')));
 check('香港 HUD 已建立', () => assert.ok(doc.getElementById('hk-hud'), '#hk-hud 不存在'));
 check('HUD 顯示香港品牌', () => assert.match(doc.querySelector('#hk-hud h1').textContent, /Slop Hong Kong/));
+check('HUD 左上角見到建置版本（唔使開診斷面板）', () => {
+  const badge = doc.querySelector('#hk-hud .hk-build');
+  assert.ok(badge, '#hk-hud .hk-build 唔存在：用戶就係見唔到版本');
+  assert.match(badge.textContent, /^v\d{4}-\d{2}-\d{2}\.\d+$/, `版本字串：${badge.textContent}`);
+  assert.equal(badge.textContent, 'v' + BUILD, 'HUD 版本要同 js/hk/build.js 一致');
+});
 check('body 標記為 hk（紐約 HUD 靠這個隱藏）', () => assert.equal(doc.body.dataset.world, 'hk'));
 check('位置標籤係香港地名', () => {
   const text = doc.getElementById('hk-location').textContent;

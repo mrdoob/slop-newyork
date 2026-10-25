@@ -361,3 +361,21 @@ body[data-world="hk"] #canvas-container {
   font-size: 10.5px;
   color: rgba(232, 238, 244, 0.7);
 }
+
+/* 建置版本：載入畫面同 HUD 左上角都要見到（唔使開診斷面板） */
+.loader-build {
+  margin-top: 0.6rem;
+  font: 500 0.72rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.62;
+}
+.hk-build {
+  font: 600 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
+  padding: 0.1rem 0.34rem;
+  border-radius: 999px;
+  color: #0b1720;
+  background: rgba(255, 214, 120, 0.85);
+  vertical-align: 0.06rem;
+}

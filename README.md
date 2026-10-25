@@ -478,7 +478,9 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 | **3** 香港車種 | 紅的士（重用放樣車體）、雙層巴士、電車、小巴、天星小輪 | `js/hk/vehicles.js`(165) | ✅ |
 | **3** 場景 | 維港水面、填海陸地＋海堤、路面＋行人道＋路緣、標線（單一 geometry）、1,349 棟沿街樓宇（boxLocal TSL 立面）、25 個地標、593 支街燈、電車軌 | `js/hk/city.js`、`js/hk/markings.js` | ✅ |
 | **3** 操控 | 街機式駕駛（油門／剎車／滾阻／風阻／速度相關轉向）＋ AABB 碰撞；追尾鏡頭 | `js/hk/drive.js`(148) | ✅ |
-| — | 進入點：WebGPU + 既有 `LightingSystem` + `createPostProcessing`，四個時段、傳送點、HUD（km/h） | `js/hk/main.js`(214) | ✅ |
+| — | 進入點：WebGPU + 既有 `LightingSystem` + `createPostProcessing`，四個時段、傳送點、HUD（km/h）、建置版本徽章 | `js/hk/main.js` | ✅ |
+| **3** 行人 | 重用紐約資產：`PersonCrowd` / `PersonRig` GPU 蒙皮步態、2 個 LOD 網格、300 人 | `js/hk/pedestrians.js`（動態 import `js/pedestrians.js`） | ✅ |
+| **3** 地圖 | `HK.LAND` / `HK.ROADS` / `HK.TRAM` 全港地圖、即時車流、傳送點、玩家箭咀；`M` 開關、點擊傳送 | `js/hk/map.js` | ✅ |
 
 **跑起來**
 
@@ -494,7 +496,7 @@ node tools/hk/build-hk-geodata.mjs
 node --test "tests/hk-*.test.*"
 ```
 
-**操作**：`W/S` 前進倒車、`A/D` 轉向、`Shift` 加速、`Space` 剎車、`G` 切換光線、`1`–`9` 傳送到九個真實地點、拖曳環繞、滾輪縮放。
+**操作**：`W/S` 前進倒車、`A/D` 轉向、`Shift` 加速、`Space` 剎車、`G` 切換光線、`1`–`9` 傳送到九個真實地點、**`M` 開關地圖（點地圖即傳送）**、拖曳環繞、滾輪縮放。畫面左上角 HUD 長期顯示建置版本（例如 `v2026-10-25.8`）。
 
 **診斷**（黑畫面期間預設就開，按 `D` 或 `&debug=0` 可關）：
 
@@ -711,6 +713,20 @@ TypeError: traffic.collidePlayer is not a function
 | 3 | **optional call**：`traffic.collidePlayer?.()`、`pedestrians.update?.()` —— 舊快取模組頂多令該功能暫時失效，唔會炸死成個世界。`tools/boot-hk.mjs` 會**故意刪掉** `collidePlayer` 再跑兩幀，斷言唔會觸發錯誤卡 |
 
 > 這一個 bug 用家幫了大忙：錯誤卡上寫明 `js/hk/main.js:565`，所以一秒就分出「新模組叫舊模組的方法」。之前冇這個卡，只會見到黑畫面。
+
+**第九輪（「見唔到 version」、「地圖在哪裡?」、「唔使由零開始」）**
+
+三個願望一次過：
+
+| 問題 | 原因 | 修正 |
+|---|---|---|
+| **見唔到版本** | 版本只寫在診斷面板第一行，而面板要按 `D`／`?debug=1` 才有 | 版本改成**三個一定見到的地方**：① 載入畫面 `版本 v2026-10-25.8`（`#loading-build`）② HUD 品牌列的琥珀色小徽章 `.hk-build` ③ 診斷面板第一行 `版本 v…`。`tools/boot-hk.mjs` 會斷言 HUD 徽章存在而且等於 `BUILD` |
+| **冇地圖** | 紐約有 `nyc-map.js`，香港移植時漏了 | 新增 `js/hk/map.js`：用 `HK.LAND`／`HK.ROADS`／`HK.TRAM` 直接畫全港地圖（主幹道加粗、電車線虛線、即時車流小點、9 個白色傳送點、紅色玩家箭咀＋朝向）。**按 `M`** 或 HUD 右下 `地圖 [M]` 開關，**點地圖任何一點即傳送**（保留朝向、車速歸零、追尾鏡頭即時貼回）。地圖每 0.15 秒更新一次（`frameNow` 節流），唔會同主迴圈爭 CPU |
+| **行人／車輛唔使由零做** | 香港版行人原本是兩粒膠囊 `InstancedMesh` | `createHongKongPedestrians()` 改成 async，**動態載入原有的 `js/pedestrians.js`**，直接用紐約的 `PersonCrowd` + `PersonRig`（GPU 蒙皮步態、2 個 LOD 網格 `PeopleNear`／`PeopleFar`），每人有獨立 `seed/scale/female/girth/hair/armSwing/stride`；300 人在行人道上以 1.05–1.6 m/s 行。動態 import 失敗就靜靜退回舊膠囊，唔會炸死開機。車輛本身一向就係重用 `js/actor-models.js` 的 `buildCarGeometry` / `buildCarProxyGeometry` / `createLoftedCarMaterial`（同一套 `LoftGeometry` 放樣、輪胎、鋁圈），只有雙層巴士／電車／小巴係香港專用形狀（紐約冇雙層巴士，所以無得直接搬） |
+
+順手修好一個**假警報**：WebGPU 的 canvas 讀回在 present 之後永遠拿到黑色，所以監測器會誤報「全黑」並自動重新載入頁面（用戶明明見到畫面正常）。現在 `blackScreenWatchdog()` 只在 `?blackcheck=1` 時執行，而且**永遠唔會自動重新載入**；畫面中央的診斷文字亦已改為說明「讀回可能本來就係黑」。
+
+> 這一輪新增 `tests/hk-boot-graph.test.mjs`（4 個測試）：全部模組的語法／early error、香港入口的依賴白名單（唔准靜態匯入紐約模組）、`index.html` 唔准靜態 `<script src>` 紐約入口、版本號三個位都在。連同地圖投影來回轉換測試，全套 **162 pass / 0 fail**。
 
 ### 15.1 先講結論
 
