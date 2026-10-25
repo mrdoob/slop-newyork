@@ -84,6 +84,8 @@ class Tachometer {
     this.max = Math.ceil((spec.redline + (this.electric ? 0 : 600)) / major) * major;
     this.redline = spec.redline;
     this.shiftPoint = spec.redline * 0.93;
+    // (the nitro's gauge only on a car that has a kit)
+    this.nitroBar.parentElement.parentElement.hidden = !spec.nitro;
     const g = this.scale;
     g.replaceChildren();
     el('path', { d: arc(-SWEEP / 2, SWEEP / 2, R), class: 'tacho-arc' }, g);

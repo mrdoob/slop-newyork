@@ -1,17 +1,19 @@
 import * as THREE from 'three/webgpu';
 
-// A restrained pair of low beams. Intensity is calibrated for inverse-square decay (the previous lights used 1.22).
-// Keep these ordinary, unshadowed spots so they stay in the clustered lighting path.
+// A pair of low beams that light the street ahead at night: aimed 2° down so the brightest of the beam lands on the
+// road 15-30 m on, ±15° wide with a soft edge, and a gentler fall-off than inverse-square (decay 1.4), which left the
+// road past the bonnet black (the beams used to be ±8°, aimed 8° down: they hit the road 5 m ahead, under the
+// bonnet from the chase camera). Keep these ordinary, unshadowed spots so they stay in the clustered lighting path.
 const HEADLIGHTS = {
   color: 0xfff8ec,
-  intensity: 700,
-  busIntensity: 900,
-  distance: 36,
-  angle: 0.14,
-  penumbra: 0.85,
-  decay: 2,
-  pitch: 0.145,
-  toeOut: 0.005,
+  intensity: 2200,
+  busIntensity: 2800,
+  distance: 75,
+  angle: 0.26,
+  penumbra: 0.6,
+  decay: 1.4,
+  pitch: 0.035,
+  toeOut: 0.01,
   noseOffset: 0.08
 };
 

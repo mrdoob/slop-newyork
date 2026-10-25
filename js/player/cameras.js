@@ -62,6 +62,12 @@ class CameraSystem {
     this._desiredLook = new THREE.Vector3();
     // Scenic anchors { presetId: { x, z, heading } }: the spots the scenic cameras frame (main.js sets them)
     this.scenicAnchors = null;
+    // Free aim on foot (player/aim.js, main.js sets it): the follow cameras ease in over the right shoulder
+    this.aim = null;
+    this.aimWas = false;
+    this._aimPos = new THREE.Vector3();
+    this._aimLook = new THREE.Vector3();
+    this._lookAt = new THREE.Vector3();
 
     this.bindPointerControls();
   }
@@ -221,6 +227,14 @@ class CameraSystem {
     const entity = this.controllerManager.getActiveEntity();
     const desiredPos = this._desiredPos;
     const desiredLook = this._desiredLook;
+    // taking aim: the player turns to where the camera looked, so the view comes in over its shoulder without a swing
+    const aiming = Boolean(this.aim?.active) && entity.type === 'person';
+    if (aiming && !this.aimWas) {
+      entity.heading += this.orbitYawOffset;
+      this.orbitYawOffset = 0;
+      this.userOrbitTimer = 0;
+    }
+    this.aimWas = aiming;
 
     if (this.userOrbitTimer > 0 && !this.isDragging) {
       this.userOrbitTimer = Math.max(0, this.userOrbitTimer - dt);
@@ -348,8 +362,42 @@ class CameraSystem {
       const g = Math.max(this.groundAt(p.x, p.z), this.groundAt((p.x + t.x) / 2, (p.z + t.z) / 2) - 0.5);
       if (p.y < g + 1.2) p.y = g + 1.2;
     }
-    this.camera.position.copy(this.currentPos);
-    this.camera.lookAt(this.currentLookAt);
+    // aiming on foot: eased from the follow camera's own framing (which goes on following meanwhile) to the shoulder's,
+    // a little zoomed in
+    const preset = this.getActivePreset();
+    const b = this.aim && entity.type === 'person' && preset.category === 'follow' ? this.aim.blend : 0;
+    const k = b * b * (3 - 2 * b);
+    const fov = preset.fov * (1 - 0.16 * k);
+    if (Math.abs(this.camera.fov - fov) > 0.05) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+    if (k > 0) {
+      this.shoulderView(entity, this._aimPos, this._aimLook);
+      this.camera.position.lerpVectors(this.currentPos, this._aimPos, k);
+      this.camera.lookAt(this._lookAt.lerpVectors(this.currentLookAt, this._aimLook, k));
+    } else {
+      this.camera.position.copy(this.currentPos);
+      this.camera.lookAt(this.currentLookAt);
+    }
+  }
+
+  // The aiming view: over the right shoulder (from the eyes in POV), along the player's heading tilted by the aim's
+  // pitch; the crosshair in the middle of the screen is where crime.js sends the shots
+  shoulderView(entity, pos, look) {
+    const h = entity.heading;
+    const pitch = this.aim.pitch;
+    const cp = Math.cos(pitch);
+    const dx = Math.sin(h) * cp, dy = Math.sin(pitch), dz = Math.cos(h) * cp;
+    const pov = this.activePresetId === 'pov';
+    const side = pov ? 0 : 0.62; // m to the right (right is (-cos h, sin h))
+    const back = pov ? -0.3 : 2.4; // m behind the pivot along the aim
+    const p = entity.position;
+    const px = p.x - Math.cos(h) * side;
+    const py = p.y + (pov ? 1.66 : 1.62);
+    const pz = p.z + Math.sin(h) * side;
+    pos.set(px - dx * back, Math.max(p.y + 0.45, py - dy * back), pz - dz * back);
+    look.set(px + dx * 30, py + dy * 30, pz + dz * 30);
   }
 
   // The chase camera on a sphere around the entity. Its yaw, distance and height are eased as orbit parameters, not

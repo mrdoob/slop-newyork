@@ -39,7 +39,7 @@ test('the shared profile creates ordinary unshadowed spots with no cookie or cus
   const spot = createVehicleHeadlight();
   assert.equal(spot.intensity, 0, 'pool lights remain off until assigned');
   for (const key of ['color', 'distance', 'angle', 'penumbra', 'decay']) assert.equal(spot[key], HEADLIGHTS[key]);
-  assert.equal(spot.decay, 2);
+  assert.ok(spot.decay > 1 && spot.decay < 2, 'a gentler fall-off than inverse-square, so the road ahead is lit');
   assert.ok(spot.penumbra >= 0 && spot.penumbra <= 1);
   placeVehicleHeadlight(spot, specs.sedan, 1);
   assert.equal(spot.map, null);
@@ -61,8 +61,11 @@ for (const [name, spec] of Object.entries(specs)) {
       assert.ok(dz > 0 && dx * side > 0, 'the beam points forward with a slight outward angle');
       close(dx / dz, side * HEADLIGHTS.toeOut);
       close(-dy / dz, Math.tan(HEADLIGHTS.pitch));
+      // aimed a little below the horizon: the beam's axis meets a flat road 15-35 m ahead of the lamp
       const downwardAngle = Math.atan2(-dy, Math.hypot(dx, dz));
-      assert.ok(downwardAngle > spot.angle, 'the entire cone stays below the local horizon, including toe-out');
+      assert.ok(downwardAngle > 0, 'the beam points below the horizon');
+      const reach = spot.position.y / Math.tan(downwardAngle);
+      assert.ok(reach > 15 && reach < 35, `the beam lands on the road ${reach.toFixed(1)} m ahead`);
     }
   });
 }
@@ -84,7 +87,9 @@ test('lamp and target follow both yaw and slope at elevated road height', () => 
   const dz = world.target.position.z - world.position.z;
   const vertical = dx * s + dy * c; // dot with the elevated road's up vector
   const horizontal = Math.sqrt(dx * dx + dy * dy + dz * dz - vertical * vertical);
-  assert.ok(Math.atan2(-vertical, horizontal) > world.angle, 'the transformed cone stays below the road-relative horizon');
+  close(Math.atan2(-vertical, horizontal), Math.atan2(-(local.target.position.y - local.position.y),
+    Math.hypot(local.target.position.x - local.position.x, local.target.position.z - local.position.z)));
+  assert.ok(Math.atan2(-vertical, horizontal) > 0, 'aimed below the road-relative horizon on the slope too');
   // Reusing a pooled light must reset local coordinates instead of accumulating the prior matrix transform.
   placeVehicleHeadlight(world, specs.suv, -1);
   assert.deepEqual(world.position, local.position);

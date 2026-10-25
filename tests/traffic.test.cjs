@@ -194,6 +194,10 @@ function populationContext() {
     nearEdges: [], nearTransitEdges: [], nearSignals: [], track: {}, KERB: 1.6, QUEUE_GAP: 0.62,
     transit: { paths: [] }, fleetRoutes: [],
     atCurb: () => {}, laneClear: () => true, drawModel: () => {},
+    vehicleAt: () => false, wallAt: null,
+    // (the hour's weighing, traffic-demand.js: uniform here)
+    nearCarWeights: [], nearPedWeights: [], weighNear: () => {},
+    pickWeighted: (list) => list[Math.floor(Math.random() * list.length)],
     place: (v, e, lane, s) => Object.assign(v, { edge: e, lane, s })
   };
   context.nearView = trafficFunction('nearView', context);
@@ -257,6 +261,9 @@ test('combis and buses spawn on the roads of routes their fleet serves, joining 
   const busRoad = Object.assign(straightEdge(100, 400), { transit: [{ path: busOnly, s: 40 }] });
   context.nearEdges.push(offRoute, onRoute, busRoad);
   context.transit.paths.push(shared, busOnly);
+  context.vehicles = [];
+  context.ROUTE_HEADWAY = 320;
+  context.routeFree = trafficFunction('routeFree', context);
   context.routeOn = trafficFunction('routeOn', context);
   context.joinRoute = trafficFunction('joinRoute', context);
   const spawnVehicle = trafficFunction('spawnVehicle', context);
@@ -268,6 +275,15 @@ test('combis and buses spawn on the roads of routes their fleet serves, joining 
   assert.equal(combi.path, shared);
   assert.equal(combi.pathS, 1250, 'its cursor starts where the road ends on the route');
   assert.equal(combi.sign, 3);
+  // ...and never within a headway of the last unit of its route: no convoys of one route
+  Object.assign(combi, { x: 0, z: onRoute.sz + combi.s }); // (where it was placed: the stub doesn't locate it)
+  context.vehicles.push(combi);
+  const next = { half: 2.45, fleet: 'combi', path: null };
+  assert.equal(spawnVehicle(next, 0, 350, false), false, 'the route already has a combi here');
+  combi.x += 400;
+  assert.equal(spawnVehicle(next, 0, 350, false), true);
+  assert.equal(next.path, shared);
+  context.vehicles.length = 0;
 
   context.nearTransitEdges.length = 0;
   context.nearTransitEdges.push(busRoad);

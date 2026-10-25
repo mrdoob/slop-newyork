@@ -505,6 +505,213 @@ body.hud-minimized .hud-crime {
   }
 }
 
+/* The weapon on the card opens the wheel (a tap on a phone) */
+.crime-weapon {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------
+   Free aim (player/aim.js): the crosshair in the middle of the screen, red over a target; no cursor while aiming
+   ------------------------------------------------------------------------------------------------------------------ */
+body.is-aiming #canvas-container,
+body.is-aiming canvas {
+  cursor: none;
+}
+
+.crosshair {
+  position: fixed;
+  z-index: 10;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  pointer-events: none;
+  --ch: rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85));
+}
+
+.crosshair[hidden] {
+  display: none;
+}
+
+/* four ticks round a gap, and a dot */
+.crosshair::before,
+.crosshair::after {
+  content: '';
+  position: absolute;
+  background:
+    linear-gradient(var(--ch), var(--ch)) center top / 2px 8px no-repeat,
+    linear-gradient(var(--ch), var(--ch)) center bottom / 2px 8px no-repeat;
+  inset: 0;
+}
+
+.crosshair::after {
+  transform: rotate(90deg);
+}
+
+.crosshair > span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: var(--ch);
+}
+
+.crosshair.is-target {
+  --ch: #ff4d42;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------
+   The weapon wheel (ui/weapon-wheel.js): the arsenal round the middle of the screen while Tab is held
+   ------------------------------------------------------------------------------------------------------------------ */
+.weapon-wheel {
+  position: fixed;
+  z-index: 13;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at center, rgba(0, 0, 0, 0.42) 0, rgba(0, 0, 0, 0.18) 340px, transparent 520px);
+}
+
+.weapon-wheel[hidden] {
+  display: none;
+}
+
+.weapon-wheel.is-open .wheel-ring {
+  animation: wheel-in 0.16s var(--ease-out) both;
+}
+
+@keyframes wheel-in {
+  from { opacity: 0; transform: scale(0.88); }
+  to { opacity: 1; transform: none; }
+}
+
+.wheel-ring {
+  --r: 138px; /* from the centre to each slot's */
+  position: relative;
+  width: calc(var(--r) * 2 + 120px);
+  height: calc(var(--r) * 2 + 96px);
+}
+
+.wheel-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 112px;
+  height: 78px;
+  margin: -39px 0 0 -56px;
+  transform: rotate(var(--a)) translateY(calc(-1 * var(--r))) rotate(calc(-1 * var(--a)));
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  align-items: center;
+  padding: 8px 8px 7px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-strong);
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s, scale 0.12s;
+}
+
+.wheel-icon {
+  width: 64px;
+  height: 32px;
+}
+
+.wheel-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wheel-ammo {
+  position: absolute;
+  right: 9px;
+  top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.wheel-key {
+  position: absolute;
+  left: 9px;
+  top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.wheel-slot.is-current {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.wheel-slot.is-pointed {
+  color: var(--text);
+  border-color: var(--taxi);
+  background: rgba(40, 34, 14, 0.92);
+  scale: 1.08;
+}
+
+.wheel-slot.is-empty {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.wheel-centre {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 132px;
+  margin-left: -66px;
+  transform: translateY(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.wheel-centre-name {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.wheel-centre-ammo {
+  margin-top: 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+@media (max-width: 620px) {
+  .wheel-ring {
+    --r: 112px;
+  }
+
+  .wheel-slot {
+    width: 92px;
+    height: 66px;
+    margin: -33px 0 0 -46px;
+  }
+
+  .wheel-icon {
+    width: 52px;
+    height: 26px;
+  }
+}
+
 /* ------------------------------------------------------------------------------------------------------------------
    Top left: brand
    ------------------------------------------------------------------------------------------------------------------ */
@@ -1134,6 +1341,7 @@ body[data-mode='moto'] .tacho {
 }
 
 .tacho-bar { display: grid; gap: 5px; }
+.tacho-bar[hidden] { display: none; }
 
 .tacho-bar-label {
   font-size: 10px;

@@ -21,6 +21,15 @@ const CAR_MODELS = [
 const CAR_MODEL_BY_ID = Object.fromEntries(CAR_MODELS.map((m) => [m.id, m]));
 const TAXI_MODEL = CAR_MODEL_BY_ID['nissan-tsuru'];
 const POLICE_MODEL = CAR_MODEL_BY_ID['dodge-charger-pursuit'];
+// The camiones on Tepic's routes run on front-engined Mercedes-Benz Boxer OF chassis (OM 924 LA: 160 kW at 2200 rpm,
+// 810 N·m from 1200 rpm, 17 t gross); this one, ~11.5 t with its passengers, is what the player drives off in after
+// taking one off its route. Never drawn into the car traffic: the buses run as buses (traffic.js)
+const BUS_MODEL = {
+  id: 'mercedes-boxer-of', name: 'Mercedes-Benz Boxer OF 1722', body: 'bus', class: 'truck', traffic: false, rarity: 0,
+  size: [11.6, 2.6, 3.0], mass: 11500, drive: 'rwd', power: [160, 2200], torque: [810, 1400], redline: 2600,
+  gears: 6, top: 90, limited: true, wheelRadius: 0.48
+};
+CAR_MODEL_BY_ID[BUS_MODEL.id] = BUS_MODEL;
 
 // Body colours by class when a model has none of its own (white, silver & grey cars are most of Mexico's fleet)
 const PAINTS = {
@@ -62,4 +71,4 @@ function pickBody(rand = Math.random()) {
   return 'sedan';
 }
 
-export { CAR_MODELS, CAR_MODEL_BY_ID, TAXI_MODEL, POLICE_MODEL, BODY_SHARE, paintsOf, pickModel, pickBody };
+export { CAR_MODELS, CAR_MODEL_BY_ID, TAXI_MODEL, POLICE_MODEL, BUS_MODEL, BODY_SHARE, paintsOf, pickModel, pickBody };

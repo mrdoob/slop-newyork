@@ -86,7 +86,10 @@ function buildSpec(m) {
     torque: torqueCurve(m, idle), gears, reverse: gears[0], final, efficiency,
     wheelbase: m.size[0] * 0.6, steerLock: m.size[0] > 5.2 ? 0.52 : 0.58,
     engineBrake: m.torque[0] * 0.2, regen: m.electric ? 0.12 * m.mass * G : 0,
-    vmax: m.limited ? vmax : Infinity, dragArea: 0.7
+    vmax: m.limited ? vmax : Infinity, dragArea: 0.7,
+    // a nitrous kit: the sports cars and supercars come with one (not an electric), the rest of the traffic doesn't;
+    // a model's `nitro` says otherwise
+    nitro: m.nitro ?? (!m.electric && (m.class === 'sport' || m.class === 'super'))
   };
   // Drag area so that the power at the top-speed revs (in top gear) just holds the top speed (or a little over the
   // limiter): P·η = (Crr·m·g + ½ρ·CdA·v²)·v
@@ -134,7 +137,7 @@ function gearTopSpeed(spec, gear) {
 
 function createDriveState(spec = VEHICLE_SPECS.taxi) {
   return {
-    gear: 1, rpm: spec.idle, manual: false, shift: 0, lock: 0, nitro: 1, nitroOn: false,
+    gear: 1, rpm: spec.idle, manual: false, shift: 0, lock: 0, nitro: spec.nitro ? 1 : 0, nitroOn: false,
     load: 0, limiter: false, wheelspin: false, braking: false, reversing: false, power: 1
   };
 }
@@ -201,8 +204,8 @@ function stepDrive(d, spec, input, v, dt) {
   const slipping = !spec.electric && (d.gear === 1 || d.gear === -1) && coupled < spec.launch && throttle > 0;
   let rpm = Math.max(spec.idle, slipping ? spec.launch : coupled);
   d.limiter = coupled >= spec.redline;
-  d.nitroOn = Boolean(input.nitro && throttle > 0 && d.nitro > 0 && d.gear > 0 && d.power > 0);
-  d.nitro = d.nitroOn ? Math.max(0, d.nitro - NITRO_BURN * dt) : Math.min(1, d.nitro + NITRO_REFILL * dt);
+  d.nitroOn = Boolean(spec.nitro && input.nitro && throttle > 0 && d.nitro > 0 && d.gear > 0 && d.power > 0);
+  if (spec.nitro) d.nitro = d.nitroOn ? Math.max(0, d.nitro - NITRO_BURN * dt) : Math.min(1, d.nitro + NITRO_REFILL * dt);
 
   // Drive force at the wheels, cut while shifting and by the rev limiter, limited by what the tyres can put down
   let drive = 0;
