@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import * as HK from './config.js';
 import { poseAt } from './config.js';
+import { allocateFleet } from './fleet.js';
 import { AI_FLEET, createAiMaterial, buildDoubleDecker, buildTram, buildMinibus, buildFerry } from './vehicles.js';
 
 // js/hk/traffic.js
@@ -18,6 +19,13 @@ const NUM_BUSES = 8;
 const NUM_MINIBUSES = 10;
 const NUM_TRAMS = 3;
 
+/** 幫折線加上累積長度（電車線用；車道由 config.js 的 buildLanes 提供）。 */
+function withLength(pts) {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+  return { pts, cum, len: cum[cum.length - 1] };
+}
+
 export function createHongKongTraffic(scene) {
   const lanes = HK.buildLanes();
   const group = new THREE.Group();
@@ -25,37 +33,24 @@ export function createHongKongTraffic(scene) {
   scene.add(group);
 
   // --- AI 私家車／的士：每種顏色一個 InstancedMesh ------------------------------------------------
-  const fleets = AI_FLEET.map((entry) => ({
-    entry,
-    capacity: Math.max(1, Math.round(NUM_AI_CARS * entry.share)),
-    cars: [],
-    mesh: null
-  }));
-  const cars = [];
-  {
-    // 依 share 分配車輛，剩餘補給的士
-    let assigned = 0;
-    for (let i = 0; i < NUM_AI_CARS; i++) {
-      let pick = 0;
-      let acc = 0;
-      const r = (i * 0.6180339887) % 1;
-      for (let f = 0; f < fleets.length; f++) {
-        acc += fleets[f].entry.share;
-        if (r <= acc) { pick = f; break; }
-      }
-      // 避免某車種爆容量
-      while (fleets[pick].cars.length >= fleets[pick].capacity) pick = (pick + 1) % fleets.length;
-      fleets[pick].cars.push({
+  // 容量由 allocateFleet 一次過算好，總和必定等於 NUM_AI_CARS，所以下面完全沒有「找一個未滿的車隊」
+  // 這種 while 迴圈（舊寫法容量加起來只有 95，第 96 架車會無限迴圈鎖死主執行緒）。
+  const capacities = allocateFleet(AI_FLEET.map((f) => f.share), NUM_AI_CARS);
+  const fleets = AI_FLEET.map((entry, i) => ({ entry, capacity: capacities[i], cars: [], mesh: null }));
+  let carIndex = 0;
+  for (const f of fleets) {
+    for (let k = 0; k < f.capacity; k++) {
+      const i = carIndex++;
+      f.cars.push({
         lane: lanes[(i * 7) % lanes.length],
         s: 0,
         speed: 8 + ((i * 13) % 7),
         length: 4.6
       });
-      assigned++;
     }
-    if (!assigned) throw new Error('no AI cars placed');
   }
   for (const f of fleets) {
+    if (!f.cars.length) continue; // 某車型分到 0 架：唔需要建 InstancedMesh
     const geo = f.entry.geometry();
     const mesh = new THREE.InstancedMesh(geo, createAiMaterial(f.entry), f.cars.length);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -70,7 +65,7 @@ export function createHongKongTraffic(scene) {
       if (car.lane) car.s = (car.speed * 7 + Math.random() * 60) % Math.max(1, car.lane.len);
     });
   }
-  for (const f of fleets) cars.push(...f.cars);
+  const cars = fleets.flatMap((f) => f.cars);
 
   // --- 雙層巴士、小巴（沿最外側車道） --------------------------------------------------------
   const heavy = [];

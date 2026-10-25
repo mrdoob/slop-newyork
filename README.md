@@ -52,7 +52,7 @@ python3 -m http.server 8081
 # 開 http://127.0.0.1:8081/
 ```
 
-跑測試（16 個測試檔、140 個 test case，約 34 秒，零依賴）：
+跑測試（18 個測試檔、144 個 test case，約 37 秒；只有 1 個需要先 `npm install three --no-save`，否則自動跳過）：
 
 ```bash
 node --test "tests/*.test.cjs" "tests/*.test.mjs"
@@ -95,7 +95,7 @@ GEO_DATA=tools/data node --max-old-space-size=8192 tools/build-geodata.mjs
 | 防火梯 | 上限 2,400 個 |
 | 攝影機預設 | 11 個 |
 | TSL 材質工廠 | 28 個 |
-| 測試 | 140 pass / 0 fail（113 紐約 + 27 香港） |
+| 測試 | 144 pass / 0 fail（113 紐約 + 31 香港） |
 
 > 使用者提到的「一百萬行」與實際不符：本 repo 是約 **3.7 萬行**的高密度程式碼（大量是 TSL 節點圖與幾何生成器），加上 1.13 MB 機器生成的 geo 資料。真正的工作量在密度，不在行數。
 
@@ -448,6 +448,8 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 | `hk-geodata.test.mjs` | 香港資料：世界框方向、投影、樓宇不壓路、地標在陸上、海岸線分離、交通資料 |
 | `hk-world.test.cjs` | 香港世界：**靠左行駛的車道幾何**、車道數、`poseAt`、號誌、雙語標籤、傳送點、跟車模型、世界切換 |
 | `hk-render.test.mjs` | 標線只產生**一個** typed array（回歸測試）、無 NaN、留在車行道內、虛線相位跨段、退化輸入、啟動流程會 macrotask 讓路並預編譯 shader |
+| `hk-traffic.test.cjs` | 車流在**子程序**中建得起（20 s timeout 偵測無限迴圈）、車隊分配總和必等於車數、`traffic.js` 不再有無界 while |
+| `hk-smoke.test.mjs` | 用**真 three.js** 建整個香港場景並跑 180 幀（未安裝 three 時自動 skip） |
 
 測試手法值得學：`tests/helpers/module.cjs` 用 `vm` 把檔案裡的 `import`/`export` 改寫掉，餵進 stub namespace，**生產程式碼本體一行不改**就能在 Node 裡跑。所以測試不需要 three.js、不需要瀏覽器。
 
@@ -497,8 +499,8 @@ node --test "tests/hk-*.test.*"
 
 **已驗證（可重跑）**
 
-- `node --test "tests/hk-*.test.*"` → **27 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
-- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **140 pass / 0 fail**（原 113 個紐約測試全數保留通過）。
+- `node --test "tests/hk-*.test.*"` → **31 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
+- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **144 pass / 0 fail**（原 113 個紐約測試全數保留通過）。
 - 專案內所有相對 import 的名稱都存在（用腳本掃過 40 個模組）。
 
 **已知問題與已修（v2：Page Unresponsive）**
@@ -511,7 +513,31 @@ node --test "tests/hk-*.test.*"
 | 2 | 用 `requestAnimationFrame` 當「讓路」，但 rAF 的微任務在瀏覽器 paint **之前**執行，所以建城中途卡住時畫面永遠停在舊狀態 | 改用 `setTimeout(…, 16)`（macrotask，必定 paint），並把建城拆成 4 個階段逐段顯示 |
 | 3 | 第一幀一次過編譯所有 shader pipeline（紐約版正是為此寫了預編譯機制，否則冷快取 ~25 s） | 補上 8 路並行 `renderer.compileAsync()` + 進度百分比 |
 
+**第二輪（畫面顯示「安排靠左行駛的車流…」時卡死）**
+
+| # | 原因 | 修法 |
+|---|---|---|
+| 4 | **無限迴圈**：車隊容量用 `round(share × 96)` 算出 44+21+15+15 = **95**，但迴圈要放 **96** 架車；第 96 架「所有車隊都滿」，`while (fleets[pick].cars.length >= capacity) pick++` 永遠跳唔出 → 主執行緒鎖死 | 新增 `js/hk/fleet.js` 的 `allocateFleet()`（最大餘數法，**保證總和 === 要求數量**），容量一次算好，完全刪除該 while 迴圈。96 架 → `[44, 21, 16, 15]` |
+| 5 | 早前重構 `traffic.js` 時誤刪了 `withLength()`，電車線一建就 throw（會在下一個階段爆） | 補回，並由新的 harness 抓到 |
+
 另外加了：**任何啟動例外都會印在載入畫面上**（訊息 + 已完成階段 + 耗時），不會再出現「黑畫面 + Unresponsive」；以及 `?world=hk&low=1` 診斷模式（跳過樓宇，只留道路＋車流）。
+
+**現在有甚麼機制防止再犯（兩個新工具）**
+
+1. `tests/hk-traffic.test.cjs` + `tests/helpers/hk-traffic-harness.cjs`：在**子程序**裡建一次車流並跑 120 幀，20 秒硬性 timeout。同步無限迴圈無法在測試程序內中斷，所以用子程序＋`spawnSync({timeout})` 偵測掛機。
+2. `tools/smoke-hk.mjs`：用**真的 three.js**（`npm install three@0.186.1 --no-save`）在 Node 裡把整個香港場景建一次並跑 180 幀，斷言樓宇數、三角形數、實例數、NaN 幾何、每幀成本。這是 agent 沒有瀏覽器時能做到的最強驗證。
+
+實測報告（`node tools/smoke-hk.mjs`）：
+
+```
+phases: 海岸線與維港水面 0ms → 道路、行人道與標線 8ms → 沿街樓宇 51ms → 地標與街道家具 58ms
+cityMs 64 · trafficMs 43 · frameMs 0.198
+triangles 116,970 · meshes 282 · instanced 8 (2,665 instances) · lamps 610
+buildings 1,349 · landmarks 25 (+冠頂 12) · cars 96 · lanes 99
+player 出生於 (65, −201) → 中環
+```
+
+**注意**：`tools/smoke-hk.mjs` 驗證的是「建城與模擬」，**不包括 WebGPU 繪製**（shader 編譯、管線、實際像素）。那一層仍然只有你在瀏覽器能驗。
 
 **仍未驗證（需要你在瀏覽器確認）**
 
