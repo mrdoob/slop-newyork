@@ -38,6 +38,10 @@ const NUM_BUSES = 12;
 const NUM_PEDS = 340;
 const NUM_BIKES = 28; // cyclists riding with the traffic (the player can knock them off)
 const KNOCK_SPEED = 2.2; // m/s: the player's car or bicycle knocks people over above it
+// Masses (kg) for the momentum traded in collisions: a person, a bicycle with its rider, a car, an SUV, a bus (a
+// motorcycle, a truck or a trailer would take theirs). A bus barely notices a car; a car hardly slows for a bicycle
+const MASS = { person: 75, bike: 95, car: 1300, suv: 2100, bus: 12000 };
+const massOf = (v) => (v.bus ? MASS.bus : v.bike ? MASS.bike : v.isSUV ? MASS.suv : MASS.car);
 const DOWN_TIME = 9; // s a knocked-over person lies still before getting up (out of sight, see spawnPed)
 
 // Intelligent Driver Model: max acceleration, comfortable braking, time headway, standstill gap; and the sideways
@@ -476,7 +480,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   const phaseOf = (e) => (e.axisIndex === 0 ? avePhase : stPhase);
   let focusX = 0;
   let focusZ = 140;
-  const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0, halfW: 0.86, halfL: 2.18, push: 0.5 };
+  const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0, halfW: 0.86, halfL: 2.18, mass: MASS.car };
   // The player's own vehicles left standing (main.js): { x, z, halfW, halfL }, which drivers stop behind
   let parked = [];
   function setParked(list) {
@@ -1278,16 +1282,21 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const approachSpeed = (v.tx * v.speed + v.vx - o.tx * o.speed - o.vx) * nx
         + (v.tz * v.speed + v.vz - o.tz * o.speed - o.vz) * nz;
       reportCollision(o, v, (v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, approachSpeed);
-      const transfer = relVn * 0.68;
+      // the momentum traded by their masses: a bus shoves a car aside and rolls on, a car bounces off a bus (two cars
+      // as they always did: the one hit takes 0.68 of the closing speed, the other gives back 0.31)
+      const mv = massOf(v), mo = massOf(o);
+      const transfer = relVn * 1.36 * (mv / (mv + mo));
       o.vx += nx * transfer;
       o.vz += nz * transfer;
-      v.vx -= nx * transfer * 0.45;
-      v.vz -= nz * transfer * 0.45;
+      const back = relVn * 0.61 * (mo / (mv + mo));
+      v.vx -= nx * back;
+      v.vz -= nz * back;
+      const heft = Math.min(1.8, (2 * mv) / (mv + mo)); // how hard o is knocked about
       const across = nz * o.tx - nx * o.tz; // hit from the side spins it
       const along = nx * o.tx + nz * o.tz;
-      o.yawVel += across * Math.min(2.8, relVn * 0.22);
-      o.rollVel += across * Math.min(8.0, relVn) * 0.18;
-      o.pitchVel -= along * Math.min(8.0, relVn) * 0.14;
+      o.yawVel += across * Math.min(2.8, relVn * 0.22) * heft;
+      o.rollVel += across * Math.min(8.0, relVn) * 0.18 * heft;
+      o.pitchVel -= along * Math.min(8.0, relVn) * 0.14 * heft;
       if (relVn > 2.2) spawnCollisionSparks((v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, relVn);
     }
   }
@@ -1353,8 +1362,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     return satHit;
   }
 
-  // Player contact: push the player and the vehicle apart (a bus hardly moves) and trade momentum, with spin,
-  // suspension kicks and sparks
+  // Player contact: push the player and the vehicle apart and trade momentum by their masses (a bus hardly moves and
+  // wrecks a car's run, a bicycle hardly slows it), with spin, suspension kicks and sparks
   function collideWithPlayer(v, rotY, halfW, halfL) {
     const pe = player.entity;
     const relX = pe.position.x - v.x;
@@ -1363,7 +1372,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const hit = overlapWithPlayer(relX, relZ, rotY, halfW, halfL, pe.heading || 0, player.halfW, player.halfL);
     if (!hit) return;
     const { nx, nz, pen, localX, localZ, pSin, pCos } = hit;
-    const massRatio = v.bus ? 0.15 : v.isSUV ? 0.58 : 1.0 - player.push;
+    // massRatio: the vehicle's share of the separation and of the momentum change, pPush the player's
+    const mv = massOf(v), mp = player.mass;
+    const massRatio = mp / (mp + mv);
     const pPush = 1.0 - massRatio;
     pe.position.x += nx * pen * pPush;
     pe.position.z += nz * pen * pPush;
@@ -1381,19 +1392,20 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     if (approachSpeed <= 0) return;
 
     const jImpulse = (1.0 + 0.28) * approachSpeed;
-    const cImpulse = v.bus ? approachSpeed * 0.22 : jImpulse * massRatio * 0.92;
+    const cImpulse = jImpulse * massRatio * 0.92;
     v.vx -= nx * cImpulse;
     v.vz -= nz * cImpulse;
-    v.speed *= v.bus ? 0.55 : 0.35;
+    v.speed *= Math.max(0, 1 - 1.3 * massRatio); // (two cars: 0.35 of it left; a bus hit by a car keeps 0.87)
 
     const localNx = nx * cosY - nz * sinY;
     const localNz = nx * sinY + nz * cosY;
-    if (!v.bus) {
+    const vHeft = Math.min(1.8, 2 * massRatio); // how hard the vehicle is knocked about (1 between two cars)
+    if (vHeft > 0.3) {
       const torque = localZ * localNx - localX * localNz;
-      v.yawVel -= torque * Math.min(4.2, approachSpeed * 0.26);
-      v.yawOffset = clamp(v.yawOffset - torque * Math.min(0.35, approachSpeed * 0.025), -0.65, 0.65);
-      v.pitchVel -= localNz * Math.min(12.0, approachSpeed) * 0.18;
-      v.rollVel += localNx * Math.min(12.0, approachSpeed) * 0.24;
+      v.yawVel -= torque * Math.min(4.2, approachSpeed * 0.26) * vHeft;
+      v.yawOffset = clamp(v.yawOffset - torque * Math.min(0.35, approachSpeed * 0.025) * vHeft, -0.65, 0.65);
+      v.pitchVel -= localNz * Math.min(12.0, approachSpeed) * 0.18 * vHeft;
+      v.rollVel += localNx * Math.min(12.0, approachSpeed) * 0.24 * vHeft;
     }
 
     const contactLocalX = clamp(localX, -halfW, halfW);
@@ -1404,23 +1416,23 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
     if (typeof pe.speed === 'number') {
       const headOnDot = Math.abs(pSin * nx + pCos * nz);
-      pe.speed *= 1.0 - (v.bus ? 0.68 : 0.50) * headOnDot;
+      // the speed lost by the player's share: half of it head on into a car, nearly all into a bus, a few % into a bike
+      pe.speed *= 1.0 - Math.min(0.95, pPush) * headOnDot;
       if (pe.type === 'car') {
-        const pImpulse = v.bus ? approachSpeed * 0.65 : jImpulse * pPush * 0.48;
+        const pImpulse = jImpulse * pPush * 0.48;
         pe.vx = (pe.vx || 0) + nx * pImpulse;
         pe.vz = (pe.vz || 0) + nz * pImpulse;
         const pLocalNx = nx * pCos - nz * pSin;
         const pLocalNz = nx * pSin + nz * pCos;
-        if (!v.bus) {
-          const pRelX = (contactX - pe.position.x) * pCos - (contactZ - pe.position.z) * pSin;
-          const pRelZ = (contactX - pe.position.x) * pSin + (contactZ - pe.position.z) * pCos;
-          const pTorque = pRelZ * pLocalNx - pRelX * pLocalNz;
-          pe.angularVel = (pe.angularVel || 0) + pTorque * Math.min(3.0, approachSpeed * 0.18) * pPush;
-        }
-        const kick = Math.min(v.bus ? 16.0 : 14.0, approachSpeed);
-        pe.pitchVel = (pe.pitchVel || 0) + pLocalNz * kick * (v.bus ? 0.22 : 0.18);
-        pe.rollVel = (pe.rollVel || 0) - pLocalNx * kick * (v.bus ? 0.28 : 0.24);
-        pe.heaveVel = (pe.heaveVel || 0) + Math.min(v.bus ? 1.6 : 1.4, approachSpeed * (v.bus ? 0.14 : 0.11));
+        const pRelX = (contactX - pe.position.x) * pCos - (contactZ - pe.position.z) * pSin;
+        const pRelZ = (contactX - pe.position.x) * pSin + (contactZ - pe.position.z) * pCos;
+        const pTorque = pRelZ * pLocalNx - pRelX * pLocalNz;
+        pe.angularVel = (pe.angularVel || 0) + pTorque * Math.min(3.0, approachSpeed * 0.18) * pPush;
+        const pHeft = Math.min(1.8, 2 * pPush); // how hard the player's car is shaken (1 by a car, ~1.8 by a bus)
+        const kick = Math.min(16.0, approachSpeed);
+        pe.pitchVel = (pe.pitchVel || 0) + pLocalNz * kick * 0.18 * pHeft;
+        pe.rollVel = (pe.rollVel || 0) - pLocalNx * kick * 0.24 * pHeft;
+        pe.heaveVel = (pe.heaveVel || 0) + Math.min(1.6, approachSpeed * 0.11 * pHeft);
       }
     }
     if (approachSpeed > 1.8) spawnCollisionSparks(contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed);
@@ -2089,7 +2101,8 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     p.v = 0;
     p.bail = null;
     reportCollision(player.entity, p, p.x, 1.0, p.z, -hit.nx, -hit.nz, player.speed);
-    if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mode === 'car' ? 0.9 : 0.55;
+    // (a car hardly slows for a person; a bicycle loses about half its speed)
+    if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mass / (player.mass + MASS.person);
   }
 
   // A knocked-over pedestrian flies, lands and lies still, then gets up out of sight (respawned like any other)
@@ -2118,17 +2131,22 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const f = startTumble(v.x, g, v.z, player.vx, player.vz, hit.nx, hit.nz);
     // the rider's pivot as it sat (the hips over the saddle)
     f.y0 = f.py = g + 1.05;
-    // the bicycle skids on, falling on its side
+    // the bicycle, a fraction of the player's weight, is flung too: up & along, cartwheeling, then skids on its side
+    const speed = player.speed;
+    const share = player.mass / (player.mass + MASS.bike); // of the player's velocity it takes (a car: nearly all)
     v.wreck = {
       rider: f,
-      px: v.x, pz: v.z, yaw: v.yaw,
-      vx: player.vx * 0.7 + hit.nx * 1.5, vz: player.vz * 0.7 + hit.nz * 1.5,
-      roll: 0, rollVel: (Math.random() < 0.5 ? -1 : 1) * (2 + player.speed * 0.15), rest: 0
+      px: v.x, pz: v.z, py: 0, yaw: v.yaw,
+      vx: player.vx * 0.8 * share + hit.nx * 1.5, vz: player.vz * 0.8 * share + hit.nz * 1.5,
+      vy: Math.min(7, 0.8 + speed * 0.2 * share),
+      roll: 0, rollVel: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.min(14, speed * 0.35)),
+      yawVel: (Math.random() - 0.5) * Math.min(12, 1 + speed * 0.3),
+      rest: 0
     };
     v.edge = null; // off the road graph (lanes & junctions rebuild their occupancy every frame)
     v.speed = 0;
     reportCollision(player.entity, v, v.x, 0.9, v.z, -hit.nx, -hit.nz, player.speed);
-    if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mode === 'car' ? 0.88 : 0.5;
+    if (player.entity && typeof player.entity.speed === 'number') player.entity.speed *= player.mass / (player.mass + MASS.bike);
   }
 
   function renderBike(v, dt, slot) {
@@ -2160,13 +2178,29 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   function renderWreck(v, dt, slot) {
     const w = v.wreck;
     const restR = stepTumble(w.rider, dt, hillAt(w.rider.px, w.rider.pz), solidAt);
-    const k = Math.exp(-2.5 * dt);
-    w.vx *= k;
-    w.vz *= k;
+    // the bicycle in the air (py over the ground) turns over freely; down, it skids and comes to lie on one side
+    w.vy -= 9.8 * dt;
+    w.py += w.vy * dt;
     slide(w, w.vx * dt, w.vz * dt, solidAt);
-    w.roll = clamp(w.roll + w.rollVel * dt, -1.45, 1.45);
-    if (Math.abs(w.roll) >= 1.45) w.rollVel = 0;
-    if (Math.hypot(w.vx, w.vz) < 0.2) w.rest += dt;
+    w.yaw += w.yawVel * dt;
+    w.roll += w.rollVel * dt;
+    if (w.py <= 0 && w.vy <= 0) { // (down on the ground, not just thrown up from it)
+      w.py = 0;
+      w.vy = w.vy < -2 ? -w.vy * 0.3 : 0;
+      const v0 = Math.hypot(w.vx, w.vz);
+      if (v0 > 0) {
+        const k = (Math.max(0, v0 - 7 * dt) * Math.exp(-1.5 * dt)) / v0; // metal scraping over the asphalt
+        w.vx *= k;
+        w.vz *= k;
+      }
+      w.yawVel *= Math.exp(-4 * dt);
+      w.rollVel *= Math.exp(-6 * dt);
+      // onto the side it's nearest to
+      const side = Math.round((w.roll - 1.45) / (Math.PI * 2)) * Math.PI * 2;
+      const target = Math.abs(w.roll - (side + 1.45)) < Math.abs(w.roll - (side - 1.45)) ? side + 1.45 : side - 1.45;
+      w.roll += (target - w.roll) * Math.min(1, 6 * dt);
+      if (Math.hypot(w.vx, w.vz) < 0.2) w.rest += dt;
+    }
     if (restR > DOWN_TIME && w.rest > DOWN_TIME) {
       v.wreck = null;
       return false;
@@ -2178,7 +2212,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       riderCrowd.add(v.rider, Math.hypot(f.px - focusX, f.pz - focusZ));
     }
     if (hasView && !visible(w.px, w.pz, 4)) return false;
-    dummy.position.set(w.px, 0.04 + hillAt(w.px, w.pz), w.pz);
+    dummy.position.set(w.px, 0.04 + w.py + hillAt(w.px, w.pz), w.pz);
     dummy.rotation.set(0, w.yaw, w.roll, 'YXZ');
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -2415,7 +2449,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     }
     player.halfW = activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : 0.86;
     player.halfL = activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : 2.18;
-    player.push = activeMode === 'cyclist' ? 0.82 : activeMode === 'person' ? 0.88 : 0.50;
+    // (the player's car weighs as the body it took from the traffic, see controllers.js setCarLook)
+    player.mass = activeMode === 'cyclist' ? MASS.bike : activeMode === 'person' ? MASS.person
+      : playerEntity && playerEntity.look && playerEntity.look.bodyType === 'suv' ? MASS.suv : MASS.car;
     player.mode = activeMode;
     player.heading = playerEntity ? playerEntity.heading || 0 : 0;
     player.speed = Math.hypot(player.vx, player.vz);
