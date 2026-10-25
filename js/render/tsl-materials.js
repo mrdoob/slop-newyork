@@ -1989,6 +1989,17 @@ const _transparentEffectMRT = mrt({
 /**
  * Soft Rounded-Rectangle Under-Vehicle Contact Shadow (Ambient Occlusion) TSL Material
  */
+// Smoke puffs (the player's car, controllers.js): soft balls, thick where they face the camera and fading to nothing
+// at their rims, so a sphere reads as a cloud; their grey comes from the instance colour
+function createSmokeMaterial() {
+  const mat = new THREE.MeshStandardNodeMaterial({ transparent: true, depthWrite: false, roughness: 1, metalness: 0 });
+  mat.opacityNode = Fn(() => {
+    const facing = clamp(normalView.z, 0.0, 1.0);
+    return facing.mul(facing).mul(facing).mul(0.5);
+  })();
+  return mat;
+}
+
 function createContactShadowMaterial() {
   const mat = new THREE.MeshBasicNodeMaterial({
     transparent: true,
@@ -2071,5 +2082,6 @@ export {
   createRiverBankMaterial,
   createRiverWaterMaterial,
   createContactShadowMaterial,
+  createSmokeMaterial,
   createCarFlareMaterial
 };

@@ -16,6 +16,8 @@ import { CameraSystem, CAMERA_PRESETS } from './player/cameras.js';
 import { LightingSystem } from './render/lighting.js';
 import { WEATHER_SAMPLES, weatherLabel } from './world/weather.js';
 import { CityMapSystem } from './ui/city-map.js';
+import { Tachometer } from './ui/tachometer.js';
+import { gearLabel } from './player/drivetrain.js';
 import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js';
 import { CityAudioSystem } from './audio/audio-system.js';
 import { buildTerrain } from './world/terrain.js';
@@ -23,6 +25,8 @@ import { buildRiverChannels } from './world/river-channels.js';
 import { groundHeight, townHeight, landHeight, liftAt } from './world/ground.js';
 import { buildTepicLandmarks } from './world/tepic-landmarks.js';
 import { buildCotos } from './world/cotos.js';
+import { CrimeSystem } from './sim/crime.js';
+import { CrimeHud } from './ui/crime-hud.js';
 
 // js/main.js
 // Main entry point for the city (Tepic, Nayarit) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -138,14 +142,14 @@ async function initApp() {
         controllerManager.teleportActiveTo(p.x, p.z, p.heading, p.y);
       }
       const car = saved.looks?.car;
-      if (car && Number.isFinite(car.paint)) controllerManager.setCarLook(car.bodyType, car.paint, car.police);
+      if (car && Number.isFinite(car.paint)) controllerManager.setCarLook(car.bodyType, car.paint, car.police, car.model);
       if (Number.isFinite(saved.looks?.cyclist?.color)) controllerManager.setBikeColor(saved.looks.cyclist.color);
       savedMode = saved.activeMode;
     }
   } catch { /* Missing or unavailable storage does not prevent playing. */ }
   controllerManager.setMode('person');
   controllerManager.landHelicopter(true);
-  if (savedMode === 'car' || savedMode === 'cyclist') {
+  if (savedMode === 'car' || savedMode === 'cyclist' || savedMode === 'moto') {
     controllerManager.setMode(savedMode);
     controllerManager.exitVehicle();
   }
@@ -183,6 +187,24 @@ async function initApp() {
   }
   soundButton?.addEventListener('click', () => audioSystem.setEnabled(!audioSystem.enabled));
   updateSoundButton();
+  // Guns, the police, gangs & thieves (crime.js); killed or arrested, the player comes round at the nearest teleport
+  // spot, on foot
+  const crimeSystem = new CrimeSystem({
+    scene, controllers: controllerManager, traffic: trafficSystem, groundHeight, solidAt, canvas: renderer.domElement,
+    audio: audioSystem,
+    onRespawn: () => {
+      if (controllerManager.activeMode !== 'person') controllerManager.exitVehicle();
+      const p = controllerManager.entities.person.position;
+      let spot = null;
+      for (const t of Object.values(TELEPORT_LOCATIONS)) {
+        if (!spot || Math.hypot(t.x - p.x, t.z - p.z) < Math.hypot(spot.x - p.x, spot.z - p.z)) spot = t;
+      }
+      if (spot) teleportTo(spot.x, spot.z, spot.heading);
+      syncMode();
+    }
+  });
+  audioSystem.sources.pursuers = crimeSystem.cruisers;
+  const crimeHud = new CrimeHud();
   // pagehide also covers navigation away on mobile; preserve the context across back-forward cache restores.
   window.addEventListener('pagehide', (event) => {
     savePlayerState();
@@ -270,6 +292,7 @@ async function initApp() {
   const elLocation = document.getElementById('hud-location');
   const elControlsHint = document.getElementById('hud-controls-hint');
   const elPrompt = document.getElementById('hud-prompt');
+  const tachometer = new Tachometer(document.getElementById('hud-tacho'));
   const liveButton = document.getElementById('time-live');
   const liveLabel = liveButton && liveButton.querySelector('.seg-label');
 
@@ -299,19 +322,25 @@ async function initApp() {
   const gamepadControls = new GamepadControls(controllerManager, cameraSystem, {
     onBoard: board,
     onCycleCamera: cycleCamera,
+    onCycleWeapon: (dir) => crimeSystem.cycleWeapon(dir),
     onToggleMap: () => mapSystem.toggleFullMap(!mapSystem.isFullMapOpen),
     onCloseMap: () => mapSystem.toggleFullMap(false)
   });
 
   // Keyboard guide for each mode: [keys, action]
   const controlHints = {
-    person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['F'], 'Robar / Subir']],
-    car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['B'], 'Horn'], [['F'], 'Bajar']],
-    cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['F'], 'Bajar']],
+    person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['RMB', 'X'], 'Fire'],
+      [['1-4', 'R'], 'Weapon'], [['F'], 'Robar / Subir']], // (3 again: SMG / rifle)
+    car: [[['W', 'S'], 'Gas / Brake'], [['A', 'D'], 'Steer'], [['Shift'], 'Nitro'], [['Space'], 'Handbrake'], [['E', 'Q'], 'Gears'],
+      [['T'], 'Auto / Manual'], [['RMB', 'X'], 'Shoot'], [['F'], 'Bajar']],
+    cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['RMB', 'X'], 'Shoot'], [['F'], 'Bajar']],
+    moto: [[['W', 'S'], 'Gas / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Nitro'], [['E', 'Q'], 'Gears'], [['T'], 'Auto / Manual'],
+      [['RMB', 'X'], 'Shoot'], [['F'], 'Bajar']],
     helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['F'], 'Bajar']]
   };
-  // Boosted top speeds in mph (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
-  const topSpeedMph = { person: 18, car: 81, cyclist: 43, helicopter: 116 };
+  // Boosted top speeds in km/h (controllers.js caps them at 8.2, 19 & 52 m/s; the car has its tachometer instead):
+  // full scale of the speed meter
+  const topSpeedKmh = { person: 30, car: 200, cyclist: 68, helicopter: 187, moto: 110 };
 
   function renderControlHints(mode) {
     if (!elControlsHint) return;
@@ -362,7 +391,7 @@ async function initApp() {
     return own ? { mode: own.mode } : null;
   }
   function board() {
-    if (mapSystem.isFullMapOpen) return;
+    if (mapSystem.isFullMapOpen || crimeSystem.state !== 'play') return;
     if (controllerManager.activeMode !== 'person') {
       if (controllerManager.exitVehicle()) syncMode();
       return;
@@ -372,13 +401,17 @@ async function initApp() {
     if (target.taken) {
       const taken = trafficSystem.hijack(target.taken);
       controllerManager.enterVehicle(taken.kind, taken);
+      // taking a patrol car is always a crime; any other car, if the police see it
+      const p = controllerManager.entities.person.position;
+      if (taken.police) crimeSystem.report('stealCop');
+      else crimeSystem.report('carjack', crimeSystem.copNear(p.x, p.z, 40));
     } else {
       controllerManager.enterVehicle(target.mode);
     }
     syncMode();
   }
   // What F would do here, shown over the controls guide
-  const promptNames = { car: 'Subir al coche', cyclist: 'Subir a la bici', helicopter: 'Subir al helicóptero' };
+  const promptNames = { car: 'Subir al coche', cyclist: 'Subir a la bici', moto: 'Subir a la moto', helicopter: 'Subir al helicóptero' };
   let promptText = '';
   function updatePrompt() {
     let text = '';
@@ -595,6 +628,7 @@ async function initApp() {
   });
 
   const openMapBtn = document.getElementById('btn-open-map');
+  mapSystem.setBlipSource(() => crimeSystem.blips()); // (the police, gangs & pickups on the radar)
   if (openMapBtn) openMapBtn.addEventListener('click', () => mapSystem.toggleFullMap(true));
 
   if (hudToggleBtn) {
@@ -682,7 +716,7 @@ async function initApp() {
   markInit('ui');
   // Debugging handle for the console, only with ?debug in the URL
   if (new URLSearchParams(location.search).has('debug')) {
-    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem };
+    window.__slop = { scene, renderer, controllerManager, trafficSystem, cameraSystem, streetDetails, cityGrid, cityBlocks, mapSystem, audioSystem, crimeSystem };
   }
 
   // The loading screen stays up while the shaders compile (precompileShaders() & the warm-up frame, see the loop) and
@@ -791,9 +825,16 @@ async function initApp() {
     // Update 3rd-person controllers, camera, signals, traffic & vehicle collisions, building LODs, and dynamic shadow focus
     gamepadControls.update(dt);
     controllerManager.update(dt, elapsed);
+    // The car's or moto's tachometer follows the engine every frame (the rest of the HUD every 250 ms, below)
+    const motorMode = controllerManager.activeMode;
+    if (motorMode === 'car' || motorMode === 'moto') {
+      const v = controllerManager.entities[motorMode];
+      const engine = v.damage ? 1 - v.damage.engine : 1;
+      tachometer.update(v.spec, v.drive, Math.round(Math.abs(v.speed) * 3.6), engine, engine <= 0, v.drive ? gearLabel(v.drive, v.spec) : '1');
+    }
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
-    trafficSystem.setParked(controllerManager.parkedVehicles());
+    trafficSystem.setParked(crimeSystem.addObstacles(controllerManager.parkedVehicles()));
     trafficSystem.update(
       dt,
       elapsed,
@@ -805,6 +846,10 @@ async function initApp() {
     highwayTraffic.update(dt, cameraSystem.camera, controllerManager.getActiveEntity(), controllerManager.activeMode);
     // Lamp posts & hydrants the player's car or bicycle runs into (mayhem.js)
     if (streetDetails.breaker) streetDetails.breaker.update(dt, controllerManager.getActiveEntity(), controllerManager.activeMode);
+    // Gunfire, the police, gangs & thieves (crime.js), and a blast's shake of the camera
+    crimeSystem.update(dt, elapsed, cameraSystem.camera);
+    crimeSystem.shakeCamera(cameraSystem.camera);
+    crimeHud.update(crimeSystem, dt);
     if (!document.hidden && now >= nextPlayerSave) {
       savePlayerState();
       nextPlayerSave = now + 5000;
@@ -866,7 +911,7 @@ async function initApp() {
 
       const activeEnt = controllerManager.getActiveEntity();
       const mode = controllerManager.activeMode;
-      const mph = Math.round(Math.abs(activeEnt.speed) * 2.237);
+      const kmh = Math.round(Math.abs(activeEnt.speed) * 3.6);
       // over the town's floor (its slopes put the streets well over y = 0)
       const altM = activeEnt.position.y - controllerManager.floorHeight(activeEnt.position.x, activeEnt.position.z);
       const altFt = Math.max(0, Math.round(altM * 3.281));
@@ -875,9 +920,9 @@ async function initApp() {
         elFps.textContent = String(currentFps);
         elFps.className = currentFps >= 50 ? 'fps-ok' : currentFps >= 30 ? 'fps-warn' : 'fps-bad';
       }
-      if (elSpeed) elSpeed.textContent = String(mph);
-      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, mph / (topSpeedMph[mode] || 80))})`;
-      document.body.classList.toggle('is-boosting', controllerManager.keys.boost && mph > 0);
+      if (elSpeed) elSpeed.textContent = String(kmh);
+      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, kmh / (topSpeedKmh[mode] || 130))})`;
+      document.body.classList.toggle('is-boosting', controllerManager.keys.boost && kmh > 0);
       if (elAltitude) elAltitude.textContent = altFt.toLocaleString('en-US');
       // The street corner of the player on the follow cameras, of the camera itself on the scenic ones
       const where = cameraSystem.getActivePreset().category === 'follow' ? activeEnt.position : cameraSystem.currentPos;

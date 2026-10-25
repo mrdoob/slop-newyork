@@ -16,6 +16,7 @@ import {
   sin,
   abs,
   fract,
+  floor,
   max,
   clamp,
   mix,
@@ -728,6 +729,14 @@ const LEG_COLORS = [0x22242c, 0x35485b, 0x51473d, 0x7c7160, 0x252526];
 const LEG_COLORS_F = [0x1c1c22, 0x2f4a6e, 0x46413b, 0xcfc8bb, 0x5a2a2e];
 const SKIN_COLORS = [0xc68863, 0xa96f4c, 0x8a5535, 0x6b3d24, 0xd9a077];
 const HAIR_COLORS = [0x1a1512, 0x3a2a1a, 0x584022, 0x6e6862, 0x2a2624, 0x8f6d43, 0x5e3020];
+// Outfits worn by whoever's seed is OUTFIT_SEED times the outfit or more (crime.js): 1 police (navy uniform),
+// 2 Los Rojos (red), 3 Los Verdes (green over khaki), 4 a thief (black hoodie), 5 the cartel (black over olive drab).
+// Index 0 (everyone else) is unused.
+const OUTFIT_SEED = 1000;
+const OUTFIT = { police: 1, rojos: 2, verdes: 3, thief: 4, narco: 5 };
+const OUTFIT_COATS = [0, 0x1b2a4c, 0xb0161d, 0x1f7a35, 0x1c1c1f, 0x141518];
+const OUTFIT_SHIRTS = [0, 0x26365a, 0x1a1a1a, 0xe8e6e0, 0x2a2a2d, 0x3a3d2c];
+const OUTFIT_LEGS = [0, 0x161c2b, 0x2f3d5c, 0xa48b5f, 0x3b3b3e, 0x4b4c35];
 
 // Branchless TSL palette selector from an array of hex colors and a [0..1) hash value
 function pickColorFromPalette(hexArray, tNode) {
@@ -788,9 +797,21 @@ function createPersonMaterial(pose) {
 
     const skinCol = pickColorFromPalette(SKIN_COLORS, lane(17.0)).toVar();
     const hairCol = pickColorFromPalette(HAIR_COLORS, lane(3.0)).toVar();
-    const coatCol = mix(pickColorFromPalette(COAT_COLORS, lane(29.0)), pickColorFromPalette(COAT_COLORS_F, lane(29.0)), female).toVar();
-    const shirtCol = pickColorFromPalette(SHIRT_COLORS, lane(71.0)).toVar();
-    const legsCol = mix(pickColorFromPalette(LEG_COLORS, lane(47.0)), pickColorFromPalette(LEG_COLORS_F, lane(47.0)), female);
+    // (an outfit, crime.js: picked by its index, not by chance)
+    const outfit = floor(vInfo.x.mul(1 / OUTFIT_SEED));
+    const dressed = step(0.5, outfit);
+    const wear = outfit.add(0.5).div(OUTFIT_COATS.length);
+    const coatCol = mix(
+      mix(pickColorFromPalette(COAT_COLORS, lane(29.0)), pickColorFromPalette(COAT_COLORS_F, lane(29.0)), female),
+      pickColorFromPalette(OUTFIT_COATS, wear),
+      dressed
+    ).toVar();
+    const shirtCol = mix(pickColorFromPalette(SHIRT_COLORS, lane(71.0)), pickColorFromPalette(OUTFIT_SHIRTS, wear), dressed).toVar();
+    const legsCol = mix(
+      mix(pickColorFromPalette(LEG_COLORS, lane(47.0)), pickColorFromPalette(LEG_COLORS_F, lane(47.0)), female),
+      pickColorFromPalette(OUTFIT_LEGS, wear),
+      dressed
+    );
 
     // Head: skin, hairline (none for the bald), eyes, brows, lips
     const hd = normalize(vec2(q.x, q.z.add(0.01)));
@@ -1035,6 +1056,12 @@ class PersonRig {
     this.air = 0;
     this.time = seed * 7.3;
     this.feet = [makeFoot(1), makeFoot(-1)];
+    // Aiming a gun (crime.js): 0 arms at the sides .. 1 the right arm (both with aimBoth) held out towards aimYaw;
+    // handPosition is where the right hand holds the grip
+    this.aim = 0;
+    this.aimYaw = 0;
+    this.aimBoth = false;
+    this.handPosition = new THREE.Vector3();
     this.pose = new Float32Array(STRIDE * 4);
     this.pose.set([seed, this.female, girth, hair], (STRIDE - 1) * 4);
   }
@@ -1399,11 +1426,25 @@ class PersonRig {
       const abduction = 0.1 + (this.girth - 1) * 0.35 + run * 0.08;
       _shoulder.copy(j[LIMB.upperArm[i]]).sub(j[BONE.CHEST]).multiplyScalar(s).applyQuaternion(_qChest).add(_chest);
       _qUpper.copy(_qChest).multiply(qZ(_q, side * (abduction - ARM_BIND_ABDUCTION))).multiply(qX(_q, -flex));
+      let elbow = 0.2 + 0.55 * Math.max(0, flex) + 0.1 * g + run * 1.05;
+      // aiming: the gun arm straight out level towards the target, the other hand across to steady it
+      const aiming = this.aim * (side < 0 ? 1 : this.aimBoth ? 1 : 0);
+      if (aiming > 0) {
+        qY(_qa, this.aimYaw + (side < 0 ? 0 : -0.5))
+          .multiply(qX(_q, -(Math.PI / 2 - (side < 0 ? 0.06 : 0.2))))
+          .multiply(qZ(_q, -side * ARM_BIND_ABDUCTION));
+        _qUpper.slerp(_qa, aiming);
+        elbow += ((side < 0 ? 0.04 : 0.85) - elbow) * aiming;
+      }
       this.writeBone(LIMB.upperArm[i], _qUpper, _shoulder);
-      const elbow = 0.2 + 0.55 * Math.max(0, flex) + 0.1 * g + run * 1.05;
       _v.copy(j[LIMB.forearm[i]]).sub(j[LIMB.upperArm[i]]).multiplyScalar(s).applyQuaternion(_qUpper).add(_shoulder);
       _q2.copy(_qUpper).multiply(qX(_q, -elbow));
       this.writeBone(LIMB.forearm[i], _q2, _v);
+      if (side < 0) {
+        // the right wrist: a forearm's length on from the elbow
+        this.handPosition.copy(j[LIMB.forearm[i]]).sub(j[LIMB.upperArm[i]]).normalize()
+          .multiplyScalar(FOREARM * s).applyQuaternion(_q2).add(_v);
+      }
     }
 
     // Legs: IK to the ankles, then the feet & toes
@@ -1496,4 +1537,4 @@ class PersonRig {
   }
 }
 
-export { BONE as PERSON_BONES, buildPersonGeometry, createPersonMaterial, PersonCrowd, PersonRig };
+export { BONE as PERSON_BONES, OUTFIT, OUTFIT_SEED, buildPersonGeometry, createPersonMaterial, PersonCrowd, PersonRig };

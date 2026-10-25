@@ -276,7 +276,7 @@ class CameraSystem {
         if (entity.type === 'car') {
           fwdOffset = 0.55;
           eyeY = 1.52;
-        } else if (entity.type === 'cyclist') {
+        } else if (entity.type === 'cyclist' || entity.type === 'moto') {
           fwdOffset = 0.35;
           eyeY = 1.55;
         } else if (entity.type === 'helicopter') {

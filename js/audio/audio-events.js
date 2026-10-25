@@ -254,6 +254,56 @@ function crashDebris(ctx, seed) {
   }, 0.55);
 }
 
+// A gunshot: the muzzle's crack (a broadband snap) on a low chest-thump, with a short tail off the facades. `weapon`:
+// 'pistol' (a sharp crack), 'smg' (lighter and shorter), 'bazooka' (the launch's whoosh and roar)
+function gunshot(ctx, weapon, seed) {
+  const random = randomSource(seed);
+  const bazooka = weapon === 'bazooka';
+  const smg = weapon === 'smg';
+  const duration = bazooka ? 0.9 : smg ? 0.22 : 0.42;
+  const lowCoefficient = 1 - Math.exp(-TAU * (bazooka ? 260 : 900) / ctx.sampleRate);
+  const thumpFrequency = bazooka ? 55 : smg ? 120 : 95;
+  let low = 0;
+  return makeBuffer(ctx, duration, (t) => {
+    const noise = random() * 2 - 1;
+    low += (noise - low) * lowCoefficient;
+    if (bazooka) {
+      const whoosh = (1 - Math.exp(-t * 60)) * Math.exp(-t * 3.2);
+      return low * whoosh * 1.4 + (noise - low) * Math.exp(-t * 40) * 0.5 + Math.sin(TAU * thumpFrequency * t) * Math.exp(-t * 18) * 0.6;
+    }
+    const crack = (noise - low) * Math.exp(-t * (smg ? 160 : 110));
+    const thump = Math.sin(TAU * thumpFrequency * t * (1 - t * 0.6)) * Math.exp(-t * (smg ? 45 : 30));
+    const tail = low * Math.exp(-t * (smg ? 22 : 9)) * 0.55;
+    return crack * 1.3 + thump * 0.8 + tail;
+  }, 0.8);
+}
+
+// An explosion: a deep boom that rolls on, with crackle and falling debris
+function explosion(ctx, seed) {
+  const random = randomSource(seed);
+  const coefficients = [70, 380].map((frequency) => 1 - Math.exp(-TAU * frequency / ctx.sampleRate));
+  const bands = [0, 0];
+  return makeBuffer(ctx, 2.4, (t) => {
+    const noise = random() * 2 - 1;
+    for (let i = 0; i < bands.length; i++) bands[i] += (noise - bands[i]) * coefficients[i];
+    const boom = bands[0] * (1 - Math.exp(-t * 300)) * Math.exp(-t * 1.6) * 4;
+    const body = (bands[1] - bands[0]) * Math.exp(-t * 4.5) * 1.4;
+    const crackle = (noise - bands[1]) * (random() < 0.02 ? 1 : 0.05) * Math.exp(-t * 2.2);
+    const kick = Math.sin(TAU * 42 * t) * Math.exp(-t * 7) * 1.2;
+    return boom + body + crackle + kick;
+  }, 0.9);
+}
+
+// A pickup's chime: two quick rising notes
+function chime(ctx) {
+  return makeBuffer(ctx, 0.32, (t) => {
+    const second = t > 0.09 ? 1 : 0;
+    const f = second ? 1318.5 : 987.8;
+    const local = second ? t - 0.09 : t;
+    return Math.sin(TAU * f * local) * (1 - Math.exp(-local * 900)) * Math.exp(-local * 14);
+  }, 0.5);
+}
+
 function gustBuffer(ctx) {
   // Low-rate, looping control signal: uneven overlapping gusts with a smooth seam, rather than a sine LFO.
   const sampleRate = 8000, duration = 24;
@@ -301,6 +351,13 @@ export function createEventResources(ctx, resources) {
       metal: Array.from({ length: 3 }, (_, i) => crashMetal(ctx, i + 401)),
       debris: Array.from({ length: 3 }, (_, i) => crashDebris(ctx, i + 501))
     },
+    guns: {
+      pistol: Array.from({ length: 3 }, (_, i) => gunshot(ctx, 'pistol', i + 601)),
+      smg: Array.from({ length: 3 }, (_, i) => gunshot(ctx, 'smg', i + 611)),
+      bazooka: [gunshot(ctx, 'bazooka', 621)]
+    },
+    explosions: Array.from({ length: 2 }, (_, i) => explosion(ctx, i + 701)),
+    chime: chime(ctx),
     gusts: gustBuffer(ctx),
     signalTick: signal(ctx, false),
     signalWalk: signal(ctx, true)
@@ -311,7 +368,7 @@ export function playEvent(ctx, resources, kind, output, options = {}) {
   const random = randomSource(options.seed);
   const start = Math.max(ctx.currentTime, finite(options.when, ctx.currentTime));
   const intensity = clamp(finite(options.intensity, 1));
-  const levels = { footstep: 0.22, talk: 0.065, horn: 0.23, signal: 0.13, crash: 0.35 };
+  const levels = { footstep: 0.22, talk: 0.065, horn: 0.23, signal: 0.13, crash: 0.35, gun: 0.5, explosion: 0.7, pickup: 0.18 };
   if (!Object.hasOwn(levels, kind) || intensity === 0) return { endTime: start, dispose() {} };
   const gain = ctx.createGain();
   gain.gain.value = intensity * levels[kind];
@@ -388,6 +445,19 @@ export function playEvent(ctx, resources, kind, output, options = {}) {
     if (severity > 0.45) {
       play(resources.crashes.debris[variant], start + 0.012, rate, (severity - 0.45) / 0.55 * 0.55);
     }
+  } else if (kind === 'gun') {
+    const weapon = options.weapon;
+    if (weapon === 'punch') {
+      play(resources.crashes.body[Math.floor(random() * resources.crashes.body.length)], start, 1.5 + random() * 0.2, 0.8);
+    } else {
+      const set = resources.guns[weapon] || resources.guns.pistol;
+      play(set[Math.floor(random() * set.length)], start, 0.94 + random() * 0.12);
+    }
+  } else if (kind === 'explosion') {
+    play(resources.explosions[Math.floor(random() * resources.explosions.length)], start, 0.9 + random() * 0.15);
+    play(resources.crashes.debris[Math.floor(random() * resources.crashes.debris.length)], start + 0.08, 0.8, 0.6);
+  } else if (kind === 'pickup') {
+    play(resources.chime, start);
   } else {
     play(options.walk ? resources.signalWalk : resources.signalTick, start);
   }
