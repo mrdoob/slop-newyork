@@ -69,6 +69,9 @@ const G = 9.81;
 // Tepic's corners can be taken at speed)
 const CORNER_GRIP = 1.25;
 const SMOKE_PUFFS = 64;
+// The car off the ground (rideGround): the gap (m) under its wheels from which it flies (no grip, no steering: smaller
+// dips the suspension rides out), the landing it takes without losing speed (m/s down), and the air's drag in flight
+const CAR_AIR = { flying: 0.15, hardLanding: 6, drag: 0.0012 };
 const BICYCLE_DRIVE = {
   speed: 12.8, boostSpeed: 19, reverseSpeed: 4.5, acceleration: 9, boostAcceleration: 13.5,
   rolling: 0.08, drag: 0.004, coast: 0.2, brake: 7.5 // Backward input is scaled to 0.6, giving 4.5 m/s² braking.
@@ -612,6 +615,8 @@ class ThirdPersonControllerManager {
       ent.impactArmed = false; // (a stop or jump in its velocity now is no crash, see checkImpact)
       if (ent.drive) ent.drive.shift = 0;
       ent.pitchVel = ent.rollVel = ent.heaveY = ent.heaveVel = 0;
+      ent.vy = 0;
+      ent.airborne = ent.flying = false;
       ent.chassisPivot.rotation.x = ent.chassisPivot.rotation.z = 0;
       ent.chassisPivot.position.y = 0;
       ent.lastCollisionSpark = null;
@@ -862,6 +867,9 @@ class ThirdPersonControllerManager {
       rollVel: 0,
       heaveY: 0,
       heaveVel: 0,
+      vy: 0, // vertical speed (m/s), the ground's rise under it or its flight's
+      airborne: false, // off the ground
+      flying: false, // ...high enough to have lost grip & steering
       lastCollisionSpark: null,
       steerAngle: 0,
       yawRate: 0, // rad/s the tyres turn it at (the collision spin is angularVel)
@@ -1276,12 +1284,14 @@ class ThirdPersonControllerManager {
     return !!b && !(b.park > 0.6 && !b.median);
   }
 
-  getGroundHeight(x, z, mode = 'person') {
-    // the ground (ground.js): the town's floor & the hills over it; everyone stands on it, a walker on the curbs over
-    // the town's floor (unless a hill rises above them)
-    const ground = this.terrainAt ? this.terrainAt(x, z) : 0;
+  getGroundHeight(x, z, mode = 'person', fromY = undefined) {
+    // the ground (ground.js): the town's floor, the hills over it & the river channels cut into it (under a bridge
+    // for a body coming from `fromY` down in the channel); everyone stands on it, a walker on the curbs over the
+    // town's floor (unless a hill rises above them, or it is down in a channel)
+    const ground = this.terrainAt ? this.terrainAt(x, z, fromY) : 0;
     if (mode === 'person') {
       const town = this.floorHeight(x, z);
+      if (ground < town - 0.01) return ground;
       return town + Math.max(this.isPointOnSidewalk(x, z) ? ISLAND_BOUNDS.sidewalkHeight : 0.0, ground - town);
     }
     return ground;
@@ -1489,12 +1499,14 @@ class ThirdPersonControllerManager {
     b.helmet.position.set(0, 0.175, -0.012).applyQuaternion(b.helmet.quaternion).add(b.riderRig.headPosition);
   }
 
-  // The ground at (x, z) (ground.js groundHeight: the hills over the town's floor), for where everyone stands and the
-  // slopes the player can't drive up, and the town's floor alone (townHeight). The vehicles left standing are set on
-  // it (they were built at y = 0)
-  setTerrain(ground, floor = null) {
+  // The ground at (x, z) (ground.js groundHeight: the hills over the town's floor, the river channels cut into it), for
+  // where everyone stands, the town's floor alone (townHeight), and the land without the channels (landHeight) for the
+  // slopes the player can't climb (a channel's banks are climbed out of, whatever their pitch). The vehicles left
+  // standing are set on it (they were built at y = 0)
+  setTerrain(ground, floor = null, land = null) {
     this.terrainAt = typeof ground === 'function' ? ground : null;
     this.floorAt = typeof floor === 'function' ? floor : null;
+    this.landAt = typeof land === 'function' ? land : null;
     for (const mode of ['person', 'car', 'cyclist', 'moto']) {
       const e = this.entities[mode];
       if (!e) continue;
@@ -1507,25 +1519,25 @@ class ThirdPersonControllerManager {
   // scrambles up 1:1, a bicycle 1:2.2, a car 1:2.5); a step up anything steeper is undone and the speed bounces back.
   // The helicopter can't sink into a hill
   keepOffHills(entity, prevX, prevZ) {
-    const hill = this.terrainAt;
-    if (!hill || !entity) return;
-    const h = hill(entity.position.x, entity.position.z);
+    if (!this.terrainAt || !entity) return;
     if (this.activeMode === 'helicopter') {
+      const h = this.terrainAt(entity.position.x, entity.position.z);
       if (entity.position.y < h + 1.5) {
         entity.position.y = h + 1.5;
         if (entity.verticalSpeed < 0) entity.verticalSpeed = 0;
       }
       return;
     }
+    const hill = this.landAt || this.terrainAt;
     const run = Math.hypot(entity.position.x - prevX, entity.position.z - prevZ);
-    const rise = h - hill(prevX, prevZ);
+    const rise = hill(entity.position.x, entity.position.z) - hill(prevX, prevZ);
     const grade = this.activeMode === 'person' ? 1.0 : this.activeMode === 'cyclist' || this.activeMode === 'moto' ? 0.45 : 0.4;
     if (run > 1e-4 && rise > grade * run) {
       // back where it was, and down on the ground there again (unless it is in the air, a jump)
-      const onGround = entity.position.y <= this.getGroundHeight(entity.position.x, entity.position.z, this.activeMode) + 0.02;
+      const onGround = entity.position.y <= this.getGroundHeight(entity.position.x, entity.position.z, this.activeMode, entity.position.y) + 0.02;
       entity.position.x = prevX;
       entity.position.z = prevZ;
-      if (onGround) entity.position.y = this.getGroundHeight(prevX, prevZ, this.activeMode);
+      if (onGround) entity.position.y = this.getGroundHeight(prevX, prevZ, this.activeMode, entity.position.y);
       if (typeof entity.speed === 'number') entity.speed *= -0.25;
       if (entity.vx) entity.vx = 0;
       if (entity.vz) entity.vz = 0;
@@ -1569,7 +1581,8 @@ class ThirdPersonControllerManager {
       this.updateHelicopter(dt, elapsed);
     }
     this.keepOffHills(active, prevX, prevZ);
-    if (this.activeMode === 'car' || this.activeMode === 'cyclist' || this.activeMode === 'moto') this.tiltToGround(active, 1 - Math.exp(-dt * 14));
+    if (this.activeMode === 'car' && active.flying) this.tiltInAir(active, dt);
+    else if (this.activeMode === 'car' || this.activeMode === 'cyclist' || this.activeMode === 'moto') this.tiltToGround(active, 1 - Math.exp(-dt * 14));
     // (after the hills: a slope too steep to climb stops the car, but doesn't crash it)
     if (this.activeMode === 'car') this.recordVelocity(active);
     this.updateSmoke(dt);
@@ -1623,7 +1636,7 @@ class ThirdPersonControllerManager {
     p.position.z += Math.cos(p.heading) * p.speed * dt;
     this.resolveHorizontalCollision(p.position, 0.48);
 
-    const groundY = this.getGroundHeight(p.position.x, p.position.z, 'person');
+    const groundY = this.getGroundHeight(p.position.x, p.position.z, 'person', p.position.y);
     if (this.keys.up && p.position.y <= groundY + 0.02) {
       p.verticalVel = 5.2;
     }
@@ -1656,10 +1669,12 @@ class ThirdPersonControllerManager {
     input.handbrake = handbrake;
     input.nitro = Boolean(this.keys.boost);
     input.shift = shift;
-    input.slope = this.slopeAcceleration(c.position.x, c.position.z, c.heading);
+    input.slope = c.flying ? 0 : this.slopeAcceleration(c.position.x, c.position.z, c.heading);
     input.power = enginePower(dmg);
-    c.speed = stepDrive(d, spec, input, c.speed, dt);
-    const acceleration = dt > 0 ? (c.speed - previousSpeed) / dt : 0;
+    const driven = stepDrive(d, spec, input, c.speed, dt);
+    // in the air the wheels push on nothing (the engine still revs): only the air slows it
+    c.speed = c.flying ? previousSpeed / (1 + CAR_AIR.drag * Math.abs(previousSpeed) * dt) : driven;
+    const acceleration = dt > 0 && !c.flying ? (c.speed - previousSpeed) / dt : 0;
 
     let steerInput = 0;
     if (this.keys.left) steerInput = this.keys.left;
@@ -1689,19 +1704,20 @@ class ThirdPersonControllerManager {
     const cornerGrip = spec.grip * CORNER_GRIP * G;
     const maxYaw = cornerGrip / Math.max(3, Math.abs(u)) * (handbrake ? 1.9 : rearLoose ? 1.35 : 1);
     const yawTarget = Math.max(-maxYaw, Math.min(maxYaw, u * Math.tan(steer) / spec.wheelbase * (handbrake ? 1.5 : 1)));
-    c.yawRate += (yawTarget - c.yawRate) * (1 - Math.exp(-dt * (handbrake ? 4.5 : 10)));
+    // (in the air the tyres turn nothing: it keeps the spin it left the ground with)
+    if (!c.flying) c.yawRate += (yawTarget - c.yawRate) * (1 - Math.exp(-dt * (handbrake ? 4.5 : 10)));
 
     // Sideways grip: an exponential hold at small slip, limited to what the rubber can give (it slides further when
     // sliding fast, and much further with the rear wheels locked)
     const slip = Math.hypot(c.vx, c.vz);
-    if (slip > 0) {
+    if (slip > 0 && !c.flying) {
       const hold = handbrake ? 1.1 : rearLoose ? 3.2 : 9;
       const limit = cornerGrip * (handbrake ? 0.32 : rearLoose ? 0.6 : 1) * dt;
       const k = Math.max(0, slip - Math.min(slip * (1 - Math.exp(-dt * hold)), limit)) / slip;
       c.vx *= k;
       c.vz *= k;
     }
-    c.drifting = slip > 2.2 && Math.abs(u) > 5;
+    c.drifting = slip > 2.2 && Math.abs(u) > 5 && !c.flying;
 
     const prevX = c.position.x;
     const prevZ = c.position.z;
@@ -1713,7 +1729,7 @@ class ThirdPersonControllerManager {
     this.resolveHorizontalCollision(c.position, 1.35, c);
     const outSin = Math.sin(c.heading), outCos = Math.cos(c.heading);
     this.impactCar(c, outSin * c.speed + c.vx - hitVx, outCos * c.speed + c.vz - hitVz);
-    c.position.y = this.getGroundHeight(c.position.x, c.position.z, 'car');
+    this.rideGround(c, dt);
 
     // 3-DOF Spring-Damper Chassis Suspension (Pitch, Roll & Vertical Heave): it squats and dives with the
     // acceleration and leans out of the corner with the sideways acceleration (speed × yaw rate)
@@ -1892,6 +1908,59 @@ class ThirdPersonControllerManager {
     sm.wasLive = live;
   }
 
+  // The car on the ground or off it. On the ground it rides the slope, its vertical speed the ground's rise under it;
+  // where the ground falls away faster than gravity pulls the car down after it (over a crest at speed, off a river's
+  // bank) it leaves it, keeping the speed it climbed with, and flies (without grip or steering, once clear of what the
+  // suspension rides out) until it lands, the suspension taking the blow and a hard landing some of its speed.
+  rideGround(c, dt) {
+    const ground = this.getGroundHeight(c.position.x, c.position.z, 'car', c.position.y);
+    if (!(dt > 0)) {
+      c.position.y = ground;
+      return;
+    }
+    const g = G;
+    if (!Number.isFinite(c.vy)) c.vy = 0;
+    if (!c.airborne) {
+      // the ballistic path from where it was: still on the ground, or leaving it
+      const free = c.position.y + (c.vy - g * dt) * dt;
+      if (free <= ground) {
+        c.vy = Math.max(-40, Math.min(40, (ground - c.position.y) / dt));
+        c.position.y = ground;
+        c.flying = false;
+        return;
+      }
+      c.airborne = true;
+    }
+    c.vy -= g * dt;
+    c.position.y += c.vy * dt;
+    if (c.position.y > ground) {
+      c.flying = c.position.y - ground > CAR_AIR.flying;
+      return;
+    }
+    // Touchdown: what is left of its fall against the ground's own rise along its path
+    const fx = Math.sin(c.heading) * c.speed + c.vx, fz = Math.cos(c.heading) * c.speed + c.vz;
+    const groundRise = (this.getGroundHeight(c.position.x + fx * dt, c.position.z + fz * dt, 'car', ground) - ground) / dt;
+    const impact = Math.max(0, groundRise - c.vy);
+    c.position.y = ground;
+    c.vy = groundRise;
+    c.airborne = c.flying = false;
+    c.heaveVel -= Math.min(5, impact * 0.45);
+    c.pitchVel += Math.min(1.5, impact * 0.08) * (c.speed >= 0 ? 1 : -1);
+    if (impact > CAR_AIR.hardLanding) c.speed *= Math.max(0.55, 1 - (impact - CAR_AIR.hardLanding) * 0.05);
+  }
+
+  // A flying car's body noses over with its path (the nose up while it climbs, down as it falls) and levels out
+  tiltInAir(ent, dt) {
+    const k = 1 - Math.exp(-dt * 3);
+    const along = Math.max(6, Math.abs(ent.speed));
+    const target = -Math.atan2(ent.vy, along) * 0.75 * (ent.speed < 0 ? -1 : 1);
+    ent.groundPitch = (ent.groundPitch || 0) + (target - (ent.groundPitch || 0)) * k;
+    ent.groundRoll = (ent.groundRoll || 0) * (1 - k);
+    ent.mesh.rotation.order = 'YXZ';
+    ent.mesh.rotation.x = ent.groundPitch;
+    ent.mesh.rotation.z = ent.groundRoll;
+  }
+
   updateCyclist(dt) {
     const b = this.entities.cyclist;
 
@@ -1914,7 +1983,7 @@ class ThirdPersonControllerManager {
     b.position.x += Math.sin(b.heading) * b.speed * dt;
     b.position.z += Math.cos(b.heading) * b.speed * dt;
     this.resolveHorizontalCollision(b.position, 0.65, null, b);
-    b.position.y = this.getGroundHeight(b.position.x, b.position.z, 'cyclist');
+    b.position.y = this.getGroundHeight(b.position.x, b.position.z, 'cyclist', b.position.y);
 
     const targetLean = -turnInput * Math.min(1.0, Math.abs(b.speed) / 9.0) * 0.34;
     b.leanAngle += (targetLean - b.leanAngle) * Math.min(1, dt * 9);
