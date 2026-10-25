@@ -76,11 +76,20 @@ function collectTriangles(root) {
         const vi = index ? index.getX(i + k) : i + k;
         v[k].fromBufferAttribute(position, vi).applyMatrix4(object.matrixWorld);
       }
-      tris.push({ a: v[0].clone(), b: v[1].clone(), c: v[2].clone(), color: triColor(index ? index.getX(i) : i) });
+      const partIdx = index ? index.getX(i) : i;
+      tris.push({
+        a: v[0].clone(), b: v[1].clone(), c: v[2].clone(),
+        color: triColor(partIdx),
+        partId: partAttr ? Math.round(partAttr.getX(partIdx)) : -1,
+        // 物件座標（的士模型冇變換，所以世界座標 = 物件座標；仍舊明確記住）
+        oa: v[0].clone(), ob: v[1].clone(), oc: v[2].clone()
+      });
     }
   });
   return tris;
 }
+
+let liveryPaint = null;
 
 function render(tris, camera, width, height) {
   camera.updateMatrixWorld(true);
@@ -127,10 +136,13 @@ function render(tris, camera, width, height) {
     const normal = new THREE.Vector3().subVectors(tri.b, tri.a).cross(new THREE.Vector3().subVectors(tri.c, tri.a));
     if (normal.lengthSq() === 0) continue;
     normal.normalize();
+    // 塗裝判斷要用「幾何原本的法線」（例如 n.z < 0 代表車尾）；雙面著色只是為了畫得亮，
+    // 如果直接改 normal 就會令車尾燈／鬼面罩的判斷反轉（試過：尾燈變成空心紅框）。
+    const shadeNormal = normal.clone();
     const toCamera = new THREE.Vector3().subVectors(camera.position, tri.a);
-    if (normal.dot(toCamera) < 0) normal.negate(); // 雙面著色
+    if (shadeNormal.dot(toCamera) < 0) shadeNormal.negate();
     let light = 0.32;
-    for (const dir of LIGHT_DIRS) light += 0.46 * Math.max(0, normal.dot(dir));
+    for (const dir of LIGHT_DIRS) light += 0.46 * Math.max(0, shadeNormal.dot(dir));
     light = Math.min(1.25, light);
 
     const minX = Math.max(0, Math.floor(Math.min(screen[0].x, screen[1].x, screen[2].x)));
@@ -154,9 +166,17 @@ function render(tris, camera, width, height) {
         const idx = y * width + x;
         if (z >= depth[idx]) continue;
         depth[idx] = z;
-        color[idx * 3] = Math.min(255, tri.color[0] * light);
-        color[idx * 3 + 1] = Math.min(255, tri.color[1] * light);
-        color[idx * 3 + 2] = Math.min(255, tri.color[2] * light);
+        let base = tri.color;
+        if (liveryPaint && tri.partId >= 0) {
+          // 逐像素插值物件座標 → 用真材質同一套規則上色
+          const px = tri.oa.x * w0 + tri.ob.x * w1 + tri.oc.x * w2;
+          const py = tri.oa.y * w0 + tri.ob.y * w1 + tri.oc.y * w2;
+          const pz = tri.oa.z * w0 + tri.ob.z * w1 + tri.oc.z * w2;
+          base = liveryPaint({ x: px, y: py, z: pz }, normal, tri.partId);
+        }
+        color[idx * 3] = Math.min(255, base[0] * light);
+        color[idx * 3 + 1] = Math.min(255, base[1] * light);
+        color[idx * 3 + 2] = Math.min(255, base[2] * light);
       }
     }
   }
@@ -184,7 +204,13 @@ const VIEWS = {
   front: { pos: [0.05, 1.5, 7.4], target: [0, 1.0, 0] },
   side: { pos: [8.2, 1.7, 0.1], target: [0, 1.0, 0] },
   rear: { pos: [-0.05, 1.6, -7.4], target: [0, 1.0, 0] },
-  top: { pos: [0.01, 11, 0.02], target: [0, 1, 0] }
+  top: { pos: [0.01, 11, 0.02], target: [0, 1, 0] },
+  // 特寫：車頭（鬼面罩、燈、牌）
+  nose: { pos: [2.2, 1.05, 4.3], target: [0, 0.68, 2.1] },
+  // 特寫：車側（輪圈、車門證、腰線）
+  wheel: { pos: [4.2, 0.55, 2.7], target: [0.6, 0.34, 1.4] },
+  // 特寫：車尾（尾燈、後牌）
+  tail: { pos: [-2.0, 1.1, -4.4], target: [0, 0.72, -2.2] }
 };
 
 /** 全套視圖輸出（回傳寫出的檔名）。 */
@@ -221,6 +247,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const names = args.filter((a) => !a.startsWith('--'));
   const { buildTaxi, buildDoubleDecker, buildTram, buildMinibus, buildFerry } = await import('../js/hk/vehicles.js');
   const builders = { taxi: buildTaxi, bus: buildDoubleDecker, tram: buildTram, minibus: buildMinibus, ferry: buildFerry };
+  if (names.includes('taxi') || !names.length) {
+    const { paintHKT } = await import('./hk-taxi-livery.mjs');
+    const { HK_TAXI_SPEC } = await import('../js/hk/vehicles.js');
+    liveryPaint = (p, n, partId) => paintHKT(p, n, partId, HK_TAXI_SPEC);
+  }
   for (const name of names.length ? names : ['taxi']) {
     const builder = builders[name];
     if (!builder) {

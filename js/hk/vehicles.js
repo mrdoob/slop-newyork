@@ -101,7 +101,7 @@ export const HK_TAXI_SPEC = (() => {
     doors: [0.92, -0.34, -1.06],
     handles: [-0.18, -0.94],
     headlight: [0.56, 0.63, 0.235, 0.072],
-    taillight: [0.57, 0.82, 0.245, 0.055],
+    taillight: [0.575, 0.8, 0.25, 0.082],
     grille: [0.635, 0.3, 0.055],
     intake: [0.37, 0.42, 0.042],
     plates: [0.46, 0.6],
@@ -115,7 +115,11 @@ export const HK_TAXI_SPEC = (() => {
     twoTone: 0xdfe4e6,
     doorMirrors: false, // 香港的士用沙板鏡，唔要車門鏡
     fenderMirror: { z: 1.28, y: 0.88, x: 0.7 },
-    signSize: { hw0: 0.27, hw1: 0.25, h: 0.185, depth: 0.3 }
+    signSize: { hw0: 0.27, hw1: 0.25, h: 0.185, depth: 0.3 },
+    // 香港的士塗裝：黑色橡膠泵把、鍍鉻橫間鬼面罩 + 綠色「TAXI 5 SEATS」牌、白前牌 / 黃後牌、
+    // 車門車隊證、車頂白底紅字「TAXI」燈箱（全部由 TSL 材質在同一個 draw call 內畫）
+    livery: 'hk-taxi',
+    hk: { badgeX: 0.155 }
   };
   // 由 sedan 展開：唔可以帶走 sedan 已計算好的曲線／玻璃艙快取，否則會畫成 sedan。
   delete spec._body;

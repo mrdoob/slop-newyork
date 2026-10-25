@@ -210,7 +210,8 @@ const CAR_PARTS = {
   SIGN: 6,
   FRONT: 7,
   REAR: 8,
-  CHROME: 9 // 鉻件（香港的士的沙板鏡、水牌邊）：共用同一個 instanced 材質
+  CHROME: 9, // 鉻件（香港的士的沙板鏡、水牌邊）：共用同一個 instanced 材質
+  PLATE: 10 // 香港車牌（白前／黃後，黑色字）：真車的車牌是獨立一塊板，唔係畫在泵把上
 };
 
 // Design tables. Curves are [z, value] control points (z = +front); nose / tail entries are [length, tip value,
@@ -867,6 +868,44 @@ function buildFenderMirrors(spec) {
   return list;
 }
 
+// 香港的士的車牌：真車前後各掛一塊獨立的白／黃板（黑字），唔係烤在泵把上的漆。
+// 做成獨立幾何件，近看有厚度、有陰影邊，遠看仍然係同一個 instanced draw call。
+function buildHkPlates(spec) {
+  const list = [];
+  const [plateF, plateR] = spec.plates;
+  for (const front of [true, false]) {
+    const z = front ? spec.zFront + 0.01 : spec.zRear - 0.01;
+    const y = front ? plateF : plateR;
+    const plate = roundedBox(0.156, 0.049, 0.014, 0.02, 0.005).translate(0, y, z);
+    list.push(part(plate, CAR_PARTS.PLATE));
+  }
+  return list;
+}
+
+// 香港的士的車身細節：四隻車門把手（鉻）、油缸蓋。這些是「摸得到」的立體件，
+// 唔係畫上去的貼圖 —— 近距離睇車身唔會再係一塊光滑的紅色。
+function buildHkTrimParts(spec) {
+  const list = [];
+  const y = 0.79;
+  for (const side of [-1, 1]) {
+    for (const z of spec.handles || []) {
+      const x = carBodyHalfWidthAt(spec, z, y);
+      const handle = roundedBox(0.055, 0.028, 0.14, 0.014, 0.007)
+        .rotateY(Math.PI / 2)
+        .translate(side * (x + 0.006), y, z);
+      list.push(part(handle, CAR_PARTS.CHROME));
+    }
+  }
+  // 油缸蓋（右後沙板）
+  const fuelZ = spec.zRear + 0.62;
+  const fuelX = carBodyHalfWidthAt(spec, fuelZ, 0.7);
+  const fuel = new THREE.CylinderGeometry(0.062, 0.062, 0.012, 14)
+    .rotateZ(Math.PI / 2)
+    .translate(fuelX + 0.004, 0.7, fuelZ);
+  list.push(part(fuel, CAR_PARTS.CHROME));
+  return list;
+}
+
 function buildCarGeometry(spec, includeWheels = true) {
   // doorMirrors === false：車門鏡換成沙板鏡的車款（香港的士）唔要門鏡，否則車闊會多 0.3 m
   const mirrors = spec.doorMirrors === false ? [] : buildMirrors(spec);
@@ -880,6 +919,10 @@ function buildCarGeometry(spec, includeWheels = true) {
   if (spec.rails) parts.push(...buildRoofRails(spec));
   if (spec.sign) parts.push(...buildTaxiSign(spec));
   if (spec.fenderMirror) parts.push(...buildFenderMirrors(spec));
+  if (spec.livery === 'hk-taxi') {
+    parts.push(...buildHkTrimParts(spec));
+    parts.push(...buildHkPlates(spec));
+  }
   return mergeGeometries(parts);
 }
 
@@ -1081,8 +1124,14 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const isMirror = isPart(CAR_PARTS.MIRROR);
   const isSign = isPart(CAR_PARTS.SIGN);
   const isChrome = isPart(CAR_PARTS.CHROME);
+  const isPlate = isPart(CAR_PARTS.PLATE);
+  // 香港的士塗裝（spec.livery === 'hk-taxi'）：見下面「香港的士塗裝」一段
+  const isHK = spec.livery === 'hk-taxi';
+  const hkSpec = spec.hk || {};
   // 雙色車身（香港的士：上半身銀白、下半身紅）：只影響玻璃艙的「車漆」部分（車頂、A/C 柱）
   const upperPaint = spec.twoTone ? color(spec.twoTone) : paint;
+  // 香港的士的泵把係黑色橡膠（紐約車用深灰膠邊）
+  const trimPaint = color(isHK ? 0x17191c : 0x1b1e21);
   const ax = abs(p.x);
   const isSide = smoothstep(0.45, 0.7, abs(n.x));
   const front = smoothstep(0.12, 0.38, n.z).mul(step(frontZone, p.z)).mul(isBody);
@@ -1213,7 +1262,8 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     .mul(smoothstep(0.81, 0.805, p.y))
     .mul(step(abs(p.z.sub(doorMid)), 0.22));
   let painted = mix(mix(paint, color(0x1d3f8f), max(band, lettering).mul(isPolice)), color(0x6fa8dc), pin.mul(isPolice));
-  if (spec.sign) {
+  // 紐約的士的車門徽章與 medallion 號碼（香港的士另有自己的車隊證，見上面）
+  if (spec.sign && !isHK) {
     const badge = roundedRect(vec2(p.z.sub(doorMid), p.y.sub(0.66)), vec2(0.21, 0.052), 0.012).mul(isSide).mul(isBody);
     const emblem = smoothstep(0.042, 0.036, length(vec2(abs(p.z.sub(doorMid)).sub(0.15), p.y.sub(0.66))));
     const letters = step(0.35, sin(p.z.mul(95.0)))
@@ -1252,6 +1302,20 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const tailShade = smoothstep(0.0, tlH, abs(tlUV.y)).mul(-0.3).add(1.0);
   const tailColor = mix(mix(color(0xae1821).mul(tailShade), color(0xc56b18), turnRearSection), color(0xbac4c9), reverseRearSection);
   body = mix(body, color(0x15181b), rearValance);
+  if (isHK) {
+    const taillightLensHK = roundedRect(tlUV, vec2(tlW * 0.9, tlH * 0.9), 0.014)
+      .mul(smoothstep(0.02, 0.25, n.z.negate())).mul(step(p.z, rearZone)).mul(isBody);
+    // 香港的士的尾燈有黑色燈框（要畫在燈罩之前，否則會蓋住紅色燈罩）
+    const tailBezelHK = roundedRect(tlUV, vec2(tlW + 0.016, tlH + 0.014), 0.02)
+      .mul(smoothstep(0.02, 0.25, n.z.negate())).mul(step(p.z, rearZone)).mul(isBody);
+    body = mix(body, color(0x121416), tailBezelHK);
+    // 燈罩比車漆深（真車的燈罩是深紅玻璃），遠看才有邊界
+    body = mix(body, color(0x7f121c), taillightLensHK);
+    // 內側白色倒車燈（真車尾燈是三段式：紅 / 白 / 琥珀）
+    const reverseLamp = roundedRect(vec2(ax.sub(tlX - tlW * 0.55), p.y.sub(tlY)), vec2(tlW * 0.3, tlH * 0.85), 0.01)
+      .mul(smoothstep(0.02, 0.25, n.z.negate())).mul(step(p.z, rearZone)).mul(isBody);
+    body = mix(body, color(0xe4e8ea), reverseLamp);
+  }
   body = mix(body, color(0x7a0a10), reflector);
   body = mix(body, color(0x222326), taillight);
   body = mix(body, tailColor, tailLens);
@@ -1260,12 +1324,49 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   body = mix(body, body.mul(pocketShade), platePocket);
   body = mix(body, color(0x303438), trunkHandle);
   body = mix(body, color(0x24292d), plateRecess);
-  body = mix(body, color(0xf2b718), plates);
-  const plateVariant = floor(fract(paint.r.mul(7).add(paint.g.mul(13)).add(paint.b.mul(17))).mul(4));
-  const plateUV = vec2(p.x.div(-0.31).add(0.5), p.y.sub(plateR).div(0.12).add(0.5));
-  const plateColor = texture(carPlateTexture(), vec2(plateUV.x, plateUV.y.add(plateVariant).div(4))).rgb;
-  body = mix(body, plateColor, plateRear);
+  // 紐約的黃底車牌貼圖。香港的士唔用貼圖：車牌係獨立一塊 CAR_PARTS.PLATE 薄板（見下面塗裝段）。
+  if (!isHK) {
+    body = mix(body, color(0xf2b718), plates);
+    const plateVariant = floor(fract(paint.r.mul(7).add(paint.g.mul(13)).add(paint.b.mul(17))).mul(4));
+    const plateUV = vec2(p.x.div(-0.31).add(0.5), p.y.sub(plateR).div(0.12).add(0.5));
+    const plateColor = texture(carPlateTexture(), vec2(plateUV.x, plateUV.y.add(plateVariant).div(4))).rgb;
+    body = mix(body, plateColor, plateRear);
+  }
   body = mix(body, color(0x0e1013), under);
+
+  // ---- 香港的士塗裝（城市的靈魂）------------------------------------------------------------------------------
+  // 相片對照：紅色車身 + 銀白上半身、黑色橡膠泵把、鍍鉻橫間鬼面罩 + 綠色「TAXI 5 SEATS」牌、
+  // 白前牌 / 黃後牌、車門車隊證、車頂白底紅字「TAXI」燈箱、鍍鉻腰線與沙板鏡。
+  // 全部由 object-space 位置計算，所以仍然係同一個 instanced draw call。
+  if (isHK) {
+    // 鬼面罩：黑底 + 鉻橫間 + 鉻框（照片入面最搶眼的一塊）
+    const gInner = roundedRect(vec2(p.x, p.y.sub(grY)), vec2(grW - 0.016, grH - 0.012), 0.008).mul(front);
+    const gSlat = step(0.62, fract(p.y.mul(78.0))).mul(gInner);
+    body = mix(body, color(0x181b1e), grille);
+    body = mix(body, color(0xb9c2c8), max(gSlat.mul(0.9), grille.sub(gInner)));
+    // 綠色「TAXI 5 SEATS」牌（貼在鬼面罩左邊）
+    const badge = roundedRect(vec2(p.x.add(hkSpec.badgeX ?? 0.155), p.y.sub(grY - 0.004)), vec2(0.06, 0.034), 0.014).mul(front);
+    const badgeText = step(0.5, fract(p.y.mul(150.0))).mul(step(0.12, abs(p.x.add(hkSpec.badgeX ?? 0.155))).negate().add(1));
+    body = mix(body, color(0x0d9450), badge);
+    body = mix(body, color(0xeaf6ee), badgeText.mul(badge).mul(0.8));
+    // 下進氣口：黑色格柵（照片中泵把上是黑色網）
+    body = mix(body, color(0x15181a), intake);
+    // 頭燈：黑色燈框 → 清玻璃燈罩 → 外側琥珀轉向燈（香港的士的長方形分段燈）
+    const bezel = roundedRect(hlUV, vec2(hlW + 0.018, hlH + 0.016), 0.012).mul(smoothstep(0.02, 0.25, n.z)).mul(step(frontZone, p.z)).mul(isBody);
+    body = mix(body, color(0x121416), bezel);
+    body = mix(body, color(0xe9eef2), headlightLens);
+    // 車門車隊證（白底藍字的小貼紙）
+    const doorCard = roundedRect(vec2(p.z.sub((spec.doors[0] + spec.doors[1]) / 2 - 0.12), p.y.sub(0.66)), vec2(0.115, 0.045), 0.01)
+      .mul(isSide).mul(isBody);
+    const cardStripe = step(0.55, fract(p.z.mul(52.0))).mul(doorCard);
+    body = mix(body, color(0xe9f2f0), doorCard);
+    body = mix(body, color(0x2f6f9c), cardStripe.mul(0.85));
+    // 尾箱上緣的鍍鉻飾條：貼在尾燈上方，避免斜線橫過燈罩
+    const bootChrome = roundedRect(vec2(p.x, p.y.sub(tlY + tlH + 0.035)), vec2(tlX + tlW + 0.03, 0.005), 0.003)
+      .mul(rear).mul(step(tlY + tlH + 0.02, p.y));
+    body = mix(body, color(0xc3cbd0), bootChrome);
+  }
+
 
   // Glasshouse: tinted glass, black seals & B / C pillars, painted roof & A pillars, chrome sill strip, CHMSL
   const glassCol = mix(color(0x0a1016), color(0x1a2632), smoothstep(0.2, 0.9, n.y));
@@ -1274,7 +1375,9 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
 
   // Mirror caps (paint, glass facing back), taxi roof light, trims, alloys & tyres
   const mirrorCol = mix(paint, color(0x7c8a94), mirrorGlass);
-  const signCol = mix(color(0xf3efe2), mix(color(0xfff1b8), color(0x15181b), signGlyph), signFace);
+  const signCol = isHK
+    ? mix(color(0xf7f3e6), color(0xc8141c), signGlyph)
+    : mix(color(0xf3efe2), mix(color(0xfff1b8), color(0x15181b), signGlyph), signFace);
   const alloyCol = mix(color(0x0b0e12), color(0xd8e0e8), alloyMetal);
   const treadZone = smoothstep(wheelR.mul(0.74), wheelR.mul(0.83), wheelDist);
   const tyreBase = smoothstep(wheelR.mul(0.85), wheelR.mul(0.94), wheelDist).mul(0.22).add(0.78);
@@ -1283,16 +1386,31 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   let col = mix(body, windowCol, isWindow);
   col = mix(col, mirrorCol, isMirror);
   col = mix(col, signCol, isSign);
-  col = mix(col, color(0x1b1e21), isTrim);
+  col = mix(col, trimPaint, isTrim);
   col = mix(col, alloyCol, isAlloy);
   col = mix(col, tyreCol, isTyre);
   col = mix(col, color(0xe6eaee), isChrome);
+  if (isHK) {
+    // 香港車牌：前白後黃、黑色字。車牌是一塊獨立薄板（CAR_PARTS.PLATE），
+    // 所以唔會被泵把遮住 —— 照片裡的車牌正是這樣掛在泵把上。
+    const frontPlate = step(0.0, n.z);
+    const plateY = mix(plateR, plateF, frontPlate);
+    const plateBase = mix(color(0xf0c419), color(0xf4f6f6), frontPlate);
+    const dEdge = max(ax.sub(0.147), abs(p.y.sub(plateY)).sub(0.04));
+    const plateInk = step(0.58, sin(p.x.mul(105.0)))
+      .mul(smoothstep(0.025, 0.021, abs(p.y.sub(plateY))))
+      .mul(step(ax, 0.142));
+    col = mix(col, color(0x14181c), isPlate.mul(smoothstep(0.0, 0.004, dEdge)));
+    col = mix(col, plateBase, isPlate);
+    col = mix(col, color(0x14181c), isPlate.mul(plateInk));
+  }
 
   // ---- Roughness & metalness ---------------------------------------------------------------------------------------
   const alloySpokes = max(spokes, rimRing).mul(isAlloy);
   const glossy = max(max(max(glass, chromeBelt), mirrorGlass), lamp);
   let rough = mix(float(0.26), float(0.15), glossy);
   rough = mix(rough, float(0.4), plates);
+  rough = mix(rough, float(0.5), isPlate);
   rough = mix(rough, float(0.35), isSign);
   rough = mix(rough, float(0.82), max(matte, isAlloy.sub(alloySpokes)));
 
@@ -1303,6 +1421,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   metal = mix(metal, float(0.95), chromeBelt);
   metal = mix(metal, float(0.86), alloySpokes);
   metal = mix(metal, float(0.08), plates);
+  metal = mix(metal, float(0.05), isPlate);
   metal = mix(metal, float(0.04), max(matte, isSign));
 
   // ---- Emissive: running lights, tail / brake lights & CHMSL, turn signals, taxi roof light -----------------------
@@ -1316,7 +1435,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const tail = color(0xff0a12).mul(redLens.mul(tailShade).mul(brake.mul(2.1).add(nightHeadlamp.mul(0.4))));
   const stop = color(0xff0a12).mul(chmsl.mul(brake).mul(2.1));
   const turn = color(0xff9a14).mul(max(turnFront, turnRear).mul(blink).mul(2.2));
-  const sign = color(0xffe28a).mul(signFace.mul(one.sub(signGlyph.mul(0.9))).mul(1.65));
+  const sign = (isHK ? color(0xfff3d6) : color(0xffe28a)).mul(signFace.mul(one.sub(signGlyph.mul(0.75))).mul(isHK ? 2.1 : 1.65));
 
   const mat = new THREE.MeshStandardNodeMaterial();
   if (fixed) mat.userData.carState = stateUniform;

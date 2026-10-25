@@ -123,3 +123,116 @@ test('車流用的士低模都用香港的士 spec（唔會混入紐約車）', 
   assert.equal(taxiEntry.spec.name, 'hk-red-taxi');
   assert.equal(taxiEntry.color, vehicles.HK_COLORS.taxi);
 });
+
+test('香港的士塗裝：鬼面罩、綠牌、燈、車牌、雙色車身都畫對位置', { skip }, async () => {
+  const { paintHKT } = await import('../tools/hk-taxi-livery.mjs');
+  const { HK_TAXI_SPEC: spec } = await import('../js/hk/vehicles.js');
+  const front = { x: 0, y: 0, z: 1 };
+  const side = { x: 1, y: 0, z: 0 };
+  const rear = { x: 0, y: 0, z: -1 };
+  const up = { x: 0, y: 1, z: 0 };
+  const near = (rgb, [r, g, b], tol = 26) => Math.abs(rgb[0] - r) <= tol && Math.abs(rgb[1] - g) <= tol && Math.abs(rgb[2] - b) <= tol;
+  const [grY, grW, grH] = spec.grille;
+  const [hlX, hlY, hlW, hlH] = spec.headlight;
+  const [tlX, tlY, tlW, tlH] = spec.taillight;
+  const [plateF, plateR] = spec.plates;
+  const paint = (p, n, id) => paintHKT(p, n, id, spec);
+
+  // 車身主色是紅色（香港市區的士）
+  assert.ok(near(paint({ x: 0.2, y: 0.55, z: 1.6 }, side, 0), [181, 18, 27]), '側面車身要是紅色');
+  // 鬼面罩中心：黑；鉻橫間：淺
+  const grilleCentre = paint({ x: 0, y: grY, z: spec.zFront - 0.02 }, front, 0);
+  assert.ok(grilleCentre[0] < 80 && grilleCentre[1] < 80, `鬼面罩要是深色（${grilleCentre}）`);
+  const slats = Array.from({ length: 16 }, (_, i) => i * 0.002).map((dy) => paint({ x: 0, y: grY + dy, z: spec.zFront - 0.02 }, front, 0));
+  assert.ok(slats.some((c) => c[0] > 120), '鬼面罩要有鉻橫間（至少一條淺色）');
+  // 綠色「TAXI 5 SEATS」牌：綠底 + 白字
+  const badgePixels = [];
+  for (let i = 0; i < 12; i++) {
+    for (let j = 0; j < 12; j++) {
+      badgePixels.push(paint({ x: -spec.hk.badgeX - 0.045 + i * 0.008, y: grY - 0.032 + j * 0.005, z: spec.zFront - 0.02 }, front, 0));
+    }
+  }
+  assert.ok(badgePixels.some((c) => near(c, [13, 148, 80], 45)), '綠牌要有綠色底');
+  assert.ok(badgePixels.some((c) => near(c, [234, 246, 238], 40)), '綠牌要有白字');
+  // 頭燈清玻璃、外側琥珀轉向燈
+  assert.ok(paint({ x: hlX - hlW * 0.2, y: hlY, z: spec.zFront - 0.02 }, front, 0)[0] > 150, '頭燈要是淺色燈罩');
+  assert.ok(near(paint({ x: hlX + hlW * 0.8, y: hlY, z: spec.zFront - 0.02 }, front, 0), [201, 128, 43], 60), '外側要係琥珀轉向燈');
+  // 尾燈：深紅燈罩 + 白倒車燈 + 琥珀
+  assert.ok(paint({ x: tlX, y: tlY, z: spec.zRear + 0.02 }, rear, 0)[0] < 170, '尾燈要是深紅');
+  assert.ok(paint({ x: tlX - tlW * 0.72, y: tlY, z: spec.zRear + 0.02 }, rear, 0)[0] > 200, '要有白色倒車燈');
+  // 前白牌 / 後黃牌
+  const plateFrontPixels = [-0.13, -0.08, 0, 0.08, 0.13].map((x) => paint({ x, y: plateF, z: spec.zFront - 0.02 }, front, 0));
+  assert.ok(plateFrontPixels.some((c) => c[0] > 220 && c[1] > 220), '前牌要是白底');
+  assert.ok(plateFrontPixels.some((c) => c[0] < 60), '前牌要有黑字');
+  const plateRearPixels = [-0.13, -0.08, 0, 0.08, 0.13].map((x) => paint({ x, y: plateR, z: spec.zRear + 0.02 }, rear, 0));
+  assert.ok(plateRearPixels.some((c) => near(c, [240, 196, 25], 60)), '後牌要是黃底');
+  assert.ok(plateRearPixels.some((c) => c[0] < 60), '後牌要有黑字');
+  // 雙色車身：車頂銀白、側窗深色
+  assert.ok(paint({ x: 0, y: spec.cabin.roofY[0][1] - 0.02, z: 0 }, up, 1)[0] > 190, '車頂要是銀白');
+  assert.ok(paint({ x: spec.cabin.rail[0], y: 1.18, z: 0.1 }, side, 1)[0] < 70, '側窗要是深色玻璃');
+  // 車頂 TAXI 燈箱：白底 + 紅字
+  const signPixels = [-0.2, -0.1, 0, 0.1, 0.2].map((x) => paint({ x, y: spec.cabin.roofY[0][1] + 0.115, z: -0.2 }, up, 6));
+  assert.ok(signPixels.some((c) => c[0] > 230 && c[1] > 220), '燈箱要有白底');
+  assert.ok(signPixels.some((c) => c[0] > 150 && c[1] < 90), '燈箱要有紅色字');
+});
+
+test('HK 塗裝只套用在香港的士（紐約車唔會被改色）', { skip }, async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../js/actor-models.js', import.meta.url), 'utf8');
+  assert.match(source, /const isHK = spec\.livery === 'hk-taxi'/, '材質要用 livery 標記判斷');
+  assert.match(source, /if \(spec\.sign && !isHK\)/, '紐約的士徽章要排除香港的士');
+  for (const marker of ['0d9450', 'f0c419', 'f4f6f6', '17191c', '0x7f121c']) {
+    assert.ok(source.includes(marker), `香港塗裝缺少顏色 ${marker}`);
+  }
+  // 紐約的黃牌貼圖只可以用在非香港車輛
+  assert.match(source, /if \(!isHK\) \{\s*body = mix\(body, color\(0xf2b718\), plates\);/, '紐約車牌要留給非香港車輛');
+});
+
+test('香港紅的：獨立車牌板、車門把手、油缸蓋都是真幾何件（唔係貼圖）', { skip }, async () => {
+  const { buildTaxi } = await import('../js/hk/vehicles.js');
+  const { HK_TAXI_SPEC: spec } = await import('../js/hk/vehicles.js');
+  const { paintHKT, HK_PART } = await import('../tools/hk-taxi-livery.mjs');
+  const taxi = buildTaxi();
+  const body = taxi.children.find((c) => c.isMesh);
+  assert.ok(body, '有的士車身 mesh');
+  const ids = body.geometry.attributes.partId.array;
+  const count = (id) => ids.reduce((n, v) => n + (Math.round(v) === id ? 1 : 0), 0);
+
+  // 車牌件的頂點一定存在，而且前後各一塊（z 分別大於 zFront、小於 zRear）
+  assert.ok(count(HK_PART.PLATE) > 0, '要有獨立車牌幾何件（partId 10）');
+  const pos = body.geometry.attributes.position.array;
+  let frontVerts = 0;
+  let rearVerts = 0;
+  for (let i = 0; i < ids.length; i++) {
+    if (Math.round(ids[i]) !== HK_PART.PLATE) continue;
+    if (pos[i * 3 + 2] > spec.zFront - 0.05) frontVerts++;
+    if (pos[i * 3 + 2] < spec.zRear + 0.05) rearVerts++;
+  }
+  assert.ok(frontVerts > 0 && rearVerts > 0, `車牌要一前一後（前 ${frontVerts} / 後 ${rearVerts}）`);
+
+  // 車牌板上的顏色：前白、後黃、中間有黑字
+  const [plateF, plateR] = spec.plates;
+  const front = { x: 0, y: 0, z: 1 };
+  const rear = { x: 0, y: 0, z: -1 };
+  const frontPixels = [];
+  const rearPixels = [];
+  for (let i = 0; i < 24; i++) {
+    const x = -0.13 + i * 0.011;
+    frontPixels.push(paintHKT({ x, y: plateF, z: spec.zFront + 0.02 }, front, HK_PART.PLATE, spec));
+    rearPixels.push(paintHKT({ x, y: plateR, z: spec.zRear - 0.02 }, rear, HK_PART.PLATE, spec));
+  }
+  assert.ok(frontPixels.some((c) => c[0] > 230 && c[1] > 230), '前牌白底');
+  assert.ok(frontPixels.some((c) => c[0] < 40), '前牌有黑字');
+  assert.ok(rearPixels.some((c) => c[0] > 200 && c[2] < 80), '後牌黃底');
+  assert.ok(rearPixels.some((c) => c[0] < 40), '後牌有黑字');
+
+  // 車門把手：四隻，貼在車身側面、離地約 0.79 m
+  const handleVerts = [];
+  for (let i = 0; i < ids.length; i++) {
+    if (Math.round(ids[i]) !== HK_PART.CHROME) continue;
+    const y = pos[i * 3 + 1];
+    if (Math.abs(y - 0.79) < 0.03) handleVerts.push(pos[i * 3]);
+  }
+  assert.ok(handleVerts.length > 0, '要有車門把手幾何');
+  assert.ok(handleVerts.some((x) => x > 0) && handleVerts.some((x) => x < 0), '把手要左右兩邊都有');
+});
