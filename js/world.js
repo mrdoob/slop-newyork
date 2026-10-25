@@ -98,5 +98,8 @@ export function applyBranding(world) {
   const desc = document.querySelector('meta[name="description"]');
   if (desc) desc.setAttribute('content', `${world.title} — ${world.description}`);
   const status = document.getElementById('loading-status');
-  if (status && status.textContent) status.textContent = 'Building Hong Kong…';
+  const loading = document.getElementById('loading-overlay');
+  if (status && status.textContent && loading && !loading.classList.contains('hidden')) {
+    status.textContent = `${world.title}…`;
+  }
 }

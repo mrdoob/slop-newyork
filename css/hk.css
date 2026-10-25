@@ -224,3 +224,37 @@ body[data-world="hk"] #canvas-container {
 .hk-diagnostics[hidden] {
   display: none;
 }
+
+/* 開機失敗的紅色診斷卡（index.html 的 __slopBootFail 與 js/hk/main.js 的 showBootError 共用）。
+   一定要寫在 hk 的 scope 以外：世界都未載入成功時，body[data-world] 可能仍是預設值。 */
+.hk-boot-error {
+  max-width: min(820px, 92vw);
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: rgba(24, 6, 8, 0.92);
+  border: 1px solid rgba(255, 120, 125, 0.45);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.hk-boot-error-title {
+  font: 700 15px/1.4 Inter, system-ui, sans-serif;
+  color: #ff8f93;
+  margin-bottom: 10px;
+}
+
+.hk-boot-error-stack {
+  margin: 0 0 10px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 500 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #ffd7d8;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
+}
+
+.hk-boot-error-hint {
+  font: 12px/1.6 Inter, system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.72);
+}

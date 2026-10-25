@@ -433,7 +433,7 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 
 | 測試檔 | 驗什麼 |
 |---|---|
-| `boot.test.cjs` | import map、32 個 modulepreload 的順序（import map 之後、樣式表之前）、entry 唯一 |
+| `boot.test.cjs` | import map；bootstrap（世界判斷 ＋ 錯誤顯示）必須早過 module 入口；兩個世界的預載清單冇重複、檔案存在、每個相對 import 都已被預載 |
 | `geodata.test.mjs` | 生成資料的 schema 與合理性 |
 | `overpass.test.mjs` | `.overpassql` 查詢語法與 `overpass.sh` 健壯性 |
 | `traffic.test.cjs` / `traffic-performance.test.cjs` | IDM 行為邊界、預算/複雜度 |
@@ -450,6 +450,8 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 | `hk-render.test.mjs` | 標線只產生**一個** typed array（回歸測試）、無 NaN、留在車行道內、虛線相位跨段、退化輸入、啟動流程會 macrotask 讓路並預編譯 shader |
 | `hk-traffic.test.cjs` | 車流在**子程序**中建得起（20 s timeout 偵測無限迴圈）、車隊分配總和必等於車數、`traffic.js` 不再有無界 while |
 | `hk-smoke.test.mjs` | 用**真 three.js** 建整個香港場景並跑 180 幀（未安裝 three 時自動 skip） |
+| `hk-modules.test.mjs` | **逐個模組做語法檢查**（`node --check`）、香港的靜態 import 白名單、`index.html` 必須「只 import 一個世界」 |
+| `hk-boot.test.mjs` | **端到端開機**：用真的 `index.html`（jsdom）+ 真 three.js 幾何 + 假 `WebGPURenderer`，由 `?world=hk` 行到第一幀（未安裝 three / jsdom 時自動 skip） |
 
 測試手法值得學：`tests/helpers/module.cjs` 用 `vm` 把檔案裡的 `import`/`export` 改寫掉，餵進 stub namespace，**生產程式碼本體一行不改**就能在 Node 裡跑。所以測試不需要 three.js、不需要瀏覽器。
 
@@ -469,6 +471,7 @@ ESB（含 86 樓觀景台欄杆）、Chrysler（專屬皇冠材質，`createChry
 | Phase | 內容 | 檔案 | 狀態 |
 |---|---|---|---|
 | **0** 世界切換 | `?world=hk` / `?world=ny` / 記住上次選擇；品牌、標題、`localStorage` key 分離；兩邊 HUD 互有連結 | `js/world.js`(102)、`js/main.js`(+8)、`css/hk.css`(204)、`index.html` | ✅ |
+| **0.5** 開機層 | `index.html` inline bootstrap：先決定世界 → 只 import 那一個世界；`__slopBootFail` 錯誤卡 ＋ 20 秒 watchdog；按世界分流 `modulepreload` | `index.html`、`js/hk/main.js`（依賴收窄到 `three/webgpu`） | ✅ |
 | **1** 資料管線 | 世界座標框（真北朝上）、投影、OSM-ready seed、街廓／樓宇生成、地標、地區、電車／渡輪／隧道 | `tools/hk/frame.mjs`(107)、`seed-hk.mjs`(189)、`blocks.mjs`(173)、`build-hk-geodata.mjs`(160)、`js/hk-geodata.js`(124 kB)、`tools/data/q_hk_*.overpassql` | ✅ seed（約 50 m 精度） |
 | **1** 世界觀 | 「走廊 + chainage」取代 `streetZ/avenueX`；雙語地區與位置標籤；香港號誌週期 | `js/hk/config.js`(293) | ✅ |
 | **3** 靠左行駛 | 車道＝中心線**向左**偏移（單一公式 `laneLateral`）、雙向走廊兩組車道、跟車模型 | `js/hk/traffic.js`(225)、`config.js` 的 `buildLanes/followSpeed` | ✅ |
@@ -499,9 +502,11 @@ node --test "tests/hk-*.test.*"
 
 **已驗證（可重跑）**
 
-- `node --test "tests/hk-*.test.*"` → **31 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
-- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **144 pass / 0 fail**（原 113 個紐約測試全數保留通過）。
-- 專案內所有相對 import 的名稱都存在（用腳本掃過 40 個模組）。
+- `node --test "tests/hk-*.test.*"` → **37 pass**（世界框方向、投影 round-trip、樓宇不壓馬路、地標在陸上、**每一條車道都在行車方向的左邊**、車道數與單程路、`poseAt` 單調、號誌相位與行人綠燈、雙語標籤、出生點與九個傳送點都在真實車道上、跟車模型、世界切換純函式）。
+- 全倉測試：`node --test "tests/*.test.cjs" "tests/*.test.mjs"` → **152 pass / 0 fail**（原 113 個紐約測試全數保留通過）；加 `hk-boot` / `hk-modules` 兩個開機測試。
+- 開機端到端：`node --import ./tools/hk-boot/register.mjs tools/boot-hk.mjs` → 由 `?world=hk` 一路行到第一幀。
+- 語法檢查：`node tools/check-modules.mjs` → `✓ 全部模組語法正常`（這一項會在 CI 前抓到「重複宣告」這類令整個世界開唔到的 early error）。
+- 專案內所有相對 import 的名稱都存在（用腳本掃過 40 個模組），而且每個模組都通過語法檢查。
 
 **已知問題與已修（v2：Page Unresponsive）**
 
@@ -554,6 +559,42 @@ player 出生於 (65, −201) → 中環
 
 - WebGPU 實際渲染：這個 sandbox 沒有 GPU、沒有瀏覽器，`?world=hk` 的畫面我沒有跑過。若仍失敗，載入畫面現在會直接顯示錯誤與停在哪一階段 —— 把那張圖貼回來即可。
 - 效能：20.9 km 走廊 · 99 條車道 · 1,349 棟樓 · 593 支街燈 · 96 車；預期 60 fps 但未實測。
+
+**第四輪（拉取上一個 commit 後，畫面直接停在全 NY 的 loading 畫面，永不進入香港）**
+
+症狀與之前完全不同：標題仍是 **Slop New York**、狀態永遠停在 *Initializing WebGPURenderer & TSL Shaders...*。
+
+| # | 原因 | 修法 |
+|---|---|---|
+| 8 | `js/hk/main.js` 在同一個 `try` 區塊宣告了**兩次** `const info`（一次是 `device.queue.onSubmittedWorkDone()` 的 promise，一次是 `renderer.info.render`）。這是 **early SyntaxError**，整個模組連評估都不會開始 | 第二個改名 `submitted`；第一個改名後語意更清楚 |
+| 9 | `index.html` 用 `<script type="module" src="./js/main.js">` **無條件**載入紐約入口，再由它動態 `import('./hk/main.js')`。**紐約的 32 個模組（含 dev 分支 CDN 上的 addon）先行載入**，香港才有機會執行 | `index.html` 改成 inline bootstrap：先決定世界 → **一次只 import 那一個世界**。香港完全不經紐約的模組圖 |
+| 10 | `await import()` 的 rejection **冇人接住** → 瀏覽器只會靜靜停在 loading 畫面，冇 stack、冇提示 | bootstrap 用 try/catch 接住，並用 **module 之前就註冊**的 `window.__slopBootFail()` 在畫面上顯示紅字（標題 + stack + 已完成階段）；另有 20 秒 watchdog 偵測「連模組都未載入」（多數是 CDN 拉不到 / 本機 server 沒開） |
+| 11 | 品牌要等世界載入成功才換，所以模組一壞就顯示「Slop New York」——最誤導的狀態 | `applyBranding()` 提前到 import 之前執行。**即使香港載入失敗，畫面上也會寫住 Slop Hong Kong + 錯誤訊息** |
+| 12 | `js/hk/main.js` 靜態 import 了 `../post-processing.js` 與 `three/tsl`（只有 `?post=1` 才用到）—— 多兩個 CDN 依賴才能開機 | 兩者都改成 `?post=1` 時才 `await import()`；`?sky=1` 的 `LightingSystem` 早已是動態載入 |
+
+**為什麼 144 個測試全綠也抓不到？** 因為它們全部只 import 個別模組，**沒有任何測試 import 過 `js/hk/main.js`**。現在補了三層：
+
+1. `tools/check-modules.mjs`（＋ `tests/hk-modules.test.mjs`）：把 `js/` 下每個檔案複製成暫存 `.mjs` 跑 `node --check`，抓 early error／重複宣告。實測把 `const info` 改回去 → 立即紅。
+2. `tools/boot-hk.mjs`（＋ `tests/hk-boot.test.mjs`）：**真的跑一次開機**。用 jsdom 載入真正的 `index.html`（`?world=hk&debug=1`），照 bootstrap 的順序 `applyBranding → import js/hk/main.js → startHongKong()`，用真 three.js 建幾何，只把 `WebGPURenderer` 換成假的（`tools/hk-boot/shim-three-webgpu.mjs`，用 `module.register()` 的 loader hook 掛上）。斷言：overlay 已隱藏、`document.title === 'Slop Hong Kong'`、HUD 存在、`body[data-world=hk]`、位置標籤係中環、`renderer.render` 有被呼叫、場景有 ≥2 盞燈與 `scene.background`、診斷面板有內容、動畫迴圈跑得動、靠左行駛。
+3. `boot.test.cjs` 改寫：唔准再出現無條件 `<script type="module" src="js/main.js">`，香港預載清單唔准包含紐約模組。
+
+實測輸出（`node --import ./tools/hk-boot/register.mjs tools/boot-hk.mjs`）：
+
+```
+[hk] first frame { drawCalls: …, path: 'direct', sky: false }
+[hk] 1349 buildings · 37 landmarks · 96 cars · 99 lanes (keep left)
+__BOOT_REPORT__ {"world":"hk","title":"Slop Hong Kong","hud":"Slop Hong Kong ← New York",
+                 "location":"中環 Central","frames":9,"compiled":169,"buildings":1349,"cars":96,…}
+✓ 香港世界可以開機（DOM + 幾何 + 車流 + 繪製呼叫）
+```
+
+> 這個 harness 用**假的 renderer**，所以 `drawCalls` 係假數字；它證明的是「開機流程、DOM、幾何、車流、動畫迴圈全部行得通」，**不是** GPU 上的像素。
+
+**現在如果仍然黑畫面**，最快的三步：
+
+1. 開 `http://127.0.0.1:8082/?world=hk&debug=1`（**Ctrl+Shift+R** 強制重新載入，避免舊快取）。
+2. 若載入畫面卡住 → 現在一定會顯示紅色錯誤卡（唔會再靜靜卡住）。把紅色那段貼回來。
+3. 若入到場景但黑 → 睇診斷面板的 `draw calls`：`0` = 冇畫任何東西（culling／相機）；大數字 = 畫了但材質／燈光問題；`path` 應該顯示 `direct render`。
 
 ### 15.1 先講結論
 

@@ -1,6 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { pass, vec4 } from 'three/tsl';
-import { createPostProcessing } from '../post-processing.js';
 import { createHongKongLighting } from './lighting.js';
 import { applyBranding, getWorld } from '../world.js';
 import * as HK from './config.js';
@@ -11,9 +9,9 @@ import { createPlayer, ChaseCamera } from './drive.js';
 // js/hk/main.js
 // Slop Hong Kong 的進入點（Phase 0 世界切換 → Phase 1 香港資料 → Phase 3 靠左行駛的車流）。
 //
-// 重用與城市無關的既有系統：LightingSystem（Preetham 天空 + PMREM IBL + 2 級 CSM）與
-// createPostProcessing（ACES + 分時段調色 + bloom）。新寫的只有：香港幾何（city.js）、靠左車流
-// （traffic.js）、香港車種（vehicles.js）與駕駛（drive.js）。
+// 對外依賴刻意減到最少：香港只靜態依賴 three/webgpu 與 ./hk/*。
+// 紐約的 LightingSystem（Preetham 天空）與 createPostProcessing（ACES + bloom）都改成「用到才 import」，
+// 這樣任何一個紐約模組壞掉（或 dev 分支 CDN 上的 addon 改了路徑）都不會連帶令香港開唔到機。
 
 const TIME_CYCLE = ['golden', 'twilight', 'midnight', 'midday'];
 
@@ -65,6 +63,11 @@ function mark(label) {
 function showBootError(error, phaseList) {
   const overlay = document.getElementById('loading-overlay');
   if (!overlay) return;
+  // index.html 已經有一個（在 module 之前註冊的）版本，優先用它，保證樣式一致。
+  if (typeof window !== 'undefined' && typeof window.__slopBootFail === 'function') {
+    window.__slopBootFail('香港世界啟動失敗 · Hong Kong boot failed', error);
+    return;
+  }
   const message = error && error.stack ? String(error.stack).split('\n').slice(0, 6).join('\n') : String(error);
   overlay.classList.remove('hidden');
   overlay.innerHTML = `
@@ -160,6 +163,10 @@ export async function startHongKong() {
   if (usePost) {
     try {
       await yieldToBrowser('建立後處理管線…');
+      const [{ pass, vec4 }, { createPostProcessing }] = await Promise.all([
+        import('three/tsl'),
+        import('../post-processing.js')
+      ]);
       const scenePass = pass(scene, camera);
       colorGrade = createPostProcessing(renderer, scenePass.getTextureNode('output'), vec4(0, 0, 0, 0));
       postPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
@@ -344,8 +351,8 @@ export async function startHongKong() {
     await yieldToBrowser('第一幀…');
     renderFrame();
     const device = renderer.backend?.device;
-    const info = device && device.queue?.onSubmittedWorkDone ? Promise.resolve(device.queue.onSubmittedWorkDone()) : Promise.resolve();
-    await info.catch(() => {});
+    const submitted = device && device.queue?.onSubmittedWorkDone ? Promise.resolve(device.queue.onSubmittedWorkDone()) : Promise.resolve();
+    await submitted.catch(() => {});
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
     mark('firstFrame');
     const info = renderer.info?.render || {};

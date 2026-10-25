@@ -28,8 +28,16 @@ async function initApp() {
   // Phase 0「世界切換」：?world=hk（或上次選過香港）時，整個紐約建城流程都不執行，改由香港世界接手。
   // 紐約本身的行為保持不變：沒有 query 時仍然完全走原來那條路。
   if (getWorldId() === 'hk') {
-    const { startHongKong } = await import('./hk/main.js');
-    return startHongKong();
+    // 正常情況下 index.html 已經直接 import 香港，唔會行到呢一行；
+    // 保留係為了「直接開 js/main.js」或舊快取的情況，而且錯誤一定要顯示出嚟。
+    try {
+      const { startHongKong } = await import('./hk/main.js');
+      return await startHongKong();
+    } catch (error) {
+      if (typeof window !== 'undefined' && window.__slopBootFail) window.__slopBootFail('香港世界載入失敗 · Hong Kong failed to load', error);
+      else console.error('[hk] failed to load', error);
+      return undefined;
+    }
   }
 
   const container = document.getElementById('canvas-container');
