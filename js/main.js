@@ -9,6 +9,7 @@ import { buildCityBlocks } from './world/buildings.js';
 import { buildStreetDetails } from './world/street-details.js';
 import { createTrafficSystem, createHighwayTraffic } from './sim/traffic.js';
 import { buildRoadPaint } from './world/road-paint.js';
+import { buildBridges } from './world/bridges.js';
 import { ThirdPersonControllerManager } from './player/controllers.js';
 import { TouchControls } from './input/touch-controls.js';
 import { GamepadControls } from './input/gamepad-controls.js';
@@ -19,7 +20,7 @@ import { CityMapSystem } from './ui/city-map.js';
 import { setupSceneCulling, updateSceneCulling } from './render/scene-culling.js';
 import { CityAudioSystem } from './audio/audio-system.js';
 import { buildTerrain } from './world/terrain.js';
-import { groundHeight, townHeight, liftAt } from './world/ground.js';
+import { groundHeight, townHeight, liftAt, deckLift, surfaceHeight } from './world/ground.js';
 import { buildTepicLandmarks } from './world/tepic-landmarks.js';
 import { buildCotos } from './world/cotos.js';
 
@@ -108,12 +109,18 @@ async function initApp() {
   const highwayTraffic = createHighwayTraffic(scene, cityGrid.highwayLanes);
   buildRoadPaint(scene, trafficSystem.network);
   markInit('roadPaint');
+  // The overpasses, their ramps & the railway; their walls, parapets & piers stop the player (not the traffic's
+  // footprints: the lanes on and under them stay open)
+  const bridges = buildBridges(scene);
+  allColliders.push(...bridges.colliders);
+  markInit('bridges');
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   // The ground (ground.js): the town's own slopes and the hills over them (the flat city with ?slopes=0)
-  controllerManager.setTerrain(groundHeight, townHeight);
+  controllerManager.setTerrain(groundHeight, townHeight, deckLift); // (and the bridges' decks over it)
   trafficSystem.setHillQuery(groundHeight);
+  trafficSystem.setSurfaceQuery(surfaceHeight);
   // People, bicycles & hydrants knocked flying bounce off the buildings' walls (mayhem.js)
   const solidAt = (x, z) => controllerManager.isSolidAt(x, z, 1.5, groundHeight(x, z));
   trafficSystem.setSolidQuery(solidAt);
@@ -189,7 +196,7 @@ async function initApp() {
 
   // City-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
   // (scene-culling.js)
-  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails', 'Hills']
+  const cullingRoots = ['CityGrid', 'CityBlocks', 'StreetDetails', 'Hills', 'Bridges']
     .map((name) => scene.getObjectByName(name))
     .filter(Boolean);
   setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);

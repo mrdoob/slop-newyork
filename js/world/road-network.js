@@ -301,10 +301,12 @@ function buildRoadNetwork(sidewalks, obstacles) {
     }
     // Links the grid already carries: most of their length runs along an avenue (north-south) or a cross street
     const links = [];
-    for (const [a, b, ni, w, lanes, dir, inner] of RG.links) {
+    for (const [a, b, ni, w, lanes, dir, inner, lifts] of RG.links) {
       const pts = [pos[a]];
       for (let k = 0; k < inner.length; k += 2) pts.push({ x: inner[k], z: inner[k + 1] });
       pts.push(pos[b]);
+      // a bridge's or ramp's lift over the ground at each point (geodata, m)
+      if (lifts) for (let k = 0; k < pts.length; k++) pts[k] = { x: pts[k].x, z: pts[k].z, lift: lifts[k] / 10 };
       let n = 0;
       let hit = 0;
       const len = samples(pts, (x, z, dx, dz) => {
@@ -403,7 +405,10 @@ function buildRoadNetwork(sidewalks, obstacles) {
       const A = junction(find(l.a));
       const B = junction(find(l.b));
       if (A === B) continue;
-      const pts = [{ x: A.x, z: A.z }, ...l.pts.slice(1, -1), { x: B.x, z: B.z }];
+      // a junction on a bridge or ramp stands as high as the highest of the links' ends meeting there
+      A.lift = Math.max(A.lift || 0, l.pts[0].lift || 0);
+      B.lift = Math.max(B.lift || 0, l.pts[l.pts.length - 1].lift || 0);
+      const pts = [{ x: A.x, z: A.z, lift: l.pts[0].lift || 0 }, ...l.pts.slice(1, -1), { x: B.x, z: B.z, lift: l.pts[l.pts.length - 1].lift || 0 }];
       // stations along it: the ends and every bend over 12° at least 15 m from the last station and from the far end
       const stations = [A];
       let last = pts[0];
@@ -416,14 +421,28 @@ function buildRoadNetwork(sidewalks, obstacles) {
         let turn = Math.abs(Math.atan2(p2.z - p1.z, p2.x - p1.x) - Math.atan2(p1.z - last.z, p1.x - last.x));
         if (turn > Math.PI) turn = 2 * Math.PI - turn;
         if (turn < 12 * DEG || d0 < 15 || rest < 15) continue;
-        const s = { x: p1.x, z: p1.z, hx: 0, hz: 0, signal: false, in: [], out: [], general: true, shape: true };
+        const s = { x: p1.x, z: p1.z, hx: 0, hz: 0, signal: false, in: [], out: [], general: true, shape: true, lift: p1.lift || 0 };
         nodes.push(s);
         stations.push(s);
         last = p1;
       }
       stations.push(B);
       const lanes = lanesOf(l);
-      for (let k = 0; k + 1 < stations.length; k++) runs.push({ from: stations[k], to: stations[k + 1], ...lanes });
+      // a raised link's lift along each run: the link's points from one station to the next
+      const raised = pts.some((p) => p.lift > 0);
+      let at = 0;
+      for (let k = 0; k + 1 < stations.length; k++) {
+        let profile = null;
+        if (raised) {
+          profile = [];
+          while (at < pts.length && !(pts[at].x === stations[k].x && pts[at].z === stations[k].z)) at++;
+          for (let m = Math.min(at, pts.length - 1); m < pts.length; m++) {
+            profile.push(pts[m]);
+            if (m > at && pts[m].x === stations[k + 1].x && pts[m].z === stations[k + 1].z) break;
+          }
+        }
+        runs.push({ from: stations[k], to: stations[k + 1], ...lanes, profile });
+      }
     }
     console.info(`[roads] centreline streets: ${links.length} links not on the grid, ${runs.length} straight runs`);
     return runs;
@@ -479,7 +498,7 @@ function buildRoadNetwork(sidewalks, obstacles) {
     }
     return true;
   };
-  function addEdgeGeneral(from, to, axis, lanes, half, divided) {
+  function addEdgeGeneral(from, to, axis, lanes, half, divided, profile = null) {
     const x0 = from.x;
     const z0 = from.z;
     const span = Math.hypot(to.x - x0, to.z - z0);
@@ -488,7 +507,9 @@ function buildRoadNetwork(sidewalks, obstacles) {
     const dz = (to.z - z0) / span;
     const open = lanes.filter((o) => laneOpen(x0, z0, dx, dz, span, o));
     if (!open.length) return;
-    edges.push({ from, to, axis, x0, z0, dx, dz, rx: -dz, rz: dx, span, half, lanes: open.sort((p, q) => p - q), moves: [], general: true, cand: lanes, divided: !!divided });
+    // on a bridge or ramp: [distance from `from` along the edge, lift (m over the ground)], ascending (see edgeLift)
+    const lift = profile ? profile.map((p) => [(p.x - x0) * dx + (p.z - z0) * dz, p.lift]).sort((p, q) => p[0] - q[0]) : null;
+    edges.push({ from, to, axis, x0, z0, dx, dz, rx: -dz, rz: dx, span, half, lanes: open.sort((p, q) => p - q), moves: [], general: true, cand: lanes, divided: !!divided, lift });
   }
   // A divided road drawn as two one-way roadways between the same two junctions (most of the Bowery) runs both ways
   // along one centreline here: each way keeps to the right of it, as on a two-way street, and the road is as wide as
@@ -517,8 +538,8 @@ function buildRoadNetwork(sidewalks, obstacles) {
     if (r.half >= 7.25) r.axis = o.axis = 'ave'; // as wide as a major road (see lanesOf)
   }
   for (const r of genRuns) {
-    if (r.fwd.length) addEdgeGeneral(r.from, r.to, r.axis, r.fwd, r.half, r.divided);
-    if (r.back.length) addEdgeGeneral(r.to, r.from, r.axis, r.back, r.half, r.divided);
+    if (r.fwd.length) addEdgeGeneral(r.from, r.to, r.axis, r.fwd, r.half, r.divided, r.profile);
+    if (r.back.length) addEdgeGeneral(r.to, r.from, r.axis, r.back, r.half, r.divided, r.profile);
   }
   // Two edges from one node to the same next one (a service road whose ends were drawn onto its main road's junctions)
   // would drive through each other: keep the grid's, else the one with the most lanes
@@ -1243,4 +1264,18 @@ function curvePoint(c, s, out) {
   return out;
 }
 
-export { buildRoadNetwork, CROSSWALK };
+/** An edge's lift (m over the ground: a bridge, a ramp) at distance t from its `from` node along it; 0 at grade */
+function edgeLift(e, t) {
+  const p = e.lift;
+  if (!p) return 0;
+  if (t <= p[0][0]) return p[0][1];
+  for (let i = 1; i < p.length; i++) {
+    if (t <= p[i][0]) {
+      const [t0, l0] = p[i - 1], [t1, l1] = p[i];
+      return t1 > t0 ? l0 + ((l1 - l0) * (t - t0)) / (t1 - t0) : l1;
+    }
+  }
+  return p[p.length - 1][1];
+}
+
+export { buildRoadNetwork, CROSSWALK, edgeLift };

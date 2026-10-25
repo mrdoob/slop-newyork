@@ -124,3 +124,37 @@ test("the town's grid lies on the hills' lattice and meets the far floor at its 
     assert.ok(Math.abs(g.townHeight(x, z) - G.floor) < 0.05, `${g.townHeight(x, z)} at (${x}, ${z})`);
   }
 });
+
+test("a bridge's deck holds what is on it and lets what passes under it through; a raised junction is a disc", async () => {
+  const { createDecks } = await import('../js/world/ground.js');
+  // a 200 m road east along z = 0 ramping to 6 m at x = 100 and back, and a road crossing it at grade (nodes 2-3);
+  // a third link meeting the first at its raised middle (node 4) makes that a junction
+  const geo = {
+    roadGraph: {
+      nodes: [0, 0, 200, 0, 100, -50, 100, 50, 100, 0, 100, -100],
+      links: [
+        [0, 4, 0, 8, 2, 0, [], [0, 60], 1],
+        [4, 1, 0, 8, 2, 0, [], [60, 0], 1],
+        [2, 3, 0, 8, 2, 0, [], 0, 0],
+        [4, 5, 0, 8, 2, 0, [], [60, 60], 1]
+      ]
+    }
+  };
+  const { deckLift, junctions } = createDecks(geo);
+  assert.equal(junctions.length, 1);
+  assert.deepEqual([junctions[0].x, junctions[0].z, junctions[0].lift], [100, 0, 6]);
+  // up the ramp: from the ground at its foot, step by step to the top
+  let over = 0;
+  for (let x = 0; x <= 90; x += 2) { // (up to the junction's disc)
+    const lift = deckLift(x, 1, over);
+    assert.ok(Math.abs(lift - (6 * x) / 100) < 1e-9, `on the ramp at ${x}`);
+    over = lift;
+  }
+  // under the span (on the ground) nothing holds a body up; on it the deck does
+  assert.equal(deckLift(100, 30, 0), 0);
+  assert.equal(deckLift(100, 1, 0), 0);
+  assert.equal(deckLift(100, 1, 6), 6);
+  // the junction's disc reaches the corners between its links, where no link's strip does
+  assert.equal(deckLift(104, -5, 6), 6);
+  assert.equal(deckLift(100, 30), 0);
+});

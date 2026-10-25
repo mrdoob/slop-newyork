@@ -275,9 +275,30 @@ test('a car hitting the end of a bicycle touches the bicycle, not just its middl
 
 test('vehicles pitch with the ground between their axles', () => {
   // the ground rising 0.1 m per metre north (-z)
-  const groundPitch = trafficFunction('groundPitch', { Math, hillAt: (x, z) => 50 - 0.1 * z });
+  const groundPitch = trafficFunction('groundPitch', { Math, hillAt: (x, z) => 50 - 0.1 * z, roadLift: () => 0 });
   const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} should equal ${b}`);
   close(groundPitch({ x: 0, z: 0, tx: 0, tz: -1, axle: 1.4 }), -Math.atan(0.1)); // heading uphill: nose up
   close(groundPitch({ x: 0, z: 0, tx: 0, tz: 1, axle: 1.4 }), Math.atan(0.1)); // downhill: nose down
   close(groundPitch({ x: 0, z: 0, tx: 1, tz: 0 }), 0); // across the slope
+});
+
+test('a vehicle on a ramp pitches with the deck as well as the ground', () => {
+  // flat ground, a ramp rising 0.07 m per metre ahead (+z)
+  const groundPitch = trafficFunction('groundPitch', { Math, hillAt: () => 0, roadLift: (v, x, z) => 0.07 * z });
+  assert.ok(Math.abs(groundPitch({ x: 0, z: 10, tx: 0, tz: 1, axle: 1.4 }) + Math.atan(0.07)) < 1e-9);
+});
+
+test('an edge carries its lift profile: interpolated along it, held past its ends, 0 without one', () => {
+  const { loadModule } = require('./helpers/module.cjs');
+  const { edgeLift } = loadModule(readFileSync(join(__dirname, '../js/world/road-network.js'), 'utf8'), {
+    imports: { './city-config.js': { ISLAND_BOUNDS: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 } }, './city-geodata.js': { GEO: {} } }
+  });
+  const e = { lift: [[0, 0], [40, 2.8], [60, 6], [100, 6]] };
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} should equal ${b}`);
+  close(edgeLift(e, 20), 1.4);
+  close(edgeLift(e, 50), 4.4);
+  close(edgeLift(e, 80), 6);
+  close(edgeLift(e, -5), 0);
+  close(edgeLift(e, 130), 6);
+  close(edgeLift({ lift: null }, 50), 0);
 });
