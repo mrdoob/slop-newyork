@@ -88,7 +88,8 @@
     body.touch-enabled kbd, body.touch-enabled .keys-help, body.touch-enabled #drive-help { display: none; }
     .stack > .hud { left: auto; bottom: auto; max-width: none; }
     body.touch-enabled .modes .panel-body button, body.touch-enabled .time .panel-body button { min-height: 40px; }
-    @media (max-width: 640px) {
+    /* Phones, upright (narrow) or sideways (short): compact panels so the city keeps the screen */
+    @media (max-width: 640px), (max-height: 500px) {
       #minimap { width: 112px; height: 112px; }
       .stack { max-width: calc(100vw - var(--left) - var(--right) - 168px); }
       .side .panel { flex-direction: column; align-items: flex-end; }
@@ -105,6 +106,11 @@
       #vehicle-status { grid-column: 1 / -1; position: sticky; left: 0; margin: 0; font-size: 12px; }
       .credit { font-size: 10.5px; line-height: 1.3; }
       .hud { font-size: 12px; }
+    }
+    /* Sideways phones: every pixel of height counts */
+    @media (max-height: 500px) {
+      body.touch-enabled .modes .panel-body button { min-height: 32px; }
+      .modes { padding: 4px 6px; }
     }
     #loading { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center;
       justify-content: center; gap: 14px; background: radial-gradient(circle at 50% 42%, #23303b, #11161b 70%); color: #eef2f5;

@@ -88,7 +88,7 @@ async function precompile(renderer, scene, camera, onProgress) {
 // Phones & tablets: a touch screen gets lighter settings (no MSAA, a smaller shadow map, half the traffic, a lower pixel
 // ratio that adapts to the frame rate) and starts with the info & help panels minimized
 const TOUCH = window.matchMedia('(any-pointer: coarse)').matches;
-const SMALL = TOUCH || window.innerWidth < 700;
+const SMALL = TOUCH || window.innerWidth < 700 || window.innerHeight < 500; // a phone held sideways is short, not narrow
 const panels = initPanels({ small: SMALL });
 if (TOUCH) document.querySelector('.stack').append(document.querySelector('.hud')); // up out of the touch controls' way
 
@@ -209,11 +209,15 @@ async function init() {
   if (opening) for (const o of [roads.group, traffic.cars.group]) o.traverse((m) => { if (m.isMesh) m.renderOrder = -4; });
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 20000);
-  // From the south-east, the whole box in view (Xinyi: 1500, 820, 1800 with Taipei 101 at the centre)
-  camera.position.set(half * Math.min(1.5, 2200 / half), half * Math.min(0.82, 1300 / half), half * Math.min(1.8, 2600 / half)); // a district: ~3.5 km out
+  // From the south-east, the whole box in view (Xinyi: 1500, 820, 1800 with Taipei 101 at the centre). A portrait screen
+  // sees far less across (a 50° vertical view is ~24° wide on a phone held upright), so the camera comes in by the
+  // screen's aspect and aims lower: the city fills the phone instead of a strip under the haze
+  const aspect = window.innerWidth / window.innerHeight;
+  const near = aspect < 1 ? Math.max(0.42, aspect) : window.innerHeight < 500 ? 0.62 : 1; // a phone held sideways: in, too
+  camera.position.set(half * Math.min(1.5, 2200 / half) * near, half * Math.min(0.82, 1300 / half) * near, half * Math.min(1.8, 2600 / half) * near); // a district: ~3.5 km out
   const controls = new OrbitControls(camera, renderer.domElement);
   const t101 = GEO.landmarks['Taipei 101'];
-  controls.target.set(t101 ? t101.x : 0, half * 0.12, t101 ? t101.z : 0);
+  controls.target.set(t101 ? t101.x : 0, half * 0.12 * near * near, t101 ? t101.z : 0);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI * 0.495;
   controls.minDistance = 30;
