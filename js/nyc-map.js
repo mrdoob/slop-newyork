@@ -426,10 +426,9 @@ function drawWaypoint(ctx, x, y, r) {
 const overlaps = (boxes, b) => boxes.some((o) => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
 
 class NYCMapSystem {
-  constructor({ controllerManager, cameraSystem, trafficSystem, allBlocks = [], onTeleport, onToggle }) {
+  constructor({ controllerManager, cameraSystem, allBlocks = [], onTeleport, onToggle }) {
     this.controllerManager = controllerManager;
     this.cameraSystem = cameraSystem;
-    this.trafficSystem = trafficSystem;
     this.allBlocks = allBlocks;
     this.onTeleport = onTeleport;
     this.onToggle = onToggle;
@@ -1020,19 +1019,6 @@ class NYCMapSystem {
     v.screen(ctx);
     const toX = (wx) => v.toX(wx);
     const toY = (wz) => v.toY(wz);
-
-    // Live moving traffic blips on radar
-    if (this.trafficSystem && this.trafficSystem.cars) {
-      ctx.fillStyle = 'rgba(226, 232, 240, 0.34)';
-      for (let i = 0; i < this.trafficSystem.cars.length; i += 2) {
-        const car = this.trafficSystem.cars[i];
-        const cx = toX(car.x);
-        const cy = toY(car.z);
-        if (Math.abs(cx) < w * 0.5 && Math.abs(cy) < h * 0.5) {
-          ctx.fillRect(cx - 1, cy - 1, 2, 2);
-        }
-      }
-    }
 
     // GPS route to the active waypoint
     if (this.waypoint) {

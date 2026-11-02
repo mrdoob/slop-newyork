@@ -469,7 +469,6 @@ async function initApp() {
   const mapSystem = new NYCMapSystem({
     controllerManager,
     cameraSystem,
-    trafficSystem,
     allBlocks: cityBlocks.allBlocks,
     onToggle: (open) => {
       controllerManager.resetInput();
