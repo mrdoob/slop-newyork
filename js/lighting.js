@@ -132,12 +132,7 @@ class LightingSystem {
     this.scene = scene;
     this.activePresetId = 'golden';
 
-    // Register SunLight with either supported Three.js light-node API.
-    if (SunLight.registerNode) {
-      SunLight.registerNode(SunLightNode);
-    } else if (renderer && renderer.library) {
-      renderer.library.addLight(SunLightNode, SunLight);
-    }
+    SunLight.registerNode(SunLightNode);
 
     this.scene.fog = new THREE.FogExp2(0xdcc5ae, 0.00024);
     // Leave scene.background = null because SkyMesh renders the 360° sky dome, and setting
