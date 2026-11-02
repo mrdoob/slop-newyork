@@ -2214,19 +2214,28 @@ function createSidewalkMaterial() {
   const jointGrime = gridBand(0.018);
   const tooledBand = gridBand(0.045).sub(jointGrime).max(0.0);
 
-  // Flattened chewing gum: a dark fresh blob here and there, grey ghosts of older ones, thickest on busy stretches
+  // Flattened chewing gum: a dark fresh blob here and there, grey ghosts of older ones, thickest on busy stretches.
+  // Only traced where blobs can show, and only the cells that have one
   const gumCell = 0.32;
   const gumCoord = wxz.div(gumCell);
   const gumId = floor(gumCoord);
-  const gumCentre = vec2(hash2D(gumId.add(vec2(11.3, 2.9))), hash2D(gumId.add(vec2(23.9, 17.4)))).mul(0.6).add(0.2);
-  const gumRadius = hash2D(gumId.add(vec2(4.1, 31.7))).mul(0.011).add(0.006);
-  const gumWobble = noise2D(gumCoord.mul(9.0)).sub(0.5).mul(0.35).add(1.0);
-  const gumDist = length(fract(gumCoord).sub(gumCentre)).mul(gumCell).mul(gumWobble);
-  const gumDensity = smoothstep(0.3, 0.8, noise2D(wxz.mul(0.07).add(5.3))).mul(0.4).add(0.12).mul(float(1.0).sub(replaced.mul(0.8)));
-  const gumAA = max(pixelSize, 0.001);
-  const gum = smoothstep(gumRadius.add(gumAA), gumRadius.sub(gumAA.mul(0.5)), gumDist)
-    .mul(step(float(1.0).sub(gumDensity), hash2D(gumId.add(vec2(7.7, 3.3)))))
-    .mul(smoothstep(0.04, 0.015, pixelSize));
+  const gum = Fn(() => {
+    const px = float(pixelSize).toVar();
+    const notReplaced = float(1.0).sub(replaced.mul(0.8)).toVar();
+    const coord = vec2(gumCoord).toVar();
+    const id = vec2(gumId).toVar();
+    return fadedDetail(px.lessThan(0.04), 0.0, () => {
+      const gumDensity = smoothstep(0.3, 0.8, noise2D(wxz.mul(0.07).add(5.3))).mul(0.4).add(0.12).mul(notReplaced);
+      return fadedDetail(hash2D(id.add(vec2(7.7, 3.3))).greaterThanEqual(float(1.0).sub(gumDensity)), 0.0, () => {
+        const gumCentre = vec2(hash2D(id.add(vec2(11.3, 2.9))), hash2D(id.add(vec2(23.9, 17.4)))).mul(0.6).add(0.2);
+        const gumRadius = hash2D(id.add(vec2(4.1, 31.7))).mul(0.011).add(0.006);
+        const gumWobble = noise2D(coord.mul(9.0)).sub(0.5).mul(0.35).add(1.0);
+        const gumDist = length(fract(coord).sub(gumCentre)).mul(gumCell).mul(gumWobble);
+        const gumAA = max(px, 0.001);
+        return smoothstep(gumRadius.add(gumAA), gumRadius.sub(gumAA.mul(0.5)), gumDist).mul(smoothstep(0.04, 0.015, px));
+      });
+    });
+  })();
   const gumAge = hash2D(gumId.add(vec2(19.1, 0.7)));
 
   // Hairline settlement cracks across about one flag in eight, wandering a little
@@ -2242,18 +2251,22 @@ function createSidewalkMaterial() {
   mat.colorNode = Fn(() => {
     const wx = positionWorld.x;
     const wz = positionWorld.z;
-    const camDist = length(positionWorld.sub(cameraPosition));
-    const detail = smoothstep(190.0, 16.0, camDist);
+    const px = float(pixelSize).toVar();
+    const camDist = length(positionWorld.sub(cameraPosition)).toVar();
+    const detail = smoothstep(190.0, 16.0, camDist).toVar();
 
     // Pour-to-pour tone, broad traffic-worn & weathered stains, and fine exposed aggregate
     const tone = noise2D(vec2(wx.mul(0.48), wz.mul(0.48)));
     const stainField = noise2D(vec2(wx.mul(0.8), wz.mul(0.8)).add(17.0)).mul(0.65).add(noise2D(vec2(wx.mul(2.6), wz.mul(2.6))).mul(0.35));
     const stain = smoothstep(0.52, 0.86, stainField).mul(mix(float(0.24), float(0.08), replaced));
-    const grit = noise2D(vec2(wx.mul(14.0), wz.mul(14.0))).sub(0.5).mul(0.07).mul(detail).mul(smoothstep(0.07, 0.02, pixelSize));
+    const grit = fadedDetail(px.lessThan(0.07).and(camDist.lessThan(190.0)), 0.0, () =>
+      noise2D(vec2(wx.mul(14.0), wz.mul(14.0))).sub(0.5).mul(0.07).mul(detail).mul(smoothstep(0.07, 0.02, px)));
     // Cloudy trowel & curing mottling a hand or two across
-    const mottle = noise2D(vec2(wx.mul(3.1), wz.mul(3.1)).add(41.0)).mul(0.6).add(noise2D(vec2(wx.mul(7.3), wz.mul(7.3))).mul(0.4))
-      .sub(0.5).mul(0.12).mul(smoothstep(0.15, 0.05, pixelSize));
-    const aggregate = noise2D(vec2(wx.mul(55.0), wz.mul(55.0))).sub(0.5).mul(0.08).mul(smoothstep(0.02, 0.006, pixelSize));
+    const mottle = fadedDetail(px.lessThan(0.15), 0.0, () =>
+      noise2D(vec2(wx.mul(3.1), wz.mul(3.1)).add(41.0)).mul(0.6).add(noise2D(vec2(wx.mul(7.3), wz.mul(7.3))).mul(0.4))
+        .sub(0.5).mul(0.12).mul(smoothstep(0.15, 0.05, px)));
+    const aggregate = fadedDetail(px.lessThan(0.02), 0.0, () =>
+      noise2D(vec2(wx.mul(55.0), wz.mul(55.0))).sub(0.5).mul(0.08).mul(smoothstep(0.02, 0.006, px)));
 
     const flagTone = flagHash.sub(0.5).mul(0.2).add(1.0).mul(mix(float(1.0), float(1.1), replaced));
     const concrete = mix(cConcreteB, cConcreteA, tone)
@@ -2287,17 +2300,20 @@ function createSidewalkMaterial() {
   mat.normalNode = Fn(() => {
     const wx = positionWorld.x;
     const wz = positionWorld.z;
-    const camDist = length(positionWorld.sub(cameraPosition));
+    const px = float(pixelSize).toVar();
+    const camDist = length(positionWorld.sub(cameraPosition)).toVar();
     const detail = smoothstep(140.0, 14.0, camDist);
-    const rampPx = pixelSize.mul(2.0);
+    const rampPx = px.mul(2.0);
 
-    const groove = float(1.0).sub(smoothstep(0.003, max(float(0.012), rampPx), edgeDist)).mul(0.006).mul(smoothstep(0.02, 0.006, pixelSize));
+    const groove = float(1.0).sub(smoothstep(0.003, max(float(0.012), rampPx), edgeDist)).mul(0.006).mul(smoothstep(0.02, 0.006, px));
     const tiltAngle = hash2D(flagId.add(vec2(2.3, 13.1))).mul(Math.PI * 2.0);
     const tiltSlope = hash2D(flagId.add(vec2(29.3, 3.7))).mul(0.012).mul(float(1.0).sub(replaced));
     const tilt = dot(flagLocal, vec2(cos(tiltAngle), sin(tiltAngle))).mul(FLAG).mul(tiltSlope)
-      .mul(smoothstep(0.0, max(float(0.06), pixelSize.mul(3.0)), edgeDist));
-    const grain = noise2D(vec2(wx.mul(4.5), wz.mul(4.5))).sub(0.5).mul(0.003);
-    const pores = noise2D(vec2(wx.mul(38.0), wz.mul(38.0))).sub(0.5).mul(0.0008).mul(smoothstep(0.012, 0.004, pixelSize));
+      .mul(smoothstep(0.0, max(float(0.06), px.mul(3.0)), edgeDist));
+    // The whole relief fades out with distance, so its grain is skipped beyond that
+    const grain = fadedDetail(camDist.lessThan(140.0), 0.0, () => noise2D(vec2(wx.mul(4.5), wz.mul(4.5))).sub(0.5).mul(0.003));
+    const pores = fadedDetail(px.lessThan(0.012), 0.0, () =>
+      noise2D(vec2(wx.mul(38.0), wz.mul(38.0))).sub(0.5).mul(0.0008).mul(smoothstep(0.012, 0.004, px)));
     const height = grain.add(pores).add(tilt).sub(groove).sub(crack.mul(0.0015)).add(gum.mul(0.0008))
       .mul(detail).mul(float(1.0).sub(swPuddle));
     return bumpNormal(height);
@@ -2322,11 +2338,12 @@ function createCurbMaterial() {
   mat.colorNode = Fn(() => {
     const wx = positionWorld.x;
     const wz = positionWorld.z;
-    const camDist = length(positionWorld.sub(cameraPosition));
-    const detail = smoothstep(180.0, 16.0, camDist);
+    const camDist = length(positionWorld.sub(cameraPosition)).toVar();
+    const detail = smoothstep(180.0, 16.0, camDist).toVar();
 
     const tone = noise2D(vec2(wx.mul(0.6), wz.mul(0.6)));
-    const speckle = noise2D(vec2(wx.mul(18.0), wz.mul(18.0))).sub(0.5).mul(0.06).mul(detail);
+    const speckle = fadedDetail(camDist.lessThan(180.0), 0.0, () =>
+      noise2D(vec2(wx.mul(18.0), wz.mul(18.0))).sub(0.5).mul(0.06).mul(detail));
     const stone = mix(color(0x4c4c45), color(0x63635a), tone).add(speckle);
 
     const joints = max(gridLine(wx, 1.5, 0.005), gridLine(wz, 1.5, 0.005)).mul(detail);
@@ -2340,10 +2357,10 @@ function createCurbMaterial() {
   mat.normalNode = Fn(() => {
     const wx = positionWorld.x;
     const wz = positionWorld.z;
-    const camDist = length(positionWorld.sub(cameraPosition));
-    const detail = smoothstep(120.0, 12.0, camDist);
-    const grain = noise2D(vec2(wx.mul(5.5), wz.mul(5.5))).sub(0.5).mul(0.0022);
-    return bumpNormal(grain.mul(detail));
+    const camDist = length(positionWorld.sub(cameraPosition)).toVar();
+    const grain = fadedDetail(camDist.lessThan(120.0), 0.0, () =>
+      noise2D(vec2(wx.mul(5.5), wz.mul(5.5))).sub(0.5).mul(0.0022).mul(smoothstep(120.0, 12.0, camDist)));
+    return bumpNormal(grain);
   })();
 
   return mat;
