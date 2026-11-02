@@ -237,7 +237,6 @@ class Uint32BufferAttribute extends BufferAttribute {
   constructor(arr, itemSize) { super(arr instanceof Uint32Array ? arr : new Uint32Array(arr), itemSize); }
 }
 class InstancedBufferAttribute extends BufferAttribute {}
-class StorageInstancedBufferAttribute extends InstancedBufferAttribute {}
 
 class BufferGeometry {
   constructor() {
@@ -339,7 +338,6 @@ const threeStub = {
   Uint16BufferAttribute,
   Uint32BufferAttribute,
   InstancedBufferAttribute,
-  StorageInstancedBufferAttribute,
   Object3D,
   Group,
   InstancedMesh,
@@ -476,9 +474,7 @@ test('createTreeField leaves scene.onBeforeRender untouched and matches per-tree
   assert.equal(scene.onBeforeRender, sentinelHook, 'must not monkey-patch scene.onBeforeRender');
   assert.equal(field.stats.trees, sites.length);
 
-  // Swap instanceMatrix to StorageInstancedBufferAttribute like main.js on WebGPU
   for (const m of field.meshes) {
-    m.instanceMatrix = new StorageInstancedBufferAttribute(m.instanceMatrix.array, 16);
     assert.equal(m.matrixAutoUpdate, false);
     assert.equal(m.matrixWorldAutoUpdate, false);
   }

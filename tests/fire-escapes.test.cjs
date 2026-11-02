@@ -244,7 +244,6 @@ class Float32BufferAttribute extends BufferAttribute {
 }
 
 class InstancedBufferAttribute extends BufferAttribute {}
-class StorageInstancedBufferAttribute extends InstancedBufferAttribute {}
 
 class BufferGeometry {
   constructor() {
@@ -419,7 +418,6 @@ const threeStub = {
   PlaneGeometry,
   Float32BufferAttribute,
   InstancedBufferAttribute,
-  StorageInstancedBufferAttribute,
   MeshStandardNodeMaterial,
   InstancedMesh,
   Object3D,
@@ -723,9 +721,9 @@ test('createFireEscapes partitions near shadow casters vs 4x4 far cells and comp
     assert.equal(m.userData.sharesPipelineWith, nearMesh);
   }
 
-  // Simulate main.js replacing instanceMatrix with StorageInstancedBufferAttribute on WebGPU
+  // three.js re-uploads a DynamicDrawUsage attribute in every render pass; flagRange() uploads changed instances once
   for (const m of group.children) {
-    m.instanceMatrix = new StorageInstancedBufferAttribute(m.instanceMatrix.array, 16);
+    assert.notEqual(m.instanceMatrix.usage, threeStub.DynamicDrawUsage, 'instance matrices keep static usage');
   }
 
   // Case 1: Empty stream region -> nearMesh keeps 1 underground stand-in for pipeline precompilation, far cells hidden
@@ -752,7 +750,7 @@ test('createFireEscapes partitions near shadow casters vs 4x4 far cells and comp
   sys.end();
 
   assert.equal(nearMesh.count, 2, 'escapes within 115 m route to FireEscapesNear');
-  assert.ok(nearMesh.instanceMatrix.needsUpdateCount >= 2, 'StorageInstancedBufferAttribute receives flagRange updates');
+  assert.ok(nearMesh.instanceMatrix.needsUpdateCount >= 2, 'instance matrices receive flagRange updates');
 
   const visibleFar = farMeshes.filter((m) => m.visible);
   assert.equal(visibleFar.length, 2, 'only the 2 occupied 280 m cells are visible; 14 empty cells are skipped');

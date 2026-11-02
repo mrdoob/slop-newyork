@@ -1081,7 +1081,6 @@ function createTreeField(_scene, sites, colliders = []) {
         mesh.visible = n > 0;
         if (n > 0) {
           visible = true;
-          // main.js swaps instanceMatrix for a storage attribute: look it up here on every changed cell.
           for (const attr of [mesh.instanceMatrix, mesh.geometry.attributes.aTreeData]) {
             attr.clearUpdateRanges();
             attr.addUpdateRange(0, n * attr.itemSize);

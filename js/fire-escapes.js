@@ -245,7 +245,6 @@ export function createFireEscapes(group) {
     mesh.matrixWorldAutoUpdate = false;
     mesh.boundingSphere = new THREE.Sphere();
     mesh.frustumCulled = true;
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (primaryMesh) mesh.userData.sharesPipelineWith = primaryMesh;
     group.add(mesh);
 
