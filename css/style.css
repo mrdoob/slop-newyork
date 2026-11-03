@@ -215,6 +215,8 @@ body::after {
   overflow: hidden;
 }
 
+/* Filled through every start-up stage by js/main.js, as compositor transitions that keep moving while a stage blocks
+   the main thread. Until that script runs, it fills the share of fetching the code and data (STAGE_MS.data) */
 .loader-fill {
   position: absolute;
   inset: 0;
@@ -222,15 +224,7 @@ body::after {
   background: var(--taxi);
   transform-origin: left center;
   transform: scaleX(0);
-  transition: transform 0.3s ease;
-}
-
-/* While the city is being built (main thread busy) the bar sweeps on the compositor; it fills once shaders compile */
-.loader-track.is-indeterminate .loader-fill {
-  width: 35%;
-  transform: translateX(-100%);
-  transition: none;
-  animation: loader-sweep 1.5s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  animation: loader-data 2s ease-out forwards;
   will-change: transform;
 }
 
@@ -240,9 +234,8 @@ body::after {
   font-variant-numeric: tabular-nums;
 }
 
-@keyframes loader-sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(290%); }
+@keyframes loader-data {
+  to { transform: scaleX(0.1); }
 }
 
 @keyframes rise-in {
