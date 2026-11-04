@@ -77,9 +77,12 @@ async function initApp() {
 
   await showLoadingStage('Initializing graphics...', 'renderer');
 
-  // 1. Initialize Three.js WebGPURenderer with 32-bit float reversedDepthBuffer
+  // 1. Initialize Three.js WebGPURenderer with 32-bit float reversedDepthBuffer.
+  // Firefox WebGL2 incurs a heavy renderbufferStorageMultisample + blitFramebuffer stall
+  // on multisampled floating-point MRT post-processing render targets, so disable MSAA on Firefox.
+  const isFirefox = typeof navigator !== 'undefined' && /Firefox\//.test(navigator.userAgent);
   const renderer = new THREE.WebGPURenderer({
-    antialias: true,
+    antialias: !isFirefox,
     powerPreference: 'high-performance',
     reversedDepthBuffer: true
   });

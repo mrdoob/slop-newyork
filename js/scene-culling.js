@@ -176,10 +176,10 @@ function setupSceneCulling(scene, roots, shadow = null) {
         }
         return;
       }
-      if (o.count < 64 || o.count !== o.instanceMatrix.count) return;
-      if (o.count * triangleCount(o.geometry) < 40000) return;
+      if (o.count < 32 || o.count !== o.instanceMatrix.count) return;
+      if (o.count * triangleCount(o.geometry) < 8000) return;
       if (!o.boundingSphere) o.computeBoundingSphere();
-      if (o.boundingSphere.radius < 1500) return;
+      if (o.boundingSphere.radius < 800) return;
       chunkable.push(o);
     });
   }
@@ -244,7 +244,7 @@ function setupSceneCulling(scene, roots, shadow = null) {
           return;
         }
         const tris = triangleCount(o.geometry) * (o.isInstancedMesh ? o.count : 1);
-        if (tris < 20000) return;
+        if (tris < 8000) return;
         let radius;
         if (o.isInstancedMesh) {
           if (!o.boundingSphere) o.computeBoundingSphere();
@@ -253,7 +253,7 @@ function setupSceneCulling(scene, roots, shadow = null) {
           if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
           radius = o.geometry.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis();
         }
-        if (radius > 600) sources.push(o);
+        if (radius > 350) sources.push(o);
       });
     }
 
