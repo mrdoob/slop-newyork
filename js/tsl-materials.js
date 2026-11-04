@@ -480,8 +480,9 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0, footprin
   const cellUV = vec2(fract(gridU), fract(gridV));
   const fw = vec2(fwidth(gridU), fwidth(gridV));
 
-  // Ground floor is strictly floor index 0 (gridV < 1.0) so floor 1 is never sliced in half!
-  const floor0 = float(1.0).sub(step(1.0, gridV));
+  // Ground floor is strictly floor index 0 (0.0 <= gridV < 1.0) so floor 1 is never sliced in half
+  // and below-grade skirt/foundation vertices (gridV < 0) do not render ground-floor storefronts!
+  const floor0 = step(0.0, gridV).mul(float(1.0).sub(step(1.0, gridV)));
   const wall = float(1.0).sub(isRoof);
   const isGroundFloor = floor0.mul(float(1.0).sub(step(WALL_KINDS.shop + 0.5, kind)));
   const blank = step(WALL_KINDS.lotLine - 0.5, kind).mul(wall);
