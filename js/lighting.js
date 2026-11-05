@@ -196,6 +196,23 @@ class LightingSystem {
     // Suppress shadow acne along the surface normal in world units
     // so short casters like cars, curbs, tree trunks, and pedestrians keep crisp contact shadows
     this.sunLight.shadow.normalBias = 0.05;
+    // SunLightShadow raises its caster ceiling by camera.far (220 m), which slices tall skyscrapers (up to One WTC
+    // at 541 m) when their shadows reach several blocks downstream. Shift each cascade camera upstream along its
+    // local +Z (sun) axis so every Manhattan tower stays in front of the cascade near plane at any sun elevation.
+    const origUpdateMatrices = this.sunLight.shadow.updateMatrices;
+    this.sunLight.shadow.updateMatrices = function (light, viewCamera) {
+      if (viewCamera === undefined) return;
+      origUpdateMatrices.call(this, light, viewCamera);
+      const extra = Math.ceil(550 / Math.max(0.25, this.getCamera(0).matrixWorld.elements[9]));
+      for (let i = 0; i < this.getViewportCount(); i++) {
+        const cam = this.getCamera(i);
+        cam.translateZ(extra);
+        cam.far += extra;
+        cam.updateProjectionMatrix();
+        cam.updateMatrixWorld();
+        this._updateMatrix(cam, this._matrices[i], this._frustums[i], this._viewports[i]);
+      }
+    };
     this.scene.add(this.sunLight);
 
     // Subtle Hemisphere Sky + Warm Terracotta/Limestone Ground Bounce Fill
