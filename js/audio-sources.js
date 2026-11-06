@@ -9,7 +9,8 @@ const seedAt = (index) => ((Math.imul(index + 1, 2654435761) >>> 0) / 4294967296
 
 function driveLoad(keys, speed, cyclist) {
   // Match the controller's forward priority, and distinguish propulsion from braking.
-  const throttle = unit(+keys.forward) || -unit(+keys.backward) * (cyclist ? 0.6 : 1);
+  if (cyclist && speed > 0 && unit(+keys.up) > 0) return 0;
+  const throttle = unit(+keys.forward) || -unit(+keys.backward) * (cyclist && speed <= 0 ? 0.6 : 1);
   if ((cyclist && throttle <= 0) || speed * throttle < 0) return 0;
   return Math.abs(throttle);
 }

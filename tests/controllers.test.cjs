@@ -708,3 +708,56 @@ test('player clearance respects altitude and permits a ground arrival under an a
   helicopter.position.y = 1;
   assert.notDeepEqual({ ...controller.teleportActiveTo(0, 0) }, { x: 0, z: 0 }, 'a helicopter parked at street level must be avoided');
 });
+
+test('cyclist braking stops briskly, pauses at zero before reversing, and supports Space handbrake', () => {
+  function bikeHarness(speed = 0, colliders = []) {
+    const { controller } = keyboardHarness({
+      ISLAND_BOUNDS: { minX: -1000, maxX: 1000, minZ: -1000, maxZ: 1000, sidewalkHeight: 0.22 },
+      CENTRAL_PARK_BOUNDS: { minX: 9999, maxX: 9999, minZ: 9999, maxZ: 9999 },
+      blockAt: () => null
+    });
+    const cyclist = {
+      type: 'cyclist',
+      position: { x: 0, y: 0, z: 0 },
+      heading: 0,
+      speed,
+      leanAngle: 0,
+      pedalPhase: 0,
+      leanPivot: { rotation: { z: 0 } },
+      frontWheel: { rotation: { x: 0 } },
+      rearWheel: { rotation: { x: 0 } },
+      crankPivot: { rotation: { x: 0 } },
+      pedals: []
+    };
+    controller.activeMode = 'cyclist';
+    controller.colliders = colliders;
+    controller.entities = { cyclist };
+    controller.getGroundHeight = () => 0;
+    return { controller, cyclist };
+  }
+
+  // Holding S from cruising speed (12 m/s) stops in ~6.5 m and pauses cleanly at 0 before backing up
+  const sBrake = bikeHarness(12);
+  sBrake.controller.keys.backward = true;
+  for (let i = 0; i < 72; i++) sBrake.controller.updateCyclist(1 / 60); // 1.2 s
+  assert.equal(sBrake.cyclist.speed, 0, 'S brake brings the bicycle to a clean stop without immediately reversing');
+  assert.ok(sBrake.cyclist.position.z > 5.5 && sBrake.cyclist.position.z < 7.5,
+    `bicycle stops within ~6.5 m from 12 m/s (got ${sBrake.cyclist.position.z.toFixed(2)} m)`);
+
+  // Continuing to hold S past the brief stop hold engages gentle reverse
+  for (let i = 0; i < 30; i++) sBrake.controller.updateCyclist(1 / 60);
+  assert.ok(sBrake.cyclist.speed < -0.5, 'continuing to hold S after stopping backs the bike up');
+
+  // Holding Space (keys.up) brakes to a complete stop and never reverses
+  const handbrake = bikeHarness(15);
+  handbrake.controller.keys.up = true;
+  for (let i = 0; i < 150; i++) handbrake.controller.updateCyclist(1 / 60);
+  assert.equal(handbrake.cyclist.speed, 0, 'Space handbrake stops at zero and never reverses');
+  assert.ok(handbrake.cyclist.position.z < 11.5, 'Space handbrake stops crisply from high speed');
+
+  // Wall-blocked cyclist clamps phantom speed so braking/reversing away works immediately
+  const blocked = bikeHarness(0, [{ minX: -10, maxX: 10, minZ: 0.5, maxZ: 10, maxY: 30 }]);
+  blocked.controller.keys.forward = true;
+  for (let i = 0; i < 120; i++) blocked.controller.updateCyclist(1 / 60);
+  assert.ok(blocked.cyclist.speed < 0.05, `wall-blocked cyclist clamps phantom speed (got ${blocked.cyclist.speed})`);
+});
