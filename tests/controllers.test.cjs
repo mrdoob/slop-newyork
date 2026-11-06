@@ -709,6 +709,90 @@ test('player clearance respects altitude and permits a ground arrival under an a
   assert.notDeepEqual({ ...controller.teleportActiveTo(0, 0) }, { x: 0, z: 0 }, 'a helicopter parked at street level must be avoided');
 });
 
+test('walk mode keeps curb step-offs grounded while real jumps arc and pin the contact shadow to the pavement', () => {
+  const { controller } = keyboardHarness({
+    ISLAND_BOUNDS: { minX: -1000, maxX: 1000, minZ: -1000, maxZ: 1000, sidewalkHeight: 0.22 },
+    CENTRAL_PARK_BOUNDS: { minX: 9999, maxX: 9999, minZ: 9999, maxZ: 9999 },
+    blockAt: (_x, z) => (z < 0 ? {} : null)
+  });
+  let maxRigAir = 0;
+  const shadow = {
+    position: { y: 0.02 },
+    scale: { x: 1, y: 1, z: 1, set(x, y, z) { this.x = x; this.y = y; this.z = z; } }
+  };
+  const person = {
+    type: 'person',
+    position: { x: 0, y: 0.22, z: -0.4 },
+    prevX: 0,
+    prevZ: -0.4,
+    heading: 0,
+    speed: 2.0,
+    verticalVel: 0,
+    jumping: false,
+    shadow,
+    mesh: { visible: true },
+    rig: { placed: true, update(_dt, _x, _z, _h, _g, _o, air) { maxRigAir = Math.max(maxRigAir, air); } },
+    crowd: { updates: 0, begin() {}, add() {}, end() {} }
+  };
+  controller.activeMode = 'person';
+  controller.colliders = [];
+  controller.entities = { person };
+  controller.keys.forward = true;
+
+  // Walk across the 0.22 m curb at z = 0: must stay grounded without triggering jump state
+  for (let i = 0; i < 30; i++) {
+    controller.updatePerson(1 / 60);
+    controller.poseCharacters(1 / 60, person.position);
+    assert.equal(person.jumping, false, 'stepping off a 0.22 m curb must not trigger jumping');
+  }
+  assert.equal(person.position.y, 0);
+  assert.equal(maxRigAir, 0, 'curb step-off passes air=0 so PersonRig steps down smoothly');
+
+  // Press jump: person rises into the air, rig receives jump air, and contact shadow stays at y = 0.02 in world space
+  controller.keys.up = true;
+  controller.updatePerson(1 / 60);
+  controller.keys.up = false;
+  for (let i = 0; i < 15; i++) {
+    controller.updatePerson(1 / 60);
+    controller.poseCharacters(1 / 60, person.position);
+  }
+  assert.equal(person.jumping, true);
+  assert.ok(person.position.y > 0.5 && maxRigAir > 0.5, 'real jump lifts person and informs PersonRig');
+  assert.ok(Math.abs((person.position.y + shadow.position.y) - 0.02) < 1e-6, 'contact shadow stays on the ground beneath the jump');
+  assert.ok(shadow.scale.x < 0.85, 'contact shadow shrinks with jump height');
+});
+
+test('walk mode clamps phantom speed when blocked head-on by a building wall', () => {
+  const { controller } = keyboardHarness({
+    ISLAND_BOUNDS: { minX: -1000, maxX: 1000, minZ: -1000, maxZ: 1000, sidewalkHeight: 0.22 },
+    CENTRAL_PARK_BOUNDS: { minX: 9999, maxX: 9999, minZ: 9999, maxZ: 9999 },
+    blockAt: () => null
+  });
+  const person = {
+    type: 'person',
+    position: { x: 0, y: 0, z: -0.5 },
+    prevX: 0,
+    prevZ: -0.5,
+    heading: 0,
+    speed: 0,
+    verticalVel: 0,
+    jumping: false
+  };
+  controller.activeMode = 'person';
+  controller.colliders = [{ minX: -10, maxX: 10, minZ: 0, maxZ: 10, maxY: 30 }];
+  controller.entities = { person };
+  controller.keys.forward = true;
+
+  for (let i = 0; i < 120; i++) controller.updatePerson(1 / 60);
+  assert.ok(person.speed < 0.05, `wall-blocked pedestrian does not accumulate phantom sprint speed (got ${person.speed})`);
+
+  // Reversing away from the wall responds immediately on the next frame
+  controller.keys.forward = false;
+  controller.keys.backward = true;
+  controller.updatePerson(1 / 60);
+  assert.ok(person.speed < 0 && person.position.z < -0.48, 'pedestrian backs away from wall without waiting to bleed phantom speed');
+});
+
 test('cyclist braking stops briskly, pauses at zero before reversing, and supports Space handbrake', () => {
   function bikeHarness(speed = 0, colliders = []) {
     const { controller } = keyboardHarness({

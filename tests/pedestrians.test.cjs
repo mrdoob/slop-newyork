@@ -402,7 +402,7 @@ function mergeGeometries(geos) {
   return merged;
 }
 
-const { PersonCrowd, PersonRig, buildPersonGeometry, createPersonMaterial } = loadModule(pedestriansSource, {
+const { PERSON_BONES, PersonCrowd, PersonRig, buildPersonGeometry, createPersonMaterial } = loadModule(pedestriansSource, {
   imports: {
     'three/webgpu': { Vector3, Quaternion, Matrix4, BufferAttribute, BufferGeometry, Float32BufferAttribute, MeshStandardNodeMaterial, Mesh },
     'three/tsl': tslStub,
@@ -731,4 +731,260 @@ test('poseCharacters skips stationary inactive cyclist IK/uploads and culls park
   controller.poseCharacters(1 / 60, { x: 0, y: 2, z: 10 });
   assert.equal(person.mesh.visible, true);
   assert.equal(personUpdates, 6);
+});
+
+function boneWorldPos(rig, bone, localPos = rig.bind[bone]) {
+  const o = bone * 8;
+  const q = new Quaternion(rig.pose[o], rig.pose[o + 1], rig.pose[o + 2], rig.pose[o + 3]);
+  const s = rig.pose[o + 7];
+  const p = localPos.clone().applyQuaternion(q).multiplyScalar(s);
+  p.x += rig.pose[o + 4];
+  p.y += rig.pose[o + 5];
+  p.z += rig.pose[o + 6];
+  return p;
+}
+
+function legKneeBendDeg(rig, legIndex) {
+  const thigh = legIndex === 0 ? PERSON_BONES.THIGH_L : PERSON_BONES.THIGH_R;
+  const shin = legIndex === 0 ? PERSON_BONES.SHIN_L : PERSON_BONES.SHIN_R;
+  const foot = legIndex === 0 ? PERSON_BONES.FOOT_L : PERSON_BONES.FOOT_R;
+  const hip = boneWorldPos(rig, thigh);
+  const knee = boneWorldPos(rig, shin);
+  const ankle = boneWorldPos(rig, foot);
+  const u1 = hip.sub(knee).normalize();
+  const u2 = ankle.sub(knee).normalize();
+  return 180 - Math.acos(Math.max(-1, Math.min(1, u1.dot(u2)))) * 180 / Math.PI;
+}
+
+test('PersonRig walk and full-speed run keep smooth kneecushion, bounded swing stride, and springy flight', () => {
+  const dt = 1 / 60;
+  for (const speed of [1.45, 3.5, 8.2]) {
+    const rig = new PersonRig({ seed: 4.2, scale: 1.0, girth: 1.02, hair: 0.18, armSwing: 1.0 });
+    let z = 0;
+    rig.reset(0, 0, 0, () => 0);
+    let minPelvisY = Infinity, maxPelvisY = -Infinity;
+    let minKneeDeg = 180, maxKneeDeg = 0;
+    let minRelZ = Infinity, maxRelZ = -Infinity;
+    let minSoleY = Infinity;
+
+    for (let f = 0; f < 180; f++) {
+      z += speed * dt;
+      rig.update(dt, 0, z, 0, () => 0);
+      if (f < 60) continue;
+      minPelvisY = Math.min(minPelvisY, rig.pelvisY);
+      maxPelvisY = Math.max(maxPelvisY, rig.pelvisY);
+      for (let i = 0; i < 2; i++) {
+        const foot = rig.feet[i];
+        const bend = legKneeBendDeg(rig, i);
+        minKneeDeg = Math.min(minKneeDeg, bend);
+        maxKneeDeg = Math.max(maxKneeDeg, bend);
+        minRelZ = Math.min(minRelZ, foot.az - z);
+        maxRelZ = Math.max(maxRelZ, foot.az - z);
+        const heel = boneWorldPos(rig, i === 0 ? PERSON_BONES.FOOT_L : PERSON_BONES.FOOT_R, new Vector3(foot.side * 0.09, 0, -0.078));
+        const toe = boneWorldPos(rig, i === 0 ? PERSON_BONES.TOE_L : PERSON_BONES.TOE_R, new Vector3(foot.side * 0.09, 0.005, 0.208));
+        minSoleY = Math.min(minSoleY, heel.y, toe.y);
+      }
+    }
+    assert.ok(minKneeDeg > 6.5, `speed ${speed}: soft IK extension avoids locked-knee snap (got ${minKneeDeg.toFixed(1)}°)`);
+    const maxVerticalAmp = speed >= 8 ? 0.032 : 0.055;
+    assert.ok(minPelvisY > 0.85 && maxPelvisY - minPelvisY < maxVerticalAmp,
+      `speed ${speed}: pelvis vertical arc stays smooth and shake-free [${minPelvisY.toFixed(3)}, ${maxPelvisY.toFixed(3)}]`);
+    assert.ok(minRelZ > -0.58 && maxRelZ < 0.48, `speed ${speed}: body-carried swing prevents world-space overshoot [${minRelZ.toFixed(2)}, ${maxRelZ.toFixed(2)}]`);
+    assert.ok(minSoleY > -0.005, `speed ${speed}: shoe soles stay above pavement (${(minSoleY * 100).toFixed(2)} cm)`);
+  }
+});
+
+test('PersonRig backward locomotion rolls forefoot-to-heel and keeps torso upright instead of leaning forward', () => {
+  const rig = new PersonRig({ seed: 4.2, scale: 1.0 });
+  const dt = 1 / 60;
+  let z = 0;
+  rig.reset(0, 0, 0, () => 0);
+  let maxFrontStancePitch = -Infinity;
+  let maxTouchdownPitch = -Infinity;
+
+  for (let f = 0; f < 180; f++) {
+    z -= 2.8 * dt;
+    rig.update(dt, 0, z, 0, () => 0);
+    if (f < 60) continue;
+    for (const foot of rig.feet) {
+      const relZ = foot.az - z;
+      if (!foot.swing && relZ > 0.2) maxFrontStancePitch = Math.max(maxFrontStancePitch, foot.pitch);
+      if (!foot.swing && relZ < -0.05) maxTouchdownPitch = Math.max(maxTouchdownPitch, foot.pitch);
+    }
+  }
+  assert.ok(rig.back > 0.95, 'backward gait blend engages');
+  assert.ok(rig.pelvisTilt < 0.05, `pelvis stays upright when backing up (${rig.pelvisTilt.toFixed(3)} rad)`);
+  assert.ok(maxTouchdownPitch > 0.05, 'backward touchdown lands forefoot-first behind the hip');
+  assert.ok(maxFrontStancePitch <= 0.02, `planted foot ahead of backward-moving hip never pitches onto tiptoe (${maxFrontStancePitch.toFixed(3)} rad)`);
+});
+
+test('PersonRig continuous Walk-mode turns activate head lead, banking, and turn-in-place stepping', () => {
+  const rig = new PersonRig({ seed: 4.2, scale: 1.0 });
+  const dt = 1 / 60;
+  let heading = 0;
+  rig.reset(0, 0, 0, () => 0);
+  const startPhase = rig.phase;
+  let totalPhase = 0, prevPhase = startPhase;
+
+  // Continuous 2.6 rad/s turn in place (matches Walk mode A/D turnRate)
+  for (let f = 0; f < 60; f++) {
+    heading += 2.6 * dt;
+    rig.update(dt, 0, 0, heading, () => 0);
+    let dp = rig.phase - prevPhase;
+    if (dp < 0) dp += 1;
+    totalPhase += dp;
+    prevPhase = rig.phase;
+  }
+  assert.ok(rig.yawRate > 2.2, `smoothed yawRate tracks continuous turn (${rig.yawRate.toFixed(2)} rad/s)`);
+  assert.ok(rig.headTurn > 0.25, `head leads into continuous turn (${rig.headTurn.toFixed(2)} rad)`);
+  assert.ok(totalPhase > 0.8, `feet step to turn in place (${totalPhase.toFixed(2)} cycles)`);
+
+  // Running turn banks into the curve
+  let x = 0, z = 0;
+  for (let f = 0; f < 90; f++) {
+    heading += 2.6 * dt;
+    x += Math.sin(heading) * 6.0 * dt;
+    z += Math.cos(heading) * 6.0 * dt;
+    rig.update(dt, x, z, heading, () => 0);
+  }
+  assert.ok(rig.bank < -0.06, `body banks inward during running left turn (${rig.bank.toFixed(3)} rad)`);
+});
+
+test('PersonRig airborne jump tucks knees smoothly, cushions landing, and keeps high-kick shin hinge twist-free', () => {
+  const rig = new PersonRig({ seed: 4.2, scale: 1.0 });
+  const dt = 1 / 60;
+  let z = 0, y = 0, vy = 0;
+  rig.reset(0, 0, 0, () => 0);
+  for (let f = 0; f < 60; f++) {
+    z += 4.5 * dt;
+    rig.update(dt, 0, z, 0, () => 0, null, 0);
+  }
+
+  // Launch jump (vy = 5.2, g = 14.5)
+  vy = 5.2;
+  let apexKneeBend = 0;
+  let landed = false;
+  let maxLandDrop = 0;
+  for (let f = 0; f < 60; f++) {
+    z += 4.5 * dt;
+    vy -= 14.5 * dt;
+    y = Math.max(0, y + vy * dt);
+    rig.update(dt, 0, z, 0, () => 0, null, y);
+    if (y > 0.8) apexKneeBend = Math.max(apexKneeBend, legKneeBendDeg(rig, 0), legKneeBendDeg(rig, 1));
+    if (f > 10 && y === 0) {
+      landed = true;
+      maxLandDrop = Math.max(maxLandDrop, rig.landDrop);
+    }
+  }
+  assert.ok(apexKneeBend > 35, `jump apex tucks knees instead of locking straight (${apexKneeBend.toFixed(1)}°)`);
+  assert.ok(landed && maxLandDrop > 0.015, `landing compresses knee cushion spring (${(maxLandDrop * 100).toFixed(2)} cm)`);
+
+  // High heel-kick above knee height must keep shin lateral axis aligned with thigh (no 180° flip)
+  rig.reset(0, 0, 0, () => 0);
+  const hip = new Vector3(0.09, 0.92, 0);
+  const highHeel = new Vector3(0.09, 0.62, -0.32); // forces knee forward/down and ankle higher than knee
+  rig.solveLeg(0, hip, highHeel, 0);
+  const oThigh = PERSON_BONES.THIGH_L * 8;
+  const oShin = PERSON_BONES.SHIN_L * 8;
+  const qThigh = new Quaternion(rig.pose[oThigh], rig.pose[oThigh + 1], rig.pose[oThigh + 2], rig.pose[oThigh + 3]);
+  const qShin = new Quaternion(rig.pose[oShin], rig.pose[oShin + 1], rig.pose[oShin + 2], rig.pose[oShin + 3]);
+  const xThigh = new Vector3(1, 0, 0).applyQuaternion(qThigh);
+  const xShin = new Vector3(1, 0, 0).applyQuaternion(qShin);
+  assert.ok(xThigh.dot(xShin) > 0.98, `shin shares thigh hinge axis without twisting (dot=${xThigh.dot(xShin).toFixed(4)})`);
+});
+
+test('PersonRig full-speed sprint stays vertically smooth even under uneven browser frame times', () => {
+  const rig = new PersonRig({ seed: 4.2, scale: 1.0, girth: 1.02, hair: 0.18, armSwing: 1.0 });
+  const dtSeq = [0.0142, 0.0189, 0.0155, 0.0208, 0.0138, 0.0174, 0.0166];
+  let z = 0;
+  rig.reset(0, 0, 0, () => 0);
+  let minPelvisY = Infinity, maxPelvisY = -Infinity;
+  let maxFrameStep = 0;
+  let prevPelvisY = rig.pelvisY;
+
+  for (let f = 0; f < 220; f++) {
+    const dt = dtSeq[f % dtSeq.length];
+    z += 8.2 * dt;
+    rig.update(dt, 0, z, 0, () => 0);
+    if (f >= 90) {
+      minPelvisY = Math.min(minPelvisY, rig.pelvisY);
+      maxPelvisY = Math.max(maxPelvisY, rig.pelvisY);
+      maxFrameStep = Math.max(maxFrameStep, Math.abs(rig.pelvisY - prevPelvisY));
+    }
+    prevPelvisY = rig.pelvisY;
+  }
+  assert.ok(maxPelvisY - minPelvisY < 0.03, `uneven dt sprint keeps subtle vertical bob (${((maxPelvisY - minPelvisY) * 100).toFixed(2)} cm)`);
+  assert.ok(maxFrameStep < 0.006, `uneven dt sprint avoids frame-to-frame pelvis jumps (${(maxFrameStep * 100).toFixed(2)} cm/frame)`);
+});
+
+test('PersonRig running uses spring-mass vertical phase, shin-aligned swing feet, and zero-lag contralateral arm pump', () => {
+  const dt = 1 / 60;
+
+  // 1. Walking vs running vertical phase: walking peaks near single-leg passing; running peaks in aerial flight above mid-stance
+  const walkRig = new PersonRig({ seed: 1, scale: 1.0 });
+  walkRig.reset(0, 0, 0, () => 0);
+  let wz = 0;
+  let walkContactY = 0, walkContactN = 0, walkPassY = 0, walkPassN = 0;
+  for (let f = 0; f < 240; f++) {
+    wz += 1.5 * dt;
+    walkRig.update(dt, 0, wz, 0, () => 0);
+    if (f < 90) continue;
+    const p = walkRig.phase % 0.5;
+    if (p > 0.08 && p < 0.16) { walkContactY += walkRig.pelvisY; walkContactN++; }
+    if (p > 0.28 && p < 0.38) { walkPassY += walkRig.pelvisY; walkPassN++; }
+  }
+  assert.ok(walkPassY / walkPassN > walkContactY / walkContactN + 0.012,
+    'walk vaults higher at single-leg passing than weight-acceptance');
+
+  const runRig = new PersonRig({ seed: 1, scale: 1.0 });
+  runRig.reset(0, 0, 0, () => 0);
+  let rz = 0;
+  let midStanceY = 0, midStanceN = 0, midFlightY = 0, midFlightN = 0;
+  let maxDorsiflexRad = -Infinity;
+  let maxRightHandRelZAtLeftPushOff = -Infinity;
+  let minLeftHandRelZAtLeftPushOff = Infinity;
+
+  for (let f = 0; f < 240; f++) {
+    rz += 6.5 * dt;
+    runRig.update(dt, 0, rz, 0, () => 0);
+    if (f < 90) continue;
+
+    const bothSwing = runRig.feet[0].swing && runRig.feet[1].swing;
+    const p = runRig.phase % 0.5;
+    if (!bothSwing && p > 0.08 && p < 0.16) { midStanceY += runRig.pelvisY; midStanceN++; }
+    if (bothSwing && p > 0.33 && p < 0.43) { midFlightY += runRig.pelvisY; midFlightN++; }
+
+    // 2. Swing foot follows shin angle without "magnetic hoverboot" hyper-dorsiflexion during high heel recovery
+    for (let i = 0; i < 2; i++) {
+      if (!runRig.feet[i].swing) continue;
+      const shinBone = i === 0 ? PERSON_BONES.SHIN_L : PERSON_BONES.SHIN_R;
+      const footBone = i === 0 ? PERSON_BONES.FOOT_L : PERSON_BONES.FOOT_R;
+      const knee = boneWorldPos(runRig, shinBone);
+      const ankle = boneWorldPos(runRig, footBone);
+      const shinPitch = Math.atan2(knee.z - ankle.z, knee.y - ankle.y);
+      const oFoot = footBone * 8;
+      const qFoot = new Quaternion(runRig.pose[oFoot], runRig.pose[oFoot + 1], runRig.pose[oFoot + 2], runRig.pose[oFoot + 3]);
+      const footFwd = new Vector3(0, 0, 1).applyQuaternion(qFoot);
+      const footPitch = Math.atan2(-footFwd.y, footFwd.z);
+      maxDorsiflexRad = Math.max(maxDorsiflexRad, shinPitch - footPitch);
+    }
+
+    // 3. At left push-off / right high-knee drive (phase ~0.24..0.30), left hand drives forward while right elbow/hand drives back
+    if (runRig.phase > 0.24 && runRig.phase < 0.30) {
+      const shL = boneWorldPos(runRig, PERSON_BONES.UPPER_ARM_L);
+      const shR = boneWorldPos(runRig, PERSON_BONES.UPPER_ARM_R);
+      const handL = boneWorldPos(runRig, PERSON_BONES.FOREARM_L, new Vector3(0.24, 0.92, 0));
+      const handR = boneWorldPos(runRig, PERSON_BONES.FOREARM_R, new Vector3(-0.24, 0.92, 0));
+      // Left leg is trailing behind hip & right knee is driving forward -> left arm pumps forward (+Z), right arm pumps back (-Z)
+      minLeftHandRelZAtLeftPushOff = Math.min(minLeftHandRelZAtLeftPushOff, handL.z - shL.z);
+      maxRightHandRelZAtLeftPushOff = Math.max(maxRightHandRelZAtLeftPushOff, handR.z - shR.z);
+    }
+  }
+
+  assert.ok(midFlightY / midFlightN > midStanceY / midStanceN + 0.01,
+    `running spring-mass lifts pelvis higher in aerial flight (${(midFlightY / midFlightN).toFixed(3)}) than mid-stance (${(midStanceY / midStanceN).toFixed(3)})`);
+  assert.ok(maxDorsiflexRad < 0.5,
+    `swing foot stays aligned with shin without horizontal hoverboot hyper-dorsiflexion (${(maxDorsiflexRad * 180 / Math.PI).toFixed(1)}°)`);
+  assert.ok(minLeftHandRelZAtLeftPushOff > 0.12 && maxRightHandRelZAtLeftPushOff < 0.05,
+    `contralateral arms oppose thigh scissor at push-off (L=${minLeftHandRelZAtLeftPushOff.toFixed(2)}m, R=${maxRightHandRelZAtLeftPushOff.toFixed(2)}m)`);
 });
