@@ -850,36 +850,100 @@ test('PersonRig continuous Walk-mode turns activate head lead, banking, and turn
   assert.ok(rig.bank < -0.06, `body banks inward during running left turn (${rig.bank.toFixed(3)} rad)`);
 });
 
-test('PersonRig airborne jump tucks knees smoothly, cushions landing, and keeps high-kick shin hinge twist-free', () => {
-  const rig = new PersonRig({ seed: 4.2, scale: 1.0 });
+test('PersonRig jump prepares with countermovement, evolves continuously across the arc without sprint foot lag, and absorbs landings', () => {
   const dt = 1 / 60;
+
+  // 1. Standing jump: countermovement crouch + arm backswing -> launch punch -> heel-back tuck -> downward landing reach -> deep squat
+  const standRig = new PersonRig({ seed: 4.2, scale: 1.0 });
+  standRig.reset(0, 0, 0, () => 0);
+  const standPelvis0 = standRig.pelvisY;
+  const handOffset = new Vector3(0.24, 0.92, 0);
+  let minPrepPelvisY = Infinity;
+  let minPrepHandRelZ = Infinity;
+  for (let p = 1; p <= 5; p++) {
+    standRig.update(dt, 0, 0, 0, () => 0, null, -p / 5);
+    minPrepPelvisY = Math.min(minPrepPelvisY, standRig.pelvisY);
+    const shL = boneWorldPos(standRig, PERSON_BONES.UPPER_ARM_L);
+    const handL = boneWorldPos(standRig, PERSON_BONES.FOREARM_L, handOffset);
+    minPrepHandRelZ = Math.min(minPrepHandRelZ, handL.z - shL.z);
+  }
+  assert.ok(standPelvis0 - minPrepPelvisY > 0.05, `standing jump prep crouches pelvis (${((standPelvis0 - minPrepPelvisY) * 100).toFixed(1)} cm)`);
+  assert.ok(minPrepHandRelZ < -0.05, `standing jump prep swings arms back before launch (${minPrepHandRelZ.toFixed(2)} m)`);
+
+  let sy = 0, svy = 5.2;
+  let apexAnkleClearance = 0;
+  let preLandAnkleClearance = Infinity;
+  let maxStandLandDrop = 0;
+  let minStandSoleY = Infinity;
+  for (let f = 0; f < 65; f++) {
+    if (svy !== 0 || sy > 0) {
+      svy -= 14.5 * dt;
+      sy += svy * dt;
+      if (sy <= 0) { sy = 0; svy = 0; }
+    }
+    standRig.update(dt, 0, 0, 0, () => 0, null, sy > 0 ? Math.max(0.006, sy) : 0);
+    if (Math.abs(svy) < 0.35 && sy > 0.8) {
+      apexAnkleClearance = Math.max(apexAnkleClearance, standRig.feet[0].ay - sy);
+    }
+    if (svy < -4.2 && sy > 0.05 && sy < 0.25) {
+      preLandAnkleClearance = Math.min(preLandAnkleClearance, standRig.feet[0].ay - sy);
+    }
+    if (f > 15 && sy === 0) {
+      maxStandLandDrop = Math.max(maxStandLandDrop, standRig.landDrop);
+    }
+    for (let i = 0; i < 2; i++) {
+      const foot = standRig.feet[i];
+      const heel = boneWorldPos(standRig, i === 0 ? PERSON_BONES.FOOT_L : PERSON_BONES.FOOT_R, new Vector3(foot.side * 0.09, 0, -0.078));
+      const toe = boneWorldPos(standRig, i === 0 ? PERSON_BONES.TOE_L : PERSON_BONES.TOE_R, new Vector3(foot.side * 0.09, 0.005, 0.208));
+      minStandSoleY = Math.min(minStandSoleY, heel.y, toe.y);
+    }
+  }
+  assert.ok(apexAnkleClearance - preLandAnkleClearance > 0.1,
+    `standing jump extends legs downward before touchdown instead of freezing at apex (${apexAnkleClearance.toFixed(3)} -> ${preLandAnkleClearance.toFixed(3)} m)`);
+  assert.ok(maxStandLandDrop > 0.07, `standing landing compresses into weighty absorption squat (${(maxStandLandDrop * 100).toFixed(1)} cm)`);
+  assert.ok(minStandSoleY > -0.005, `standing jump & landing never clip shoe soles below pavement (${(minStandSoleY * 100).toFixed(2)} cm)`);
+
+  // 2. Full-speed sprint jump (8.2 m/s): body-relative split-leap with zero world-space backward foot drag
+  const rig = new PersonRig({ seed: 4.2, scale: 1.0 });
   let z = 0, y = 0, vy = 0;
   rig.reset(0, 0, 0, () => 0);
-  for (let f = 0; f < 60; f++) {
-    z += 4.5 * dt;
+  for (let f = 0; f < 90; f++) {
+    z += 8.2 * dt;
     rig.update(dt, 0, z, 0, () => 0, null, 0);
   }
 
-  // Launch jump (vy = 5.2, g = 14.5)
   vy = 5.2;
   let apexKneeBend = 0;
+  let maxLeadFootRelZ = -Infinity;
+  let minTrailFootRelZ = Infinity;
   let landed = false;
   let maxLandDrop = 0;
   for (let f = 0; f < 60; f++) {
-    z += 4.5 * dt;
-    vy -= 14.5 * dt;
-    y = Math.max(0, y + vy * dt);
-    rig.update(dt, 0, z, 0, () => 0, null, y);
+    z += 8.2 * dt;
+    if (vy !== 0 || y > 0) {
+      vy -= 14.5 * dt;
+      y = Math.max(0, y + vy * dt);
+      if (y === 0) vy = 0;
+    }
+    rig.update(dt, 0, z, 0, () => 0, null, y > 0 ? Math.max(0.006, y) : 0);
+    if (y > 0.4) {
+      const r0 = rig.feet[0].az - z;
+      const r1 = rig.feet[1].az - z;
+      maxLeadFootRelZ = Math.max(maxLeadFootRelZ, Math.max(r0, r1));
+      minTrailFootRelZ = Math.min(minTrailFootRelZ, Math.min(r0, r1));
+    }
     if (y > 0.8) apexKneeBend = Math.max(apexKneeBend, legKneeBendDeg(rig, 0), legKneeBendDeg(rig, 1));
     if (f > 10 && y === 0) {
       landed = true;
       maxLandDrop = Math.max(maxLandDrop, rig.landDrop);
     }
   }
-  assert.ok(apexKneeBend > 35, `jump apex tucks knees instead of locking straight (${apexKneeBend.toFixed(1)}°)`);
-  assert.ok(landed && maxLandDrop > 0.015, `landing compresses knee cushion spring (${(maxLandDrop * 100).toFixed(2)} cm)`);
+  assert.ok(apexKneeBend > 45, `sprint jump apex folds knees into split-leap (${apexKneeBend.toFixed(1)}°)`);
+  assert.ok(maxLeadFootRelZ > 0.18, `sprint jump keeps lead foot ahead of hip instead of lagging behind (${maxLeadFootRelZ.toFixed(2)} m)`);
+  assert.ok(minTrailFootRelZ > -0.52, `sprint jump trail foot sweeps cleanly without world-space drag (${minTrailFootRelZ.toFixed(2)} m)`);
+  assert.ok(landed && maxLandDrop > 0.025, `sprint landing cushions smoothly into next stride (${(maxLandDrop * 100).toFixed(2)} cm)`);
 
-  // High heel-kick above knee height must keep shin lateral axis aligned with thigh (no 180° flip)
+  // 3. High heel-kick above knee height must keep shin lateral axis aligned with thigh (no 180° flip)
   rig.reset(0, 0, 0, () => 0);
   const hip = new Vector3(0.09, 0.92, 0);
   const highHeel = new Vector3(0.09, 0.62, -0.32); // forces knee forward/down and ankle higher than knee

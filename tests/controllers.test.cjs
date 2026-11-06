@@ -748,11 +748,18 @@ test('walk mode keeps curb step-offs grounded while real jumps arc and pin the c
   assert.equal(person.position.y, 0);
   assert.equal(maxRigAir, 0, 'curb step-off passes air=0 so PersonRig steps down smoothly');
 
-  // Press jump: person rises into the air, rig receives jump air, and contact shadow stays at y = 0.02 in world space
+  // Press jump: brief countermovement prep passes negative air to PersonRig, then person launches into the air and contact shadow stays at y = 0.02 in world space
+  let minRigAir = 0;
+  person.rig.update = (_dt, _x, _z, _h, _g, _o, air) => {
+    minRigAir = Math.min(minRigAir, air);
+    maxRigAir = Math.max(maxRigAir, air);
+  };
   controller.keys.up = true;
   controller.updatePerson(1 / 60);
+  controller.poseCharacters(1 / 60, person.position);
   controller.keys.up = false;
-  for (let i = 0; i < 15; i++) {
+  assert.ok(person.jumpPrep > 0 && minRigAir < 0, 'jump initiates a brief countermovement wind-up before liftoff');
+  for (let i = 0; i < 20; i++) {
     controller.updatePerson(1 / 60);
     controller.poseCharacters(1 / 60, person.position);
   }

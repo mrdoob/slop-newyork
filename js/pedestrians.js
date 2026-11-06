@@ -1167,8 +1167,8 @@ function makeFoot(side) {
     // current ankle, foot pitch (+ heel up), toe bend (relative), heading while swinging, ground contact 0..1,
     // stance progress (0 at the ends, 1 at mid-stance)
     ax: 0, ay: 0, az: 0, pitch: 0, toe: 0, swingYaw: 0, contact: 1, stance: 0,
-    // swing progress, lift-off state (world + body-relative rx/rz), landing target and the ankle at touchdown
-    w: 0, w0: 0, lx: 0, ly: 0, lz: 0, rx: 0, rz: 0, lyaw: 0, lpitch: 0, ltoe: 0, lground: 0,
+    // swing progress, lift-off state (world + body-relative rx/ry/rz), landing target and the ankle at touchdown
+    w: 0, w0: 0, lx: 0, ly: 0, lz: 0, rx: 0, ry: 0, rz: 0, lyaw: 0, lpitch: 0, ltoe: 0, lground: 0,
     tx: 0, ty: 0, tz: 0, tyaw: 0, ex: 0, ey: 0, ez: 0
   };
 }
@@ -1211,6 +1211,7 @@ class PersonRig {
     this.sprint = 0;
     this.phase = 0; // gait cycle: the left heel strikes at 0, the right at 0.5
     this.pelvisY = 0;
+    this.basePelvisY = 0;
     this.standY = 0; // pelvis height standing straight on the ground under the feet (eased)
     this.pelvisYaw = 0;
     this.pelvisRoll = 0;
@@ -1221,10 +1222,16 @@ class PersonRig {
     this.arm = 0; // smoothed contralateral arm drive
     this.yawRate = 0; // smoothed body turn rate (rad/s)
     this.back = 0; // backward motion blend (0 forward .. 1 backward)
+    this.wasAirborne = false;
     this.airBlend = 0; // airborne jump blend (0 grounded .. 1 airborne)
     this.prevAir = 0;
+    this.airVel = 0; // vertical velocity while airborne (m/s)
+    this.airPelvisOff = 0; // pelvis height above jump base (m)
+    this.jumpPrep = 0; // pre-takeoff crouch/backswing progress [0..1]
+    this.jumpLead = 1; // +1 left leg leads jump, -1 right leg leads
     this.landDrop = 0; // spring-damped landing knee compression (m)
     this.landVel = 0;
+    this.landRoll = 0; // forefoot-to-heel cushion roll on standing/walking landings
     this.headTurn = 0; // the head leads into turns
     this.bank = 0; // lean into the turn (rad, + to the right)
     this.lean = 0; // standing weight: +1 on the left leg .. -1 on the right
@@ -1255,7 +1262,10 @@ class PersonRig {
     this.yaw = yaw;
     this.vx = this.vz = this.tvx = this.tvz = this.speed = 0;
     this.gait = this.run = this.sprint = this.sway = 0;
-    this.yawRate = this.back = this.airBlend = this.prevAir = this.landDrop = this.landVel = 0;
+    this.wasAirborne = false;
+    this.yawRate = this.back = this.airBlend = this.prevAir = this.airVel = this.airPelvisOff = this.jumpPrep = 0;
+    this.landDrop = this.landVel = this.landRoll = 0;
+    this.jumpLead = 1;
     this.pelvisYaw = this.pelvisRoll = this.spreadF = this.thighSplit = this.arm = this.headTurn = this.bank = this.lean = 0;
     this.pelvisTilt = 0.025;
     this.diving = false;
@@ -1271,9 +1281,10 @@ class PersonRig {
       foot.contact = 1;
       this.plant(foot, 0, HEEL);
       foot.rx = foot.ax - x;
+      foot.ry = foot.ay - foot.py;
       foot.rz = foot.az - z;
     }
-    this.pelvisY = this.standY = this.standingHeight((this.feet[0].py + this.feet[1].py) * 0.5);
+    this.pelvisY = this.basePelvisY = this.standY = this.standingHeight((this.feet[0].py + this.feet[1].py) * 0.5);
     this.placed = true;
     this.solve();
   }
@@ -1352,13 +1363,47 @@ class PersonRig {
     this.sprint += (smooth(3.5, 8.2, speed) * this.run - this.sprint) * _e15;
     this.updateLean();
 
-    const airborne = air > 0.03;
-    if (!airborne && this.prevAir > 0.05) {
-      const impact = Math.min(1, this.prevAir / (0.85 * this.s));
-      this.landDrop = Math.max(this.landDrop, (0.02 + 0.03 * impact) * this.s);
-      this.landVel = Math.max(this.landVel, (0.45 + 0.75 * impact) * this.s);
-      this.pelvisY -= this.prevAir + this.landDrop;
-      // Resume grounded gait smoothly from the actual lead/trail landing feet without popping the rear leg mid-swing
+    const prepRaw = air < -1e-4 ? clamp01(-air) : 0;
+    air = Math.max(0, air);
+    const airborne = air > 0.005;
+    if (airborne) {
+      this.jumpPrep = 0;
+      if (!this.wasAirborne) {
+        this.wasAirborne = true;
+        this.airVel = Math.max(air / dt, 4.8 * this.s);
+        const gndY = ground(owner, x, z);
+        const baseY = gndY + air;
+        this.airPelvisOff = this.pelvisY - gndY - air * 0.25;
+        const sinY = Math.sin(this.yaw);
+        const cosY = Math.cos(this.yaw);
+        const zl = (this.feet[0].ax - x) * sinY + (this.feet[0].az - z) * cosY + (this.feet[0].swing ? 0.06 * this.s : 0);
+        const zr = (this.feet[1].ax - x) * sinY + (this.feet[1].az - z) * cosY + (this.feet[1].swing ? 0.06 * this.s : 0);
+        this.jumpLead = zl >= zr ? 1 : -1;
+        for (const foot of this.feet) {
+          foot.rx = foot.ax - x;
+          foot.rz = foot.az - z;
+          foot.ry = foot.ay - baseY;
+        }
+      } else {
+        this.airVel += (((air - this.prevAir) / dt) - this.airVel) * _e03;
+      }
+    } else if (this.wasAirborne) {
+      this.wasAirborne = false;
+      this.jumpPrep = 0;
+      const fallSpeed = Math.max(1.2 * this.s, -this.airVel);
+      const impact = clamp01(fallSpeed / (5.2 * this.s));
+      const gndY = ground(owner, x, z);
+      const standH = this.standingHeight(gndY);
+      this.standY = standH;
+      const contDrop = Math.max(0, standH - (gndY + this.airPelvisOff));
+      this.landDrop = Math.max((0.03 + 0.016 * impact) * this.s, Math.min(0.085 * this.s, contDrop));
+      this.basePelvisY = standH - lerp(0.004, 0.018, this.run) * this.s;
+      this.pelvisY = this.basePelvisY - this.landDrop;
+      this.landVel = lerp(3.15, 1.35, this.run) * impact * this.s;
+      this.landRoll = (1 - 0.75 * this.run) * 0.3 * impact;
+      this.airVel = 0;
+
+      // Plant feet cleanly at touchdown: two-foot absorption when standing, lead-foot strike + trail swing when moving
       const sinY = Math.sin(this.yaw);
       const cosY = Math.cos(this.yaw);
       const zl = (this.feet[0].ax - x) * sinY + (this.feet[0].az - z) * cosY;
@@ -1371,10 +1416,10 @@ class PersonRig {
       leadFoot.px = leadFoot.ax;
       leadFoot.pz = leadFoot.az;
       leadFoot.py = ground(owner, leadFoot.px, leadFoot.pz);
-      this.phase = (leadIdx * 0.5 + 0.04) % 1;
+      this.phase = speed > 0.25 ? (leadIdx * 0.5 + 0.04) % 1 : 0;
       const duty = lerp(GAIT.dutyWalk, lerp(GAIT.dutyRun, 0.225, this.sprint), this.run);
       const trailLp = (this.phase + (1 - leadIdx) * 0.5) % 1;
-      if (speed > 0.2 && trailLp >= duty) {
+      if (speed > 0.25 && trailLp >= duty) {
         this.liftOff(trailFoot, x, z, (trailLp - duty) / (1 - duty));
         trailFoot.lground = ground(owner, trailFoot.ax, trailFoot.az);
         trailFoot.ly = trailFoot.lground + ANKLE_H * this.s;
@@ -1385,61 +1430,117 @@ class PersonRig {
         trailFoot.pz = trailFoot.az;
         trailFoot.py = ground(owner, trailFoot.px, trailFoot.pz);
       }
+    } else {
+      this.jumpPrep = prepRaw > 0 ? prepRaw : this.jumpPrep * (1 - _e045);
     }
     this.prevAir = air;
     this.airBlend += ((airborne ? 1 : 0) - this.airBlend) * (airborne ? _e045 : _e10);
     if (!airborne && (this.landDrop > 1e-4 || Math.abs(this.landVel) > 1e-4)) {
-      const springAcc = -240 * this.landDrop - 26 * this.landVel;
-      this.landVel += springAcc * dt;
-      this.landDrop = Math.max(0, Math.min(0.11 * this.s, this.landDrop + this.landVel * dt));
+      const steps = dt > 0.025 ? 2 : 1;
+      const h = dt / steps;
+      for (let k = 0; k < steps; k++) {
+        const springAcc = -210 * this.landDrop - 27 * this.landVel;
+        this.landVel += springAcc * h;
+        this.landDrop = Math.max(0, Math.min(0.16 * this.s, this.landDrop + this.landVel * h));
+      }
       if (this.landDrop < 1e-4 && this.landVel <= 0) this.landDrop = this.landVel = 0;
     } else if (airborne) {
       this.landDrop *= 1 - _e10;
       this.landVel = 0;
     }
+    this.landRoll *= 1 - _e045;
 
     if (airborne) this.updateAirborne(dt, x, z, ground, owner, air);
     else this.updateGait(dt, x, z, heading, yawErr, ground, owner);
     if (updatePose) this.solve();
   }
 
-  // Airborne (jumping): smooth transition from current stride into an athletic jump tuck, leveling for landing
+  // Airborne (jumping): continuous velocity-clocked launch push -> soaring apex tuck/leap -> downward landing reach
   updateAirborne(dt, x, z, ground, owner, air) {
     const s = this.s;
     const sinY = Math.sin(this.yaw);
     const cosY = Math.cos(this.yaw);
     const groundY = ground(owner, x, z);
-    const jumpArc = clamp01(air / (0.85 * s));
-    const strideSplit = Math.min(0.24 * s, this.speed * 0.035 * s) * (1 - 0.5 * this.back);
-    const follow = ease(dt, 0.075);
+    const baseY = groundY + air;
+
+    const vyNorm = clampAbs(this.airVel / (5.2 * s), 1.25);
+    // Linear-in-time arc progress: 0 at launch (+vy), 0.5 at apex (vy=0), 1.0 approaching touchdown (-vy)
+    const prog = clamp01(0.5 - 0.5 * clampAbs(vyNorm, 1));
+    const launchPush = (1 - smooth(0, 0.26, prog)) * smooth(0.15, 0.75, vyNorm);
+    const reachPhase = smooth(0.5, 0.96, prog);
+    const tuckBell = Math.sin(Math.PI * smooth(0.03, 0.97, prog)) * smooth(0.04 * s, 0.32 * s, air);
+
+    const moveJump = smooth(0.3, 3.2, this.speed);
+    const sprintJump = this.sprint;
+    const fwdSign = 1 - 1.55 * this.back;
+    const followXZ = ease(dt, 0.05);
+    const followY = ease(dt, 0.04);
+    const followPitch = launchPush > 0.25 ? ease(dt, 0.02) : followXZ;
+
     for (let i = 0; i < 2; i++) {
       const foot = this.feet[i];
-      const leadSign = i === 0 ? 1 : -1;
-      const splitZ = strideSplit * leadSign * Math.sign(this.spreadF || 1);
+      const footSign = i === 0 ? 1 : -1;
+      const isLead = footSign * this.jumpLead > 0;
       const lat = foot.side * GAIT.spread * s;
-      const targetX = x + cosY * lat + sinY * splitZ;
-      const targetZ = z - sinY * lat + cosY * splitZ;
-      const footGround = ground(owner, targetX, targetZ);
-      const tuck = (0.045 + 0.11 * jumpArc + (splitZ < 0 ? 0.035 : 0.01) * jumpArc) * s;
-      const targetAy = footGround + air + ANKLE_H * s + tuck;
+
+      // Standing jump: crisp plantarflexed toe push-off -> athletic heel-back tuck -> forefoot landing reach
+      const standZ = ((-0.115 + 0.028 * footSign) * tuckBell + 0.025 * reachPhase) * s;
+      const standY = ANKLE_H * s + (-0.035 * launchPush + 0.215 * tuckBell + 0.012 * reachPhase) * s;
+      const standPitch = 0.62 * launchPush + 0.26 * tuckBell + 0.3 * reachPhase;
+
+      // Moving / running jump: open diagonal split-leap — rear leg extends on push-off, sweeps back through apex,
+      // then cycles under the hip on descent while the lead leg drives its knee high then reaches out to land
+      let moveZ, moveY, movePitch;
+      if (isLead) {
+        const driveZ = (0.16 + 0.06 * sprintJump) * (1 - 0.3 * launchPush) * (1 - 0.35 * reachPhase)
+          + (0.27 + 0.07 * sprintJump) * reachPhase;
+        moveZ = driveZ * fwdSign * s;
+        moveY = ANKLE_H * s + (0.03 * launchPush + (0.24 + 0.06 * sprintJump) * tuckBell + 0.015 * reachPhase) * s;
+        movePitch = 0.16 * launchPush + 0.1 * tuckBell + lerp(0.14, -0.1, sprintJump) * reachPhase;
+      } else {
+        const sweepBack = (0.34 + 0.13 * sprintJump) * (0.55 * launchPush + 0.9 * tuckBell);
+        const cycleUnder = (0.13 + 0.04 * sprintJump) * reachPhase;
+        moveZ = -(sweepBack * (1 - 0.65 * reachPhase) + cycleUnder) * fwdSign * s;
+        moveY = ANKLE_H * s + (-0.04 * launchPush + (0.2 + 0.07 * sprintJump) * tuckBell + 0.065 * reachPhase) * s;
+        movePitch = 0.68 * launchPush + 0.52 * tuckBell + 0.24 * reachPhase;
+      }
+
+      const localZ = lerp(standZ, moveZ, moveJump);
+      const targetRx = cosY * lat + sinY * localZ;
+      const targetRz = -sinY * lat + cosY * localZ;
+      const targetRy = lerp(standY, moveY, moveJump);
+      const targetPitch = lerp(standPitch, movePitch, moveJump);
+
       foot.swing = false;
-      foot.ax += (targetX - foot.ax) * follow;
-      foot.az += (targetZ - foot.az) * follow;
-      foot.ay += (targetAy - foot.ay) * ease(dt, 0.055);
+      foot.rx += (targetRx - foot.rx) * followXZ;
+      foot.rz += (targetRz - foot.rz) * followXZ;
+      foot.ry += (targetRy - foot.ry) * followY;
+
+      foot.ax = x + foot.rx;
+      foot.az = z + foot.rz;
+      const footGround = ground(owner, foot.ax, foot.az);
+      foot.pitch += (targetPitch - foot.pitch) * followPitch;
+      const soleDepth = (ANKLE_H * Math.cos(foot.pitch) + Math.max(0.208 * Math.sin(foot.pitch), -0.088 * Math.sin(foot.pitch))) * s;
+      foot.ay = Math.max(footGround + soleDepth, baseY + foot.ry);
       foot.px = foot.ax;
       foot.pz = foot.az;
-      foot.py = ground(owner, foot.px, foot.pz);
+      foot.py = footGround;
       foot.yaw = foot.swingYaw = this.yaw + foot.side * GAIT.toeOut;
-      foot.pitch += ((0.18 * jumpArc - 0.05) - foot.pitch) * follow;
-      foot.toe *= 1 - follow;
+      foot.toe *= 1 - followXZ;
       foot.contact = foot.stance = 0;
     }
+
     this.standY = this.standingHeight(groundY);
-    const targetPelvisY = groundY + air + ANKLE_H * s + this.legLength * 0.965 + (PELVIS_Y - HIP_Y) * s;
-    this.pelvisY += (targetPelvisY - this.pelvisY) * ease(dt, 0.045);
-    this.pelvisTilt += ((0.06 + 0.08 * this.run * (1 - this.back)) - this.pelvisTilt) * _e15;
+    const standOff = this.standingHeight(0);
+    const targetPelvisOff = standOff + (0.01 * launchPush - (0.036 + 0.016 * moveJump) * tuckBell - 0.028 * reachPhase) * s;
+    this.airPelvisOff += (targetPelvisOff - this.airPelvisOff) * followY;
+    this.basePelvisY = this.standY;
+    this.pelvisY = baseY + this.airPelvisOff;
+
+    const targetTilt = 0.025 + (-0.025 * launchPush + (0.035 + 0.095 * moveJump) * tuckBell + 0.045 * reachPhase) * fwdSign;
+    this.pelvisTilt += (targetTilt - this.pelvisTilt) * _e12;
     this.pelvisRoll *= 1 - _e15;
-    this.pelvisYaw *= 1 - _e15;
+    this.pelvisYaw += (clampAbs(-0.11 * moveJump * this.jumpLead * tuckBell, 0.13) - this.pelvisYaw) * _e12;
     this.sway *= 1 - _e12;
   }
 
@@ -1559,8 +1660,11 @@ class PersonRig {
     const targetPelvisRoll = 0.042 * g * (left.contact - right.contact) * (1 - run * 0.55) + IDLE.roll * this.lean * idle;
     this.pelvisRoll += (targetPelvisRoll - this.pelvisRoll) * _e10;
     const fwdLean = 1 - 1.15 * this.back;
-    const targetPelvisTilt = 0.025 + (0.02 * g + (0.055 + 0.035 * sprint) * run) * fwdLean;
-    this.pelvisTilt += (targetPelvisTilt - this.pelvisTilt) * _e15;
+    const prepSquat = smooth(0, 0.78, this.jumpPrep) * (1 - 0.55 * smooth(0.82, 1, this.jumpPrep));
+    const prepPush = smooth(0.76, 1, this.jumpPrep);
+    const targetPelvisTilt = 0.025 + (0.02 * g + (0.055 + 0.035 * sprint) * run) * fwdLean
+      + 0.14 * prepSquat * (1 - 0.5 * run);
+    this.pelvisTilt += (targetPelvisTilt - this.pelvisTilt) * (this.jumpPrep > 0.01 ? _e045 : _e15);
     this.spreadF = spreadF;
     const turnArm = Math.sin(2 * Math.PI * this.phase) * 0.22 * smooth(0.4, 2.2, Math.abs(this.yawRate)) * (1 - g);
     this.arm += (activeSplit + turnArm - this.arm) * _e045;
@@ -1579,7 +1683,7 @@ class PersonRig {
     const runAmp = lerp(0.036, 0.02, sprint);
     const runBase = lerp(0.014, 0.022, sprint);
     const runDrop = s * (runBase + runAmp * runWave);
-    let y = this.standY - lerp(walkDrop, runDrop, run) - this.landDrop - IDLE.drop * s * Math.abs(this.lean) * idle;
+    let y = this.standY - lerp(walkDrop, runDrop, run) - IDLE.drop * s * Math.abs(this.lean) * idle;
 
     // ...never higher than the legs reach: planted feet hold the hips down during support, releasing smoothly at
     // push-off as the leg enters aerial flight so trailing feet never yank the pelvis downward mid-air.
@@ -1608,7 +1712,9 @@ class PersonRig {
         y = smin(y, Math.max(Math.min(lowest, stanceFloor), reachTop(foot.ax, foot.ay, foot.az, hx, hz, reach) + stanceRelease - _v.y), k);
       }
     }
-    this.pelvisY += (y - this.pelvisY) * ease(dt, 0.045);
+    this.basePelvisY += (y - this.basePelvisY) * _e045;
+    const prepDrop = s * lerp(0.115, 0.048, run) * prepSquat - s * 0.018 * prepPush;
+    this.pelvisY = this.basePelvisY - this.landDrop - prepDrop;
   }
 
   touchDown(foot) {
@@ -1661,7 +1767,9 @@ class PersonRig {
       const t = (u - 0.72) / 0.28;
       bPitch = -0.08 * g * (1 - run * 0.5) * t * t;
     }
-    const pitch = lerp(fPitch, bPitch, this.back);
+    const landCushion = this.landRoll * (1 - smooth(0.35, 1.8, this.speed))
+      + 0.36 * smooth(0.58, 1, this.jumpPrep) * (1 - 0.45 * run);
+    const pitch = lerp(fPitch, bPitch, this.back) + landCushion;
     this.plant(foot, pitch, pitch > 0 ? TOE_JOINT : HEEL);
     foot.rx = foot.ax - x;
     foot.rz = foot.az - z;
@@ -1956,7 +2064,7 @@ class PersonRig {
       ankleSplit += sign * ((ankle.x - this.x) * sinY + (ankle.z - this.z) * cosY);
       let pitch = foot.pitch;
       const toe = foot.toe;
-      if (foot.swing || airB > 0.05) {
+      if (foot.swing || (this.wasAirborne && airB > 0.05)) {
         const shinFwd = (_knee.x - ankle.x) * Math.sin(footYaw) + (_knee.z - ankle.z) * Math.cos(footYaw);
         const shinPitch = Math.atan2(shinFwd, _knee.y - ankle.y);
         if (foot.swing) {
@@ -1966,32 +2074,44 @@ class PersonRig {
           pitch = lerp(pitch, naturalPitch, followW);
           pitch = Math.max(shinPitch - 0.42, Math.min(shinPitch + 0.6, pitch));
         } else {
-          pitch = lerp(pitch, clampAbs(shinPitch * 0.75 + 0.12, 0.85), airB);
+          const airClear = smooth(0.06 * s, 0.22 * s, ankle.y - (foot.py + ANKLE_H * s));
+          const airNatural = Math.max(shinPitch - 0.36, Math.min(shinPitch + 0.68, pitch + shinPitch * 0.45));
+          pitch = lerp(pitch, airNatural, airB * airClear);
         }
       }
       this.writeFoot(i, ankle, qY(_qa, footYaw).multiply(qX(_q, pitch)), toe);
     }
     this.thighSplit = clampAbs(0.62 * (kneeSplit / (THIGH * s)) + 0.38 * (ankleSplit / (0.62 * s)), 1.35);
 
-    // Chest counter-rotates against the pelvis and leans athletically into the walk/run; the head stays level, looking
-    // ahead (and into turns), or subtly scanning around while standing
+    // Chest counter-rotates against the pelvis and leans athletically into the walk/run/landing; the head stays level
+    const vyNorm = clampAbs(this.airVel / (5.2 * s), 1.25);
+    const jumpProg = clamp01(0.5 - 0.5 * clampAbs(vyNorm, 1));
+    const ascentArc = Math.sin(Math.PI * Math.pow(jumpProg, 0.54)); // rises briskly on launch, sweeps down through descent
+    const descendReach = smooth(0.32, 0.92, jumpProg);
+    const prepSquat = smooth(0, 0.78, this.jumpPrep) * (1 - 0.55 * smooth(0.82, 1, this.jumpPrep));
+    const prepBackswing = Math.sin(Math.PI * smooth(0, 0.88, this.jumpPrep)) * (1 - 0.55 * run);
+    const prepDrive = smooth(0.7, 1, this.jumpPrep) * (1 - 0.55 * run);
+    const landNorm = this.landDrop / s;
     const breathe = Math.sin(this.time * 1.7) * 0.008 * idle;
-    const chestLean = 0.012 + (0.018 * g + (0.065 + 0.035 * sprint) * run) * fwdLean - 0.04 * airB + 0.09 * this.landDrop;
+    const chestLean = 0.012 + (0.018 * g + (0.065 + 0.035 * sprint) * run) * fwdLean
+      + 0.2 * prepSquat * (1 - 0.5 * run) - 0.07 * airB * clamp01(vyNorm) + 1.15 * landNorm;
     _qChest.copy(_qPelvis)
       .multiply(qY(_q, -1.75 * this.pelvisYaw))
       .multiply(qX(_q, chestLean + breathe))
       .multiply(qZ(_q, -0.8 * this.pelvisRoll));
     this.writeBone(BONE.CHEST, _qChest, this.jointFrom(BONE.PELVIS, BONE.CHEST, _qPelvis, _pelvis, _chest));
     const look = Math.sin(this.time * 0.37 + this.seed) * 0.22 * idle * idle;
-    const headPitch = 0.015 * idle - 0.02 * run * (1 - this.back) - 0.04 * airB;
+    const headPitch = 0.015 * idle - 0.02 * run * (1 - this.back) - 0.16 * prepSquat - 0.04 * airB * clamp01(vyNorm) - 0.38 * landNorm;
     qY(_qa, yaw + this.headTurn + look).multiply(qX(_q, headPitch));
     this.writeBone(BONE.HEAD, _qa, this.jointFrom(BONE.CHEST, BONE.HEAD, _qChest, _chest, _v));
 
-    // Arms: relaxed symmetric pendulum in walk (opening straight on backswing); energetic "cheek-to-hip-pocket" pump in
-    // running (elbows driving far behind the back on backswing, hands pumping up towards chest midline on frontswing)
+    // Arms: relaxed symmetric pendulum in walk; energetic "cheek-to-hip-pocket" pump in run; backswing -> upward punch
+    // -> open downward sweep in jumps (or contralateral hurdle sail in running jumps); soft counterweight on landing
     const armSignal = lerp(this.arm, this.thighSplit, 0.65 * g);
-    const armScale = this.armSwing * Math.max(g, 0.35 * smooth(0.4, 2.2, Math.abs(this.yawRate))) * (1 - 0.55 * airB);
+    const armScale = this.armSwing * Math.max(g, 0.35 * smooth(0.4, 2.2, Math.abs(this.yawRate)));
     const fwdRun = run * (1 - 0.6 * this.back);
+    const moveJump = smooth(0.75, 3.3, this.speed) * (1 - 0.45 * this.back);
+    const backScale = 1 - 0.42 * this.back;
     for (let i = 0; i < 2; i++) {
       const side = SIDES[i];
       const drive = -side * armSignal * armScale;
@@ -1999,9 +2119,27 @@ class PersonRig {
       const negD = posD - drive;
       const walkFlex = drive * 0.46;
       const runFlex = -0.03 + posD * (0.58 + 0.1 * sprint) - negD * (0.64 + 0.12 * sprint);
-      const flex = lerp(walkFlex, runFlex, fwdRun) + idle * 0.01 + airB * 0.28;
-      const abduction = 0.095 + (this.girth - 1) * 0.35 + run * (0.06 + 0.03 * sprint) + this.back * run * 0.05 + airB * 0.16 + this.landDrop * 0.6;
-      const crossIn = -side * (0.05 * g + (0.16 + 0.08 * sprint) * fwdRun) * Math.min(1.1, posD);
+      const prepArmFlex = (-0.52 * prepBackswing + 0.42 * prepDrive) * backScale;
+      const landArmFlex = landNorm * 0.78 * (1 - 0.65 * run) * (1 - 0.5 * this.back);
+      const groundFlex = lerp(walkFlex, runFlex, fwdRun) + idle * 0.01 + prepArmFlex + landArmFlex;
+
+      const oppLead = -side * this.jumpLead;
+      // Standing/walking jump: explosive upward punch on launch (`prepDrive -> launchUp`), peaking early in ascent
+      // before sweeping open and down beside the hips through apex and descent (no horizontal mid-air hold!)
+      const launchUp = 1 - smooth(0.06, 0.56, jumpProg);
+      const jumpStandFlex = ((0.64 * launchUp + 0.16 * ascentArc) * (1 - descendReach) - 0.18 * descendReach) * backScale;
+      // Running jump: contralateral hurdle lift on ascent, smoothly counter-swinging into landing stride on descent
+      const jumpRunFlex = oppLead > 0
+        ? lerp(0.88, 0.22, descendReach)
+        : lerp(-0.56, -0.14, descendReach);
+      const airFlex = lerp(jumpStandFlex, jumpRunFlex, moveJump);
+      const flex = lerp(groundFlex, airFlex, airB);
+
+      const jumpAbd = 0.14 + 0.2 * Math.sin(Math.PI * jumpProg) + (oppLead < 0 ? 0.08 * moveJump : 0);
+      const abduction = 0.095 + (this.girth - 1) * 0.35 + run * (0.06 + 0.03 * sprint) + this.back * run * 0.05
+        + 0.1 * prepSquat + airB * jumpAbd + landNorm * 1.65;
+      const crossIn = -side * ((0.05 * g + (0.16 + 0.08 * sprint) * fwdRun) * Math.min(1.1, posD) * (1 - airB)
+        + (0.1 * (1 - moveJump) + 0.18 * moveJump) * airB * Math.max(0, airFlex));
       this.jointFrom(BONE.CHEST, LIMB.upperArm[i], _qChest, _chest, _shoulder);
       _qUpper.copy(_qChest)
         .multiply(qZ(_q, side * (abduction - ARM_BIND_ABDUCTION)))
@@ -2010,7 +2148,12 @@ class PersonRig {
       this.writeBone(LIMB.upperArm[i], _qUpper, _shoulder);
       const walkElbow = 0.14 * idle + 0.075 * g + 0.42 * posD;
       const runElbow = (1.14 + 0.08 * sprint) + posD * (0.38 + 0.1 * sprint) - negD * 0.1;
-      const elbow = lerp(walkElbow, runElbow, fwdRun) + airB * 0.35;
+      const prepElbow = 0.42 * prepBackswing + 1.15 * prepDrive;
+      const groundElbow = lerp(walkElbow, runElbow, fwdRun) + prepElbow + landNorm * 1.95 * (1 - 0.65 * run);
+      const standAirElbow = (1.28 * launchUp + 0.48 * ascentArc) * (1 - 0.8 * descendReach) + 0.2 * descendReach;
+      const runAirElbow = oppLead > 0 ? lerp(1.38, 1.1, descendReach) : lerp(0.95, 1.08, descendReach);
+      const airElbow = lerp(standAirElbow, runAirElbow, moveJump);
+      const elbow = lerp(groundElbow, airElbow, airB);
       this.jointFrom(LIMB.upperArm[i], LIMB.forearm[i], _qUpper, _shoulder, _v);
       this.writeBone(LIMB.forearm[i], _q2.copy(_qUpper).multiply(qX(_q, -elbow)), _v);
     }

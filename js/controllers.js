@@ -359,6 +359,7 @@ class ThirdPersonControllerManager {
     if (this.activeMode === 'person') {
       ent.verticalVel = 0;
       ent.jumping = false;
+      ent.jumpPrep = 0;
       ent.prevX = ent.position.x;
       ent.prevZ = ent.position.z;
       if (ent.shadow) {
@@ -495,6 +496,7 @@ class ThirdPersonControllerManager {
       speed: 0,
       verticalVel: 0,
       jumping: false,
+      jumpPrep: 0,
       cameraTargetOffset: new THREE.Vector3(0, 1.55, 0),
       chaseDistance: 4.3,
       chaseHeight: 1.95
@@ -1031,10 +1033,10 @@ class ThirdPersonControllerManager {
         if (p.mesh) p.mesh.visible = true;
         const groundY = this.getGroundHeight(p.position.x, p.position.z, 'person');
         const air = p.position.y - groundY;
-        const jumpAir = (p.jumping || air > 0.3) && air > 0.02 ? air : 0;
+        const jumpAir = p.jumping ? Math.max(0.006, air) : p.jumpPrep > 0 ? -(1 - p.jumpPrep / 0.085) : air > 0.3 ? air : 0;
         if (p.shadow) {
           p.shadow.position.y = groundY - p.position.y + 0.02;
-          const sScale = Math.max(0.45, 1 - jumpAir * 0.35);
+          const sScale = Math.max(0.45, 1 - Math.max(0, jumpAir) * 0.35);
           p.shadow.scale.set(sScale, sScale, 1);
         }
         p.rig.update(dt, p.position.x, p.position.z, p.heading, personGround, this, jumpAir);
@@ -1109,6 +1111,7 @@ class ThirdPersonControllerManager {
       p.prevZ = p.position.z;
       p.speed = walkSpeed;
       p.jumping = false;
+      p.jumpPrep = 0;
       p.verticalVel = 0;
       p.position.x += Math.sin(p.heading) * walkSpeed * dt;
       p.position.z += Math.cos(p.heading) * walkSpeed * dt;
@@ -1188,12 +1191,24 @@ class ThirdPersonControllerManager {
     }
 
     const groundY = this.getGroundHeight(p.position.x, p.position.z, 'person');
-    if (this.keys.up && p.position.y <= groundY + 0.02) {
-      p.verticalVel = 5.2;
-      p.jumping = true;
+    const JumpLeadTime = 0.085;
+    if (this.keys.up && p.position.y <= groundY + 0.02 && !p.jumping && !(p.jumpPrep > 0)) {
+      p.jumpPrep = JumpLeadTime;
+    }
+    if (p.jumpPrep > 0) {
+      p.jumpPrep = Math.max(0, p.jumpPrep - dt);
+      p.position.y += (groundY - p.position.y) * (1 - Math.exp(-dt * 18));
+      if (Math.abs(groundY - p.position.y) < 1e-3) p.position.y = groundY;
+      if (p.jumpPrep === 0) {
+        p.verticalVel = 5.2;
+        p.jumping = true;
+      }
     }
     if (p.jumping || p.position.y > groundY + 0.3) {
-      if (p.position.y > groundY + 0.3) p.jumping = true;
+      if (p.position.y > groundY + 0.3) {
+        p.jumping = true;
+        p.jumpPrep = 0;
+      }
       p.verticalVel -= 14.5 * dt;
       p.position.y += p.verticalVel * dt;
       if (p.position.y <= groundY) {
@@ -1201,7 +1216,7 @@ class ThirdPersonControllerManager {
         p.verticalVel = 0;
         p.jumping = false;
       }
-    } else {
+    } else if (!(p.jumpPrep > 0)) {
       // Stepping up or down ordinary 0.22 m curbs stays grounded so the IK footsteps carry the body smoothly
       p.position.y += (groundY - p.position.y) * (1 - Math.exp(-dt * 18));
       if (Math.abs(groundY - p.position.y) < 1e-3) p.position.y = groundY;
