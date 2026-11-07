@@ -197,6 +197,8 @@ class ThirdPersonControllerManager {
     this.colliders = colliders;
     this._colliderCells = null; // built on first use, see nearColliders()
     this.activeMode = 'car'; // 'person' | 'car' | 'cyclist' | 'helicopter'
+    // Down in the subway (subway.js) the pedestrian walks a station instead of the street: its floor & bounds
+    this.underground = null;
 
     this.keys = {
       forward: false,
@@ -355,6 +357,23 @@ class ThirdPersonControllerManager {
       ent.heading = heading;
       ent.position.y = heli ? altitude : this.getGroundHeight(destination.x, destination.z, this.activeMode);
     }
+    this.settleActive(ent);
+    return { x: ent.position.x, z: ent.position.z };
+  }
+
+  // Put the active entity down at (x, y, z) as it stands, with no search for a clear spot (the subway's platforms,
+  // under the street's colliders)
+  placeActiveAt(x, y, z, heading) {
+    const ent = this.getActiveEntity();
+    this.resetInput();
+    ent.position.set(x, y, z);
+    ent.heading = heading;
+    this.settleActive(ent);
+  }
+
+  // At rest where it now is: no speed, slide or climb carried on, the pedestrian's legs planted there
+  settleActive(ent) {
+    const heli = this.activeMode === 'helicopter';
     ent.speed = 0;
     if (this.activeMode === 'person') {
       ent.verticalVel = 0;
@@ -395,7 +414,6 @@ class ThirdPersonControllerManager {
     }
     ent.mesh.position.copy(ent.position);
     ent.mesh.rotation.y = ent.heading;
-    return { x: ent.position.x, z: ent.position.z };
   }
 
   // Find a fully clear arrival before moving the player. Sequential collision pushes can leave a player trapped
@@ -874,6 +892,7 @@ class ThirdPersonControllerManager {
   }
 
   getGroundHeight(x, z, mode = 'person') {
+    if (mode === 'person' && this.underground) return this.underground.floorAt(x, z);
     // Inside Central Park (5th Ave to Central Park West, 59th St to 110th St)
     const cp = CENTRAL_PARK_BOUNDS;
     if (x > cp.minX && x < cp.maxX && z > cp.minZ && z < cp.maxZ) {
@@ -1181,7 +1200,8 @@ class ThirdPersonControllerManager {
     const nextZ = prevZ + cosH * p.speed * dt;
     p.position.x = nextX;
     p.position.z = nextZ;
-    this.resolveHorizontalCollision(p.position, 0.48, null, p);
+    if (this.underground) this.underground.clamp(p.position, 0.48);
+    else this.resolveHorizontalCollision(p.position, 0.48, null, p);
 
     // Prevent phantom speed buildup when blocked head-on by a building or shoreline boundary
     if (Math.abs(p.position.x - nextX) > 1e-6 || Math.abs(p.position.z - nextZ) > 1e-6) {

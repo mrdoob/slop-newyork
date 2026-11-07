@@ -1131,7 +1131,9 @@ function buildStreetDetails(scene, colliders = []) {
   }
 
   scene.add(group);
-  return { group, footprints, signalClock, signalIntersections, audioSignals, treeField, update };
+  // the subway's street stairs as placed, for walking down them (main.js) and coming back up (subway.js)
+  const subwayEntrances = subwaySites.map(({ x, z, yaw }) => ({ x, z, yaw, halfW: 1.26, halfL: 3.21 }));
+  return { group, footprints, signalClock, signalIntersections, audioSignals, treeField, subwayEntrances, update };
 }
 
 export { buildStreetDetails };
