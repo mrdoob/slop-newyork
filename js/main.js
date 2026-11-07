@@ -18,6 +18,7 @@ import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
 import { LightingSystem } from './lighting.js';
 import { NYCMapSystem } from './nyc-map.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
+import { createSubwaySystem } from './subway.js';
 import { CityAudioSystem } from './audio-system.js';
 
 // Application setup, shader warm-up and frame loop.
@@ -292,10 +293,11 @@ async function initApp() {
     person: [[['W', 'S'], 'Walk / Run'], [['A', 'D'], 'Turn'], [['Space'], 'Jump'], [['Drag'], 'Orbit']],
     car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['B'], 'Horn'], [['Drag'], 'Orbit']],
     cyclist: [[['W', 'S'], 'Pedal / Brake'], [['Space'], 'Brake'], [['A', 'D'], 'Lean & Turn'], [['Drag'], 'Orbit']],
-    helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend']]
+    helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend']],
+    subway: [[['W', 'S'], 'Walk / Run'], [['A', 'D'], 'Turn'], [['F'], 'Board / Get off'], [['Stairs'], 'Street'], [['5'], 'Exit']]
   };
   // Top speeds in mph (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
-  const topSpeedMph = { person: 18, car: 81, cyclist: 43, helicopter: 116 };
+  const topSpeedMph = { person: 18, car: 81, cyclist: 43, helicopter: 116, subway: 75 };
 
   function renderControlHints(mode) {
     if (!elControlsHint) return;
@@ -324,8 +326,64 @@ async function initApp() {
     modeSwitch.style.setProperty('--ind-w', `${active.offsetWidth}px`);
   }
 
+  // The subway (mode 5): down into the station nearest the player, walking its platform; any other mode, the key
+  // again or the stairs bring them back up at the station's nearest street entrance
+  const subway = createSubwaySystem(scene, streetDetails.subwayEntrances);
+  function enterSubway() {
+    const from = controllerManager.getActiveEntity().position;
+    const arrival = subway.enter(from.x, from.z);
+    if (!arrival) return false;
+    controllerManager.setMode('person');
+    controllerManager.underground = subway;
+    controllerManager.placeActiveAt(arrival.x, arrival.y, arrival.z, arrival.heading);
+    cameraSystem.space = subway;
+    cameraSystem.resetForTeleport();
+    return true;
+  }
+  // F on the platform: in through the nearest door of the train standing alongside; F aboard at a station: out onto its
+  // platform (or just walk through the open doors)
+  function toggleRide() {
+    const person = controllerManager.entities.person;
+    const to = subway.riding ? subway.alight() : subway.board(person.position.x, person.position.z);
+    if (to) controllerManager.placeActiveAt(to.x, to.y, to.z, to.heading);
+  }
+  // Walking into a street entrance's stairwell takes the player down into its station (not straight back down after
+  // coming up one)
+  let subwayCooldown = 0;
+  function walkedIntoEntrance(now) {
+    if (controllerManager.activeMode !== 'person' || subway.active || now < subwayCooldown) return false;
+    const p = controllerManager.entities?.person;
+    if (!p || Math.abs(p.speed) < 0.3) return false;
+    for (const e of streetDetails.subwayEntrances || []) {
+      const dx = p.position.x - e.x;
+      const dz = p.position.z - e.z;
+      if (Math.abs(dx) > 4 || Math.abs(dz) > 4) continue;
+      const c = Math.cos(e.yaw), sn = Math.sin(e.yaw);
+      if (Math.abs(dx * c - dz * sn) < e.halfW - 0.2 && Math.abs(dx * sn + dz * c) < e.halfL - 0.4) return true;
+    }
+    return false;
+  }
+  function leaveSubway() {
+    if (!subway.active) return;
+    subwayCooldown = performance.now() + 2500;
+    const p = controllerManager.entities.person.position;
+    const exit = subway.exitPoint(p.x, p.z);
+    const node = subway.leave();
+    controllerManager.underground = null;
+    cameraSystem.space = null;
+    const at = exit || node;
+    controllerManager.setMode('person');
+    controllerManager.teleportActiveTo(at.x, at.z, at.heading ?? controllerManager.entities.person.heading);
+    cameraSystem.resetForTeleport();
+  }
+
   function selectMode(mode) {
-    controllerManager.setMode(mode);
+    if (mode === 'subway') {
+      if (!subway.active && !enterSubway()) return;
+    } else if (subway.active) {
+      leaveSubway();
+    }
+    controllerManager.setMode(mode === 'subway' ? 'person' : mode);
     touchControls.setMode(controllerManager.activeMode);
     gamepadControls.reset();
     modeButtons.forEach((btn) => {
@@ -334,7 +392,7 @@ async function initApp() {
     document.body.dataset.mode = mode;
     placeModeIndicator();
     const ent = controllerManager.getActiveEntity();
-    if (elMode) elMode.textContent = ent.label;
+    if (elMode) elMode.textContent = mode === 'subway' ? 'Subway' : ent.label;
     renderControlHints(mode);
 
     // If currently on a static scenic camera, switch to 3rd-Person Chase so user sees their selected character/vehicle
@@ -482,6 +540,7 @@ async function initApp() {
   }
 
   function teleportTo(x, z, heading = Math.PI) {
+    if (subway.active) selectMode('person'); // up to the street first
     const destination = controllerManager.teleportActiveTo(x, z, heading);
     touchControls.reset();
     gamepadControls.reset();
@@ -553,7 +612,10 @@ async function initApp() {
         selectMode('helicopter');
         break;
       case 'Digit5':
-        selectCamera('chase', true);
+        selectMode(subway.active ? 'person' : 'subway');
+        break;
+      case 'KeyF':
+        if (subway.active) toggleRide();
         break;
       case 'Digit6':
         selectCamera('action', true);
@@ -700,6 +762,18 @@ async function initApp() {
 
     // Update 3rd-person controllers, camera, signals, traffic & vehicle collisions, building LODs, and dynamic shadow focus
     gamepadControls.update(dt);
+    // Trains first: a ridden one carries the pedestrian along before the controllers place them (see subway.js clamp)
+    if (subway.active) {
+      const rider = subway.update(dt);
+      if (rider) {
+        // carried along by the train; the player still walks about inside it
+        const person = controllerManager.entities.person;
+        person.rig.carry(rider.x - person.position.x, rider.z - person.position.z);
+        person.position.x = rider.x;
+        person.position.z = rider.z;
+        person.heading += rider.turn;
+      }
+    }
     controllerManager.update(dt, elapsed, cameraSystem.initialized ? cameraSystem.currentPos : null);
     cameraSystem.update(dt, elapsed);
     streetDetails.signalClock.value = elapsed;
@@ -717,6 +791,11 @@ async function initApp() {
       nextPlayerSave = now + 5000;
     }
     if (boroughs.update) boroughs.update(elapsed); // Roosevelt Island Tramway cabins
+    if (walkedIntoEntrance(now)) selectMode('subway');
+    if (subway.active && !subway.riding) {
+      const p = controllerManager.entities.person.position;
+      if (subway.reachedStreet(p.x, p.z)) selectMode('person'); // up the stairs and out
+    }
     cityBlocks.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z);
     if (cityBlocks.updateLights) cityBlocks.updateLights(cameraSystem.camera);
     if (streetDetails.update) streetDetails.update(cameraSystem.camera);
@@ -776,7 +855,7 @@ async function initApp() {
 
       const activeEnt = controllerManager.getActiveEntity();
       const mode = controllerManager.activeMode;
-      const mph = Math.round(Math.abs(activeEnt.speed) * 2.237);
+      const mph = Math.round(Math.abs(subway.riding ? subway.speed : activeEnt.speed) * 2.237); // aboard: the train's
       const altFt = Math.max(0, Math.round(activeEnt.position.y * 3.281));
 
       if (elFps) {
@@ -784,11 +863,11 @@ async function initApp() {
         elFps.className = currentFps >= 50 ? 'fps-ok' : currentFps >= 30 ? 'fps-warn' : 'fps-bad';
       }
       if (elSpeed) elSpeed.textContent = String(mph);
-      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, mph / (topSpeedMph[mode] || 80))})`;
+      if (elSpeedMeter) elSpeedMeter.style.transform = `scaleX(${Math.min(1, mph / (topSpeedMph[subway.riding ? 'subway' : mode] || 80))})`;
       if (elAltitude) elAltitude.textContent = altFt.toLocaleString('en-US');
       // The street corner of the player on the follow cameras, of the camera itself on the scenic ones
       const where = cameraSystem.getActivePreset().category === 'follow' ? activeEnt.position : cameraSystem.currentPos;
-      renderLocation(getLocationLabel(where.x, where.z));
+      renderLocation(subway.active ? subway.label : getLocationLabel(where.x, where.z));
     }
   });
 }
