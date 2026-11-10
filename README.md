@@ -8,6 +8,8 @@ A New York City simulation built with [three.js](https://threejs.org/), WebGPURe
 
 Fork it, remix it, improve it, break it. Make games, animations, films, experiments, or something completely different. Use it as a starting point and take it wherever you want. Have fun!
 
+Bringing it to your own city? [PORTING.md](PORTING.md) maps out what's reusable, what reads replaceable data, and what's New York through and through.
+
 Explore other cities and community remixes in [Slop Cities](https://github.com/zz85/slop-cities).
 
 ## License and data
