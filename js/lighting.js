@@ -41,9 +41,8 @@ const TIME_PRESETS = {
     roadWetness: 0.28,
     envIntensity: 0.54,
     canyonBounce: 0.52,
-    turbidity: 8.0,
     rayleigh: 2.8,
-    mieCoefficient: 0.008,
+    mieCoefficient: 0.032, // the haze amount on its own: SkyMesh's turbidity (deprecated in r188) stays at its default 2
     mieDirectionalG: 0.88,
     cloudCoverage: 0.36,
     cloudDensity: 0.38,
@@ -66,9 +65,8 @@ const TIME_PRESETS = {
     roadWetness: 0.08,
     envIntensity: 0.58,
     canyonBounce: 0.58,
-    turbidity: 6.5,
     rayleigh: 2.4,
-    mieCoefficient: 0.006,
+    mieCoefficient: 0.0195,
     mieDirectionalG: 0.86,
     cloudCoverage: 0.32,
     cloudDensity: 0.35,
@@ -91,9 +89,8 @@ const TIME_PRESETS = {
     roadWetness: 0.55,
     envIntensity: 0.36,
     canyonBounce: 0.32,
-    turbidity: 9.5,
     rayleigh: 3.4,
-    mieCoefficient: 0.010,
+    mieCoefficient: 0.0475,
     mieDirectionalG: 0.90,
     cloudCoverage: 0.40,
     cloudDensity: 0.42,
@@ -116,9 +113,8 @@ const TIME_PRESETS = {
     roadWetness: 0.62,
     envIntensity: 0.30,
     canyonBounce: 0.18,
-    turbidity: 4.0,
     rayleigh: 1.5,
-    mieCoefficient: 0.004,
+    mieCoefficient: 0.008,
     mieDirectionalG: 0.80,
     cloudCoverage: 0.22,
     cloudDensity: 0.25,
@@ -145,9 +141,8 @@ class LightingSystem {
     // whatever its size)
     this.sky = new SkyMesh();
     this.sky.scale.setScalar(200000);
-    this.sky.turbidity.value = 8.0;
     this.sky.rayleigh.value = 2.8;
-    this.sky.mieCoefficient.value = 0.008;
+    this.sky.mieCoefficient.value = 0.032;
     this.sky.mieDirectionalG.value = 0.88;
     this.sky.cloudScale.value = 0.00018;
     this.sky.cloudSpeed.value = 0.000015;
@@ -166,16 +161,6 @@ class LightingSystem {
       const finalSky = mix(dayCol, this.uNightSkyColor, this.uNightFactor);
       return vec4(finalSky, float(1.0));
     })();
-
-    // In reversedDepthBuffer mode ([1..0]), camera.far is z = 0.0 (whereas SkyMesh defaults to z = w)
-    if (renderer && renderer.reversedDepthBuffer) {
-      const rawSkyVertexNode = this.sky.material.vertexNode;
-      this.sky.material.vertexNode = Fn(() => {
-        const pos = rawSkyVertexNode.toVar();
-        pos.z.assign(0.0);
-        return pos;
-      })();
-    }
 
     this.scene.add(this.sky);
 
@@ -284,7 +269,6 @@ class LightingSystem {
     if (this.uFogDensity) this.uFogDensity.value = p.fogDensity;
 
     // Update physical Preetham SkyMesh uniforms
-    this.sky.turbidity.value = p.turbidity;
     this.sky.rayleigh.value = p.rayleigh;
     this.sky.mieCoefficient.value = p.mieCoefficient;
     this.sky.mieDirectionalG.value = p.mieDirectionalG;

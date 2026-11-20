@@ -694,7 +694,6 @@ function loadLighting() {
     constructor() {
       super();
       const u = (v = 0) => ({ value: v });
-      this.turbidity = u();
       this.rayleigh = u();
       this.mieCoefficient = u();
       this.mieDirectionalG = u();
