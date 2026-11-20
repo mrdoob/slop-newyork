@@ -71,8 +71,8 @@ const TIME_PRESETS = {
     cloudDensity: 0.38,
     skyExposure: 0.25,
     nightFactor: 0.0,
-    glowZenith: 0x000000,
-    glowHorizon: 0x000000
+    glowZenith: 0x46588c, // the low sun's multiply scattered blue, without which the sky away from it turns teal
+    glowHorizon: 0x7c7489
   },
   midday: {
     id: 'midday',
@@ -90,10 +90,10 @@ const TIME_PRESETS = {
     roadWetness: 0.08,
     envIntensity: 0.58,
     canyonBounce: 0.58,
-    mieCoefficient: 0.025,
+    mieCoefficient: 0.02, // the clearest air of the day
     cloudCoverage: 0.32,
     cloudDensity: 0.35,
-    skyExposure: 0.11,
+    skyExposure: 0.07,
     nightFactor: 0.0,
     glowZenith: 0x000000,
     glowHorizon: 0x000000
@@ -115,13 +115,13 @@ const TIME_PRESETS = {
     roadWetness: 0.55,
     envIntensity: 0.5,
     canyonBounce: 0.32,
-    mieCoefficient: 0.03,
+    mieCoefficient: 0.02, // a narrower glow over the set sun
     cloudCoverage: 0.40,
     cloudDensity: 0.42,
-    skyExposure: 8.0,
+    skyExposure: 6.0,
     nightFactor: 0.0,
     glowZenith: 0x22386e, // the twilight blue
-    glowHorizon: 0x3a4c80
+    glowHorizon: 0x2e3a5e
   },
   midnight: {
     id: 'midnight',
@@ -135,7 +135,7 @@ const TIME_PRESETS = {
     skyTop: 0x10131a,
     skyHorizon: 0x3a3029,
     fogColor: 0x1a1816,
-    fogDensity: 0.00036,
+    fogDensity: 0.0002, // the city's lights carry for kilometres
     interiorGlow: 1.55,
     roadWetness: 0.62,
     envIntensity: 0.30,
@@ -145,8 +145,8 @@ const TIME_PRESETS = {
     cloudDensity: 0.25,
     skyExposure: 0.022,
     nightFactor: 1.0, // no sunlit sky at all, only the city's glow
-    glowZenith: 0x14161d,
-    glowHorizon: 0x54473b
+    glowZenith: 0x15171d,
+    glowHorizon: 0x524840
   }
 };
 
@@ -183,8 +183,9 @@ class LightingSystem {
     // The direct light the aerial haze scatters (see createAerialFogNode)
     this.uHazeSunDir = uniform(new THREE.Vector3(0, 1, 0));
     this.uHazeSunColor = uniform(new THREE.Color(0x000000));
-    // The sky light SkyMesh leaves out, added under it: its single scattering misses the deep blue that fills the
-    // twilight sky, and Manhattan's night sky is light-polluted (a dull warm glow along the horizon, darker overhead)
+    // The sky light SkyMesh leaves out, added under it: its single scattering misses the light scattered more than once,
+    // the blue that fills the sky away from a low sun and the twilight sky, and Manhattan's night sky is light-polluted
+    // (a dull warm glow along the horizon, darker overhead)
     this.uGlowZenith = uniform(new THREE.Color(0x000000));
     this.uGlowHorizon = uniform(new THREE.Color(0x000000));
     const rawSkyNode = this.sky.material.colorNode;
@@ -273,7 +274,8 @@ class LightingSystem {
     const g = MIE_DIRECTIONAL_G;
     const k = float(1 + g * g).sub(dot(dir, this.uHazeSunDir).mul(2 * g));
     const phase = inverseSqrt(k.mul(k).mul(k)).mul((1 - g * g) / (4 * Math.PI));
-    const inscatter = this.uHazeSunColor.mul(phase).mul(float(1.0).sub(exp(tau.negate())));
+    // Further out the sky-coloured fog takes over, which carries the sun's glow already
+    const inscatter = this.uHazeSunColor.mul(phase).mul(float(1.0).sub(exp(tau.negate()))).mul(float(1.0).sub(factor));
     return Fn(() => vec4(mix(output.rgb, skyColor, factor).add(inscatter), output.a))();
   }
 
