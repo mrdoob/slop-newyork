@@ -29,7 +29,7 @@ const LOOKS = {
   midnight: { exposure: 1.04, contrast: 1.08, saturation: 1.06, balance: [0.985, 1.00, 1.035], bloom: 0.30, threshold: 1.00 }
 };
 
-function createPostProcessing(renderer, sceneColor, reflections) {
+function createPostProcessing(renderer, sceneColor, reflections, occlusion) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   // Exposure is applied before bloom so its threshold follows the image's exposed brightness.
   // RenderPipeline performs ACES and the output color-space conversion exactly once, after this graph.
@@ -39,7 +39,7 @@ function createPostProcessing(renderer, sceneColor, reflections) {
   const contrast = uniform(1.0);
   const saturation = uniform(1.0);
   const balance = uniform(new THREE.Vector3(1, 1, 1));
-  const exposed = max(sceneColor.rgb.add(reflections.rgb), vec3(0)).mul(exposure).mul(balance);
+  const exposed = max(sceneColor.rgb.mul(occlusion).add(reflections.rgb), vec3(0)).mul(exposure).mul(balance);
 
   // Limit only bloom's peak radiance, scaling RGB together to retain neon and lamp colors.
   // The original HDR image keeps its full range for the tone mapper's highlight shoulder.

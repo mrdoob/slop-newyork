@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2, smoothstep } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+import { ao } from 'three/addons/tsl/display/GTAONode.js';
+import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 import { createPostProcessing } from './post-processing.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
 import { getLocationLabel, isTypingInField, ROADS, NYC_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
@@ -257,7 +259,15 @@ async function initApp() {
   // Roughness mip blur must not spread reflections back onto matte or nonreflective surfaces.
   const reflectionMask = scenePassMetalRough.r.greaterThan(0).select(smoothstep(maxSSRRoughness, 0.55, scenePassMetalRough.g), 0);
   const reflections = ssrPass.mul(reflectionMask);
-  const colorGrade = createPostProcessing(renderer, scenePassColor, reflections);
+
+  // Ground Truth Ambient Occlusion from the same depth and normals: contact shading under cars and people and along
+  // the foot of every wall. Without a depth pre-pass it can only darken the lit image, so it stays short-range.
+  const aoPass = ao(scenePassDepth, scenePassNormal, cameraSystem.camera);
+  aoPass.resolutionScale = 0.5;
+  aoPass.radius.value = 2.0;
+  // Edge-aware filter for GTAO's per-pixel noise pattern (no TRAA to resolve it over time)
+  const occlusion = denoise(aoPass.getTextureNode(), { depth: scenePassDepth, normal: scenePassNormal, camera: cameraSystem.camera });
+  const colorGrade = createPostProcessing(renderer, scenePassColor, reflections, occlusion.r);
   const renderPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
 
   // 6. Wire UI Controls (Strictly using safe DOM APIs: textContent, classList, addEventListener)
