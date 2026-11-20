@@ -580,6 +580,8 @@ const TELEPORT_LOCATIONS = {
   bryant: { x: avenueX('6') + 3.6, z: streetZ(41), heading: Math.PI * 0.5 },
   flatiron: { x: avenueX('5') + 3.6, z: streetZ(25), heading: 0 },
   centralpark: { x: avenueX('6') + 3.6, z: streetZ(57), heading: Math.PI },
+  // Westbound on 34th St past the Empire State, into the Golden Hour sun that sets straight down the cross streets
+  henge: { x: (avenueX('madison') + avenueX('park')) * 0.5, z: streetZ(34) - 3.6, heading: -Math.PI * 0.5 },
   // West St & Vesey St: a clear view of the tower with room for every mode's chase camera.
   owtc: { x: -305.7, z: 5210, heading: Math.atan2(owtc.x + 305.7, owtc.z - 5210) }
 };
