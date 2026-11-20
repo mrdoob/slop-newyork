@@ -11,7 +11,8 @@ const WebGPUCoordinateSystem = 2001;
 
 class Color {
   constructor(hex = 0xffffff) { this.setHex(hex); }
-  setHex(hex) { this.hex = hex; return this; }
+  setHex(hex) { this.hex = hex; this.scale = 1; return this; }
+  multiplyScalar(s) { this.scale *= s; return this; }
 }
 
 class Vector2 {
@@ -806,6 +807,9 @@ test('extended cascade ceiling keeps 30 Hudson Yards and 541 m towers in front o
   shadow.camera.coordinateSystem = WebGPUCoordinateSystem;
   shadow.camera._reversedDepth = true;
 
+  // the same north-north-west sun as the stock light above, which puts the tower upstream of the taxi
+  lighting.sunLight.position.set(-0.44, 0.58, -0.68).normalize();
+  lighting.sunLight.updateMatrixWorld();
   for (const yawDeg of [0, 20, 45, 90, 135, 180, 215, 270, 315]) {
     const cam = makeChaseCamera({ yawDeg });
     shadow.updateMatrices(lighting.sunLight, cam);
@@ -837,8 +841,13 @@ test('extended cascade ceiling keeps 30 Hudson Yards and 541 m towers in front o
 
 test('extended cascade ceiling preserves texel-snapped X/Y bounds, downstream far plane, and receiver depth in (0, 1)', () => {
   for (const reversedDepth of [true, false]) {
+    // Golden Hour: the lowest sun, so the longest upstream extension
+    const { LightingSystem, THREE } = loadLighting();
+    const lighting = new LightingSystem(new THREE.Scene(), { reversedDepthBuffer: reversedDepth });
+    const shadow = lighting.sunLight.shadow;
+
     const stockLight = new SunLight();
-    stockLight.position.set(-0.44, 0.58, -0.68).normalize();
+    stockLight.position.copy(lighting.sunLight.position);
     stockLight.updateMatrixWorld();
     stockLight.shadow.mapSize.set(2048, 2048);
     stockLight.shadow.camera.near = 0.5;
@@ -846,9 +855,6 @@ test('extended cascade ceiling preserves texel-snapped X/Y bounds, downstream fa
     stockLight.shadow.camera.coordinateSystem = WebGPUCoordinateSystem;
     stockLight.shadow.camera._reversedDepth = reversedDepth;
 
-    const { LightingSystem, THREE } = loadLighting();
-    const lighting = new LightingSystem(new THREE.Scene(), { reversedDepthBuffer: reversedDepth });
-    const shadow = lighting.sunLight.shadow;
     shadow.camera.coordinateSystem = WebGPUCoordinateSystem;
     shadow.camera._reversedDepth = reversedDepth;
 
