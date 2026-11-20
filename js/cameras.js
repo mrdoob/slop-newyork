@@ -199,11 +199,13 @@ class CameraSystem {
           entity.position.z - Math.cos(totalYaw) * horizDist
         );
 
+        // Looks past the entity along the camera's own orbit direction, so dragging the camera around keeps the
+        // entity centred (without a drag that is straight ahead of it)
         const lookUpBias = entity.type === 'helicopter' ? 0.2 : (entity.type === 'car' ? 0.52 : 1.55);
         desiredLook.set(
-          entity.position.x + Math.sin(entity.heading) * 5.2,
+          entity.position.x + Math.sin(totalYaw) * 5.2,
           entity.position.y + entity.cameraTargetOffset.y + lookUpBias,
-          entity.position.z + Math.cos(entity.heading) * 5.2
+          entity.position.z + Math.cos(totalYaw) * 5.2
         );
         break;
       }
