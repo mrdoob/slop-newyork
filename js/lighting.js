@@ -6,7 +6,9 @@ import {
   vec4,
   uniform,
   mix,
-  fog,
+  dot,
+  inverseSqrt,
+  output,
   pmremTexture,
   positionWorld,
   cameraPosition,
@@ -178,6 +180,9 @@ class LightingSystem {
     // Calibrate SkyMesh raw radiance (EE=1000 * 0.04) into standard exposure=1.0 HDR range
     this.uSkyExposure = uniform(0.148);
     this.uNightFactor = uniform(0.0);
+    // The direct light the aerial haze scatters (see createAerialFogNode)
+    this.uHazeSunDir = uniform(new THREE.Vector3(0, 1, 0));
+    this.uHazeSunColor = uniform(new THREE.Color(0x000000));
     // The sky light SkyMesh leaves out, added under it: its single scattering misses the deep blue that fills the
     // twilight sky, and Manhattan's night sky is light-polluted (a dull warm glow along the horizon, darker overhead)
     this.uGlowZenith = uniform(new THREE.Color(0x000000));
@@ -262,7 +267,14 @@ class LightingSystem {
     const eb = exp(yb.div(H).negate());
     const meanDensity = select(abs(dy).greaterThan(1.0), ea.sub(eb).mul(H).div(dy), ea);
     const tau = this.uFogDensity.mul(dist).mul(meanDensity);
-    return fog(skyColor, float(1.0).sub(exp(tau.mul(tau).negate())));
+    const factor = float(1.0).sub(exp(tau.mul(tau).negate()));
+    // Sunlight the haze along the view ray scatters toward the eye, with the sky's own forward-peaked Mie phase
+    // (Henyey-Greenstein): the air glows down a street that faces a low sun, from a few hundred metres on
+    const g = MIE_DIRECTIONAL_G;
+    const k = float(1 + g * g).sub(dot(dir, this.uHazeSunDir).mul(2 * g));
+    const phase = inverseSqrt(k.mul(k).mul(k)).mul((1 - g * g) / (4 * Math.PI));
+    const inscatter = this.uHazeSunColor.mul(phase).mul(float(1.0).sub(exp(tau.negate())));
+    return Fn(() => vec4(mix(output.rgb, skyColor, factor).add(inscatter), output.a))();
   }
 
   bakeEnvironmentMap() {
@@ -292,6 +304,9 @@ class LightingSystem {
     this.sunLight.intensity = p.lightIntensity;
     this.sunLight.position.copy(lightDir);
     this.sunLight.updateMatrixWorld();
+    this.uHazeSunDir.value.copy(lightDir);
+    // halved: the term can't tell sunlit air from the air in the towers' shadow, which is much of a low view ray
+    this.uHazeSunColor.value.setHex(p.lightColor).multiplyScalar(p.lightIntensity * 0.5);
 
     this.hemiLight.color.setHex(p.hemiSky);
     this.hemiLight.groundColor.setHex(p.hemiGround);
