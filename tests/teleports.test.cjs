@@ -50,6 +50,7 @@ test('preset and map teleports share arrival resets and mark the resolved landin
     gamepadControls: { reset: () => calls.push(['gamepad']) },
     cameraSystem: { resetForTeleport: () => calls.push(['camera']) },
     selectCamera: (...args) => calls.push(['selectCamera', ...args]),
+    subway: { active: false }, // on the street: nothing to come up from first
     getLocationLabel: (x, z) => `${x}, ${z}`,
     cityBlocks: { allBlocks: [] },
     NYCMapSystem: class {

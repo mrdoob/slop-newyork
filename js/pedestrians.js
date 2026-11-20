@@ -1309,6 +1309,22 @@ class PersonRig {
    * pedestrians: their gait and planted feet still advance, while bone transforms wait until they are drawn.
    * `diveTime` is elapsed seconds in an evasive dive, or -1 for ordinary locomotion.
    */
+  // Moved bodily with whatever the figure stands on (a subway car): the body and every foot's world-space points shift
+  // by (dx, dz), so the gait only sees the figure's own steps
+  carry(dx, dz) {
+    if (!this.placed) return;
+    this.x += dx;
+    this.z += dz;
+    for (const foot of this.feet) {
+      for (const [kx, kz] of [['px', 'pz'], ['ax', 'az'], ['lx', 'lz'], ['tx', 'tz'], ['ex', 'ez']]) {
+        if (foot[kx] !== undefined) {
+          foot[kx] += dx;
+          foot[kz] += dz;
+        }
+      }
+    }
+  }
+
   update(dt, x, z, heading, ground, owner = null, air = 0, updatePose = true, diveTime = -1) {
     const dx = x - this.x;
     const dz = z - this.z;
