@@ -107,13 +107,31 @@ const BODY_SPECS = {
     },
     doors: [0.79, -0.36, -0.98], // door shut lines
     handles: [-0.2, -0.86],
-    headlight: [0.6, 0.68, 0.24, 0.048], // centre |x|, y, half-width, half-height
-    taillight: [0.6, 0.815, 0.265, 0.052],
-    grille: [0.66, 0.3, 0.042], // upper grille between the headlights: y, half-width, half-height
-    intake: [0.4, 0.55, 0.072], // lower grille
+    // Fascias, painted by createLoftedCarMaterial (fasciaFront / fasciaRear). Lamps are quads given by their inner &
+    // outer ends [u, bottom y, top y], u being |x| across the face that carries on round the corner along the side, so
+    // lamps wrap into the fenders & quarter panels. Outlines are [|x|, y] polygons, counter-clockwise.
+    // Mid-size sedan of the 2010s: rounded-rectangle lamps with a level top, a chrome-framed barred grille between
+    // them, a small lower intake & fog lamps
+    front: {
+      lamp: { inner: [0.42, 0.64, 0.755], outer: [0.98, 0.66, 0.765], round: 0.03, drl: 'none', projectors: [0.28] },
+      hood: 0.792, // hood shut line across the face
+      grille: { outline: [[0, 0.6], [0.4, 0.6], [0.41, 0.74], [0, 0.74]], round: 0.03, mesh: 'bars', frame: 0.018 },
+      intake: { outline: [[0, 0.36], [0.42, 0.36], [0.46, 0.5], [0, 0.5]], round: 0.04 },
+      fogs: [0.7, 0.42, 0.045, 0.03] // fog lamp pods: |x|, y, half-width, half-height
+    },
+    // Level lamps wrapping round the corners onto the trunk lid (whose shut line runs through them), an emblem between
+    // them, the plate in a recess on the lid, reflectors at the bumper's corners, a black valance with exhausts
+    rear: {
+      lamp: { inner: [0.44, 0.79, 0.885], outer: [1.0, 0.782, 0.892], round: 0.028, led: 'c' },
+      lid: [0.62, 0.555], // trunk lid half-width & bottom edge (shut lines)
+      emblem: [0.84, 0.042, 0.03], // centre badge: y, half-width, half-height
+      badges: [[-0.45, 0.7, 0.085, 0.013, 0]], // chrome lettering: x, y, half-width, half-height, word (BADGE_WORDS)
+      crease: 0.525, // a crease across the bumper
+      reflector: [0.76, 0.47, 0.05, 0.011], // |x|, y, half-width, half-height
+      diffuser: 0.43,
+      exhaust: [0.5, 0.396]
+    },
     plates: [0.46, 0.665], // front / rear plate centre heights
-    bumperLine: [0.75, 0.555], // hood / bumper and trunk / bumper shut lines on the nose & tail
-    bumpers: [[0.44, 0.03], [0.48, 0.03]], // front / rear bumper reference lines: centre height, half-height
     chrome: true, // chrome strip along the side windows' sills
     cladding: 0, // height of the unpainted lower body cladding (SUVs)
     sign: false,
@@ -159,13 +177,26 @@ const BODY_SPECS = {
     },
     doors: [0.78, -0.38, -1.04],
     handles: [-0.2, -0.92],
-    headlight: [0.63, 0.875, 0.245, 0.05],
-    taillight: [0.65, 0.98, 0.25, 0.058],
-    grille: [0.835, 0.375, 0.105],
-    intake: [0.49, 0.48, 0.058],
-    plates: [0.58, 0.82],
-    bumperLine: [0.94, 0.66],
-    bumpers: [[0.54, 0.04], [0.56, 0.04]],
+    // Compact / mid-size SUV: angular lamps with an L-shaped running light either side of a wide hexagonal grille
+    // with horizontal bars; fog pods, a lower intake & a silver skid plate in the black lower bumper
+    front: {
+      lamp: { inner: [0.42, 0.852, 0.918], outer: [1.06, 0.838, 0.968], round: 0.016, drl: 'l', projectors: [0.36, 0.56] },
+      hood: 0.968,
+      grille: { outline: [[0, 0.625], [0.5, 0.625], [0.575, 0.705], [0.41, 0.905], [0, 0.905]], round: 0.03, mesh: 'bars', frame: 0.022 },
+      intake: { outline: [[0, 0.47], [0.5, 0.47], [0.53, 0.585], [0, 0.585]], round: 0.025 },
+      fogs: [0.74, 0.545, 0.075, 0.045],
+      skid: [[0, 0.37], [0.36, 0.37], [0.42, 0.455], [0, 0.455]]
+    },
+    // Level lamps from the liftgate round the D-pillar corners, outlined by an LED loop; an emblem between them
+    rear: {
+      lamp: { inner: [0.5, 0.972, 1.064], outer: [1.12, 0.962, 1.074], round: 0.024, led: 'outline' },
+      lid: [0.6, 0.66], // liftgate half-width & bottom edge
+      emblem: [1.0, 0.05, 0.036],
+      badges: [[-0.42, 0.9, 0.075, 0.013, 1]],
+      reflector: [0.84, 0.6, 0.012, 0.045],
+      skid: [[0, 0.38], [0.38, 0.38], [0.44, 0.47], [0, 0.47]]
+    },
+    plates: [0.528, 0.82],
     chrome: false,
     cladding: 0.46,
     sign: false,
@@ -175,7 +206,24 @@ const BODY_SPECS = {
     privacyGlass: true // tinted glass behind the B-pillar
   }
 };
-BODY_SPECS.taxi = Object.assign({}, BODY_SPECS.sedan, { name: 'taxi', sign: true });
+// NYC yellow cab: a mid-size hybrid sedan (the 2018-24 Camry Hybrid is the commonest cab), with its own rear as the
+// player's car is mostly seen from behind: wide smoked-red lamps wrapping onto the trunk lid, two LED light bars in
+// each, white reverse lamps on the lid; an emblem & chrome lettering; parking sensors & corner reflectors in the
+// bumper; a black diffuser with no exhaust tips (the hybrid's are hidden)
+BODY_SPECS.taxi = Object.assign({}, BODY_SPECS.sedan, {
+  name: 'taxi',
+  sign: true,
+  rear: {
+    lamp: { inner: [0.42, 0.792, 0.896], outer: [1.0, 0.784, 0.902], round: 0.032, led: 'blade' },
+    lid: [0.62, 0.555],
+    emblem: [0.845, 0.048, 0.034],
+    badges: [[-0.45, 0.705, 0.085, 0.013, 0], [0.46, 0.705, 0.07, 0.013, 1]],
+    crease: 0.525,
+    sensors: [0.5, [0.24, 0.62]], // parking sensors: y, |x| of each pair
+    reflector: [0.765, 0.468, 0.055, 0.011],
+    diffuser: 0.43
+  }
+});
 BODY_SPECS.pickup = {
   name: 'pickup',
   zFront: 2.74,
@@ -217,13 +265,25 @@ BODY_SPECS.pickup = {
   },
   doors: [1.06, 0.1, -0.78],
   handles: [0.26, -0.58],
-  headlight: [0.73, 1.09, 0.21, 0.11],
-  taillight: [0.8, 1.1, 0.16, 0.14],
-  grille: [0.99, 0.48, 0.235],
-  intake: [0.61, 0.52, 0.065],
-  plates: [0.66, 0.92],
-  bumperLine: [1.24, 0.8],
-  bumpers: [[0.6, 0.045], [0.6, 0.045]],
+  // Full-size pickup: a tall grille with two bars between C-clamp lamps; a separate bumper with fog lamps & tow hooks
+  front: {
+    lamp: { inner: [0.585, 0.995, 1.19], outer: [1.02, 1.01, 1.18], round: 0.02, drl: 'clamp', projectors: [0.42, 0.62] },
+    hood: 1.215,
+    grille: { outline: [[0, 0.81], [0.56, 0.81], [0.57, 1.2], [0, 1.2]], round: 0.03, mesh: 'honeycomb', frame: 0.03, bars: [0.94, 1.07] },
+    bumper: [0.55, 0.795], // separate bumper: bottom, top
+    fogs: [0.76, 0.665, 0.04, 0.032],
+    hooks: [0.52, 0.585],
+    lip: 0.56 // black air dam below the bumper
+  },
+  // Tall lamps on the bed's corner posts either side of the tailgate; the plate in the step bumper
+  rear: {
+    lamp: { inner: [0.815, 0.86, 1.24], outer: [0.95, 0.86, 1.24], round: 0.012, led: 'stack' },
+    lid: [0.795, 0.79], // tailgate half-width & bottom edge
+    handle: 1.225,
+    lettering: [1.04, 0.42, 0.045], // stamped name across the tailgate: y, half-width, half-height
+    bumper: [0.5, 0.785]
+  },
+  plates: [0.672, 0.64],
   mirrorScale: [1.28, 1.32, 1.12],
   chrome: true,
   cladding: 0.55,
@@ -282,13 +342,20 @@ BODY_SPECS.van = {
   },
   doors: [1.32, 0.42, 0.33, -0.97], // front door, sliding door
   handles: [0.55, 0.22],
-  headlight: [0.66, 0.84, 0.24, 0.08],
-  taillight: [0.9, 0.9, 0.065, 0.28],
-  grille: [0.73, 0.42, 0.13],
-  intake: [0.46, 0.5, 0.05],
+  // Delivery van: big rounded lamps running back along the fenders level with the grille's top, their running lights
+  // along the bottom; a three-slat grille, a black bumper with fog lamps
+  front: {
+    lamp: { inner: [0.48, 0.79, 0.9], outer: [1.1, 0.81, 0.92], round: 0.04, drl: 'under', projectors: [0.3] },
+    hood: 0.93,
+    grille: { outline: [[0, 0.555], [0.4, 0.555], [0.435, 0.85], [0, 0.85]], round: 0.04, mesh: 'honeycomb', frame: 0.022, bars: [0.635, 0.712, 0.789] },
+    fogs: [0.72, 0.47, 0.06, 0.035]
+  },
+  // Tall lamps on the rear corners (tail & stop, amber turn, white reverse) beside the barn doors
+  rear: {
+    lamp: { inner: [0.84, 0.62, 1.18], outer: [1.0, 0.62, 1.18], round: 0.01, led: 'stack', turn: 'amber' },
+    lid: [0.8, 0.62] // barn doors' half-width & bottom edge (spec.barnDoors)
+  },
   plates: [0.47, 0.78],
-  bumperLine: [0.575, 0.62],
-  bumpers: [[0.48, 0.07], [0.52, 0.1]],
   chrome: false,
   cladding: 0.56,
   mirrorScale: [1.3, 2.6, 1.1],
@@ -342,13 +409,25 @@ BODY_SPECS.minivan = {
   },
   doors: [1.05, 0.28, -0.98], // front door, sliding door
   handles: [0.42, 0.15],
-  headlight: [0.66, 0.775, 0.24, 0.055],
-  taillight: [0.7, 1.0, 0.2, 0.07],
-  grille: [0.74, 0.3, 0.035],
-  intake: [0.49, 0.55, 0.12],
+  // Minivan: rounded wraparound lamps with a level top & their running lights along the bottom, a rounded lower
+  // grille with slats, round fog lamps
+  front: {
+    lamp: { inner: [0.42, 0.75, 0.83], outer: [1.08, 0.765, 0.832], round: 0.035, drl: 'under', projectors: [0.36] },
+    hood: 0.84,
+    grille: { outline: [[0, 0.4], [0.4, 0.4], [0.47, 0.62], [0, 0.62]], round: 0.07, mesh: 'bars', frame: 0.014 },
+    fogs: [0.7, 0.47, 0.05, 0.035],
+    lip: 0.345 // black splitter below
+  },
+  // Level lamp bands round the D-pillars onto the liftgate, an emblem between them
+  rear: {
+    lamp: { inner: [0.4, 0.978, 1.046], outer: [1.15, 0.968, 1.062], round: 0.022, led: 'c' },
+    lid: [0.64, 0.72],
+    emblem: [1.01, 0.045, 0.032],
+    reflector: [0.78, 0.5, 0.012, 0.045],
+    crease: 0.6,
+    diffuser: 0.45
+  },
   plates: [0.49, 0.84],
-  bumperLine: [0.68, 0.72],
-  bumpers: [[0.45, 0.04], [0.55, 0.04]],
   chrome: false,
   cladding: 0,
   sign: false,
@@ -358,8 +437,18 @@ BODY_SPECS.minivan = {
   privacyGlass: true
 };
 
+// A lamp's centre on the face of the vehicle (u capped to the tip's half-width) and its half-size: [|x|, y, hw, hh]
+function lampSummary(lamp, tipHalfWidth) {
+  const [u0, b0, t0] = lamp.inner;
+  const [u1, b1, t1] = lamp.outer;
+  const u = Math.min((u0 + u1) / 2, tipHalfWidth - 0.08);
+  return [u, (b0 + t0 + b1 + t1) / 4, (Math.min(u1, tipHalfWidth) - u0) / 2, (Math.max(t0, t1) - Math.min(b0, b1)) / 2];
+}
+
 for (const spec of Object.values(BODY_SPECS)) {
-  // Kept for code that places lamp flares: lamp heights (front, rear) and centres across the car
+  // Kept for code that places lamp flares & headlight spots: lamp centres (front, rear) on the faces
+  spec.headlight = lampSummary(spec.front.lamp, spec.nose.halfWidth[1]);
+  spec.taillight = lampSummary(spec.rear.lamp, spec.tail.halfWidth[1]);
   spec.lamps = [spec.headlight[1], spec.taillight[1]];
   spec.lampX = [spec.headlight[0], spec.taillight[0]];
 }
@@ -465,10 +554,6 @@ function bodyProfile(spec) {
  */
 function carLayout(spec) {
   if (spec._layout) return spec._layout;
-  if (!spec.lamps && spec.headlight && spec.taillight) {
-    spec.lamps = [spec.headlight[1], spec.taillight[1]];
-    spec.lampX = [spec.headlight[0], spec.taillight[0]];
-  }
   const body = bodyProfile(spec);
   const archR = spec.wheelRadius + spec.archGap;
   const cab = spec.cabin;
@@ -1366,6 +1451,9 @@ function withCarSeed(style, seed) {
 const _carMaterialCache = new Map();
 const _carWheelMaterialCache = new Map();
 let _carPlateTexture;
+let _carBadgeTexture;
+// Made-up model names, lettered in chrome on the trunk lids & liftgates
+const BADGE_WORDS = ['MERIDIAN', 'HYBRID'];
 
 // Shared procedural alloy rim, spoke, brake-rotor & tyre rubber evaluation used by both `createLoftedCarMaterial`
 // (for highway cars & >90 m proxies) and `createCarWheelMaterial` (for <90 m 3D spinning wheels), keeping near/far
@@ -1518,6 +1606,24 @@ function carPlateTexture() {
   return _carPlateTexture;
 }
 
+// The badge lettering: one word per row, white on transparent (the material paints it chrome)
+function carBadgeTexture() {
+  if (_carBadgeTexture) return _carBadgeTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 32 * BADGE_WORDS.length;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '600 26px sans-serif';
+  // letter-spaced, squeezed to the row's width
+  BADGE_WORDS.forEach((word, row) => ctx.fillText(word.split('').join(String.fromCharCode(8202)), 128, row * 32 + 17, 244));
+  _carBadgeTexture = new THREE.CanvasTexture(canvas);
+  _carBadgeTexture.anisotropy = 16;
+  return _carBadgeTexture;
+}
+
 /**
  * Creates the TSL material for lofted vehicles.
  * Instanced traffic reads the per-instance `paintColor` (vec3) and `carState` (vec4: brake, left (+x) & right (-x)
@@ -1578,10 +1684,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const frontGlassPlanes = polygonPlanes(frontPoly, [0, 0.042, 0.058, 0.048]);
   const rearPoly = [[-1, cab.roofRear], [-1, cab.deck], [bd.x, cab.deck], [rr.x, cab.roofRear]];
   const rearGlassPlanes = polygonPlanes(rearPoly, [0, 0.045, 0.062, 0.048]);
-  const [hlX, hlY, hlW, hlH] = spec.headlight;
-  const [tlX, tlY, tlW, tlH] = spec.taillight;
-  const [grY, grW, grH] = spec.grille;
-  const [inY, inW, inH] = spec.intake;
   const [plateF, plateR] = spec.plates;
   const frontZone = spec.zFront - 0.58;
   const rearZone = spec.zRear + 0.58;
@@ -1589,7 +1691,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const rearSill = spec.tail.sill[1];
   const signY = taxiSignPlacement(spec).y + 0.105;
   const doorMid = (spec.doors[0] + spec.doors[1]) / 2;
-  const trunkBot = Math.min(spec.bumperLine[1], plateR - 0.115);
+  const trunkBot = spec.rear.lid[1];
   const one = float(1.0);
 
   const p = attribute('position', 'vec3');
@@ -1683,7 +1785,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     const streaks = wave(p.z.mul(2.3).add(p.y.mul(0.9))).mul(wave(p.z.mul(5.1).sub(p.y.mul(1.7)).add(0.37))).mul(0.45).add(0.55);
     return clamp(max(max(low, spray.mul(0.85)), max(arch.mul(0.8), tail)).mul(streaks), 0.0, 1.0);
   };
-  const tlSize = vec2(tlW * 1.04, tlH * 1.2);
 
   // Shared glasshouse polygon evaluation (used by colorNode, roughnessNode & metalnessNode on CAR_PARTS.WINDOW only)
   const evalWindowGlass = () => {
@@ -1714,37 +1815,111 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     return { glass, frontGlass, rearGlass, seal };
   };
 
-  // Lamp, roof-sign & CHMSL masks shared by the colour and emissive graphs (each evaluates them in its own branch)
-  const headlightMasks = () => {
-    const hlUV = vec2(ax.sub(hlX), p.y.sub(hlY).sub(ax.sub(hlX).mul(0.032)));
-    const headlight = rrect(hlUV, vec2(hlW, hlH), 0.014, fwXY).mul(smoothstep(0.02, 0.25, n.z));
-    const turnFront = smoothstep(hlW * 0.76, hlW * 0.83, hlUV.x).mul(headlight);
-    const lit = headlight.mul(one.sub(turnFront));
-    const projUV = vec2(abs(hlUV.x.add(hlW * 0.09)).sub(hlW * 0.25), hlUV.y.sub(hlH * 0.08));
-    const proj = rrectEdge(projUV, vec2(hlW * 0.165, hlH * 0.44), 0.009, fwXY);
-    const drlH = max(abs(hlUV.y.add(hlH * 0.60)), max(hlUV.x.sub(hlW * 0.67), float(-hlW * 0.82).sub(hlUV.x)));
-    const drlV = max(abs(hlUV.x.sub(hlW * 0.67)), max(hlUV.y.sub(hlH * 0.48), float(-hlH * 0.60).sub(hlUV.y)));
+  // ---- Fascia lamps (masks shared by the colour and emissive graphs, each evaluates them in its own branch) -------
+  // A lamp (spec.front.lamp / spec.rear.lamp) is a quad in the unwrapped coordinate u: |x| across the face plus how far
+  // the surface lies behind the fascia's centreline (its tip line, straight over the lamp's heights, set back by the
+  // rake's plan-view rounding), so a lamp carries on round the corner along the fender or quarter panel. Returns the
+  // signed distance & footprint across its outline, where along it a point is (t: 0 inner .. 1 outer end) and across it
+  // (v: 0 bottom .. 1 top edge), and the distances to its four edges.
+  const lampFrame = (lamp, front) => {
+    const [u0, b0, t0] = lamp.inner;
+    const [u1, b1, t1] = lamp.outer;
+    const yA = Math.min(b0, b1) - 0.02;
+    const yB = Math.max(t0, t1) + 0.02;
+    const zA = carTipZ(spec, yA, front);
+    const zB = carTipZ(spec, yB, front);
+    const plan = (front ? spec.noseRake : spec.tailRake)?.plan || 0;
+    const tipZ = float(zA).add(p.y.sub(yA).mul((zB - zA) / (yB - yA)));
+    const behind = (front ? tipZ.sub(p.z) : p.z.sub(tipZ)).sub(ax.mul(ax).mul(plan));
+    const u = ax.add(max(behind, 0.0));
+    const fu = fwX.add(fwZ);
+    const t = clamp(u.sub(u0).div(u1 - u0), 0.0, 1.0);
+    const bot = mix(float(b0), float(b1), t);
+    const top = mix(float(t0), float(t1), t);
+    const dIn = float(u0).sub(u);
+    const dOut = u.sub(u1);
+    const dBot = bot.sub(p.y);
+    const dTop = p.y.sub(top);
+    const du = max(dIn, dOut);
+    const dv = max(dBot, dTop);
     return {
-      headlight,
-      turnFront,
-      projBucket: cov(proj.d.sub(0.008), proj.w).mul(lit),
-      projRing: cov(proj.d.sub(0.002), proj.w).mul(lit),
-      headlightLens: cov(proj.d.add(0.004), proj.w).mul(lit),
-      drl: cov(min(drlH, drlV).sub(0.0045), minEdgeW(drlH, drlV, fwY, fwX)).mul(lit)
+      u, t, fu, dIn, dOut, dBot, dTop,
+      v: p.y.sub(bot).div(top.sub(bot)),
+      d: smax(du, dv, lamp.round),
+      w: mix(fwY, fu, step(dv, du)),
+      facing: smoothstep(0.8, 0.6, abs(n.y)) // not on the hood or the underside
     };
   };
-  const taillightMasks = () => {
-    const tlUV = vec2(ax.sub(tlX), p.y.sub(tlY));
-    const tail = rrectEdge(tlUV, tlSize, 0.018, fwXY);
-    const taillight = cov(tail.d, tail.w).mul(smoothstep(0.02, 0.25, n.z.negate()));
-    const lowerStrip = smoothstep(-tlH * 0.12, -tlH * 0.24, tlUV.y);
+  const LED_INSET = 0.0085;
+  // Headlamp: a housing round a clear lens with projector buckets, the running-light signature (an LED line inside the
+  // top edge, turning down the inner end for 'hook' & 'clamp', the outer end for 'l'; 'clamp' also closes along the
+  // bottom of its inner part; 'under' runs along the bottom edge instead, 'none' has none) and the amber turn signal &
+  // side marker round the corner
+  const headLampMasks = () => {
+    const lamp = spec.front.lamp;
+    const L = lampFrame(lamp, true);
+    const housing = cov(L.d, L.w).mul(L.facing);
+    const lens = cov(L.d.add(0.005), L.w).mul(housing);
+    const ledW = lamp.drl === 'clamp' ? 0.0075 : 0.0055;
+    let drl = lamp.drl === 'none' ? float(0.0)
+      : lamp.drl === 'under' ? band(L.dBot.add(LED_INSET), ledW, fwY).mul(smoothstep(0.02, 0.06, L.t))
+      : band(L.dTop.add(LED_INSET), ledW, fwY).mul(smoothstep(0.02, 0.06, L.t));
+    if (lamp.drl === 'hook' || lamp.drl === 'clamp') drl = max(drl, band(L.dIn.add(LED_INSET), ledW, L.fu).mul(step(0.2, L.v)));
+    if (lamp.drl === 'clamp') drl = max(drl, band(L.dBot.add(LED_INSET), ledW, fwY).mul(step(L.t, 0.38)));
+    if (lamp.drl === 'l') drl = max(drl, band(L.dOut.add(0.035), ledW, L.fu).mul(step(0.25, L.v)));
+    let bucket = float(0.0);
+    let projLens = float(0.0);
+    const [u0, b0, t0] = lamp.inner;
+    const [u1, b1, t1] = lamp.outer;
+    const fr = L.fu.add(fwY).mul(0.5);
+    for (const tk of lamp.projectors) {
+      const bk = lerp(b0, b1, tk);
+      const hk = lerp(t0, t1, tk) - bk;
+      const dist = length(vec2(L.u.sub(lerp(u0, u1, tk)), p.y.sub(bk + hk * 0.42)));
+      const rk = Math.min(hk * 0.36, 0.034);
+      bucket = max(bucket, cov(dist.sub(rk), fr));
+      projLens = max(projLens, cov(dist.sub(rk * 0.6), fr));
+    }
+    const turn = smoothstep(0.86, 0.9, L.t).mul(lens);
+    return { housing, lens, v: L.v, drl: drl.mul(lens).mul(float(1.0).sub(turn)), bucket: bucket.mul(lens), projLens: projLens.mul(lens), turn };
+  };
+  // Tail lamp: a red lens in a dark housing with its LED signature ('c': lines inside the top & bottom edges joined at
+  // the outer end, 'outline': a loop inside the outline, 'stack': bars across the tail section), the white reverse lamp
+  // (the inner end, or the bottom of a stack) and the turn signal (red, or amber in a stack with turn: 'amber')
+  const tailLampMasks = () => {
+    const lamp = spec.rear.lamp;
+    const L = lampFrame(lamp, false);
+    const housing = cov(L.d, L.w).mul(L.facing);
+    const lens = cov(L.d.add(0.004), L.w).mul(housing);
+    let led;
+    let reverse;
+    let turn;
+    if (lamp.led === 'stack') {
+      reverse = smoothstep(0.235, 0.215, L.v);
+      turn = smoothstep(0.215, 0.235, L.v).mul(smoothstep(0.47, 0.45, L.v));
+      const h = (lamp.inner[2] - lamp.inner[1]);
+      led = float(0.0);
+      for (const vk of [0.58, 0.7, 0.82]) led = max(led, band(L.v.sub(vk).mul(h), 0.006, fwY));
+    } else {
+      reverse = smoothstep(0.13, 0.11, L.t);
+      turn = smoothstep(0.11, 0.13, L.t).mul(smoothstep(0.36, 0.34, L.t)).mul(step(L.v, 0.5));
+      if (lamp.led === 'outline') {
+        led = band(L.d.add(LED_INSET), 0.0045, L.w);
+      } else if (lamp.led === 'blade') {
+        // two light guides along the lamp, across its outer part
+        const h = (lamp.inner[2] - lamp.inner[1] + lamp.outer[2] - lamp.outer[1]) / 2;
+        led = max(band(L.v.sub(0.66).mul(h), 0.0045, fwY), band(L.v.sub(0.4).mul(h), 0.0045, fwY)).mul(smoothstep(0.17, 0.21, L.t));
+      } else {
+        led = max(max(band(L.dTop.add(LED_INSET), 0.0042, fwY), band(L.dBot.add(LED_INSET), 0.0042, fwY)), band(L.dOut.add(LED_INSET), 0.0045, L.fu));
+      }
+    }
+    const amber = lamp.turn === 'amber' ? turn : float(0.0);
     return {
-      tlUV,
-      taillight,
-      tailLens: cov(tail.d.add(0.0045), tail.w).mul(taillight),
-      turnRearSection: lowerStrip.mul(smoothstep(0.0, tlW * 0.08, tlUV.x)),
-      reverseRearSection: lowerStrip.mul(smoothstep(tlW * 0.04, -tlW * 0.04, tlUV.x)),
-      ledBar: max(band(tlUV.y.sub(tlH * 0.36), 0.0085, fwY), band(tlUV.y.add(tlH * 0.02), 0.0085, fwY))
+      housing, lens, v: L.v, t: L.t,
+      led: led.mul(lens).mul(float(1.0).sub(max(reverse, amber))),
+      reverse: reverse.mul(lens),
+      turn: turn.mul(lens),
+      amber: amber.mul(lens)
     };
   };
   const signGlyphMask = () => smoothstep(0.25, 0.58, sin(p.x.mul(90.0)))
@@ -1758,6 +1933,189 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     : rrect(vec2(p.x, p.z.sub(cab.roofRear - 0.075)), vec2(0.16, 0.011), 0.005, fwXZ)
         .mul(rearGlass())
         .mul(smoothstep(-0.05, -0.2, n.z));
+
+  // ---- Fascias -------------------------------------------------------------------------------------------------
+  // Chrome mirrors its surroundings: the dark street below the horizon and the bright sky above, so its colour follows
+  // which way it faces (sharper than the paint's reflections, which the material's roughness blurs)
+  const chrome = () => mix(color(0x2f343a), color(0xe9eef3), smoothstep(-0.35, 0.45, n.y.add(n.z.mul(0.0)))).mul(1.05);
+  // Grille frames & bars, bumpers & garnishes: chrome on chrome-trimmed cars, gloss black on blacked-out ones, dark
+  // grey plastic otherwise
+  const trimFinish = () => mix(mix(color(0x2a2e33), chrome(), hasChrome), color(0x111316), isBlackout);
+  // A symmetric outline from its right half ([|x|, y] points, counter-clockwise); the edge along the centreline is moved
+  // far out so it never shapes the outline
+  const outline = (points, round) => {
+    const margins = points.map(([x0], i) => (x0 === 0 && points[(i + 1) % points.length][0] === 0 ? -10 : 0));
+    return polygonEdge(ax, p.y, polygonPlanes(points, margins), round, fwX, fwY);
+  };
+  const honeycomb = () => {
+    const wave = smoothstep(-0.1, 0.35, sin(p.x.add(p.y).mul(110.0)).mul(sin(p.x.sub(p.y).mul(110.0))));
+    return mix(float(0.68), wave.mul(0.38).add(0.52), fadeFine(max(fwX, fwY)));
+  };
+  const slats = (freq) => mix(float(0.72), smoothstep(0.3, 0.6, fract(p.y.mul(freq))).mul(0.4).add(0.5), fadeFine(fwY));
+  const plateOn = (bCol, plateCol, y, recessed, facing) => {
+    const edge = rrectEdge(vec2(p.x, p.y.sub(y)), vec2(0.155, 0.057), 0.008, fwXY);
+    bCol.assign(mix(bCol, color(0x1e2227), cov(edge.d.sub(recessed ? 0.02 : 0.012), edge.w).mul(facing)));
+    bCol.assign(mix(bCol, plateCol, cov(edge.d, edge.w).mul(facing)));
+  };
+
+  const fasciaFront = (bCol, plateCol) => {
+    const F = spec.front;
+    const face = smoothstep(0.12, 0.38, n.z).mul(smoothstep(0.85, 0.6, n.y));
+    const trim = trimFinish();
+    // Hood shut line across the face, above the lamps
+    bCol.assign(bCol.mul(one.sub(band(p.y.sub(F.hood), 0.0035, fwY).mul(face).mul(0.5))));
+    // A separate bumper (trucks), wrapping round the corners, with its top edge shadowed
+    if (F.bumper) {
+      const [bb, bt] = F.bumper;
+      const corner = smoothstep(spec.zFront - 0.42, spec.zFront - 0.36, p.z).mul(smoothstep(0.85, 0.6, n.y));
+      const bumper = cov(float(bb).sub(p.y), fwY).mul(cov(p.y.sub(bt), fwY)).mul(corner);
+      const bumperCol = mix(color(0x2e3237).mul(smoothstep(bb, bt, p.y).mul(0.18).add(0.86)), chrome(), hasChrome);
+      bCol.assign(mix(bCol, bumperCol, bumper));
+      bCol.assign(bCol.mul(one.sub(band(p.y.sub(bt), 0.004, fwY).mul(corner).mul(0.55))));
+    }
+    // Lower intake (between the fog pods) and the skid plate below it
+    if (F.intake) {
+      const e = outline(F.intake.outline, F.intake.round);
+      bCol.assign(mix(bCol, color(0x0f1216).mul(slats(34.0)), cov(e.d, e.w).mul(face)));
+    }
+    if (F.skid) {
+      const e = outline(F.skid, 0.02);
+      bCol.assign(mix(bCol, color(0x8e959c).mul(smoothstep(F.skid[0][1], F.skid[2][1], p.y).mul(0.25).add(0.85)), cov(e.d, e.w).mul(face)));
+    }
+    // The grille: an outline filled with mesh or slats, a frame round it, bars across, a badge
+    {
+      const G = F.grille;
+      const e = outline(G.outline, G.round);
+      const inside = cov(e.d, e.w).mul(face);
+      const fill = G.mesh === 'bars' ? slats(26.0) : honeycomb();
+      bCol.assign(mix(bCol, color(0x0e1114).mul(fill), inside));
+      if (G.frame) bCol.assign(mix(bCol, trim, max(cov(e.d.sub(G.frame), e.w).mul(face).sub(inside), 0.0)));
+      if (G.bars) {
+        let bars = float(0.0);
+        for (const yb of G.bars) bars = max(bars, band(p.y.sub(yb), 0.016, fwY));
+        bCol.assign(mix(bCol, trim, bars.mul(inside)));
+      }
+      const top = G.outline[G.outline.length - 1][1];
+      const bottom = G.outline[0][1];
+      const badgeY = G.bars ? (G.bars[0] + G.bars[1]) / 2 : top - (top - bottom) * 0.28;
+      const badge = rrect(vec2(p.x, p.y.sub(badgeY)), vec2(0.034, 0.016), 0.012, fwXY).mul(inside);
+      bCol.assign(mix(bCol, color(0xd4dbe2), badge));
+    }
+    // Fog lamp pods, tow hooks, the black lip below
+    if (F.fogs) {
+      const [fx, fy, fw, fh] = F.fogs;
+      const pod = rrect(vec2(ax.sub(fx), p.y.sub(fy)), vec2(fw, fh), Math.min(fw, fh) * 0.8, fwXY).mul(face);
+      const fogR = Math.min(fw, fh) * 0.62;
+      const fog = cov(length(vec2(ax.sub(fx + fw - fogR - 0.012), p.y.sub(fy))).sub(fogR), fwX.add(fwY).mul(0.5)).mul(pod);
+      bCol.assign(mix(mix(bCol, color(0x111417), pod), color(0xc9d1d8), fog));
+    }
+    if (F.hooks) {
+      const [hx, hy] = F.hooks;
+      bCol.assign(mix(bCol, color(0xa8161c), rrect(vec2(ax.sub(hx), p.y.sub(hy)), vec2(0.03, 0.024), 0.01, fwXY).mul(face)));
+    }
+    if (F.lip) bCol.assign(mix(bCol, color(0x121418), cov(p.y.sub(F.lip), fwY).mul(smoothstep(0.85, 0.6, n.y))));
+    // Headlamps
+    const { housing, lens, v, drl, bucket, projLens, turn } = headLampMasks();
+    // Behind the clear lens, silver reflectors catching the sky (darker towards the bottom), or a smoked housing on
+    // blacked-out trims; each projector sits in a chrome bezel round a dark bucket
+    const interior = mix(mix(color(0x5c6670), color(0xc9d1d9), v), mix(color(0x0e1115), color(0x2c333b), v.mul(v)), isBlackout);
+    const bezel = mix(color(0x9aa4ae), color(0x14171b), smoothstep(0.55, 0.85, bucket));
+    const lampCol = mix(mix(mix(interior, bezel, min(bucket.mul(1.6), 1.0)), color(0xeef4ff), projLens), color(0xffffff), drl);
+    bCol.assign(mix(bCol, color(0x121519), housing));
+    bCol.assign(mix(bCol, mix(lampCol, color(0xc4782a), turn), lens));
+    plateOn(bCol, plateCol, plateF, false, face);
+  };
+
+  const fasciaRear = (bCol, plateCol, badgeInk) => {
+    const R = spec.rear;
+    const back = smoothstep(0.12, 0.38, n.z.negate()).mul(smoothstep(0.85, 0.6, n.y));
+    const trim = trimFinish();
+    const [lidW, lidBottom] = R.lid;
+    // Shut lines: barn doors, or the trunk lid / liftgate / tailgate outline
+    const platePocket = R.bumper ? float(0.0) : rrect(vec2(p.x, p.y.sub(plateR + 0.01)), vec2(0.24, 0.105), 0.03, fwXY).mul(back);
+    if (spec.barnDoors) {
+      const barnSide = ax.sub(lidW);
+      const barnBottom = float(trunkBot).sub(p.y);
+      const barnOutline = band(max(barnSide, barnBottom), 0.0035, maxEdgeW(barnBottom, barnSide, fwY, fwX));
+      const barnSplit = band(p.x, 0.0045, fwX).mul(cov(barnBottom, fwY));
+      bCol.assign(bCol.mul(one.sub(max(barnOutline, barnSplit).mul(back).mul(0.56))));
+      bCol.assign(mix(bCol, color(0x14171b), rrect(vec2(p.x.add(0.072), p.y.sub(1.04)), vec2(0.013, 0.056), 0.005, fwXY).mul(back)));
+    } else {
+      const side = ax.sub(lidW);
+      const bottom = float(lidBottom).sub(p.y);
+      const seam = band(max(side, bottom), 0.003, maxEdgeW(bottom, side, fwY, fwX)).mul(back).mul(one.sub(platePocket));
+      bCol.assign(bCol.mul(one.sub(seam.mul(0.56))));
+    }
+    // The plate's pocket on a trunk lid or liftgate
+    bCol.assign(mix(bCol, bCol.mul(smoothstep(plateR - 0.09, plateR + 0.115, p.y).mul(-0.25).add(0.9)), platePocket));
+    // A crease across the bumper: shadow under a highlight
+    if (R.crease) {
+      bCol.assign(bCol.mul(one.add(band(p.y.sub(R.crease + 0.006), 0.003, fwY).mul(0.12)).sub(band(p.y.sub(R.crease), 0.004, fwY).mul(0.22)).mul(back).add(one.sub(back))));
+    }
+    // Centre emblem: a chrome oval ring round a dark field; chrome lettering on the lid
+    if (R.emblem) {
+      const [ey, ew, eh] = R.emblem;
+      const e = length(vec2(p.x.div(ew), p.y.sub(ey).div(eh)));
+      const ew2 = fwX.div(ew).add(fwY.div(eh)).mul(0.5);
+      const ring = cov(e.sub(1.0), ew2).mul(back);
+      const field = cov(e.sub(0.76), ew2).mul(back);
+      bCol.assign(mix(mix(bCol, chrome(), ring), color(0x1a1d21), field));
+    }
+    bCol.assign(mix(bCol, chrome(), badgeInk.mul(back)));
+    // Tailgate: handle, stamped name; the step bumper below with its rubber step & the plate
+    if (R.handle) bCol.assign(mix(bCol, color(0x14171b), rrect(vec2(p.x, p.y.sub(R.handle)), vec2(0.09, 0.017), 0.006, fwXY).mul(back)));
+    if (R.lettering) {
+      const [ly, lw, lh] = R.lettering;
+      // block letters with their counters, pressed into the panel: shadowed along their tops, lit along their bottoms
+      const cell = abs(fract(p.x.div(lw / 3.5).add(0.5)).sub(0.5));
+      const glyph = smoothstep(0.4, 0.36, cell).mul(float(1.0).sub(smoothstep(0.1, 0.14, cell).mul(0.0).add(smoothstep(0.14, 0.1, cell)).mul(band(p.y.sub(ly), lh * 0.4, fwY))));
+      const letters = band(p.y.sub(ly), lh, fwY).mul(band(p.x, lw, fwX)).mul(mix(float(0.5), glyph, fadeFine(fwX))).mul(back);
+      const relief = band(p.y.sub(ly + lh), 0.004, fwY).mul(band(p.x, lw, fwX)).mul(back);
+      bCol.assign(bCol.mul(one.sub(letters.mul(0.07)).sub(relief.mul(0.16))));
+    }
+    if (R.bumper) {
+      const [bb, bt] = R.bumper;
+      const corner = smoothstep(spec.zRear + 0.42, spec.zRear + 0.36, p.z).mul(smoothstep(0.85, 0.6, n.y));
+      const bumper = cov(float(bb).sub(p.y), fwY).mul(cov(p.y.sub(bt), fwY)).mul(corner);
+      bCol.assign(mix(bCol, mix(color(0x2e3237).mul(smoothstep(bb, bt, p.y).mul(0.18).add(0.86)), chrome(), hasChrome), bumper));
+      bCol.assign(bCol.mul(one.sub(band(p.y.sub(bt), 0.004, fwY).mul(corner).mul(0.55))));
+      const stepPad = band(p.y.sub(bt - 0.02), 0.018, fwY).mul(band(p.x, 0.3, fwX)).mul(corner);
+      bCol.assign(mix(bCol, color(0x16181b), stepPad));
+    }
+    // Diffuser & exhausts, skid plate, reflectors
+    if (R.diffuser) {
+      bCol.assign(mix(bCol, color(0x14171b), cov(p.y.sub(R.diffuser), fwY).mul(back)));
+      if (R.exhaust) {
+        const [ex, ey] = R.exhaust;
+        const exhaust = rrectEdge(vec2(ax.sub(ex), p.y.sub(ey)), vec2(0.052, 0.018), 0.009, fwXY);
+        bCol.assign(mix(mix(bCol, color(0x828a92), cov(exhaust.d, exhaust.w).mul(back)), color(0x060709), cov(exhaust.d.add(0.006), exhaust.w).mul(back)));
+      }
+    }
+    if (R.skid) {
+      const e = outline(R.skid, 0.02);
+      bCol.assign(mix(bCol, color(0x8e959c).mul(smoothstep(R.skid[0][1], R.skid[2][1], p.y).mul(0.25).add(0.85)), cov(e.d, e.w).mul(back)));
+    }
+    if (R.reflector) {
+      const [rx, ry, rw, rh] = R.reflector;
+      bCol.assign(mix(bCol, color(0x8a0c14), rrect(vec2(ax.sub(rx), p.y.sub(ry)), vec2(rw, rh), Math.min(rw, rh) * 0.6, fwXY).mul(back)));
+    }
+    if (R.sensors) {
+      const [sy, xs] = R.sensors;
+      for (const sx of xs) {
+        const dist = length(vec2(ax.sub(sx), p.y.sub(sy)));
+        bCol.assign(bCol.mul(one.sub(band(dist.sub(0.011), 0.0025, fwX.add(fwY).mul(0.5)).mul(back).mul(0.35))));
+      }
+    }
+    // Tail lamps: a glossy red lens over chrome reflectors (brighter through its middle), its LEDs, the white reverse
+    // lamp; the trunk lid's shut line runs through the lamps where they cross onto the lid
+    const { housing, lens, v, led, reverse, amber } = tailLampMasks();
+    const ruby = mix(color(0x7a0c15), color(0xb01c27), smoothstep(0.0, 0.5, v).mul(smoothstep(1.0, 0.55, v)).mul(0.7).add(v.mul(0.3)));
+    const tailCol = mix(mix(mix(ruby, color(0xff3a44), led), color(0xd77016), amber), color(0xe2e9ef), reverse);
+    bCol.assign(mix(bCol, color(0x1a0a0e), housing));
+    bCol.assign(mix(bCol, tailCol, lens));
+    if (!spec.barnDoors && !R.bumper) bCol.assign(bCol.mul(one.sub(band(ax.sub(lidW), 0.003, fwX).mul(housing).mul(0.6))));
+    plateOn(bCol, plateCol, plateR, !R.bumper, back);
+  };
 
   // ---- Colour (per-part If branches so each fragment only evaluates its own part's masks) ---------------------------
   const colorFn = Fn(() => {
@@ -1773,6 +2131,23 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       clamp(p.y.sub(plateCenterY).div(0.115).add(0.5), 0.06, 0.94).add(plateVariant).div(4.0)
     );
     const plateCol = texture(carPlateTexture(), plateUV).rgb;
+    // Badge lettering on the rear (the badge on this side of the car): read left to right from behind
+    let badgeInk = float(0.0);
+    const badges = spec.rear.badges || [];
+    if (badges.length) {
+      const pickB = (k) => (badges.length > 1 ? select(p.x.lessThan(0.0), float(badges[0][k]), float(badges[1][k])) : float(badges[0][k]));
+      const bx = pickB(0);
+      const by = pickB(1);
+      const bw = pickB(2);
+      const bh = pickB(3);
+      const row = pickB(4);
+      const badgeUV = vec2(
+        clamp(float(0.5).sub(p.x.sub(bx).div(bw.mul(2.0))), 0.0, 1.0),
+        clamp(p.y.sub(by).div(bh.mul(2.0)).add(0.5), 0.02, 0.98).add(float(BADGE_WORDS.length - 1).sub(row)).div(BADGE_WORDS.length)
+      );
+      const inBadge = step(abs(p.x.sub(bx)), bw).mul(step(abs(p.y.sub(by)), bh)).mul(step(p.z, rearZone));
+      badgeInk = texture(carBadgeTexture(), badgeUV).w.mul(inBadge);
+    }
 
     If(isBody.greaterThan(0.5), () => {
       const bCol = vec3(basePaint.mul(ao)).toVar();
@@ -1841,99 +2216,11 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
         }
       });
 
-      // Front fascia: headlamps, honeycomb grille, lower intake, air curtains & front NY license plate
-      If(p.z.greaterThan(frontZone).and(n.z.greaterThan(0.02)), () => {
-        const front = smoothstep(0.12, 0.38, n.z);
-        const hoodSeam = band(p.y.sub(spec.bumperLine[0]), 0.0035, fwY)
-          .mul(cov(ax.sub(hlX - hlW * 0.5), fwX))
-          .mul(front);
-        bCol.assign(bCol.mul(one.sub(hoodSeam.mul(0.52))));
-
-        const g = rrectEdge(vec2(p.x, p.y.sub(grY)), vec2(grW, grH), 0.015, fwXY);
-        const grille = cov(g.d, g.w).mul(front);
-        const grilleOuter = cov(g.d.sub(0.013), g.w).mul(front);
-        const grilleWing = band(p.y.sub(grY + grH * 0.12), 0.0045, fwY).mul(grille);
-        const grilleFrame = max(grilleOuter.sub(grille), grilleWing.mul(0.75));
-        const emblemFront = rrect(vec2(p.x, p.y.sub(grY + grH * 0.12)), vec2(0.032, 0.015), 0.008, fwXY).mul(grille);
-        const intake = rrect(vec2(p.x, p.y.sub(inY)), vec2(inW, inH), 0.032, fwXY).mul(front);
-        const airCurtain = rrect(vec2(ax.sub(hlX + hlW * 0.42), p.y.sub(inY + 0.03)), vec2(0.042, inH * 0.85), 0.014, fwXY).mul(front);
-        const meshWave = smoothstep(-0.1, 0.35, sin(p.x.add(p.y).mul(110.0)).mul(sin(p.x.sub(p.y).mul(110.0))));
-        const meshPattern = mix(float(0.68), meshWave.mul(0.38).add(0.52), fadeFine(max(fwX, fwY)));
-        const slatWave = smoothstep(0.3, 0.6, fract(p.y.mul(52.0)));
-        const intakeSlats = mix(float(0.72), slatWave.mul(0.35).add(0.55), fadeFine(fwY));
-        const frameCol = mix(color(0x181b20), color(0xd2d8de), hasChrome);
-        bCol.assign(mix(bCol, frameCol, grilleFrame));
-        bCol.assign(mix(bCol, color(0x101317).mul(meshPattern), grille.mul(one.sub(grilleWing))));
-        bCol.assign(mix(bCol, color(0xd4dbe2), emblemFront));
-        bCol.assign(mix(bCol, color(0x0f1216).mul(intakeSlats), max(intake, airCurtain)));
-
-        const { headlight, turnFront, projBucket, projRing, headlightLens, drl } = headlightMasks();
-        const lampBezel = mix(mix(color(0x13171d), color(0x4a535e), projBucket), color(0x9ea8b2), projRing.mul(0.78));
-        const lampColor = mix(mix(lampBezel, color(0xf4f8ff), headlightLens), color(0xffffff), drl);
-        bCol.assign(mix(bCol, mix(lampColor, color(0xb85e16), turnFront), headlight));
-
-        const frontPlateEdge = rrectEdge(vec2(p.x, p.y.sub(plateF)), vec2(0.155, 0.055), 0.008, fwXY);
-        const plateRecessF = cov(frontPlateEdge.d.sub(0.015), frontPlateEdge.w).mul(front);
-        const plateFront = cov(frontPlateEdge.d, frontPlateEdge.w).mul(front);
-        bCol.assign(mix(bCol, color(0x1e2227), plateRecessF));
-        bCol.assign(mix(bCol, plateCol, plateFront));
-      }).ElseIf(p.z.lessThan(rearZone).and(n.z.lessThan(-0.02)), () => {
-        // Rear fascia: wraparound tail lamps, diffuser, exhausts & rear NY license plate
-        const rear = smoothstep(0.12, 0.38, n.z.negate());
-        const rearPlateEdge = rrectEdge(vec2(p.x, p.y.sub(plateR)), vec2(0.155, 0.06), 0.008, fwXY);
-        const platePocket = rrect(vec2(p.x, p.y.sub(plateR + 0.01)), vec2(0.24, 0.105), 0.03, fwXY).mul(rear);
-        let trunkSeam;
-        if (spec.barnDoors) {
-          const [barnW] = spec.barnDoors;
-          const barnSide = ax.sub(barnW);
-          const barnBottom = float(trunkBot).sub(p.y);
-          const barnEdgeW = maxEdgeW(barnBottom, barnSide, fwY, fwX);
-          const barnOutline = band(max(barnSide, barnBottom), 0.0035, barnEdgeW);
-          const barnSplit = band(p.x, 0.0045, fwX).mul(cov(barnBottom, fwY));
-          trunkSeam = max(barnOutline, barnSplit).mul(rear).mul(one.sub(platePocket));
-        } else {
-          const trunkWidth = mix(float(tlX - tlW - 0.025), float(tlX), smoothstep(tlY - tlH, spec.tail.edge[1], p.y));
-          const trunkSide = ax.sub(trunkWidth);
-          const trunkBottom = float(trunkBot).sub(p.y);
-          const trunkW = maxEdgeW(trunkBottom, trunkSide, fwY, fwX);
-          trunkSeam = band(max(trunkSide, trunkBottom), 0.003, trunkW).mul(rear).mul(one.sub(platePocket));
-        }
-        bCol.assign(bCol.mul(one.sub(trunkSeam.mul(0.56))));
-
-        const pocketShade = smoothstep(plateR - 0.09, plateR + 0.115, p.y).mul(-0.25).add(0.9);
-        bCol.assign(mix(bCol, bCol.mul(pocketShade), platePocket));
-
-        const { tlUV, taillight, tailLens, turnRearSection, reverseRearSection, ledBar: ledBarMask } = taillightMasks();
-        const tailgateHandle = spec.bedCover
-          ? rrect(vec2(p.x, p.y.sub(tlY + tlH * 0.42)), vec2(0.085, 0.016), 0.005, fwXY).mul(rear)
-          : spec.barnDoors
-            ? rrect(vec2(p.x.add(0.072), p.y.sub(1.04)), vec2(0.013, 0.056), 0.005, fwXY).mul(rear)
-            : float(0.0);
-        const ledBar = ledBarMask.mul(tailLens).mul(one.sub(max(turnRearSection, reverseRearSection)));
-        const tailFacet = smoothstep(-tlH, tlH, tlUV.y).mul(0.28).add(0.78);
-        const tailRuby = mix(color(0x981018).mul(tailFacet), color(0xff2834), ledBar);
-        const tailColor = mix(mix(tailRuby, color(0xf07818), turnRearSection), color(0xe4edf4), reverseRearSection);
-
-        const rearValance = smoothstep(rearSill + 0.075, rearSill + 0.02, p.y).mul(rear);
-        const exhaust = rrectEdge(vec2(ax.sub(0.5), p.y.sub(rearSill + 0.036)), vec2(0.052, 0.017), 0.008, fwXY);
-        const exhaustRim = cov(exhaust.d, exhaust.w).mul(rearValance);
-        const exhaustBore = cov(exhaust.d.add(0.006), exhaust.w).mul(rearValance);
-        const reflector = rrect(vec2(ax.sub(0.65), p.y.sub(spec.bumpers[1][0] + 0.04)), vec2(0.075, 0.01), 0.004, fwXY).mul(rear);
-        const emblemRear = spec.barnDoors
-          ? float(0.0)
-          : rrect(vec2(p.x, p.y.sub(tlY - tlH * 0.12)), vec2(0.022, 0.01), 0.009, fwXY).mul(rear);
-
-        bCol.assign(mix(bCol, color(0x14171b), max(rearValance, tailgateHandle)));
-        bCol.assign(mix(mix(bCol, color(0x828a92), exhaustRim), color(0x060709), exhaustBore));
-        bCol.assign(mix(bCol, color(0x8a0c14), reflector));
-        bCol.assign(mix(bCol, color(0x16090c), taillight));
-        bCol.assign(mix(bCol, tailColor, tailLens));
-        bCol.assign(mix(bCol, color(0xb8c0c8), emblemRear));
-
-        const plateRecessR = cov(rearPlateEdge.d.sub(0.02), rearPlateEdge.w).mul(rear);
-        const plateRear = cov(rearPlateEdge.d, rearPlateEdge.w).mul(rear);
-        bCol.assign(mix(bCol, color(0x1e2227), plateRecessR));
-        bCol.assign(mix(bCol, plateCol, plateRear));
+      // Front & rear fascias: grilles, bumpers, lamps & NY license plates (fasciaFront / fasciaRear)
+      If(p.z.greaterThan(frontZone), () => {
+        fasciaFront(bCol, plateCol);
+      }).ElseIf(p.z.lessThan(rearZone), () => {
+        fasciaRear(bCol, plateCol, badgeInk);
       });
 
       const under = smoothstep(-0.25, -0.55, n.y);
@@ -2067,23 +2354,23 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const emissiveFn = Fn(() => {
     const emit = vec3(0.0).toVar();
     If(isBody.greaterThan(0.5), () => {
-      If(p.z.greaterThan(frontZone).and(n.z.greaterThan(0.02)), () => {
-        const { turnFront, headlightLens, drl } = headlightMasks();
-        const headlamps = color(0xfff8ec)
-          .mul(headlightLens.mul(nightHeadlamp.mul(1.35).add(1.45)).add(drl.mul(nightHeadlamp.mul(0.75).add(1.65))))
-          .mul(one.sub(max(turnFront, drl).mul(blink)));
-        const turn = color(0xff9812).mul(max(turnFront, drl.mul(0.75)).mul(blink).mul(2.4));
-        emit.assign(headlamps.add(turn));
-      }).ElseIf(p.z.lessThan(rearZone).and(n.z.lessThan(-0.02)), () => {
-        const { tailLens, turnRearSection, reverseRearSection, ledBar: ledBarMask } = taillightMasks();
-        const turnRear = turnRearSection.mul(tailLens);
-        const redArea = tailLens.mul(one.sub(max(turnRearSection, reverseRearSection)));
-        const ledBar = ledBarMask.mul(redArea);
-        const redLens = max(redArea.mul(0.58), ledBar);
+      If(p.z.greaterThan(frontZone), () => {
+        const { lens, drl, projLens, turn } = headLampMasks();
+        // Low beams through the projector lenses (a little of the lens around them), running lights; both dim on the
+        // side that is signalling, where the amber marker blinks
+        const beams = projLens.mul(nightHeadlamp.mul(1.35).add(1.45)).add(lens.mul(nightHeadlamp.mul(0.035).add(0.01)));
+        const running = drl.mul(nightHeadlamp.mul(0.75).add(1.65));
+        const headlamps = color(0xfff8ec).mul(beams.add(running)).mul(one.sub(drl.mul(blink)));
+        emit.assign(headlamps.add(color(0xff9812).mul(max(turn, drl.mul(0.75)).mul(blink).mul(2.4))));
+      }).ElseIf(p.z.lessThan(rearZone), () => {
+        const { lens, led, reverse, turn, amber } = tailLampMasks();
+        const redArea = lens.mul(one.sub(max(reverse, amber)));
+        const redLens = max(redArea.mul(0.55), led);
         const tail = color(0xff0c16).mul(redLens.mul(brake.mul(2.3).add(nightHeadlamp.mul(0.55)).add(0.24)));
-        const turn = color(0xff9812).mul(turnRear.mul(blink).mul(2.4));
-        let rearEmit = tail.add(turn);
-        if (fixed) rearEmit = rearEmit.add(color(0xf0f6ff).mul(tailLens).mul(reverseRearSection).mul(state.w).mul(1.8));
+        // Turn signals: an amber section, or the red lamp's own section brightening
+        const turnCol = spec.rear.lamp.turn === 'amber' ? color(0xff9812) : color(0xff1a10);
+        let rearEmit = tail.add(turnCol.mul(turn.mul(blink).mul(2.4)));
+        if (fixed) rearEmit = rearEmit.add(color(0xf0f6ff).mul(reverse).mul(state.w).mul(1.8));
         emit.assign(rearEmit);
       });
     }).ElseIf(isSign.greaterThan(0.5), () => {
