@@ -34,6 +34,7 @@ import {
   positionViewDirection
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RAGDOLL_POINTS } from './ragdoll.js';
 
 // Skinned characters for pedestrian-system.js and the player controllers.
 // Each crowd level uses one instanced draw, with 15-bone poses in a storage buffer and seeded appearance.
@@ -110,6 +111,33 @@ function bindJoints(female) {
   return j;
 }
 const BIND = [bindJoints(false), bindJoints(true)];
+
+// The ragdoll's points (ragdoll.js) on the bones they move with, in the bind pose: [bone, x, y, z]. Joints but for the
+// head's centre and the wrists
+const RAGDOLL_INDEX = RAGDOLL_POINTS;
+function ragdollBindPoints(female) {
+  const j = BIND[female];
+  const at = (b, v = j[b]) => [b, v.x, v.y, v.z];
+  const out = [];
+  out[RAGDOLL_INDEX.HIP_L] = at(BONE.THIGH_L);
+  out[RAGDOLL_INDEX.HIP_R] = at(BONE.THIGH_R);
+  out[RAGDOLL_INDEX.SPINE] = at(BONE.CHEST);
+  out[RAGDOLL_INDEX.NECK] = at(BONE.HEAD);
+  out[RAGDOLL_INDEX.HEAD] = [BONE.HEAD, 0, 1.63, 0];
+  SIDES.forEach((side, k) => {
+    const elbow = j[LIMB.forearm[k]];
+    const sfx = k ? '_R' : '_L';
+    out[RAGDOLL_INDEX['SHOULDER' + sfx]] = at(LIMB.upperArm[k]);
+    out[RAGDOLL_INDEX['ELBOW' + sfx]] = at(LIMB.forearm[k]);
+    out[RAGDOLL_INDEX['WRIST' + sfx]] = [LIMB.forearm[k], elbow.x + side * Math.sin(ARM_BIND_ABDUCTION) * FOREARM,
+      elbow.y - Math.cos(ARM_BIND_ABDUCTION) * FOREARM, elbow.z];
+    out[RAGDOLL_INDEX['KNEE' + sfx]] = at(LIMB.shin[k]);
+    out[RAGDOLL_INDEX['ANKLE' + sfx]] = at(LIMB.foot[k]);
+    out[RAGDOLL_INDEX['TOE' + sfx]] = at(LIMB.toe[k]);
+  });
+  return out;
+}
+const RAGDOLL_BIND = [ragdollBindPoints(0), ragdollBindPoints(1)];
 
 // ============================================================================
 // 2. SKINNED LOFTED BODY GEOMETRY
@@ -1469,6 +1497,10 @@ const _bz = new THREE.Vector3();
 const _ux = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const _rootPos = new THREE.Vector3();
+const _ra = new THREE.Vector3();
+const _rb = new THREE.Vector3();
+const _rc = new THREE.Vector3();
+const _rd = new THREE.Vector3();
 const AX = new THREE.Vector3(1, 0, 0);
 const AY = new THREE.Vector3(0, 1, 0);
 const AZ = new THREE.Vector3(0, 0, 1);
@@ -2306,17 +2338,20 @@ class PersonRig {
     return this.limb(LIMB.thigh[i], LIMB.shin[i], hip, ankleTarget, THIGH * s, SHIN * s, _pole, _front, 0, 0.012);
   }
 
-  // Grounded escape animation, independent of the walking gait and evaluated only for visible people.
-  solveDive(time, groundY) {
+  // Grounded escape animation, independent of the walking gait and evaluated only for visible people. Also plays the
+  // other ground animations in its layout (getting up after a fall: `keys` with a 14th column, the pelvis' way forward
+  // of where the hands & feet are given from, and a fixed `kneePole` [out, up, forward] for the knees)
+  solveDive(time, groundY, keys = DIVE_POSES, kneePole = null) {
     const s = this.s;
     let frame = 0;
-    while (frame < DIVE_POSES.length - 2 && time > DIVE_POSES[frame + 1][0]) frame++;
-    const a = DIVE_POSES[frame];
-    const b = DIVE_POSES[frame + 1];
+    while (frame < keys.length - 2 && time > keys[frame + 1][0]) frame++;
+    const a = keys[frame];
+    const b = keys[frame + 1];
     const t = smooth(a[0], b[0], time);
     const key = (k) => lerp(a[k], b[k], t);
     const pitch = key(2);
     const footPitch = key(12);
+    const forward = a.length > 13 ? key(13) * s : 0;
     const footClearance = ANKLE_H * Math.cos(footPitch) + 0.208 * Math.sin(footPitch);
     // a point given in the escape frame (metres before scaling), on the ground under the person
     const local = (out, lx, ly, lz) => {
@@ -2328,7 +2363,7 @@ class PersonRig {
     };
     qY(_qRoot, this.yaw);
     _qPelvis.copy(_qRoot).multiply(qX(_q, pitch));
-    _pelvis.set(this.x, groundY + key(1) * s, this.z);
+    _pelvis.set(this.x + Math.sin(this.yaw) * forward, groundY + key(1) * s, this.z + Math.cos(this.yaw) * forward);
     this.pelvisY = _pelvis.y;
     this.writeBone(BONE.PELVIS, _qPelvis, _pelvis);
     _qChest.copy(_qRoot).multiply(qX(_q, key(3)));
@@ -2348,9 +2383,138 @@ class PersonRig {
       local(_target, side * GAIT.spread, Math.max(footClearance, key(8 + i * 2)), key(9 + i * 2));
       // Knees fold towards the chest, then tuck beneath the hips for the rise. A little outward bend keeps
       // the knees clear of the pavement when the body is lying flat.
-      _pole.set(side * 0.45 * Math.sin(pitch), -0.2 * Math.sin(pitch), Math.cos(pitch)).applyQuaternion(_qRoot);
+      if (kneePole) _pole.set(side * kneePole[0], kneePole[1], kneePole[2]).applyQuaternion(_qRoot);
+      else _pole.set(side * 0.45 * Math.sin(pitch), -0.2 * Math.sin(pitch), Math.cos(pitch)).applyQuaternion(_qRoot);
       const ankle = this.limb(LIMB.thigh[i], LIMB.shin[i], _hip, _target, THIGH * s, SHIN * s, _pole, _front);
       this.writeFoot(i, ankle, _qa.copy(_qRoot).multiply(qX(_q, footPitch)), 0);
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Falls: the ragdoll (ragdoll.js) takes over from the pose the person had, gives the bones back from its points, and
+  // the person gets up from however it lies
+  // ---------------------------------------------------------------------------------------------------------------
+  // World positions of the ragdoll's points (COUNT x 3) as the bones stand now
+  ragdollPoints(out) {
+    const a = this.pose;
+    const points = RAGDOLL_BIND[this.female];
+    for (let i = 0; i < points.length; i++) {
+      const [b, px, py, pz] = points[i];
+      const o = b * 8, s = a[o + 7] || this.s;
+      _q.set(a[o], a[o + 1], a[o + 2], a[o + 3]);
+      _v.set(px * s, py * s, pz * s).applyQuaternion(_q);
+      out[i * 3] = _v.x + a[o + 4];
+      out[i * 3 + 1] = _v.y + a[o + 5];
+      out[i * 3 + 2] = _v.z + a[o + 6];
+    }
+    return out;
+  }
+
+  // ...and standing in the bind pose (for the ragdoll's segment lengths)
+  ragdollBind(out) {
+    const points = RAGDOLL_BIND[this.female];
+    for (let i = 0; i < points.length; i++) {
+      out[i * 3] = points[i][1] * this.s;
+      out[i * 3 + 1] = points[i][2] * this.s;
+      out[i * 3 + 2] = points[i][3] * this.s;
+    }
+    return out;
+  }
+
+  // Bones from the ragdoll's points `x` (world positions, COUNT x 3): each bone's frame from the points it spans (its
+  // axis, turned by the limb's bend or the frame it hangs from), against the same frame in the bind pose
+  fromRagdoll(x) {
+    const s = this.s;
+    const frames = ragdollFrames(this.female);
+    const pt = (i, out) => out.set(x[i * 3], x[i * 3 + 1], x[i * 3 + 2]);
+    const R = RAGDOLL_INDEX;
+    // pelvis, from the hips & the spine
+    pt(R.HIP_L, _v); pt(R.HIP_R, _v2);
+    _hip.addVectors(_v, _v2).multiplyScalar(0.5);
+    _bx.subVectors(_v, _v2); // to its left
+    pt(R.SPINE, _chest);
+    _by.subVectors(_chest, _hip);
+    _fwd.crossVectors(_bx, _by); // its front
+    this.basis(_by, _fwd, _qPelvis).multiply(frames.pelvis);
+    _pelvis.copy(frames.pelvisJoint).multiplyScalar(s).applyQuaternion(_qPelvis).add(_hip);
+    this.writeBone(BONE.PELVIS, _qPelvis, _pelvis);
+    // chest & head
+    pt(R.SHOULDER_L, _v); pt(R.SHOULDER_R, _v2);
+    _ux.subVectors(_v, _v2); // the shoulders' line, to the left
+    pt(R.NECK, _knee);
+    _by.subVectors(_knee, _chest);
+    _front.crossVectors(_ux, _by);
+    this.basis(_by, _front, _qChest).multiply(frames.chest);
+    this.writeBone(BONE.CHEST, _qChest, _chest);
+    pt(R.HEAD, _target);
+    _by.subVectors(_target, _knee);
+    _dir.crossVectors(_ux, _by);
+    this.basis(_by, _dir, _qa).multiply(frames.head);
+    this.writeBone(BONE.HEAD, _qa, _knee);
+    // limbs: the upper bone faces the way the joint bends (the lower one bends forward of an arm, behind a thigh), or
+    // the body's front while it is straight; the lower bone turns about the upper one's crosswise axis
+    for (let i = 0; i < 2; i++) {
+      for (let leg = 0; leg < 2; leg++) {
+        const root = leg ? (i ? R.HIP_R : R.HIP_L) : i ? R.SHOULDER_R : R.SHOULDER_L;
+        const mid = leg ? (i ? R.KNEE_R : R.KNEE_L) : i ? R.ELBOW_R : R.ELBOW_L;
+        const end = leg ? (i ? R.ANKLE_R : R.ANKLE_L) : i ? R.WRIST_R : R.WRIST_L;
+        const upper = leg ? LIMB.thigh[i] : LIMB.upperArm[i];
+        const lower = leg ? LIMB.shin[i] : LIMB.forearm[i];
+        pt(root, _ra); pt(mid, _rb); pt(end, _rc);
+        _rd.subVectors(_ra, _rb);
+        const len = _rd.length();
+        _bend.subVectors(_rc, _rb);
+        _bend.addScaledVector(_rd, -_bend.dot(_rd) / (len * len || 1));
+        if (leg) _bend.negate();
+        const body = leg ? _fwd : _front;
+        _bend.addScaledVector(body, (0.08 * len) / (body.length() || 1));
+        this.basis(_rd, _bend, _qUpper);
+        _pole.set(1, 0, 0).applyQuaternion(_qUpper); // the upper bone's crosswise axis
+        _qUpper.multiply(leg ? frames.thigh[i] : frames.upperArm[i]);
+        this.writeBone(upper, _qUpper, _ra);
+        _rd.subVectors(_rb, _rc);
+        _bend.crossVectors(_pole, _rd);
+        this.basis(_rd, _bend, _q2).multiply(leg ? frames.shin[i] : frames.forearm[i]);
+        this.writeBone(lower, _q2, _rb);
+        if (leg) {
+          // the foot from the ankle to the toes, square to the shin's crosswise axis
+          pt(i ? R.TOE_R : R.TOE_L, _ra);
+          _dir.subVectors(_ra, _rc);
+          _bend.crossVectors(_dir, _pole);
+          this.basis(_bend, _dir, _qa).multiply(frames.foot);
+          this.writeBone(LIMB.foot[i], _qa, _rc);
+          this.writeBone(LIMB.toe[i], _qa, _ra);
+        }
+      }
+    }
+    this.diving = true; // back on its feet, it stands afresh
+  }
+
+  // Getting up off the ground where it lies at (x, z), facing `yaw` (head first face down, feet first face up), `time`
+  // into `keys` (PRONE_RISE / SUPINE_RISE)
+  rise(time, x, z, yaw, groundY, keys) {
+    this.x = x;
+    this.z = z;
+    this.yaw = yaw;
+    this.vx = this.vz = this.tvx = this.tvz = this.speed = this.gait = this.run = this.sprint = 0;
+    this.placed = true;
+    this.diving = true;
+    this.solveDive(time, groundY, keys.poses, keys.kneePole);
+  }
+
+  // Blend the bones towards pose `from` (a copy of an earlier pose) by w: rotations and joint positions
+  blendPose(from, w) {
+    const a = this.pose;
+    const bind = this.bind;
+    for (let b = 0; b < BONE_COUNT; b++) {
+      const o = b * 8, s = a[o + 7] || this.s;
+      _q.set(a[o], a[o + 1], a[o + 2], a[o + 3]);
+      _q2.set(from[o], from[o + 1], from[o + 2], from[o + 3]);
+      _v.copy(bind[b]).multiplyScalar(s).applyQuaternion(_q).add(_v2.set(a[o + 4], a[o + 5], a[o + 6]));
+      _knee.copy(bind[b]).multiplyScalar(s).applyQuaternion(_q2).add(_v2.set(from[o + 4], from[o + 5], from[o + 6]));
+      _v.lerp(_knee, w);
+      _q.slerp(_q2, w);
+      this.writeBone(b, _q, _v);
     }
   }
 
@@ -2529,4 +2693,75 @@ class PersonRig {
 }
 
 
-export { BONE as PERSON_BONES, buildPersonGeometry, createPersonMaterial, PersonCrowd, PersonRig, PEDESTRIAN_DIVE_DURATION };
+// The bind pose's bone frames as fromRagdoll() makes them (inverted, to take them out of the frames it finds), and the
+// pelvis joint from the hips' midpoint
+const _ragdollFrames = [];
+function ragdollFrames(female) {
+  if (_ragdollFrames[female]) return _ragdollFrames[female];
+  const basis = PersonRig.prototype.basis;
+  const p = RAGDOLL_BIND[female].map(([, x, y, z]) => new THREE.Vector3(x, y, z));
+  const R = RAGDOLL_INDEX;
+  const v = (a, b) => new THREE.Vector3().subVectors(p[a], p[b]);
+  const frame = (up, front) => basis(up, front, new THREE.Quaternion()).clone();
+  const hip = new THREE.Vector3().addVectors(p[R.HIP_L], p[R.HIP_R]).multiplyScalar(0.5);
+  const spineUp = new THREE.Vector3().subVectors(p[R.SPINE], hip);
+  const pelvis = frame(spineUp, new THREE.Vector3().crossVectors(v(R.HIP_L, R.HIP_R), spineUp));
+  const shoulders = v(R.SHOULDER_L, R.SHOULDER_R);
+  const chestUp = v(R.NECK, R.SPINE);
+  const headUp = v(R.HEAD, R.NECK);
+  const out = {
+    pelvis: pelvis.clone().invert(),
+    pelvisJoint: BIND[female][BONE.PELVIS].clone().sub(hip),
+    chest: frame(chestUp, new THREE.Vector3().crossVectors(shoulders, chestUp)).invert(),
+    head: frame(headUp, new THREE.Vector3().crossVectors(shoulders, headUp)).invert(),
+    upperArm: [], forearm: [], thigh: [], shin: [], foot: null
+  };
+  const front = new THREE.Vector3(0, 0, 1);
+  for (let i = 0; i < 2; i++) {
+    const sfx = i ? '_R' : '_L';
+    for (const [upper, lower, root, mid, end] of [
+      ['upperArm', 'forearm', 'SHOULDER', 'ELBOW', 'WRIST'], ['thigh', 'shin', 'HIP', 'KNEE', 'ANKLE']
+    ]) {
+      const q = frame(v(R[root + sfx], R[mid + sfx]), front);
+      const across = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+      const down = v(R[mid + sfx], R[end + sfx]);
+      out[upper][i] = q.clone().invert();
+      out[lower][i] = frame(down, new THREE.Vector3().crossVectors(across, down)).invert();
+      if (upper === 'thigh' && i === 0) {
+        const foot = v(R.TOE_L, R.ANKLE_L);
+        out.foot = frame(new THREE.Vector3().crossVectors(foot, across), foot).invert();
+      }
+    }
+  }
+  return (_ragdollFrames[female] = out);
+}
+
+// Getting up after a fall. Face down: the end of the dive (from lying prone). Face up: sitting up, hands pushing
+// behind, knees drawn up, then rolling forward over the feet and standing (DIVE_POSES' layout, plus the pelvis' way
+// forward of the hands & feet, with the knees pointing forward and up throughout)
+const RISE_BLEND = 0.4; // s blending from the pose it fell in
+const PRONE_RISE = { poses: DIVE_POSES, start: 0.72, kneePole: null };
+const SUPINE_RISE = {
+  start: 0,
+  kneePole: [0.15, 0.5, 1],
+  poses: [
+    // t  pelvis y, pitch, chest, head, hand y, fwd, spread, ankle L y, fwd, R y, fwd, foot pitch, pelvis fwd
+    [0,    0.11,  -1.5,  -1.52, -1.4,  0.05, -0.08, 0.3,  0.08, 0.86, 0.08, 0.84, -1.2,  0],
+    [0.4,  0.11,  -1.5,  -1.52, -1.4,  0.05, -0.08, 0.3,  0.08, 0.86, 0.08, 0.84, -1.2,  0],
+    [0.85, 0.12,  -1.15, -0.95, -0.55, 0.05, -0.26, 0.3,  0.08, 0.56, 0.08, 0.6,  -0.35, 0],
+    [1.3,  0.13,  -0.3,  -0.05, 0.1,   0.05, -0.2,  0.3,  0.08, 0.44, 0.08, 0.46, 0,     0],
+    [1.75, 0.42,  0.75,  0.95,  0.6,   0.07, 0.42,  0.28, 0.08, 0.44, 0.08, 0.46, 0,     0.28],
+    [2.2,  0.74,  0.42,  0.48,  0.25,  0.6,  0.5,   0.27, 0.08, 0.44, 0.08, 0.46, 0,     0.42],
+    [2.65, 0.957, 0.035, 0.05,  0.05,  0.82, 0.48,  0.23, 0.08, 0.45, 0.08, 0.45, 0,     0.45]
+  ]
+};
+for (const rise of [PRONE_RISE, SUPINE_RISE]) {
+  const last = rise.poses[rise.poses.length - 1];
+  rise.duration = last[0] - rise.start;
+  rise.forward = last.length > 13 ? last[13] : 0; // where it stands up, ahead of where it lay (before scaling)
+}
+
+export {
+  BONE as PERSON_BONES, buildPersonGeometry, createPersonMaterial, PersonCrowd, PersonRig, PEDESTRIAN_DIVE_DURATION,
+  PRONE_RISE, SUPINE_RISE, RISE_BLEND
+};

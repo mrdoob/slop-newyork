@@ -1,10 +1,12 @@
 import { blockAt } from './city-config.js';
 import { createPedestrianRoutes } from './pedestrian-routes.js';
-import { PersonCrowd, PersonRig, PEDESTRIAN_DIVE_DURATION } from './pedestrians.js';
+import { PersonCrowd, PersonRig, PEDESTRIAN_DIVE_DURATION, PRONE_RISE, SUPINE_RISE, RISE_BLEND } from './pedestrians.js';
+import { Ragdoll, RAGDOLL_POINTS, moverLocal } from './ragdoll.js';
 
 // Local pedestrian population: connected walks, curb queues, conversations, keeping out of each other's way and player
-// avoidance.
-// Traffic supplies crossing permissions and view checks; this system owns the crowd and its animation.
+// avoidance, and falls: anyone a vehicle hits goes limp (a ragdoll), lies a moment, gets up and walks back to its way.
+// Traffic supplies crossing permissions, view checks and the vehicles around (`movers`, see ragdoll.js); this system
+// owns the crowd and its animation.
 const NUM_PEDS = 480; // the pool: how many are out depends on how busy the area is, PED_BASE around an ordinary one
 const PED_BASE = 340;
 const PED_RADIUS = 320;
@@ -56,7 +58,13 @@ function crowdDensity(x, z) {
 // Avenues & the wide crosstown streets are busier than side streets
 const roadBusyness = (e) => (e.axis === 'ave' || e.general ? 1.3 : e.half >= 7 ? 1.15 : 0.8);
 
-function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView }) {
+// Falls: how fast a vehicle must be going (against the person) to knock them down, how long they lie before getting up
+// (longer after a harder hit) and how long at most before they do anyway
+const KNOCK_SPEED = 1.8;
+const LIE_MIN = 1.2, LIE_MAX = 6, LIE_LIMIT = 14;
+const RAGDOLL_RANGE = 160; // m from the focus: further off, a fallen person is just left lying (or respawned)
+
+function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView, movers = [] }) {
   let clock = 0;
   let focusX = 0, focusZ = 140;
   let hasView = false;
@@ -130,6 +138,9 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       diveStart: -Infinity,
       diveHeading: 0,
       diveT: 0,
+      type: 'pedestrian',
+      fall: null, // knocked down: see knockDown()
+      ragdoll: null,
       rig: new PersonRig({
         seed: i * 1.6180339 + 0.13,
         female,
@@ -177,7 +188,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   function atCurb(p) {
     const crossing = p.node ? null : nextCrossingLeg(p);
     const n = p.node || crossing?.track.node;
-    if (!n || (p.node && curbProgress(p) > KERB + 0.5) || p._curbNode === n) return;
+    if (!n || p.fall || (p.node && curbProgress(p) > KERB + 0.5) || p._curbNode === n) return;
     if (!n.curb.length) curbNodes.push(n);
     n.curb.push(p);
     p._curbNode = n;
@@ -305,6 +316,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       p.steerAt = 0;
       p.steerRoom = p.steerCap = Infinity;
       p.diveStart = -Infinity;
+      p.fall = null;
       p.avoidCheck = clock + Math.random() * PED_AVOID_INTERVAL;
       p.nextRoute = null;
       p.nextLeg = 0;
@@ -971,7 +983,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     meetingCells.clear();
     for (let i = 0; i < peds.length; i++) {
       const p = peds[i];
-      if (!p.placed || p.node || !p.route?.edge || p.conversation || clock < p.socialTime || p.t < 6 || p.t > p.len - 6) continue;
+      if (!p.placed || p.fall || p.node || !p.route?.edge || p.conversation || clock < p.socialTime || p.t < 6 || p.t > p.len - 6) continue;
       const ix = Math.floor(p.x * 0.5), iz = Math.floor(p.z * 0.5);
       let partner = null;
       for (let dx = -1; dx <= 1 && !partner; dx++) {
@@ -1094,23 +1106,197 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       pedBudget--;
       spawnPed(p, jump ? 0 : 60, jump ? NEAR_RADIUS : 280, !jump);
     }
+    fallen.length = 0;
     for (let i = 0; i < NUM_PEDS; i++) {
       const p = peds[i];
-      if (p.placed) avoidPlayer(p);
+      if (!p.placed) continue;
+      if (p.fall) fallen.push(p);
+      else avoidPlayer(p);
     }
+    for (let m = 0; m < movers.length; m++) movers[m].dt = dt;
     meet(dt);
     gatherCurbs();
     pedCrowd.begin();
     for (let i = 0; i < NUM_PEDS; i++) {
       const p = peds[i];
       if (!p.placed) continue;
+      if (p.fall) {
+        updateFall(p, dt);
+        continue;
+      }
       walk(p, dt);
+      const hit = movers.length ? struck(p) : null;
+      if (hit) {
+        knockDown(p, hit);
+        updateFall(p, dt);
+        continue;
+      }
       renderPed(p, dt);
     }
     pedCrowd.end();
   }
 
-  return { peds, meshes: pedCrowd.meshes, update };
+  // =========================================================================
+  // FALLS
+  // =========================================================================
+  // The world a ragdoll lands in (traffic.js passes the game's: the ground's height, and the buildings & street
+  // furniture to bounce off), by default just the curb islands
+  let world = {
+    ground: (x, z) => (blockAt(x, z) ? SIDEWALK_Y : 0),
+    colliders: null,
+    contact: () => false
+  };
+  const fallen = []; // who is down (or getting up, or walking back) this frame: traffic stops for them
+  const _points = new Float64Array(17 * 3);
+  const _bind = new Float64Array(17 * 3);
+  const _local = { x: 0, y: 0, z: 0 };
+  const worldGround = (owner, x, z) => world.ground(x, z);
+  let onHit = null; // told who was knocked down by which vehicle (for the thud)
+
+  // The vehicle (if any) driving into p hard enough to knock it down: one of its joints inside the vehicle's body
+  function struck(p) {
+    const rig = p.rig;
+    if (!rig.placed) return null;
+    let posed = false;
+    for (let m = 0; m < movers.length; m++) {
+      const mv = movers[m];
+      if (!mv.knocks) continue;
+      const dx = p.x - mv.x, dz = p.z - mv.z, reach = mv.shape.reach + 0.6;
+      if (dx * dx + dz * dz > reach * reach) continue;
+      // within arm's reach of its footprint
+      moverLocal(mv, 1, p.x, 1, p.z, _local);
+      const shape = mv.shape;
+      if (Math.abs(_local.x) > shape.xHalf + 0.9 || _local.z > shape.zFront + 0.9 || _local.z < shape.zRear - 0.9) continue;
+      const rvx = mv.vx + mv.yawRate * dz - rig.vx, rvz = mv.vz - mv.yawRate * dx - rig.vz;
+      if (rvx * rvx + rvz * rvz < KNOCK_SPEED * KNOCK_SPEED) continue;
+      if (!posed) {
+        // the pose is the last one drawn: one out of view (still stepping its feet) is posed now
+        const diving = clock - p.diveStart < PEDESTRIAN_DIVE_DURATION;
+        if (hasView && !visible(p.x, p.z, 7)) {
+          if (diving || p.fall) return null;
+          rig.solve();
+        }
+        rig.ragdollPoints(_points);
+        posed = true;
+      }
+      for (let k = 0; k < 17; k++) {
+        moverLocal(mv, 1, _points[k * 3], _points[k * 3 + 1], _points[k * 3 + 2], _local);
+        if (mv.shape.inside(_local.x, _local.y, _local.z, k === RAGDOLL_POINTS.HEAD ? 0.1 : 0.06)) return mv;
+      }
+    }
+    return null;
+  }
+
+  // p goes limp where it stands (or dives, or gets up), as it moves; the vehicle does the rest
+  function knockDown(p, mover) {
+    if (p.conversation) endConversation(p.conversation);
+    const rig = p.rig;
+    const ragdoll = p.ragdoll || (p.ragdoll = new Ragdoll());
+    if (!p.fall || p.fall.mode !== 'tumble') {
+      rig.ragdollPoints(_points);
+      ragdoll.start(_points, rig.ragdollBind(_bind), rig.s, p.fall ? 0 : rig.vx, 0, p.fall ? 0 : rig.vz);
+    }
+    ragdoll.wake();
+    const f = p.fall || (p.fall = p.fallState || (p.fallState = { mode: '', time: 0, lie: 0, start: 0, x: 0, z: 0, yaw: 0, ground: 0, rise: null, pose: null }));
+    f.mode = 'tumble';
+    f.time = 0;
+    f.lie = 0;
+    p.v = 0;
+    p.pause = 0;
+    p.waiting = false;
+    p.walkAt = -1;
+    p.diveStart = -Infinity;
+    p.dodge = p.dodgeTarget = p.shift = p.shiftTarget = 0;
+    if (onHit) onHit(p, mover);
+  }
+
+  function updateFall(p, dt) {
+    if (p.fall.mode !== 'tumble' && movers.length) {
+      // getting up, or on its way back: it can be knocked down again
+      const hit = struck(p);
+      if (hit) knockDown(p, hit);
+    }
+    const f = p.fall, rig = p.rig, ragdoll = p.ragdoll;
+    const dx = p.x - focusX, dz = p.z - focusZ;
+    const distSq = dx * dx + dz * dz;
+    const draw = !hasView || visible(p.x, p.z, 7);
+    f.time += dt;
+    if (f.mode === 'tumble') {
+      if (distSq < RAGDOLL_RANGE * RAGDOLL_RANGE) ragdoll.step(dt, world, movers);
+      p.x = ragdoll.pelvisX;
+      p.z = ragdoll.pelvisZ;
+      if (draw) rig.fromRagdoll(ragdoll.x);
+      // lie still a while (not on top of a car, nor under one), then get up
+      f.lie = ragdoll.asleep ? f.lie + dt : 0;
+      const wait = Math.min(LIE_MAX, LIE_MIN + ragdoll.impact * 0.22);
+      if ((f.lie > wait || f.time > LIE_LIMIT) && !ragdoll.contact.includes(2) && !ragdoll.covered(movers)) startRise(p);
+    } else if (f.mode === 'rise') {
+      const t = clock - f.start;
+      const rise = f.rise;
+      if (t >= rise.duration) {
+        // standing: where it got up, a little ahead of where it lay
+        const ahead = rise.forward * rig.s;
+        p.x = f.x + Math.sin(f.yaw) * ahead;
+        p.z = f.z + Math.cos(f.yaw) * ahead;
+        f.mode = 'return';
+        f.time = 0;
+        rig.update(dt, p.x, p.z, f.yaw, worldGround, p, 0, draw);
+      } else {
+        rig.rise(rise.start + t, f.x, f.z, f.yaw, f.ground, rise);
+        if (t < RISE_BLEND) rig.blendPose(f.pose, 1 - smoothstep(t / RISE_BLEND));
+      }
+    } else {
+      // back to the nearest point of its way, then on along it
+      const t = clamp((p.x - p.ax) * p.ux + (p.z - p.az) * p.uz, 0, p.len);
+      const tx = p.ax + p.ux * t, tz = p.az + p.uz * t;
+      const ox = tx - p.x, oz = tz - p.z;
+      const d = Math.sqrt(ox * ox + oz * oz);
+      const step = Math.min(d, p.speed * 0.8 * Math.min(1, f.time / 0.6) * dt);
+      if (d < 0.05 || f.time > 20) {
+        p.x = tx;
+        p.z = tz;
+        p.t = t;
+        p.fall = null;
+        p.v = 0;
+        p.pause = 0.4;
+        p.avoidUntil = 0;
+        p.resumeDir = 0;
+        p.blocked = 0;
+      } else {
+        p.x += (ox / d) * step;
+        p.z += (oz / d) * step;
+      }
+      rig.update(dt, p.x, p.z, d > 0.05 ? Math.atan2(ox, oz) : Math.atan2(p.ux * p.dir, p.uz * p.dir), p.fall ? worldGround : pedGround, p, 0, draw);
+    }
+    if (draw) pedCrowd.add(rig, Math.sqrt(distSq));
+  }
+
+  // From however the ragdoll lies: face down, the end of a dive (head first); face up, sitting up (feet first)
+  function startRise(p) {
+    const f = p.fall, rig = p.rig, ragdoll = p.ragdoll;
+    rig.fromRagdoll(ragdoll.x);
+    f.pose = f.pose || new Float32Array(rig.pose.length);
+    f.pose.set(rig.pose);
+    const prone = ragdoll.prone;
+    const n = RAGDOLL_POINTS.NECK * 3;
+    f.x = ragdoll.pelvisX;
+    f.z = ragdoll.pelvisZ;
+    const hx = ragdoll.x[n] - f.x, hz = ragdoll.x[n + 2] - f.z;
+    f.yaw = prone ? Math.atan2(hx, hz) : Math.atan2(-hx, -hz);
+    f.ground = world.ground(f.x, f.z);
+    f.rise = prone ? PRONE_RISE : SUPINE_RISE;
+    f.mode = 'rise';
+    f.start = clock;
+    f.time = 0;
+  }
+
+  const smoothstep = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+
+  return {
+    peds, meshes: pedCrowd.meshes, update, fallen,
+    setWorld(w) { world = w; },
+    setHitListener(listener) { onHit = listener; }
+  };
 }
 
 export { createPedestrianSystem };

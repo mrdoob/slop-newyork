@@ -149,6 +149,12 @@ async function initApp() {
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   await showLoadingStage('Preparing player, vehicles and controls...', 'controllers');
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
+  // People knocked down land on the same ground as the player and bounce off the same buildings & street furniture
+  trafficSystem.setWorld({
+    ground: (x, z) => controllerManager.getGroundHeight(x, z, 'person'),
+    colliders: (x, z, r) => controllerManager.nearColliders(x, z, r),
+    contact: (c, x, y, z, r, out) => controllerManager.sphereContact(c, x, y, z, r, out)
+  });
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   try {
     const saved = JSON.parse(localStorage.getItem('nyc-player-state'));

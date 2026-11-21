@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { buildRoadNetwork } from './road-network.js';
 import { createPedestrianSystem } from './pedestrian-system.js';
 import { vehicleContact, resolveVehicleContact, sweptVehicleContact } from './vehicle-physics.js';
+import { createMover, vehicleShape } from './ragdoll.js';
 import { signalPhase, walkSignal } from './city-config.js';
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from './tsl-materials.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
@@ -116,8 +117,9 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   }
 
   // Synchronous notification: listeners must copy any fields they retain. Normal points from b toward a.
-  function reportCollision(a, b, x, y, z, nx, nz, speed) {
+  function reportCollision(a, b, x, y, z, nx, nz, speed, kind = 'vehicle') {
     if (!collisionListener || speed <= 0.5) return;
+    collisionEvent.kind = kind;
     collisionEvent.a = a; collisionEvent.b = b;
     collisionEvent.x = x; collisionEvent.y = y; collisionEvent.z = z;
     collisionEvent.nx = nx; collisionEvent.nz = nz; collisionEvent.speed = speed;
@@ -435,8 +437,95 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     halfW: 0.86, halfL: 2.18 };
   const nearEdges = [];
   const nearSignals = [];
+  // The vehicles around the focus as the people they knock down see them (ragdoll.js): the player's taxi and traffic,
+  // with their bodies' shapes (from their meshes, made when first needed)
+  const movers = [];
+  const moverPool = [];
+  const MOVER_RADIUS = 80;
+  const shapes = {};
+  function shapeOf(kind) {
+    if (!shapes[kind]) {
+      const bus = kind === 'bus';
+      const spec = bus ? BUS_SPEC : BODY_SPECS[kind];
+      const tyre = bus ? 0.16 : 0.12;
+      shapes[kind] = vehicleShape(bus ? busBodyGeo : bodies[kind].near.geometry, {
+        wheels: [[spec.wheelX, spec.wheelZ, spec.wheelRadius, tyre], [spec.wheelX, -spec.wheelZ, spec.wheelRadius, tyre]]
+      });
+    }
+    return shapes[kind];
+  }
+  let playerMover = null;
+  function gatherMovers(dt, playerEntity, activeMode) {
+    let n = 0;
+    const take = () => {
+      const m = moverPool[n] || (moverPool[n] = createMover());
+      n++;
+      m.jx = m.jy = m.jz = 0;
+      m.wheelHits = 0;
+      m.dt = dt;
+      return m;
+    };
+    playerMover = null;
+    if (player.active && activeMode === 'car' && playerEntity.chassisPivot) {
+      const m = playerMover = take();
+      const chassis = playerEntity.chassisPivot;
+      m.x = player.x; m.z = player.z; m.y = playerEntity.position.y + chassis.position.y;
+      m.heading = playerEntity.heading || 0;
+      m.vx = player.vx; m.vz = player.vz;
+      m.yawRate = playerEntity.angularVel || 0;
+      m.pitch = chassis.rotation.x; m.roll = chassis.rotation.z;
+      m.shape = shapeOf('taxi');
+      m.mass = 1700;
+      m.ref = playerEntity;
+      m.knocks = true;
+    }
+    for (const v of vehicles) {
+      if (!v.edge || Math.abs(v.x - focusX) > MOVER_RADIUS || Math.abs(v.z - focusZ) > MOVER_RADIUS) continue;
+      const m = take();
+      const heading = v.yaw + v.yawOffset;
+      m.x = v.x; m.z = v.z; m.y = 0;
+      m.heading = heading;
+      m.vx = Math.sin(heading) * v.speed + v.vx;
+      m.vz = Math.cos(heading) * v.speed + v.vz;
+      m.yawRate = v.yawRate + v.yawVel;
+      m.pitch = v.bus ? 0 : v.pitch; m.roll = v.bus ? 0 : v.roll;
+      m.shape = shapeOf(v.bus ? 'bus' : v.bodyType);
+      m.mass = v.mass ?? 1600;
+      m.ref = v;
+      m.knocks = v.speed > 3; // drivers stop for people in their way: only one swerving (or careering) runs into them
+    }
+    movers.length = n;
+    for (let i = 0; i < n; i++) movers[i] = moverPool[i];
+  }
+
+  // The people the player's taxi knocks down (or drives over) push back on it: it slows, and the chassis dips and bumps
+  function feelFallen(playerEntity) {
+    const m = playerMover;
+    if (!m || m.ref !== playerEntity) return;
+    const sin = Math.sin(m.heading), cos = Math.cos(m.heading);
+    const along = (m.jx * sin + m.jz * cos) / m.mass;
+    const across = (m.jx * cos - m.jz * sin) / m.mass;
+    if (along || across || m.jy) {
+      playerEntity.speed += along;
+      playerEntity.vx = (playerEntity.vx || 0) + cos * across;
+      playerEntity.vz = (playerEntity.vz || 0) - sin * across;
+      playerEntity.pitchVel = (playerEntity.pitchVel || 0) + clamp(along * 0.8, -1.2, 1.2);
+      playerEntity.heaveVel = (playerEntity.heaveVel || 0) + clamp((m.jy / m.mass) * 2, -0.6, 0.6);
+    }
+    if (m.wheelHits) {
+      const speed = Math.abs(playerEntity.speed || 0);
+      playerEntity.heaveVel = (playerEntity.heaveVel || 0) + Math.min(0.5, 0.06 * speed) * (0.6 + Math.random() * 0.4);
+      playerEntity.rollVel = (playerEntity.rollVel || 0) + (Math.random() - 0.5) * Math.min(0.6, 0.08 * speed);
+    }
+  }
+
   const pedestrianSystem = createPedestrianSystem(network, {
-    player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView
+    player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView, movers
+  });
+  pedestrianSystem.setHitListener((p, m) => {
+    const speed = Math.hypot(m.vx, m.vz);
+    const dx = p.x - m.x, dz = p.z - m.z, d = Math.hypot(dx, dz) || 1;
+    reportCollision(m.ref, p, p.x, 0.9, p.z, dx / d, dz / d, speed, 'pedestrian');
   });
   group.add(...pedestrianSystem.meshes);
 
@@ -656,6 +745,22 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     v.pAhead = dx * fx + dz * fz;
     v.pRight = dz * fx - dx * fz;
     v.pSpeed = Math.max(0, player.vx * fx + player.vz * fz);
+  }
+
+  // Gap to anyone knocked down (lying, getting up or walking back to the sidewalk) ahead in v's way
+  function fallenGap(v) {
+    const list = pedestrianSystem.fallen;
+    let gap = Infinity;
+    if (!list.length) return gap;
+    const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
+    for (let i = 0; i < list.length; i++) {
+      const dx = list[i].x - v.x, dz = list[i].z - v.z;
+      const ahead = dx * fx + dz * fz;
+      if (ahead < 0 || ahead > LOOKAHEAD) continue;
+      if (Math.abs(dz * fx - dx * fz) > v.halfWidth + 1.1) continue;
+      gap = Math.min(gap, ahead - v.half - 1.1);
+    }
+    return gap;
   }
 
   // Gap to the player if it is ahead in the lane whose centre is `off` metres to the right of v
@@ -1109,6 +1214,14 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       if (pg < v.gap) {
         v.gap = pg;
         v.leaderSpeed = v.pSpeed;
+      }
+    }
+    const fg = fallenGap(v);
+    if (fg < LOOKAHEAD) {
+      worst = Math.min(worst, brake(v, Math.max(0, fg), 0));
+      if (fg < v.gap) {
+        v.gap = Math.max(0, fg);
+        v.leaderSpeed = 0;
       }
     }
     const acc = Math.min(freeAcc(v) + worst, (cap - v.speed) * 2);
@@ -1999,8 +2112,10 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     if (visibleBuses > 0) flagRange(busStates, visibleBuses);
     updateTrafficLights();
 
-    // 2. Pedestrians
+    // 2. Pedestrians (and the people knocked down)
+    gatherMovers(dt, playerEntity, activeMode);
     pedestrianSystem.update(dt, elapsed, focusX, focusZ, jump, hasView, activeMode);
+    feelFallen(playerEntity);
 
     // 3. Collision sparks, including the player's own impacts against buildings
     if (playerEntity && playerEntity.lastCollisionSpark) {
@@ -2018,6 +2133,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     cars,
     buses,
     peds: pedestrianSystem.peds,
+    fallen: pedestrianSystem.fallen,
+    setWorld: pedestrianSystem.setWorld,
     network
   };
 }

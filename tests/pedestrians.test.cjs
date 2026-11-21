@@ -223,6 +223,9 @@ class Vector3 {
   add(v) { this.x += v.x; this.y += v.y; this.z += v.z; return this; }
   sub(v) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; }
   subVectors(a, b) { this.x = a.x - b.x; this.y = a.y - b.y; this.z = a.z - b.z; return this; }
+  negate() { this.x = -this.x; this.y = -this.y; this.z = -this.z; return this; }
+  addVectors(a, b) { this.x = a.x + b.x; this.y = a.y + b.y; this.z = a.z + b.z; return this; }
+  lerp(v, t) { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; this.z += (v.z - this.z) * t; return this; }
   addScaledVector(v, s) { this.x += v.x * s; this.y += v.y * s; this.z += v.z * s; return this; }
   multiplyScalar(s) { this.x *= s; this.y *= s; this.z *= s; return this; }
   divideScalar(s) { return this.multiplyScalar(1 / s); }
@@ -267,6 +270,16 @@ class Vector3 {
 class Quaternion {
   constructor(x = 0, y = 0, z = 0, w = 1) { this.x = x; this.y = y; this.z = z; this.w = w; }
   identity() { this.x = 0; this.y = 0; this.z = 0; this.w = 1; return this; }
+  set(x, y, z, w) { this.x = x; this.y = y; this.z = z; this.w = w; return this; }
+  clone() { return new Quaternion(this.x, this.y, this.z, this.w); }
+  invert() { this.x = -this.x; this.y = -this.y; this.z = -this.z; return this; }
+  slerp(q, t) { // normalized lerp along the shorter arc (enough for the tests)
+    const d = this.x * q.x + this.y * q.y + this.z * q.z + this.w * q.w, k = d < 0 ? -1 : 1;
+    this.x += (q.x * k - this.x) * t; this.y += (q.y * k - this.y) * t; this.z += (q.z * k - this.z) * t; this.w += (q.w * k - this.w) * t;
+    const l = Math.hypot(this.x, this.y, this.z, this.w) || 1;
+    this.x /= l; this.y /= l; this.z /= l; this.w /= l;
+    return this;
+  }
   copy(q) { this.x = q.x; this.y = q.y; this.z = q.z; this.w = q.w; return this; }
   setFromAxisAngle(axis, angle) {
     const half = angle * 0.5, s = Math.sin(half);
@@ -417,13 +430,16 @@ function mergeGeometries(geos) {
   return merged;
 }
 
-const { PERSON_BONES, PersonCrowd, PersonRig, buildPersonGeometry, createPersonMaterial } = loadModule(pedestriansSource, {
+const ragdollModule = loadModule(readFileSync(join(__dirname, '../js/ragdoll.js'), 'utf8'));
+const pedestriansModule = loadModule(pedestriansSource, {
   imports: {
+    './ragdoll.js': ragdollModule,
     'three/webgpu': { Vector3, Quaternion, Matrix4, BufferAttribute, BufferGeometry, Float32BufferAttribute, MeshStandardNodeMaterial, Mesh },
     'three/tsl': tslStub,
     'three/addons/utils/BufferGeometryUtils.js': { mergeGeometries }
   }
 });
+const { PERSON_BONES, PersonCrowd, PersonRig, buildPersonGeometry, createPersonMaterial } = pedestriansModule;
 const STRIDE = 34; // 15 bones x 2 vec4s, 3 appearance vec4s, the info vec4
 
 test('PersonCrowd creates 2 LODs only when farDistance is finite and disables shadow casting on PeopleFar', () => {
@@ -1069,4 +1085,108 @@ test('PersonRig running uses spring-mass vertical phase, shin-aligned swing feet
     `swing foot stays aligned with shin without horizontal hoverboot hyper-dorsiflexion (${(maxDorsiflexRad * 180 / Math.PI).toFixed(1)}°)`);
   assert.ok(minLeftHandRelZAtLeftPushOff > 0.12 && maxRightHandRelZAtLeftPushOff < 0.05,
     `contralateral arms oppose thigh scissor at push-off (L=${minLeftHandRelZAtLeftPushOff.toFixed(2)}m, R=${maxRightHandRelZAtLeftPushOff.toFixed(2)}m)`);
+});
+
+// Points around each bone (its joint and 6 cm off it each way), in world space as posed
+function bonePoints(rig) {
+  const out = [];
+  for (let b = 0; b < 15; b++) {
+    for (const [dx, dy, dz] of [[0, 0, 0], [0.06, 0, 0], [0, 0.06, 0], [0, 0, 0.06]]) {
+      out.push(boneWorldPos(rig, b, rig.bind[b].clone().add(new Vector3(dx, dy, dz))));
+    }
+  }
+  return out;
+}
+
+test('PersonRig gives a ragdoll its joints and takes the bones back from them', () => {
+  const dt = 1 / 60;
+  for (const female of [false, true]) {
+    const rig = new PersonRig({ seed: 3.1, scale: female ? 0.95 : 1.04, female, girth: 1.05 });
+    rig.reset(2, 5, 0.7, () => 0.22);
+    let z = 5;
+    for (let f = 0; f < 50; f++) {
+      z += 1.4 * dt;
+      rig.update(dt, 2 + (z - 5) * Math.sin(0.7), 5 + (z - 5) * Math.cos(0.7), 0.7, () => 0.22);
+    }
+    const before = bonePoints(rig);
+    const points = rig.ragdollPoints(new Float64Array(17 * 3));
+    rig.fromRagdoll(points);
+    const after = bonePoints(rig);
+    let worst = 0, worstBone = -1;
+    before.forEach((p, i) => {
+      const d = p.distanceTo(after[i]);
+      if (d > worst) { worst = d; worstBone = Math.floor(i / 4); }
+    });
+    // limbs may turn a little about their own axes (a point frame can't tell a straight limb's twist)
+    assert.ok(worst < 0.035, `${female ? 'female' : 'male'}: bones rebuilt from the ragdoll's points within ${(worst * 100).toFixed(1)} cm (bone ${worstBone})`);
+  }
+});
+
+test('PersonRig bind-pose ragdoll points rebuild the bind pose exactly', () => {
+  const rig = new PersonRig({ seed: 1, scale: 1 });
+  const points = rig.ragdollBind(new Float64Array(17 * 3));
+  rig.fromRagdoll(points);
+  for (let b = 0; b < 15; b++) {
+    const o = b * 8;
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(rig.pose[o + 3])));
+    assert.ok(angle < 1e-3, `bone ${b} unrotated (${(angle * 180 / Math.PI).toFixed(2)}°)`);
+    assert.ok(Math.hypot(rig.pose[o + 4], rig.pose[o + 5], rig.pose[o + 6]) < 1e-3, `bone ${b} untranslated`);
+  }
+});
+
+test('a vehicle driving into a walker knocks them down; they lie a while, get up and walk back to their way', () => {
+  const { createPedestrianSystem } = loadModule(readFileSync(join(__dirname, '../js/pedestrian-system.js'), 'utf8'), {
+    imports: {
+      './city-config.js': { blockAt: () => null },
+      './pedestrian-routes.js': { createPedestrianRoutes: () => ({ next: () => null, share: () => 1, canDodge: () => true }) },
+      './pedestrians.js': pedestriansModule,
+      './ragdoll.js': ragdollModule
+    }
+  });
+  // a box of a car body coming down the sidewalk line the other way, braking hard once it hits
+  const v = [];
+  for (const x of [-0.9, 0.9]) for (const y of [0.3, 1.2]) for (const z of [-2.2, 2.2]) v.push(x, y, z);
+  const quads = [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]];
+  const idx = quads.flatMap(([a, b, c, d]) => [a, b, c, a, c, d]);
+  const shape = ragdollModule.vehicleShape({
+    attributes: { position: { count: 8, getX: (i) => v[i * 3], getY: (i) => v[i * 3 + 1], getZ: (i) => v[i * 3 + 2] } },
+    index: { count: idx.length, getX: (i) => idx[i] }
+  });
+  const car = Object.assign(ragdollModule.createMover(), { shape, x: 0, z: 34, heading: Math.PI, vz: -10, mass: 1600 });
+  const movers = [car];
+  const system = createPedestrianSystem({ nodes: [] }, {
+    player: { active: false }, nearEdges: [], nearSignals: [], mayCross: () => true, walkOn: () => true,
+    visible: () => true, nearView: () => false, movers
+  });
+  const p = system.peds[0];
+  Object.assign(p, { ax: 0, az: 0, ux: 0, uz: 1, len: 60, node: null, side: 0, line: 0, edge: {} }, {
+    placed: true, t: 20, dir: 1, x: 0, z: 20, v: p.speed, pause: 0,
+    goalX: 0, goalZ: 1e4, goalTime: Infinity, restTime: Infinity, socialTime: Infinity, avoidCheck: 0
+  });
+  p.route = p;
+  const hits = [];
+  system.setHitListener((who, by) => hits.push([who, by]));
+  const seen = new Set();
+  let clock = 0, hitAt = -1, highest = 0, carStopped = 0;
+  for (let k = 0; k < 20 / 0.02 && (hitAt < 0 || p.fall || clock < hitAt + 1); k++) {
+    clock += 0.02;
+    if (hitAt >= 0) car.vz = Math.min(0, car.vz + 8 * 0.02);
+    car.z += car.vz * 0.02;
+    if (car.vz === 0 && !carStopped) carStopped = clock;
+    // drive away again once it has stopped, so they can get up
+    if (carStopped && clock > carStopped + 1) car.x = 50;
+    car.jx = car.jy = car.jz = 0;
+    system.update(0.02, clock, 0, 20, false, true, 'person');
+    if (p.fall) {
+      seen.add(p.fall.mode);
+      if (hitAt < 0) hitAt = clock;
+      assert.ok(system.fallen.includes(p) || clock - 0.02 < hitAt, 'traffic is told who is down');
+      if (p.fall.mode === 'tumble') highest = Math.max(highest, p.ragdoll.pelvisY);
+    }
+  }
+  assert.ok(hitAt > 0 && hits.length >= 1 && hits[0][0] === p && hits[0][1] === car, 'knocked down by the car (reported once)');
+  assert.deepEqual([...seen], ['tumble', 'rise', 'return'], 'fell, got up and walked back');
+  assert.equal(p.fall, null, 'back on its way');
+  assert.ok(Math.abs(p.x) < 0.3 && p.t > 0 && p.t < 60, `on its sidewalk line again (x ${p.x.toFixed(2)}, t ${p.t.toFixed(1)})`);
+  assert.ok(highest < 2.5, `no launch (pelvis at most ${highest.toFixed(2)} m)`);
 });

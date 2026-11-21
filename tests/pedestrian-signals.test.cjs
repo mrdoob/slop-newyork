@@ -11,6 +11,7 @@ function crossing() {
     imports: {
       './city-config.js': { blockAt: () => null },
       './pedestrian-routes.js': { createPedestrianRoutes: () => ({ next: () => null }) },
+      './ragdoll.js': { Ragdoll: class {}, RAGDOLL_POINTS: {}, moverLocal: () => {} },
       './pedestrians.js': {
         PersonRig: class { update() {} },
         PersonCrowd: class { meshes = []; begin() {} add() {} end() {} },

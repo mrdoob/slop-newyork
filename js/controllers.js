@@ -928,6 +928,15 @@ class ThirdPersonControllerManager {
     return out;
   }
 
+  // A ball of radius r at (x, y, z) against static collider c (from nearColliders): the push out of it in `out`
+  // (nx, nz, depth). Ragdolls bounce off buildings & street furniture with it.
+  sphereContact(c, x, y, z, r, out) {
+    const body = this._sphereBody ??= { car: false, sin: 0, cos: 1, hx: 0, hz: 0, radius: 0, extX: 0, extZ: 0, bottom: 0, top: 0 };
+    body.radius = body.extX = body.extZ = body.top = r;
+    body.bottom = -r;
+    return buildingContact(c, x, y, z, body, out);
+  }
+
   resolveHorizontalCollision(pos, radius, carEntity = null, entity = carEntity) {
     // The detailed island (the helicopter may roam out over the harbour & the boroughs)
     const mode = entity?.type || this.activeMode;

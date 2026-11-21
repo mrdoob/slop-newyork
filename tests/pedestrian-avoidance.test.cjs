@@ -13,6 +13,7 @@ function sidewalk({ room = 1.3, player = { active: false } } = {}) {
       './pedestrian-routes.js': {
         createPedestrianRoutes: () => ({ next: () => null, share: () => 1, canDodge: (p, offset) => Math.abs(offset) <= room })
       },
+      './ragdoll.js': { Ragdoll: class {}, RAGDOLL_POINTS: {}, moverLocal: () => {} },
       './pedestrians.js': {
         PersonRig: class { update() {} },
         PersonCrowd: class { meshes = []; begin() {} add() {} end() {} },
