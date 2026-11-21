@@ -80,21 +80,27 @@ const cityUniforms = {
   uCanyonBounce: uniform(0.52)
 };
 
-// Fast deterministic 2D -> 1D hash in TSL
+// Deterministic 2D -> [0, 1) hash: fract(sin(dot(p, k)) * 43758.5) on the input wrapped (exactly) into [0, 1024), so
+// sin's argument stays below ~1e5. Unwrapped, it reaches the millions for centimetre detail a few hundred metres from
+// the origin, where sin loses its precision and the hash breaks down into rows & stripes of repeats.
 const hash2D = Fn(([p]) => {
-  return fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
+  return hashWrapped(fract(vec2(p).mul(1.0 / 1024.0)).mul(1024.0));
 });
+const hashWrapped = (q) => fract(sin(dot(q, vec2(12.9898, 78.233))).mul(43758.5453));
 
-// Smooth 2D value noise in TSL
+// Smooth 2D value noise in TSL (its lattice wraps every 1024 cells, like hash2D's: the cell is wrapped once and its far
+// corners wrap round to 0 with it, so the noise stays continuous across the wrap)
 const noise2D = Fn(([p]) => {
   const pv = vec2(p).toVar();
   const i = floor(pv).toVar();
   const f = fract(pv).toVar();
   const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0))).toVar();
-  const a = hash2D(i);
-  const b = hash2D(i.add(vec2(1.0, 0.0)));
-  const c = hash2D(i.add(vec2(0.0, 1.0)));
-  const d = hash2D(i.add(vec2(1.0, 1.0)));
+  const i0 = fract(i.mul(1.0 / 1024.0)).mul(1024.0).toVar();
+  const i1 = i0.add(1.0).mul(step(i0, vec2(1022.5))).toVar();
+  const a = hashWrapped(i0);
+  const b = hashWrapped(vec2(i1.x, i0.y));
+  const c = hashWrapped(vec2(i0.x, i1.y));
+  const d = hashWrapped(i1);
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 });
 
@@ -1818,7 +1824,8 @@ const voronoiBorder = Fn(([p]) => {
   for (let j = -1; j <= 1; j++) {
     for (let i = -1; i <= 1; i++) {
       const id = ip.add(vec2(i, j));
-      const site = vec2(i, j).add(vec2(hash2D(id), hash2D(id.add(vec2(37.1, 11.7)))).mul(0.8).add(0.1));
+      const h = hash2D(id);
+      const site = vec2(i, j).add(vec2(h, fract(h.mul(61.37))).mul(0.8).add(0.1));
       const d = length(fp.sub(site)).toVar();
       f2.assign(min(f2, max(f1, d)));
       f1.assign(min(f1, d));
@@ -1842,9 +1849,11 @@ const roadWear = Fn(([wxz, px]) => {
     const warp = vec2(noise2D(wxz.mul(2.7)), noise2D(wxz.mul(2.7).add(13.0))).sub(0.5).mul(0.35);
     const cell = 0.55;
     const border = voronoiBorder(wxz.div(cell).add(warp)).mul(cell);
+    // The network is broken: cracks run for a metre or two, then the surface holds
+    const runs = smoothstep(0.36, 0.52, noise2D(wxz.mul(1.1).add(43.0)));
     const width = worn.mul(0.0016).add(0.0012);
     const effWidth = max(width, px.mul(0.6));
-    crack.assign(float(1.0).sub(smoothstep(effWidth, effWidth.add(px), border)).mul(width.div(effWidth)).mul(worn)
+    crack.assign(float(1.0).sub(smoothstep(effWidth, effWidth.add(px), border)).mul(width.div(effWidth)).mul(worn).mul(runs)
       .mul(smoothstep(0.04, 0.015, px)));
   });
 
@@ -1935,11 +1944,29 @@ function createRoadSurfaceMaterial() {
   const patchSeal = float(1.0).sub(smoothstep(sealWidth, sealWidth.add(pixelSize), abs(patchDist))).mul(float(0.022).div(sealWidth)).mul(wear.w);
   // Fresh patches are darker & tighter than the roadway, old ones paler & greyer
   const patchFresh = step(0.55, hash2D(floor(positionWorld.xz.div(11.0)).add(vec2(12.9, 6.6))));
-  // Exposed light stone chips in the worn surface, settling to their average where they shrink below a pixel
+  // Exposed light stone chips in the worn surface: one candidate stone per 2.4 cm cell of a lattice turned off the
+  // street grid, jittered in its cell, two in five showing, each its own size, elongation, heading & shade (8-14 mm
+  // across); they settle to their average where they shrink to a pixel
+  const chipCell = 0.024;
   const chips = Fn(() => {
     const px = float(pixelSize).toVar();
-    return fadedDetail(px.lessThan(0.03), 0.035, () =>
-      mix(float(0.035), smoothstep(0.72, 0.8, noise2D(positionWorld.xz.mul(30.0))), smoothstep(0.03, 0.012, px)));
+    return fadedDetail(px.lessThan(0.012), 0.036, () => {
+      const wxz = positionWorld.xz;
+      const q = vec2(wxz.x.mul(0.8).sub(wxz.y.mul(0.6)), wxz.x.mul(0.6).add(wxz.y.mul(0.8))).div(chipCell);
+      const cell = floor(q).toVar();
+      const v = fract(q).sub(vec2(hash2D(cell), hash2D(cell.add(vec2(17.3, 5.1)))).mul(0.4).add(0.3)).toVar();
+      const shape = hash2D(cell.add(vec2(9.7, 3.3))).toVar();
+      const heading = shape.mul(Math.PI * 7.0);
+      const dir = vec2(cos(heading), sin(heading));
+      const along = dot(v, dir);
+      const across = dot(v, vec2(dir.y, dir.x.mul(-1.0)));
+      const radius = hash2D(cell.add(vec2(4.2, 8.8))).mul(0.13).add(0.17);
+      const d = length(vec2(along, across.mul(shape.mul(0.6).add(1.0)))).sub(radius);
+      const aa = px.div(chipCell);
+      const stone = smoothstep(aa.mul(0.5), aa.mul(-0.5), d).mul(step(0.6, hash2D(cell.add(vec2(2.7, 6.1)))));
+      const tone = hash2D(cell.add(vec2(7.4, 1.6))).mul(0.6).add(0.4);
+      return mix(float(0.036), stone.mul(tone), smoothstep(0.012, 0.006, px));
+    });
   })();
   // Tar-snake crack sealant (none over the newer patches)
   const tarSnake = roadTarSnakes(positionWorld.xz, pixelSize).mul(float(1.0).sub(patchCover));
@@ -2004,7 +2031,7 @@ function createRoadSurfaceMaterial() {
     const patchCol = mix(mix(baseAsphalt, cOldPatch, 0.45).mul(1.08), color(0x2b2e33).mul(0.85), patchFresh);
     const repaired = mix(baseAsphalt, patchCol, patchCover)
       .mul(float(1.0).sub(patchSeal.mul(0.5)))
-      .add(chips.mul(0.08).mul(float(1.0).sub(patchCover.mul(patchFresh))))
+      .add(chips.mul(0.065).mul(float(1.0).sub(patchCover.mul(patchFresh))).mul(float(1.0).sub(max(tarSnake, crack))))
       .mul(float(1.0).sub(tarSnake.mul(0.62)))
       .mul(float(1.0).sub(oilDrip.mul(0.45)))
       .mul(float(1.0).sub(crack.mul(0.65)))
