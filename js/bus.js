@@ -6,11 +6,13 @@ import {
   float,
   vec2,
   vec3,
+  vec4,
   color,
   attribute,
   varying,
   vertexStage,
   atan,
+  sin,
   abs,
   fract,
   floor,
@@ -310,9 +312,24 @@ function createBusWheelMaterial() {
 
 let _busLoftedMat = null;
 
-const BUS_ROWS = { first: 3.4, pitch: 0.78, count: 12 }; // forward-facing seat backs from z = first towards the tail
-const RIDER_SKIN = [0xc68863, 0x8a5535, 0xe0b090, 0x5a3424, 0xa96f4c];
-const RIDER_CLOTHES = [0x1a1c22, 0x4a5060, 0x2a3a5a, 0x8a8478, 0x5a2a2a, 0x2f4a3a];
+// The saloon of a 40-ft low-floor bus (metres, bus space): a low floor from the front door to the rear door, then
+// two steps up to the raised rear section over the drive axle; side-facing seats behind the front wheels (where the
+// wheelchair bays & flip-up seats are), forward-facing pairs either side of the aisle, a bench across the back
+const SALOON = {
+  wall: 1.16, // inner wall |x|
+  floor: 0.42,
+  ceiling: 2.66,
+  front: BUS_SPEC.zFront - 0.45, // the windshield
+  back: BUS_SPEC.zRear + 0.4,
+  step: [-2.2, 0.72], // raised rear floor from this z back, at this height
+  sideSeats: [1.15, 2.95], // side-facing seats along both walls (z range)
+  rows: [0.62, -0.16, -2.5, -3.28, -4.06, -4.84], // forward-facing seat backs (z)
+  bench: -5.5,
+  wheelArch: [3.0, 4.2] // front wheel housings (z range)
+};
+const RIDER_SKIN = [0xe0b090, 0xc68863, 0xa96f4c, 0x8a5535, 0x5a3424];
+const RIDER_CLOTHES = [0x1a1c22, 0x4a5060, 0x2a3a5a, 0x8a8478, 0x5a2a2a, 0x2f4a3a, 0xb8b2a6, 0x6b2f3e];
+const AD_CARDS = [0xd8432f, 0x2a64b0, 0xf0c419, 0x3b8f55, 0xe6e2da, 0x7a3c8c];
 
 function pickHex(hexArray, t) {
   let acc = color(hexArray[0]);
@@ -321,94 +338,194 @@ function pickHex(hexArray, t) {
 }
 
 /**
- * The bus's saloon seen through its windows, ray traced in object space from the glass fragment `o` along `d`: light
- * grey walls under the far windows (daylight through them), the ceiling with its light strips, the floor, the driver,
- * yellow stanchions along the aisle and rows of seat backs with riders in some of them (`hash` 0..1 varies the riders
- * per bus). Returns the albedo seen through the glass (before its tint).
+ * The bus's saloon seen through its windows, ray traced in object space from the glass fragment `o` along `d`: seats
+ * (blue & grey, as solid boxes: backs & cushions), riders sitting in some of them and standing in the aisle, yellow
+ * poles & grab rails, the raised rear floor with its yellow step edge, light strips along the ceiling, ad cards above the
+ * windows, the driver, and daylight through the far windows, doors & windshield. `hash` (0..1) varies the riders per
+ * bus. Returns vec4(albedo seen, 1 where that is the saloon rather than the outside): the material lights the saloon by
+ * day and makes it glow at night.
  */
 function busInterior(o, d, hash) {
-  const s = BUS_SPEC;
-  const xi = 1.16;
-  const floorY = 0.42;
-  const ceilY = 2.5;
-  const zFront = s.zFront - 0.45;
-  const zBack = s.zRear + 0.4;
-  const [wy0, wy1] = s.window;
+  const S = SALOON;
+  const [wy0, wy1] = BUS_SPEC.window;
   const far = float(1e4);
   const sgn = step(0.0, d).mul(2.0).sub(1.0);
   const inv = vec3(1.0).div(d.add(sgn.mul(1e-5)));
   const ahead = (t) => select(t.greaterThan(0.0), t, far);
 
-  // Leaving the saloon: the far side's windows (between mullions) or wall, ceiling or floor, windshield or rear wall
-  const tSide = ahead(sgn.x.mul(xi).sub(o.x).mul(inv.x));
-  const tUp = ahead(select(d.y.greaterThan(0.0), float(ceilY).sub(o.y), float(floorY).sub(o.y)).mul(inv.y));
-  const tEnd = ahead(select(d.z.greaterThan(0.0), float(zFront).sub(o.z), float(zBack).sub(o.z)).mul(inv.z));
+  // Leaving the saloon: the far side's windows (between mullions & over the transom) or wall, the ad cards above them,
+  // ceiling or floor, windshield or rear wall
+  const tSide = ahead(sgn.x.mul(S.wall).sub(o.x).mul(inv.x));
+  const tUp = ahead(select(d.y.greaterThan(0.0), float(S.ceiling).sub(o.y), float(S.floor).sub(o.y)).mul(inv.y));
+  const tEnd = ahead(select(d.z.greaterThan(0.0), float(S.front).sub(o.z), float(S.back).sub(o.z)).mul(inv.z));
   const tBest = min(tSide, min(tUp, tEnd)).toVar();
   const h = o.add(d.mul(tBest));
   const isSide = step(tSide, min(tUp, tEnd));
   const isUp = step(tUp, min(tSide, tEnd)).mul(float(1.0).sub(isSide));
-  const mullion = step(abs(fract(h.z.mul(0.76).add(0.18)).sub(0.5)), 0.03);
-  const farWindow = step(wy0, h.y).mul(step(h.y, wy1)).mul(float(1.0).sub(mullion)).mul(isSide);
-  const windshield = step(1.2, h.y).mul(step(0.0, d.z)).mul(float(1.0).sub(isSide)).mul(float(1.0).sub(isUp));
-  const ceiling = mix(float(0.42), float(0.75), smoothstep(0.08, 0.04, abs(abs(h.x).sub(0.68))));
-  const shell = mix(mix(vec3(0.28, 0.285, 0.29), vec3(ceiling), step(0.0, d.y).mul(isUp)), vec3(0.05), float(1.0).sub(step(0.0, d.y)).mul(isUp));
+  const isEnd = float(1.0).sub(max(isSide, isUp));
+  const ceilingHit = isUp.mul(step(0.0, d.y));
+  const frame = max(step(abs(fract(h.z.mul(0.76).add(0.18)).sub(0.5)), 0.03), step(abs(h.y.sub(2.08)), 0.015));
+  const doors = step(h.x, 0.0).mul(max(
+    step(abs(h.z.sub(4.89)), 0.48),
+    step(abs(h.z.add(1.54)), 0.48)
+  )).mul(step(S.floor + 0.08, h.y)).mul(step(h.y, 2.3));
+  const farWindow = max(step(wy0, h.y).mul(step(h.y, wy1)).mul(float(1.0).sub(frame)), doors).mul(isSide);
+  const windshield = step(1.15, h.y).mul(step(h.y, 2.3)).mul(step(0.0, d.z)).mul(isEnd);
   const seeThrough = max(farWindow, windshield);
+  // Walls: grey panels, the side seats' blue backs on the wall, the ad cards' row above the windows
+  const sideSeatZone = step(S.sideSeats[0], h.z).mul(step(h.z, S.sideSeats[1]));
+  const seatBackOnWall = sideSeatZone.mul(step(S.floor + 0.46, h.y)).mul(step(h.y, S.floor + 1.02));
+  const cardIndex = floor(h.z.div(0.66));
+  const cardGap = step(0.46, abs(fract(h.z.div(0.66)).sub(0.5)));
+  const card = pickHex(AD_CARDS, fract(sin(cardIndex.mul(12.9898).add(hash.mul(78.233))).mul(43758.5453)));
+  const wallCol = select(h.y.greaterThan(wy1 + 0.02),
+    mix(card, color(0xd9dcdf), max(cardGap, step(h.y, wy1 + 0.04))),
+    mix(color(0x8a939b), color(0x2f4f8a), seatBackOnWall));
+  // Ceiling: light strips either side, a duct down the middle; floor: dark grey
+  const strip = step(abs(abs(h.x).sub(0.66)), 0.09);
+  const ceilingCol = mix(mix(color(0xcfd3d7), color(0xb4b9be), step(abs(h.x), 0.25)), color(0xffffff), strip);
+  const shell = select(isSide.greaterThan(0.5), mix(wallCol, color(0x1b1e22), frame.mul(step(wy0, h.y)).mul(step(h.y, wy1))),
+    select(ceilingHit.greaterThan(0.5), ceilingCol, select(isUp.greaterThan(0.5), color(0x3e4246), color(0x8a939b))));
   const col = vec3(mix(shell, throughGlass(d), seeThrough)).toVar();
-  const lit = vec3(mix(vec3(0.45), vec3(0.85), seeThrough)).toVar();
+  const inside = float(1.0).sub(seeThrough).toVar();
   const hit = (t, c) => {
     const nearer = step(t, tBest);
     tBest.assign(mix(tBest, t, nearer));
     col.assign(mix(col, c, nearer));
-    lit.assign(mix(lit, vec3(0.45), nearer));
+    inside.assign(max(inside, nearer));
   };
 
-  // Seat backs: the next few row planes along the ray. Riders sit in some seats (window or aisle), none on the curb
-  // side by the rear door.
-  const { first, pitch, count } = BUS_ROWS;
-  const u = float(first).sub(o.z).div(pitch);
-  const forward = step(0.0, d.z.negate()); // rows are numbered towards the tail
-  const k0 = floor(u).add(forward);
-  const dk = forward.mul(2.0).sub(1.0);
-  for (let i = 0; i < 4; i++) {
-    const k = k0.add(dk.mul(i));
-    const zk = float(first).sub(k.mul(pitch));
-    const t = ahead(zk.sub(o.z).mul(inv.z));
-    const q = o.add(d.mul(t));
-    const ax = abs(q.x);
-    const inRows = step(0.0, k).mul(step(k, count - 1));
-    const doorGap = step(q.x, 0.0).mul(step(-2.12, zk)).mul(step(zk, -0.98));
-    const seat = step(0.32, ax).mul(step(ax, 1.12)).mul(step(0.9, q.y)).mul(step(q.y, 1.52));
-    const r = fract(k.mul(0.618034).add(step(0.0, q.x).mul(0.37)).add(hash));
-    const seated = step(0.5, r);
-    const seatX = mix(float(0.84), float(0.52), step(0.82, r));
-    const head = step(abs(ax.sub(seatX)), 0.085).mul(step(1.5, q.y)).mul(step(q.y, 1.74));
-    const body = step(abs(ax.sub(seatX)), 0.19).mul(step(1.22, q.y)).mul(step(q.y, 1.5));
-    const rider = max(head, body).mul(seated);
-    const riderCol = mix(pickHex(RIDER_CLOTHES, fract(r.mul(5.3))), pickHex(RIDER_SKIN, fract(r.mul(3.1))).mul(0.7), head);
-    const there = inRows.mul(float(1.0).sub(doorGap)).mul(max(seat, rider));
-    hit(select(there.greaterThan(0.5), t, far), mix(color(0x2c3850), riderCol, rider));
-  }
-  // Yellow stanchions at every row along both sides of the aisle, and the grab rails along the ceiling
-  for (const x of [0.3, -0.3]) {
-    const t = ahead(float(x).sub(o.x).mul(inv.x));
-    const q = o.add(d.mul(t));
-    const dz = abs(fract(float(first).sub(q.z).div(pitch).add(0.5)).sub(0.5)).mul(pitch);
-    const pole = step(dz, 0.022).mul(step(q.z, first + 0.4)).mul(step(floorY, q.y));
-    const rail = step(abs(q.y.sub(2.12)), 0.018);
-    const inside = step(zBack, q.z).mul(step(q.z, zFront)).mul(step(q.y, ceilY));
-    hit(select(max(pole, rail).mul(inside).greaterThan(0.5), t, far), color(0xc8a018));
-  }
-  // The driver, behind the windshield on the left (+x)
-  {
-    const c = vec3(0.62, 1.66, 4.95);
-    const oc = o.sub(c).div(vec3(0.08, 0.11, 0.095));
-    const dd = d.div(vec3(0.08, 0.11, 0.095));
+  // Primitives: axis-aligned boxes, vertical poles, rails along the bus & ellipsoids
+  const box = (lo, hi) => {
+    const t0 = vec3(...lo).sub(o).mul(inv);
+    const t1 = vec3(...hi).sub(o).mul(inv);
+    const tNear = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z));
+    const tFar = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+    return select(tNear.lessThan(tFar).and(tNear.greaterThan(0.0)), tNear, far);
+  };
+  const dxz = max(d.x.mul(d.x).add(d.z.mul(d.z)), 1e-6);
+  const pole = (x, z, y0, y1, r = 0.02) => {
+    const ox = o.x.sub(x);
+    const oz = o.z.sub(z);
+    const t = ox.mul(d.x).add(oz.mul(d.z)).negate().div(dxz);
+    const cx = ox.add(d.x.mul(t));
+    const cz = oz.add(d.z.mul(t));
+    const y = o.y.add(d.y.mul(t));
+    return select(cx.mul(cx).add(cz.mul(cz)).lessThan(r * r).and(y.greaterThan(y0)).and(y.lessThan(y1)), ahead(t), far);
+  };
+  const dxy = max(d.x.mul(d.x).add(d.y.mul(d.y)), 1e-6);
+  const rail = (x, y, r = 0.018) => {
+    const ox = o.x.sub(x);
+    const oy = o.y.sub(y);
+    const t = ox.mul(d.x).add(oy.mul(d.y)).negate().div(dxy);
+    const cx = ox.add(d.x.mul(t));
+    const cy = oy.add(d.y.mul(t));
+    const z = o.z.add(d.z.mul(t));
+    return select(cx.mul(cx).add(cy.mul(cy)).lessThan(r * r).and(z.greaterThan(S.back)).and(z.lessThan(S.front - 0.6)), ahead(t), far);
+  };
+  const ellipsoid = (center, radii) => {
+    const oc = o.sub(center).div(radii);
+    const dd = d.div(radii);
     const a = dot(dd, dd);
     const b = dot(oc, dd);
     const disc = b.mul(b).sub(a.mul(dot(oc, oc).sub(1.0)));
-    hit(select(disc.greaterThan(0.0), ahead(b.negate().sub(sqrt(max(disc, 0.0))).div(a)), far), color(0x6b4430).mul(0.8));
+    return select(disc.greaterThan(0.0), ahead(b.negate().sub(sqrt(max(disc, 0.0))).div(a)), far);
+  };
+  // The stretch of the bus the ray crosses before it leaves the saloon: rows, riders & poles outside it are skipped
+  // (pixels of a window see much the same stretch, so these branches stay coherent)
+  const zExit = o.z.add(d.z.mul(tBest));
+  const zLo = min(o.z, zExit).toVar();
+  const zHi = max(o.z, zExit).toVar();
+  const crosses = (z0, z1, fn) => If(zHi.greaterThan(z0).and(zLo.lessThan(z1)), fn);
+  const SEAT = color(0x2f4f8a);
+  const SEAT_GREY = color(0x5d656e);
+  const YELLOW = color(0xd8ad1c);
+  const person = (x, z, seatY, pick, standing) => {
+    // A rider sitting on a seat (seatY: the cushion) or standing on the floor (seatY: the floor): a head over a
+    // square-shouldered torso (& legs when standing)
+    const clothes = pickHex(RIDER_CLOTHES, fract(pick.mul(5.3)));
+    const skin = pickHex(RIDER_SKIN, fract(pick.mul(3.1)));
+    const hips = standing ? seatY + 0.86 : seatY;
+    const headY = hips + 0.74;
+    const tHead = ellipsoid(vec3(x, headY, z), vec3(0.08, 0.105, 0.095));
+    const hairTop = step(headY + 0.03, o.y.add(d.y.mul(tHead)));
+    hit(tHead, mix(skin, pickHex([0x1a1512, 0x3a2a1a, 0x6e6862, 0x584022], fract(pick.mul(7.7))), hairTop));
+    // (x may be a node: a rider's seat is picked per bus)
+    const xo = (k) => (typeof x === 'number' ? x + k : x.add(k));
+    const tTorso = box([xo(-0.2), hips, z - 0.11], [xo(0.2), hips + 0.6, z + 0.11]);
+    // shading: the shoulders catch the light, the waist is in shadow
+    hit(tTorso, clothes.mul(smoothstep(hips, hips + 0.6, o.y.add(d.y.mul(tTorso))).mul(0.35).add(0.75)));
+    if (standing) hit(box([xo(-0.15), seatY, z - 0.09], [xo(0.15), hips, z + 0.09]), pickHex([0x22242c, 0x35485b, 0x51473d], fract(pick.mul(9.1))));
+  };
+
+  // The raised rear floor (its yellow step edge) and the front wheel housings
+  {
+    const [zs, ys] = S.step;
+    const t = box([-S.wall, 0.0, S.back - 0.2], [S.wall, ys, zs]);
+    const q = o.add(d.mul(t));
+    hit(t, mix(color(0x3e4246), YELLOW, step(zs - 0.05, q.z).mul(step(ys - 0.04, q.y))));
+    const [a0, a1] = S.wheelArch;
+    crosses(a0, a1, () => {
+      hit(box([0.8, S.floor, a0], [S.wall, S.floor + 0.55, a1]), color(0x3a3e43));
+      hit(box([-S.wall, S.floor, a0], [-0.8, S.floor + 0.55, a1]), color(0x3a3e43));
+    });
   }
-  return col.mul(lit);
+  // Side-facing seats along both walls behind the front wheels (cushions out from the wall, their backs on it), poles
+  // at their ends, riders on some of them, people standing in the wheelchair bays
+  {
+    const [z0, z1] = S.sideSeats;
+    crosses(z0 - 0.3, z1 + 0.3, () => {
+      hit(box([0.72, S.floor + 0.36, z0], [S.wall, S.floor + 0.46, z1]), SEAT);
+      hit(box([-S.wall, S.floor + 0.36, z0], [-0.72, S.floor + 0.46, z1]), SEAT);
+      for (const sx of [1, -1]) for (const zk of [z0, z1]) hit(pole(sx * 0.74, zk, S.floor, 2.14), YELLOW);
+      [[0.95, 2.4], [-0.95, 1.6], [0.95, 1.4]].forEach(([x, z], i) => {
+        const r = fract(hash.mul(3.7 + i).add(i * 0.29));
+        If(r.lessThan(0.5), () => person(x, z, S.floor + 0.46, r, false));
+      });
+      [[-0.15, 2.1], [0.18, 2.85]].forEach(([x, z], i) => {
+        const r = fract(hash.mul(5.9 + i).add(i * 0.53));
+        If(r.lessThan(0.45), () => person(x, z, S.floor, r, true));
+      });
+    });
+  }
+  // Forward-facing pairs either side of the aisle, the bench across the back. Each row has a pole at its aisle end and
+  // riders in some of its seats (the same for every fragment of a bus, so an empty seat costs nothing).
+  S.rows.forEach((zk, i) => {
+    const f = zk < S.step[0] ? S.step[1] : S.floor;
+    crosses(zk - 0.15, zk + 0.55, () => {
+      for (const sx of [1, -1]) {
+        const x0 = sx > 0 ? 0.36 : -1.12;
+        const x1 = sx > 0 ? 1.12 : -0.36;
+        hit(box([x0, f + 0.36, zk], [x1, f + 0.47, zk + 0.44]), SEAT_GREY);
+        const tBack = box([x0, f + 0.36, zk - 0.07], [x1, f + 1.12, zk]);
+        hit(tBack, mix(SEAT, SEAT_GREY, step(f + 1.02, o.y.add(d.y.mul(tBack)))));
+        hit(pole(sx * 0.38, zk - 0.03, f + 0.47, 2.14), YELLOW);
+        const r = fract(hash.mul(1.0 + i * 0.37).add(i * 0.618034).add(sx > 0 ? 0.0 : 0.41));
+        If(r.lessThan(0.55), () => {
+          person(select(r.lessThan(0.3), float(sx * 0.86), float(sx * 0.58)), zk + 0.16, f + 0.47, r, false);
+        });
+      }
+    });
+  });
+  crosses(S.back - 0.2, S.bench + 0.5, () => {
+    hit(box([-S.wall, S.step[1] + 0.36, S.bench], [S.wall, S.step[1] + 0.47, S.bench + 0.44]), SEAT_GREY);
+    hit(box([-S.wall, S.step[1] + 0.36, S.back - 0.1], [S.wall, S.step[1] + 1.12, S.bench]), SEAT);
+  });
+  // Poles by the doors, someone standing at the rear door; grab rails along the ceiling
+  crosses(3.9, 4.7, () => hit(pole(-0.82, 4.3, S.floor, 2.3), YELLOW));
+  crosses(-2.5, -0.6, () => {
+    hit(pole(-0.82, -0.98, S.floor, 2.3), YELLOW);
+    hit(pole(-0.82, -2.1, S.floor, 2.3), YELLOW);
+    const r = fract(hash.mul(7.9).add(0.71));
+    If(r.lessThan(0.45), () => person(0.12, -1.6, S.floor, r, true));
+  });
+  for (const sx of [1, -1]) hit(rail(sx * 0.46, 2.12), YELLOW);
+  // The driver on the left (+x), behind the windshield
+  crosses(4.4, 5.3, () => {
+    person(0.62, 4.95, 0.86, fract(hash.mul(17.3)), false);
+    hit(box([0.38, 0.8, 4.68], [0.86, 1.62, 4.76]), color(0x1d2024));
+  });
+  return vec4(col, inside);
 }
 
 /**
@@ -694,25 +811,20 @@ function createLoftedBusMaterial() {
   const reverse = rearLens.mul(step(p.y, 0.8));
   const sideMarkers = covAt(0.025, length(vec2(az.sub(s.wheelZ + 0.68), p.y.sub(1.02))), invZY).mul(side);
 
-  // 6. Tinted window glass over the saloon (seats, riders, stanchions & ceiling lights); these flat masks only shape
-  // the cabin's glow at night
-  const seatBack = smoothstep(1.64, 1.54, p.y)
-    .mul(smoothstep(0.1, 0.2, abs(fract(p.z.mul(1.15)).sub(0.5))))
-    .mul(smoothstep(3.85, 3.75, p.z));
-  const grabRail = band(fract(p.z.mul(0.76).add(0.5)).sub(0.5), 0.026, invZRepeat).mul(smoothstep(2.3, 2.26, p.y));
-  const ceilingStrip = smoothstep(2.12, 2.32, p.y).mul(smoothstep(4.45, 4.35, p.z));
-  // Behind the glass: the saloon, traced along the view ray (only where there is glass)
+  // 6. Tinted window glass over the saloon, traced along the view ray (only where there is glass): lit from outside by
+  // day (less so under the roof than the daylight through the far windows), glowing under its own lights at night
   const busHash = varying(vertexStage(fract(rawIdx.mul(0.618034).add(0.21))));
   const saloon = Fn(() => {
     const derivatives = viewRayDerivatives(p);
-    const c = vec3(0.0).toVar();
+    const c = vec4(0.0).toVar();
     If(glass.greaterThan(0.002), () => {
       c.assign(busInterior(p, objectViewRay(derivatives), busHash));
     });
     return c;
   })();
   const fresnel = pow(float(1.0).sub(clamp(dot(normalView, positionViewDirection), 0.0, 1.0)), 3.2);
-  const glassTint = saloon.mul(vec3(0.38, 0.42, 0.43)).mul(float(1.0).sub(fresnel.mul(0.85)));
+  const glassTransmit = vec3(0.38, 0.42, 0.43).mul(float(1.0).sub(fresnel.mul(0.85)));
+  const glassTint = saloon.xyz.mul(mix(float(0.85), float(0.5), saloon.w)).mul(glassTransmit);
 
   // Composite body surface
   let body = mix(livery, color(0x12161b), max(seal, max(archFlareMask, max(rearSeam, rearPlateRecess))));
@@ -750,10 +862,8 @@ function createLoftedBusMaterial() {
   const brake = state.x;
   const blink = max(state.y.mul(step(0.0, p.x)), state.z.mul(step(p.x, 0.0)));
   const night = smoothstep(0.55, 1.15, cityUniforms.uInteriorGlow);
-  const cabinGlow = glass
-    .mul(side)
-    .mul(ceilingStrip.mul(0.55).add(float(0.18)).sub(seatBack.mul(0.12)).add(grabRail.mul(0.15)))
-    .mul(night);
+  // The saloon's lights are on day & night; only at night do they outshine the daylight
+  const cabinGlow = saloon.xyz.mul(saloon.w).mul(glassTransmit).mul(glass).mul(mix(float(0.06), float(1.1), night));
   // Headlamps & DRL blades are visibly lit at all times of day (crossing bloom slightly in daylight, full beam at night)
   const headEmit = pod
     .mul(mix(float(0.25), float(0.42), night))
@@ -761,7 +871,7 @@ function createLoftedBusMaterial() {
     .add(headLamp.mul(mix(float(2.45), float(3.2), night)));
   mat.emissiveNode = color(0xe8f4ff)
     .mul(headEmit)
-    .add(color(0xfff0d4).mul(cabinGlow))
+    .add(color(0xfff6ea).mul(cabinGlow))
     .add(color(0xff9210).mul(max(browMarker, sideMarkers).mul(mix(float(0.65), float(1.15), night))))
     .add(color(0xff9a14).mul(max(turnFront, turnRear).mul(blink).mul(2.2)))
     .add(color(0xff0c14).mul(tailLamp.mul(brake.mul(1.6).add(0.75)).add(highBrake.mul(brake.mul(1.8))).add(rearIdLamps.mul(night))));
