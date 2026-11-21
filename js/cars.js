@@ -1576,15 +1576,18 @@ function carPlateTexture() {
   if (_carPlateTexture) return _carPlateTexture;
   const canvas = document.createElement('canvas');
   canvas.width = 128;
-  canvas.height = 256;
+  canvas.height = 320;
   const ctx = canvas.getContext('2d');
+  // Top to bottom: plate variants 4 .. 0 (the texture is flipped): a yellow cab's medallion plate (the medallion
+  // number: a digit, a letter & two digits), a for-hire vehicle's T plate, three passenger plates
   const rows = [
-    { bg: '#f2b718', bar: '#14233c', fg: '#14233c', label: 'KBM-4728' },
-    { bg: '#e8edf2', bar: '#162b4c', fg: '#162b4c', label: 'JTR-8319' },
+    { bg: '#f0b416', bar: '#14233c', fg: '#14233c', label: '5J22', footer: 'NYC TAXI' },
+    { bg: '#f0b416', bar: '#14233c', fg: '#14233c', label: 'T748219C' },
     { bg: '#f2b718', bar: '#14233c', fg: '#14233c', label: 'HXL-2506' },
-    { bg: '#f0b416', bar: '#14233c', fg: '#14233c', label: 'T748219C' }
+    { bg: '#e8edf2', bar: '#162b4c', fg: '#162b4c', label: 'JTR-8319' },
+    { bg: '#f2b718', bar: '#14233c', fg: '#14233c', label: 'KBM-4728' }
   ];
-  rows.forEach(({ bg, bar, fg, label }, row) => {
+  rows.forEach(({ bg, bar, fg, label, footer }, row) => {
     const y0 = row * 64;
     ctx.fillStyle = bg;
     ctx.fillRect(0, y0, 128, 64);
@@ -1597,8 +1600,13 @@ function carPlateTexture() {
     ctx.textBaseline = 'middle';
     ctx.fillText('NEW YORK', 64, y0 + 7);
     ctx.fillStyle = fg;
-    ctx.font = 'bold 21px monospace';
-    ctx.fillText(label, 64, y0 + 35);
+    ctx.font = footer ? 'bold 26px monospace' : 'bold 21px monospace';
+    ctx.fillText(label, 64, y0 + 34);
+    if (footer) {
+      ctx.fillStyle = bg;
+      ctx.font = 'bold 7px sans-serif';
+      ctx.fillText(footer, 64, y0 + 60);
+    }
   });
   _carPlateTexture = new THREE.CanvasTexture(canvas);
   _carPlateTexture.colorSpace = THREE.SRGBColorSpace;
@@ -2122,13 +2130,16 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     const outCol = vec3(color(0x181b1f)).toVar();
 
     // Sample plate texture outside If() so hardware mipmaps + anisotropy filter cleanly without derivative issues
-    const plateVariant = floor(fract(paint.r.mul(7).add(paint.g.mul(13)).add(paint.b.mul(17)).add(isTLC.mul(0.75))).mul(4));
+    // Passenger plates (0-2) by paint, T plates on for-hire black cars (3), medallion plates on yellow cabs (4)
+    const plateVariant = spec.sign
+      ? float(4.0)
+      : mix(floor(fract(paint.r.mul(7).add(paint.g.mul(13)).add(paint.b.mul(17))).mul(3)), float(3.0), isTLC);
     const isFrontSide = smoothstep(-0.02, 0.02, n.z);
     const plateSignX = mix(float(-0.31), float(0.31), isFrontSide);
     const plateCenterY = mix(float(plateR), float(plateF), isFrontSide);
     const plateUV = vec2(
       clamp(p.x.div(plateSignX).add(0.5), 0.02, 0.98),
-      clamp(p.y.sub(plateCenterY).div(0.115).add(0.5), 0.06, 0.94).add(plateVariant).div(4.0)
+      clamp(p.y.sub(plateCenterY).div(0.115).add(0.5), 0.06, 0.94).add(plateVariant).div(5.0)
     );
     const plateCol = texture(carPlateTexture(), plateUV).rgb;
     // Badge lettering on the rear (the badge on this side of the car): read left to right from behind

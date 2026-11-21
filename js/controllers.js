@@ -182,7 +182,7 @@ function createNYLicensePlateTexture() {
   ctx.fillText('NEW YORK', 128, 23);
   ctx.fillStyle = '#0d2244';
   ctx.font = '900 48px JetBrains Mono, monospace';
-  ctx.fillText('7Y48A', 128, 82);
+  ctx.fillText('7Y48', 128, 82); // the cab's medallion number: a digit, a letter & two digits
   ctx.font = '700 13px Inter, Arial, sans-serif';
   ctx.fillText('NYC T&LC', 128, 114);
   const tex = new THREE.CanvasTexture(c);
