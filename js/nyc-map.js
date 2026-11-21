@@ -985,9 +985,14 @@ class NYCMapSystem {
     const fp = footprintLayers(this.allBlocks);
     const version = fp ? fp.version : 0;
     let c = this.miniCache;
+    const look = this.cameraSystem.currentLookAt, eye = this.cameraSystem.currentPos;
+    const camAngle = Math.atan2(look.x - eye.x, look.z - eye.z);
+    const heading = ent.heading;
+    const wp = this.waypoint;
     if (!c || c.version !== version || Math.abs(scale / c.s - 1) > 0.12 ||
       Math.abs(px - c.cx) > w / c.s - w / (2 * scale) - 8 / scale ||
       Math.abs(pz - c.cz) > h / c.s - h / (2 * scale) - 8 / scale) {
+      this.miniDrawn = null;
       if (!c) {
         c = this.miniCache = { canvas: document.createElement('canvas') };
         c.canvas.width = bw * 2;
@@ -1007,6 +1012,13 @@ class NYCMapSystem {
       this.drawRoadLabels(c.ctx, cv, { fontPx: 9.5, maxLabels: 28, sameNameGap: 180 });
     }
 
+    // Nothing moved on the radar by a visible amount since the last frame drawn
+    const d = this.miniDrawn;
+    if (d && d.bw === bw && d.bh === bh && d.wp === wp && (!wp || (d.wx === wp.x && d.wz === wp.z)) &&
+      Math.abs(px - d.px) * scale < 0.05 && Math.abs(pz - d.pz) * scale < 0.05 && Math.abs(scale / d.scale - 1) < 1e-4 &&
+      Math.abs(camAngle - d.camAngle) < 0.002 && Math.abs(heading - d.heading) < 0.002) return;
+    this.miniDrawn = { bw, bh, wp, wx: wp && wp.x, wz: wp && wp.z, px, pz, scale, camAngle, heading };
+
     const v = new MapView(px, pz, scale, w, h, dpr);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1021,9 +1033,9 @@ class NYCMapSystem {
     const toY = (wz) => v.toY(wz);
 
     // GPS route to the active waypoint
-    if (this.waypoint) {
-      const wx = toX(this.waypoint.x);
-      const wy = toY(this.waypoint.z);
+    if (wp) {
+      const wx = toX(wp.x);
+      const wy = toY(wp.z);
       drawRoute(ctx, 0, 0, wx, wy, 3);
       drawWaypoint(ctx, wx, wy, 4.5);
     }
@@ -1045,15 +1057,14 @@ class NYCMapSystem {
     }
 
     // Camera FOV Cone & Player Arrow at center (0, 0)
-    const camDir = this.cameraSystem.currentLookAt.clone().sub(this.cameraSystem.currentPos);
-    const camAngle = Math.atan2(camDir.x, camDir.z);
-
     ctx.save();
     ctx.rotate(-camAngle + Math.PI);
-    const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, 58);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
-    grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
-    ctx.fillStyle = grad;
+    if (!this.miniCone) {
+      this.miniCone = ctx.createRadialGradient(0, 0, 2, 0, 0, 58);
+      this.miniCone.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+      this.miniCone.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+    }
+    ctx.fillStyle = this.miniCone;
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.arc(0, 0, 58, -Math.PI * 0.72, -Math.PI * 0.28);
@@ -1063,7 +1074,7 @@ class NYCMapSystem {
 
     // Player heading arrow
     ctx.save();
-    ctx.rotate(-ent.heading + Math.PI);
+    ctx.rotate(-heading + Math.PI);
     drawPlayerArrow(ctx, -9, 6.5, 7);
     ctx.restore();
 
