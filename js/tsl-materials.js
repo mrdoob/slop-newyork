@@ -1876,12 +1876,14 @@ const voronoiBorder = Fn(([p]) => {
 });
 
 /**
- * Wear & repairs of the asphalt at world xz, `px` metres a pixel: x = hairline crack coverage (block & alligator
- * cracking in worn stretches), y = signed distance to the edge of a rectangular utility-cut patch (m, < 0 inside),
- * z = pothole depth (0 .. 1 at the bottom of the bowl), w = 1 where the 11 m cell has a patch.
+ * Wear & repairs of the asphalt at world xz, `px` metres a pixel, given the two noise-table entries of its 11 m patch
+ * cell (patchCell): x = hairline crack coverage (block & alligator cracking in worn stretches), y = signed distance to
+ * the edge of a rectangular utility-cut patch (m, < 0 inside), z = pothole depth (0 .. 1 at the bottom of the bowl),
+ * w = 1 where the 11 m cell has a patch.
  * Cracks are only traced near the camera and in the worn stretches, where they can show, potholes only in their cells.
  */
-const roadWear = Fn(([wxz, px]) => {
+const patchCell = (wxz) => floor(wxz.div(11.0));
+const roadWear = Fn(([wxz, px, pa, pb]) => {
   // Worn stretches: about a quarter of the roadway, in patches a block or so across
   const worn = smoothstep(0.5, 0.78, tableNoise(wxz.mul(0.045).add(71.0)).x).toVar();
 
@@ -1900,8 +1902,7 @@ const roadWear = Fn(([wxz, px]) => {
 
   // Rectangular utility-cut patches (ConEd, water & sewer trenches): one 11 m cell in two, kept inside its cell. Some
   // are squarish cuts, others long narrow trenches running along the avenue or across it
-  const pCell = floor(wxz.div(11.0));
-  const pa = tableCell(pCell), pb = tableCell(pCell.add(vec2(101.0, 37.0)));
+  const pCell = patchCell(wxz);
   const hasPatch = step(0.5, pa.x);
   const trench = step(0.6, pa.y);
   const alongX = step(0.5, pa.z);
@@ -1978,7 +1979,9 @@ function createRoadSurfaceMaterial() {
   // World size of a pixel: fine texture settles to its mean before it can alias at grazing angles or from the air
   const pixelSize = length(fwidth(positionWorld.xz));
   // Cracks, utility-cut patches & potholes, shared by every channel below (see roadWear)
-  const wear = roadWear(positionWorld.xz, pixelSize);
+  const pCell = patchCell(positionWorld.xz);
+  const patchA = tableCell(pCell), patchB = tableCell(pCell.add(vec2(101.0, 37.0)));
+  const wear = roadWear(positionWorld.xz, pixelSize, patchA, patchB);
   const crack = wear.x;
   const patchDist = wear.y;
   const pothole = wear.z;
@@ -1987,7 +1990,7 @@ function createRoadSurfaceMaterial() {
   const sealWidth = max(float(0.022), pixelSize.mul(0.75));
   const patchSeal = float(1.0).sub(smoothstep(sealWidth, sealWidth.add(pixelSize), abs(patchDist))).mul(float(0.022).div(sealWidth)).mul(wear.w);
   // Fresh patches are darker & tighter than the roadway, old ones paler & greyer
-  const patchFresh = step(0.55, tableCell(floor(positionWorld.xz.div(11.0)).add(vec2(101.0, 37.0))).x);
+  const patchFresh = step(0.55, patchB.x);
   // Exposed light stone chips in the worn surface: one candidate stone per 2.4 cm cell of a lattice turned off the
   // street grid, jittered in its cell, two in five showing, each its own size, elongation, heading & shade (8-14 mm
   // across); they settle to their average where they shrink to a pixel
