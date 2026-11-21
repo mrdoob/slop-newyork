@@ -17,7 +17,8 @@ import {
   max,
   exp,
   abs,
-  select
+  select,
+  renderGroup
 } from 'three/tsl';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 import { SunLight } from 'three/addons/lights/SunLight.js';
@@ -150,10 +151,67 @@ const TIME_PRESETS = {
   }
 };
 
+// A preset in a form that blends into another: its colours (linear), directions and amounts
+const COLOR_KEYS = ['lightColor', 'hemiSky', 'hemiGround', 'skyTop', 'skyHorizon', 'fogColor', 'glowZenith', 'glowHorizon'];
+const AMOUNT_KEYS = ['hemiIntensity', 'fogDensity', 'interiorGlow', 'roadWetness', 'envIntensity', 'canyonBounce',
+  'mieCoefficient', 'cloudCoverage', 'cloudDensity', 'nightFactor'];
+
+function lightingState() {
+  const s = { lightDir: new THREE.Vector3(), sunDir: new THREE.Vector3(), moon: false, lightIntensity: 0, skyExposure: 1 };
+  for (const k of COLOR_KEYS) s[k] = new THREE.Color();
+  for (const k of AMOUNT_KEYS) s[k] = 0;
+  return s;
+}
+
+function presetState(p, s) {
+  s.lightDir.copy(p.moonDir || p.sunDir);
+  s.sunDir.copy(p.sunDir);
+  s.moon = !!p.moonDir;
+  s.lightIntensity = p.lightIntensity;
+  s.skyExposure = p.skyExposure;
+  for (const k of COLOR_KEYS) s[k].setHex(p[k]);
+  for (const k of AMOUNT_KEYS) s[k] = p[k];
+  return s;
+}
+
+// From unit vector a towards b, along the sky
+function slerpDirection(a, b, t, out) {
+  const angle = Math.acos(Math.min(1, Math.max(-1, a.dot(b))));
+  const s = Math.sin(angle);
+  if (s < 1e-4) return out.copy(t < 0.5 ? a : b);
+  return out.copy(a).multiplyScalar(Math.sin((1 - t) * angle) / s).addScaledVector(b, Math.sin(t * angle) / s);
+}
+
+// t of the way from a to b. The sky's exposure (0.02 at night to 6 in the twilight) blends on a log scale. The direct
+// light is the sun by day and the moon at night: between the two it fades out and back in, rather than swinging round
+// the sky with every shadow.
+function blendStates(a, b, t, out) {
+  for (const k of COLOR_KEYS) out[k].copy(a[k]).lerp(b[k], t);
+  for (const k of AMOUNT_KEYS) out[k] = a[k] + (b[k] - a[k]) * t;
+  out.skyExposure = a.skyExposure * Math.pow(b.skyExposure / a.skyExposure, t);
+  slerpDirection(a.sunDir, b.sunDir, t, out.sunDir);
+  if (a.moon === b.moon) {
+    slerpDirection(a.lightDir, b.lightDir, t, out.lightDir);
+    out.lightIntensity = a.lightIntensity + (b.lightIntensity - a.lightIntensity) * t;
+    out.moon = b.moon;
+  } else {
+    const from = t < 0.5 ? a : b;
+    out.lightDir.copy(from.lightDir);
+    out.lightIntensity = from.lightIntensity * Math.abs(1 - 2 * t);
+    out.moon = from.moon;
+  }
+  return out;
+}
+
 class LightingSystem {
   constructor(scene, renderer = null) {
     this.scene = scene;
     this.activePresetId = 'golden';
+    // What is shown, and a change of time of day under way (blending `from` into `to`)
+    this.state = lightingState();
+    this.from = lightingState();
+    this.to = lightingState();
+    this.transition = null;
 
     SunLight.registerNode(SunLightNode);
 
@@ -180,9 +238,10 @@ class LightingSystem {
     // Calibrate SkyMesh raw radiance (EE=1000 * 0.04) into standard exposure=1.0 HDR range
     this.uSkyExposure = uniform(0.148);
     this.uNightFactor = uniform(0.0);
-    // The direct light the aerial haze scatters (see createAerialFogNode)
-    this.uHazeSunDir = uniform(new THREE.Vector3(0, 1, 0));
-    this.uHazeSunColor = uniform(new THREE.Color(0x000000));
+    // The direct light the aerial haze scatters (see createAerialFogNode). The fog's uniforms are in every material: shared
+    // (renderGroup) they are uploaded once a render, not into every object's own uniforms whenever they change
+    this.uHazeSunDir = uniform(new THREE.Vector3(0, 1, 0)).setGroup(renderGroup);
+    this.uHazeSunColor = uniform(new THREE.Color(0x000000)).setGroup(renderGroup);
     // The sky light SkyMesh leaves out, added under it: its single scattering misses the light scattered more than once,
     // the blue that fills the sky away from a low sun and the twilight sky, and Manhattan's night sky is light-polluted
     // (a dull warm glow along the horizon, darker overhead)
@@ -248,8 +307,8 @@ class LightingSystem {
     // Sky-matched aerial perspective (replaces the flat FogExp2 colour): distant surfaces fade into the baked sky
     // radiance just above the horizon in their view direction (sun glow included), through an exponential haze layer
     // so helicopter / observatory views stay clearer than the horizon.
-    this.uFogDensity = uniform(TIME_PRESETS.golden.fogDensity);
-    this.uFogHeight = uniform(900.0);
+    this.uFogDensity = uniform(TIME_PRESETS.golden.fogDensity).setGroup(renderGroup);
+    this.uFogHeight = uniform(900.0).setGroup(renderGroup);
     if (this.envRenderTarget) this.scene.fogNode = this.createAerialFogNode();
   }
 
@@ -293,59 +352,88 @@ class LightingSystem {
     this.scene.add(this.sky);
   }
 
+  // Switch to a time of day at once
   applyPreset(presetId, force = false) {
     const p = TIME_PRESETS[presetId] || TIME_PRESETS.golden;
-    if (!force && this.activePresetId === p.id && this.envRenderTarget !== null) {
+    if (!force && this.activePresetId === p.id && !this.transition && this.envRenderTarget !== null) {
       return;
     }
     this.activePresetId = p.id;
+    this.transition = null;
+    this.applyState(presetState(p, this.state));
+  }
 
+  // Change to a time of day over `seconds`, from whatever is shown (even partway through another change)
+  transitionTo(presetId, seconds = 2) {
+    const p = TIME_PRESETS[presetId] || TIME_PRESETS.golden;
+    if (this.activePresetId === p.id) return;
+    if (!(seconds > 0) || !this.envRenderTarget) {
+      this.applyPreset(p.id);
+      return;
+    }
+    this.activePresetId = p.id;
+    blendStates(this.state, this.state, 0, this.from); // (a copy of what is shown)
+    presetState(p, this.to);
+    this.transition = { start: performance.now(), seconds, baked: -Infinity };
+  }
+
+  applyState(s, bake = true) {
     // The directional light is the sun by day and the moon once the sun has set
-    const lightDir = p.moonDir || p.sunDir;
-    this.sunLight.color.setHex(p.lightColor);
-    this.sunLight.intensity = p.lightIntensity;
-    this.sunLight.position.copy(lightDir);
+    this.sunLight.color.copy(s.lightColor);
+    this.sunLight.intensity = s.lightIntensity;
+    this.sunLight.position.copy(s.lightDir);
     this.sunLight.updateMatrixWorld();
-    this.uHazeSunDir.value.copy(lightDir);
+    this.uHazeSunDir.value.copy(s.lightDir);
     // halved: the term can't tell sunlit air from the air in the towers' shadow, which is much of a low view ray
-    this.uHazeSunColor.value.setHex(p.lightColor).multiplyScalar(p.lightIntensity * 0.5);
+    this.uHazeSunColor.value.copy(s.lightColor).multiplyScalar(s.lightIntensity * 0.5);
 
-    this.hemiLight.color.setHex(p.hemiSky);
-    this.hemiLight.groundColor.setHex(p.hemiGround);
-    this.hemiLight.intensity = p.hemiIntensity;
+    this.hemiLight.color.copy(s.hemiSky);
+    this.hemiLight.groundColor.copy(s.hemiGround);
+    this.hemiLight.intensity = s.hemiIntensity;
 
-    this.scene.fog.color.setHex(p.fogColor);
-    this.scene.fog.density = p.fogDensity;
-    if (this.uFogDensity) this.uFogDensity.value = p.fogDensity;
+    this.scene.fog.color.copy(s.fogColor);
+    this.scene.fog.density = s.fogDensity;
+    if (this.uFogDensity) this.uFogDensity.value = s.fogDensity;
 
     // Update physical Preetham SkyMesh uniforms
-    this.sky.mieCoefficient.value = p.mieCoefficient;
-    this.sky.cloudCoverage.value = p.cloudCoverage;
-    this.sky.cloudDensity.value = p.cloudDensity;
-    const skySun = this.sky.sunPosition.value.copy(p.sunDir);
+    this.sky.mieCoefficient.value = s.mieCoefficient;
+    this.sky.cloudCoverage.value = s.cloudCoverage;
+    this.sky.cloudDensity.value = s.cloudDensity;
+    const skySun = this.sky.sunPosition.value.copy(s.sunDir);
     if (skySun.y < SKY_SUN_MIN_Y) {
       const k = Math.sqrt(1 - SKY_SUN_MIN_Y * SKY_SUN_MIN_Y) / Math.hypot(skySun.x, skySun.z);
       skySun.set(skySun.x * k, SKY_SUN_MIN_Y, skySun.z * k);
     }
-    this.uSkyExposure.value = p.skyExposure;
-    this.uNightFactor.value = p.nightFactor;
-    this.uGlowZenith.value.setHex(p.glowZenith);
-    this.uGlowHorizon.value.setHex(p.glowHorizon);
+    this.uSkyExposure.value = s.skyExposure;
+    this.uNightFactor.value = s.nightFactor;
+    this.uGlowZenith.value.copy(s.glowZenith);
+    this.uGlowHorizon.value.copy(s.glowHorizon);
 
     // The faked reflections glint with the direct light, dimmed with it (none in the twilight)
-    cityUniforms.uSunColor.value.setHex(p.lightColor).multiplyScalar(Math.min(1, p.lightIntensity));
-    cityUniforms.uSkyTopColor.value.setHex(p.skyTop);
-    cityUniforms.uSkyHorizonColor.value.setHex(p.skyHorizon);
-    cityUniforms.uSkySunDir.value.copy(lightDir);
-    cityUniforms.uInteriorGlow.value = p.interiorGlow;
-    cityUniforms.uRoadWetness.value = p.roadWetness;
-    cityUniforms.uCanyonBounce.value = p.canyonBounce;
+    cityUniforms.uSunColor.value.copy(s.lightColor).multiplyScalar(Math.min(1, s.lightIntensity));
+    cityUniforms.uSkyTopColor.value.copy(s.skyTop);
+    cityUniforms.uSkyHorizonColor.value.copy(s.skyHorizon);
+    cityUniforms.uSkySunDir.value.copy(s.lightDir);
+    cityUniforms.uInteriorGlow.value = s.interiorGlow;
+    cityUniforms.uRoadWetness.value = s.roadWetness;
+    cityUniforms.uCanyonBounce.value = s.canyonBounce;
 
-    this.scene.environmentIntensity = p.envIntensity;
-    this.bakeEnvironmentMap();
+    this.scene.environmentIntensity = s.envIntensity;
+    if (bake) this.bakeEnvironmentMap();
   }
 
   update(focusPos) {
+    if (this.transition) {
+      // eased in and out. Baking the sky's environment map (the fog's colour too) takes a few ms of GPU time: during a
+      // change it is baked 15 times a second, and on arrival
+      const now = performance.now();
+      const t = Math.min(1, (now - this.transition.start) / (this.transition.seconds * 1000));
+      const bake = t >= 1 || now - this.transition.baked >= 1000 / 15;
+      this.applyState(blendStates(this.from, this.to, t * t * (3 - 2 * t), this.state), bake);
+      if (bake) this.transition.baked = now;
+      if (t >= 1) this.transition = null;
+    }
+
     // SunLightShadow automatically fits & texel-snaps its 2 cascades to the view camera frustum
     // every frame inside SunShadowNode.renderShadow(), splitting [near, far] halfway between a uniform and a
     // logarithmic split (the near cascade ends at ~far / 4). Keep far at 300 m at street level so the near cascade

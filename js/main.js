@@ -383,9 +383,16 @@ async function initApp() {
     selectCamera(CAMERA_PRESETS[(idx + step + n) % n].id, true);
   }
 
-  function selectTime(timeId) {
-    lightingSystem.applyPreset(timeId);
-    colorGrade.applyPreset(lightingSystem.activePresetId);
+  // Changes of time of day blend over a couple of seconds (`instant` for the first one)
+  const TIME_TRANSITION = 2;
+  function selectTime(timeId, instant = false) {
+    if (instant) {
+      lightingSystem.applyPreset(timeId);
+      colorGrade.applyPreset(lightingSystem.activePresetId);
+    } else if (timeId !== lightingSystem.activePresetId) {
+      lightingSystem.transitionTo(timeId, TIME_TRANSITION);
+      colorGrade.transitionTo(lightingSystem.activePresetId, TIME_TRANSITION);
+    }
     timeButtons.forEach((btn) => {
       btn.classList.toggle('active', btn.getAttribute('data-time') === timeId);
     });
@@ -621,7 +628,7 @@ async function initApp() {
   // Initialize the UI and chase camera around the restored player, or the default taxi on a first visit.
   selectMode(controllerManager.activeMode);
   selectCamera('chase', true);
-  selectTime('golden');
+  selectTime('golden', true);
   // the web fonts change the buttons' widths once they arrive
   if (document.fonts) document.fonts.ready.then(placeModeIndicator);
   markInit('ui');
@@ -744,6 +751,7 @@ async function initApp() {
     if (cityBlocks.updateLights) cityBlocks.updateLights(cameraSystem.camera);
     if (streetDetails.update) streetDetails.update(cameraSystem.camera);
     lightingSystem.update(cameraSystem.currentPos);
+    colorGrade.update();
     mapSystem.update();
     audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk

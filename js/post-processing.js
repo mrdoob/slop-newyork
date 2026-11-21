@@ -72,8 +72,11 @@ function createPostProcessing(renderer, sceneColor, reflections, occlusion) {
     return vec4(color.mul(vignette), 1.0);
   })();
 
-  function applyPreset(id) {
-    const look = LOOKS[id] || LOOKS.golden;
+  // The look shown, and a change of look under way (from what was shown to `to`, eased in and out)
+  const shown = { ...LOOKS.golden, balance: [...LOOKS.golden.balance] };
+  let from = null, to = null, start = 0, duration = 0;
+
+  function show(look) {
     exposure.value = look.exposure;
     contrast.value = look.contrast;
     saturation.value = look.saturation;
@@ -82,8 +85,34 @@ function createPostProcessing(renderer, sceneColor, reflections, occlusion) {
     bloomPass.threshold.value = look.threshold;
   }
 
+  // Switch to a time of day's look at once
+  function applyPreset(id) {
+    Object.assign(shown, LOOKS[id] || LOOKS.golden);
+    shown.balance = [...shown.balance];
+    to = null;
+    show(shown);
+  }
+
+  // Change to it over `seconds`
+  function transitionTo(id, seconds = 2) {
+    from = { ...shown, balance: [...shown.balance] };
+    to = LOOKS[id] || LOOKS.golden;
+    start = performance.now();
+    duration = seconds * 1000;
+  }
+
+  function update() {
+    if (!to) return;
+    const t = Math.min(1, (performance.now() - start) / duration);
+    const e = t * t * (3 - 2 * t);
+    for (const key of ['exposure', 'contrast', 'saturation', 'bloom', 'threshold']) shown[key] = from[key] + (to[key] - from[key]) * e;
+    for (let i = 0; i < 3; i++) shown.balance[i] = from.balance[i] + (to.balance[i] - from.balance[i]) * e;
+    show(shown);
+    if (t >= 1) to = null;
+  }
+
   applyPreset('golden');
-  return { outputNode, applyPreset };
+  return { outputNode, applyPreset, transitionTo, update };
 }
 
 export { createPostProcessing };

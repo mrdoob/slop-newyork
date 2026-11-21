@@ -11,8 +11,10 @@ const WebGPUCoordinateSystem = 2001;
 
 class Color {
   constructor(hex = 0xffffff) { this.setHex(hex); }
-  setHex(hex) { this.hex = hex; this.scale = 1; return this; }
-  multiplyScalar(s) { this.scale *= s; return this; }
+  setHex(hex) { this.r = ((hex >> 16) & 255) / 255; this.g = ((hex >> 8) & 255) / 255; this.b = (hex & 255) / 255; return this; }
+  copy(c) { this.r = c.r; this.g = c.g; this.b = c.b; return this; }
+  lerp(c, t) { this.r += (c.r - this.r) * t; this.g += (c.g - this.g) * t; this.b += (c.b - this.b) * t; return this; }
+  multiplyScalar(s) { this.r *= s; this.g *= s; this.b *= s; return this; }
 }
 
 class Vector2 {
@@ -672,7 +674,7 @@ function makeTSLNode() {
   };
 }
 
-function loadLighting() {
+function loadLighting(globals = {}) {
   class FogExp2 {
     constructor(color, density) {
       this.color = new Color(color);
@@ -725,7 +727,8 @@ function loadLighting() {
     float: () => makeTSLNode(),
     vec3: () => makeTSLNode(),
     vec4: () => makeTSLNode(),
-    uniform: (value) => ({ value, ...makeTSLNode() }),
+    uniform: (value) => ({ value, ...makeTSLNode(), setGroup() { return this; } }),
+    renderGroup: {},
     mix: () => makeTSLNode(),
     dot: () => makeTSLNode(),
     inverseSqrt: () => makeTSLNode(),
@@ -753,6 +756,7 @@ function loadLighting() {
 
   const mod = loadModule(lightingSource, {
     filename: 'lighting.js',
+    globals,
     imports: {
       'three/webgpu': THREE,
       'three/tsl': tsl,
@@ -763,7 +767,7 @@ function loadLighting() {
     }
   });
 
-  return { ...mod, THREE };
+  return { ...mod, THREE, cityUniforms };
 }
 
 function makeChaseCamera({ x = -1135.4, y = 3.13, z = 1204.1, yawDeg = 20, reversedDepth = true } = {}) {
@@ -888,4 +892,55 @@ test('extended cascade ceiling preserves texel-snapped X/Y bounds, downstream fa
       }
     }
   }
+});
+
+test('changing the time of day blends: the sun moves across the sky, and between sun and moon the light fades out and in', () => {
+  const clock = { ms: 0, now() { return this.ms; } };
+  const { LightingSystem, THREE, cityUniforms } = loadLighting({ performance: clock });
+  const lighting = new LightingSystem(new THREE.Scene(), { reversedDepthBuffer: true });
+  const light = lighting.sunLight;
+  const at = (ms) => { clock.ms = ms; lighting.update(); };
+  const angle = (a, b) => Math.acos(Math.min(1, a.dot(b) / (a.length() * b.length())));
+
+  // golden hour to midday: halfway, the sun is on its way up and everything is between the two
+  const golden = { dir: light.position.clone(), intensity: light.intensity, glow: cityUniforms.uInteriorGlow.value };
+  lighting.transitionTo('midday', 2);
+  assert.equal(lighting.activePresetId, 'midday');
+  at(0);
+  assert.equal(light.intensity, golden.intensity, 'starts from what was shown');
+  at(1000);
+  const halfway = { dir: light.position.clone(), intensity: light.intensity, glow: cityUniforms.uInteriorGlow.value };
+  at(2000);
+  const midday = { dir: light.position.clone(), intensity: light.intensity, glow: cityUniforms.uInteriorGlow.value };
+  lighting.applyPreset('midday', true);
+  assert.ok(angle(midday.dir, light.position) < 1e-9 && midday.intensity === light.intensity, 'ends exactly on the preset');
+  assert.ok(Math.abs(angle(golden.dir, halfway.dir) + angle(halfway.dir, midday.dir) - angle(golden.dir, midday.dir)) < 1e-6
+    && angle(golden.dir, halfway.dir) > 0.3 && angle(halfway.dir, midday.dir) > 0.3, 'the sun moves along the sky');
+  assert.ok(halfway.intensity > golden.intensity && halfway.intensity < midday.intensity);
+  assert.ok(halfway.glow < golden.glow && halfway.glow > midday.glow);
+
+  // midday to midnight: the sun fades out where it is, then the moon fades in where it is
+  lighting.transitionTo('midnight', 2);
+  const moonDir = lighting.to.lightDir;
+  let darkest = Infinity, previous = Infinity, rising = false;
+  for (let ms = 0; ms <= 2000; ms += 50) {
+    at(2000 + ms);
+    assert.ok(angle(light.position, midday.dir) < 1e-9 || angle(light.position, moonDir) < 1e-9, `no swing at ${ms} ms`);
+    darkest = Math.min(darkest, light.intensity);
+    if (light.intensity > previous) rising = true;
+    else assert.ok(!rising || light.intensity === previous, `fades out, then in (${ms} ms)`);
+    previous = light.intensity;
+  }
+  assert.ok(darkest < 1e-9 && Math.abs(light.intensity - 0.5) < 1e-9, 'dark between the two, the moon at the end');
+
+  // changing again partway through carries on from what is shown, without a jump
+  lighting.transitionTo('golden', 2);
+  at(4600);
+  const shown = { intensity: light.intensity, dir: light.position.clone(), glow: cityUniforms.uInteriorGlow.value };
+  lighting.transitionTo('twilight', 2);
+  at(4600);
+  assert.ok(Math.abs(light.intensity - shown.intensity) < 1e-9 && angle(light.position, shown.dir) < 1e-9
+    && Math.abs(cityUniforms.uInteriorGlow.value - shown.glow) < 1e-9, 'no jump when changing partway through');
+  at(6600);
+  assert.ok(Math.abs(cityUniforms.uInteriorGlow.value - 1.25) < 1e-9, 'and it arrives at the new time of day');
 });
