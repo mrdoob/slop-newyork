@@ -26,8 +26,15 @@ import {
   step,
   smoothstep,
   length,
+  sqrt,
   fwidth,
+  dFdx,
+  dFdy,
+  cross,
+  normalize,
+  select,
   normalView,
+  positionView,
   positionViewDirection,
   uniform,
   texture,
@@ -111,7 +118,9 @@ const BODY_SPECS = {
     cladding: 0, // height of the unpainted lower body cladding (SUVs)
     sign: false,
     rails: false,
-    rearWiper: false
+    rearWiper: false,
+    // Seat rows (seat-back z, front first) seen through the glass, see cabinInterior()
+    interior: { seats: [-0.52, -1.26] }
   },
   suv: {
     name: 'suv',
@@ -161,7 +170,9 @@ const BODY_SPECS = {
     cladding: 0.46,
     sign: false,
     rails: true,
-    rearWiper: true
+    rearWiper: true,
+    interior: { seats: [-0.55, -1.4] },
+    privacyGlass: true // tinted glass behind the B-pillar
   }
 };
 BODY_SPECS.taxi = Object.assign({}, BODY_SPECS.sedan, { name: 'taxi', sign: true });
@@ -219,7 +230,8 @@ BODY_SPECS.pickup = {
   sign: false,
   rails: false,
   rearWiper: false,
-  bedCover: true
+  bedCover: true,
+  interior: { seats: [-0.06, -0.6] }
 };
 // High-roof delivery van (~Mercedes Sprinter / Ford Transit 148"): short sloped nose, a tall wide windshield, glass
 // only in the cab doors, flat cargo sides & a flat rear (spec.cargo, see buildCargoCabin). spec.cabin describes the cab
@@ -287,7 +299,9 @@ BODY_SPECS.van = {
   // a curb-side (-x) sliding door (front z, rear z, top) running up the cargo side
   tailStrip: false,
   barnDoors: [0.8, 2.34],
-  slidingDoor: [0.33, -0.97, 2.28]
+  slidingDoor: [0.33, -0.97, 2.28],
+  // A bulkhead closes the cab off from the cargo box
+  interior: { seats: [0.62], bulkhead: 0.47 }
 };
 // Minivan (~Toyota Sienna / Honda Odyssey): low sloping nose, very fast windshield, long roof, sliding side doors,
 // long rear quarter glass & a steep hatch.
@@ -339,7 +353,9 @@ BODY_SPECS.minivan = {
   cladding: 0,
   sign: false,
   rails: false,
-  rearWiper: true
+  rearWiper: true,
+  interior: { seats: [0.14, -0.86, -1.86] },
+  privacyGlass: true
 };
 
 for (const spec of Object.values(BODY_SPECS)) {
@@ -1131,6 +1147,9 @@ function createLightbarMaterial() {
 }
 
 // IQ polynomial smooth maximum: rounds the corners of max()-combined half-plane distances
+// Triangle wave 0..1..0 with period 1 (a cheap stand-in for sin in fragment patterns)
+const wave = (x) => abs(fract(x).sub(0.5)).mul(2.0);
+
 const smax = (a, b, k) => {
   const h = max(float(k).sub(abs(a.sub(b))), 0.0).div(k);
   return max(a, b).add(h.mul(h).mul(k * 0.25));
@@ -1172,10 +1191,176 @@ function polygonPlanes(points, margins) {
   return planes;
 }
 
-// Packs per-instance style fields into carState.w (livery 0..7, metallic 0..1, trim 0..3, wheelStyle 0..3).
-// Livery 1 with default options encodes to 1, keeping existing NYPD carState.w = 1 checks compatible.
-function carStyleCode({ livery = 0, metallic = 0, trim = 0, wheel = 0 } = {}) {
-  return (livery & 7) + ((metallic & 1) << 3) + ((trim & 3) << 4) + ((wheel & 3) << 6);
+/**
+ * Screen derivatives of the view-space and object-space positions, for objectViewRay(). Take them in uniform control
+ * flow (before any per-part branch) and keep the result in variables.
+ */
+function viewRayDerivatives(p) {
+  return { dVx: dFdx(positionView).toVar(), dVy: dFdy(positionView).toVar(), dOx: dFdx(p).toVar(), dOy: dFdy(p).toVar() };
+}
+
+/**
+ * The view ray (camera to fragment) in object space, for an instanced mesh whose instance matrix the material can't
+ * read: the pixel footprint vectors span the surface in both spaces (the instance's rotation maps one pair onto the
+ * other), their cross products the normal. Expand the view-space ray on the reciprocal basis of the view-space trio and
+ * rebuild it from the object-space one. View space, not world: the city is kilometres across, too coarse in fp32 for
+ * pixel-sized differences.
+ */
+function objectViewRay({ dVx, dVy, dOx, dOy }) {
+  const cV = cross(dVx, dVy);
+  const cO = cross(dOx, dOy);
+  const ray = positionView;
+  const k = float(1.0).div(max(dot(cV, cV), 1e-30));
+  return normalize(dOx.mul(dot(ray, cross(dVy, cV))).add(dOy.mul(dot(ray, cross(cV, dVx)))).add(cO.mul(dot(ray, cV))).mul(k));
+}
+
+// Daylight seen through a vehicle's far windows along `d` (object space, +y up): the street below the horizon, the
+// hazy sky above it
+function throughGlass(d) {
+  return mix(vec3(0.12, 0.125, 0.13), cityUniforms.uSkyHorizonColor.mul(0.5), smoothstep(-0.06, 0.25, d.y));
+}
+
+const SEAT_COLORS = [0x19191b, 0x38383a, 0x7c6f5c, 0x5a3622];
+const OCCUPANT_SKIN = [0xc68863, 0x8a5535, 0xe0b090, 0x5a3424, 0xa96f4c];
+const OCCUPANT_CLOTHES = [0x1a1c22, 0x4a5060, 0x2a3a5a, 0x8a8478, 0x5a2a2a];
+
+/**
+ * The cabin seen through a car's glass, ray traced in object space from the glass fragment `o` along the view ray `d`:
+ * a box from the floor to the headliner, the door trim and dashboard below the belt, daylight through the far windows,
+ * seat backs with headrests per row (spec.interior.seats), a steering wheel, the driver and sometimes a passenger.
+ * `hash` (0..1) picks the trim colour and the passengers. Returns the albedo the glass shows (before its tint).
+ */
+function cabinInterior(spec, o, d, hash) {
+  const L = carLayout(spec);
+  const cab = spec.cabin;
+  const seats = spec.interior.seats;
+  const bulkhead = spec.interior.bulkhead;
+  const beltY = (L.belt.cowl.y + (spec.cargo ? L.belt.cowl.y : L.belt.deck.y)) / 2;
+  const mid = L.cabin((cab.roofFront + cab.roofRear) / 2);
+  const xi = Math.min(L.belt.cowl.x, L.belt.deck.x) - 0.07;
+  const floorY = spec.sill[1][1] + 0.12;
+  const roofY = mid.railY + mid.h - 0.07;
+  const zFront = cab.cowl;
+  const zBack = bulkhead ?? cab.deck;
+  const glassEnd = cab.glassEnd ?? cab.deck;
+  const deckY = L.belt.deck.y + 0.02;
+  const dashTop = beltY + 0.05;
+  const dashRear = seats[0] + 0.8;
+  const far = float(1e4);
+  const sgn = step(0.0, d).mul(2.0).sub(1.0);
+  const inv = vec3(1.0).div(d.add(sgn.mul(1e-5)));
+  const ahead = (t) => select(t.greaterThan(0.0), t, far);
+
+  // Where the ray leaves the cabin box, and what is there: the far side's window or door trim, headliner or floor,
+  // windshield or dashboard, backlight or parcel shelf (bulkhead on a cargo van)
+  const tSide = ahead(sgn.x.mul(xi).sub(o.x).mul(inv.x));
+  const tUp = ahead(select(d.y.greaterThan(0.0), float(roofY).sub(o.y), float(floorY).sub(o.y)).mul(inv.y));
+  const tEnd = ahead(select(d.z.greaterThan(0.0), float(zFront).sub(o.z), float(zBack).sub(o.z)).mul(inv.z));
+  const tBest = min(tSide, min(tUp, tEnd)).toVar();
+  const h = o.add(d.mul(tBest));
+  const outside = throughGlass(d);
+  let pillars = float(0.0);
+  for (const zp of cab.pillars) pillars = max(pillars, step(abs(h.z.sub(zp)), 0.05));
+  const sideGlass = step(beltY + 0.02, h.y)
+    .mul(step(h.y, roofY - 0.04))
+    .mul(step(glassEnd + 0.03, h.z))
+    .mul(step(h.z, zFront - 0.12))
+    .mul(float(1.0).sub(pillars));
+  const frontGlass = step(dashTop, h.y);
+  const backGlass = bulkhead === undefined ? step(deckY, h.y) : float(0.0);
+  const endGlass = select(d.z.greaterThan(0.0), frontGlass, backGlass);
+  const isSide = step(tSide, min(tUp, tEnd));
+  const isUp = step(tUp, min(tSide, tEnd)).mul(float(1.0).sub(isSide));
+  const seeThrough = mix(mix(endGlass, float(0.0), isUp), sideGlass, isSide);
+  const trim = spec.sign ? color(SEAT_COLORS[0]) : pickColor(SEAT_COLORS, hash);
+  const seatX = xi * 0.5; // the front seats' (and the driver's) distance from the centreline
+  const benchX = xi * 0.58;
+  const light = step(0.5, hash).mul(step(hash, 0.75)); // the beige cabins have a light headliner
+  const headliner = mix(vec3(0.05), vec3(0.3, 0.29, 0.27), light.mul(0.6).add(0.4));
+  const shell = mix(mix(trim.mul(0.5).add(0.012), headliner, step(0.0, d.y).mul(isUp)), vec3(0.015), float(1.0).sub(step(0.0, d.y)).mul(isUp));
+  // The roof shades the cabin: everything inside is lit far less than the glass (0.42), daylight through it less so
+  const col = vec3(mix(shell.mul(0.42), outside.mul(0.85), seeThrough)).toVar();
+
+  const hit = (t, c) => {
+    const nearer = step(t, tBest);
+    tBest.assign(mix(tBest, t, nearer));
+    col.assign(mix(col, c.mul(0.42), nearer));
+  };
+  // Dashboard top under the windshield (its face below is hidden behind it from outside)
+  {
+    const tTop = ahead(float(dashTop).sub(o.y).mul(inv.y));
+    hit(select(o.z.add(d.z.mul(tTop)).greaterThan(dashRear).and(d.y.lessThan(0.0)), tTop, far), vec3(0.018));
+  }
+  // Seat backs & headrests, front row first (two seats either side of the console) then benches
+  seats.forEach((zs, row) => {
+    const t = ahead(float(zs).sub(o.z).mul(inv.z));
+    const q = o.add(d.mul(t));
+    const ax = abs(q.x);
+    const front = row === 0;
+    const back = step(ax, xi - 0.03)
+      .mul(front ? step(0.1, ax) : float(1.0))
+      .mul(step(floorY + 0.12, q.y))
+      .mul(step(q.y, beltY + (front ? 0.12 : 0.08)));
+    const restX = front ? seatX : benchX;
+    const restY = beltY + (front ? 0.16 : 0.12);
+    const rest = step(abs(ax.sub(restX)), front ? 0.115 : 0.1).mul(step(restY, q.y)).mul(step(q.y, restY + 0.17));
+    hit(select(max(back, rest).greaterThan(0.5), t, far), trim.mul(mix(1.0, 0.8, rest)));
+  });
+  // Steering wheel (on the left: driver's side): a rim and spokes on a plane tilted towards the driver
+  {
+    const c = vec3(seatX, beltY + 0.0, seats[0] + 0.62);
+    const nW = vec3(0.0, 0.45, -0.893);
+    const den = dot(d, nW);
+    const t = ahead(dot(c.sub(o), nW).div(select(abs(den).greaterThan(1e-4), den, float(1e-4))));
+    const r = length(o.add(d.mul(t)).sub(c));
+    const wheel = step(abs(r.sub(0.17)), 0.018).add(step(r, 0.06)).add(step(abs(o.add(d.mul(t)).y.sub(c.y)), 0.018).mul(step(r, 0.17)));
+    hit(select(wheel.greaterThan(0.5), t, far), vec3(0.012));
+  }
+  // Occupants: head (hair on top) & shoulders as ellipsoids. The driver always, a front passenger in some cars and
+  // someone in the back of others (taxis carry their fares there)
+  const ellipsoid = (center, radii) => {
+    const oc = o.sub(center).div(radii);
+    const dd = d.div(radii);
+    const a = dot(dd, dd);
+    const b = dot(oc, dd);
+    const disc = b.mul(b).sub(a.mul(dot(oc, oc).sub(1.0)));
+    return select(disc.greaterThan(0.0), ahead(b.negate().sub(sqrt(max(disc, 0.0))).div(a)), far);
+  };
+  const people = [[seatX, seats[0], float(1.0)], [-seatX, seats[0], step(spec.sign ? 0.96 : 0.7, fract(hash.mul(7.31)))]];
+  if (seats.length > 1) people.push([-benchX, seats[1], step(spec.sign ? 0.35 : 0.78, fract(hash.mul(3.17)))]);
+  people.forEach(([x, zs, present], i) => {
+    const seated = () => {
+      const pick = fract(hash.mul(11.7 + i * 5.3));
+      const headC = vec3(x, beltY + 0.31, zs + 0.2);
+      const tHead = ellipsoid(headC, vec3(0.08, 0.11, 0.095));
+      const hairTop = step(headC.y.add(0.035), o.y.add(d.y.mul(tHead)));
+      hit(tHead, mix(pickColor(OCCUPANT_SKIN, pick).mul(0.7), vec3(0.012), hairTop));
+      hit(ellipsoid(vec3(x, beltY - 0.02, zs + 0.09), vec3(0.2, 0.28, 0.12)), pickColor(OCCUPANT_CLOTHES, fract(pick.mul(3.7))));
+    };
+    // (the same for every fragment of a car: an empty seat costs nothing)
+    if (i === 0) seated();
+    else If(present.greaterThan(0.5), seated);
+  });
+  return col;
+}
+
+// Branchless palette lookup (hex colours) by a 0..1 value
+function pickColor(hexArray, t) {
+  let acc = color(hexArray[0]);
+  for (let i = 1; i < hexArray.length; i++) acc = mix(acc, color(hexArray[i]), step(float(i), t.mul(hexArray.length)));
+  return acc;
+}
+
+// Packs per-instance style fields into carState.w (livery 0..7, metallic 0..1, trim 0..3, wheelStyle 0..3, and a
+// per-car seed 0..255 that dresses the cabin & its occupants). Livery 1 with default options encodes to 1, keeping
+// existing NYPD carState.w = 1 checks compatible.
+function carStyleCode({ livery = 0, metallic = 0, trim = 0, wheel = 0, seed = 0 } = {}) {
+  return (livery & 7) + ((metallic & 1) << 3) + ((trim & 3) << 4) + ((wheel & 3) << 6) + ((seed & 255) << 8);
+}
+
+// The same style code with a per-car seed (0..255) in its top bits
+function withCarSeed(style, seed) {
+  return (style & 255) + ((seed & 255) << 8);
 }
 
 const _carMaterialCache = new Map();
@@ -1250,7 +1435,7 @@ function createCarWheelMaterial({ instanced = false, style = 0, wheelRadius = BO
         vec3(
           step(abs(floor(fract(wCode.div(8.0)).mul(8.0).add(0.5)).sub(1.0)), 0.25),
           step(abs(floor(fract(floor(wCode.div(16.0).add(0.01)).mul(0.25)).mul(4.0).add(0.5)).sub(2.0)), 0.25),
-          floor(wCode.div(64.0).add(0.01))
+          floor(fract(floor(wCode.div(64.0).add(0.01)).mul(0.25)).mul(4.0).add(0.5))
         )
       )
     );
@@ -1363,7 +1548,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
         floor(fract(wCode.div(8.0)).mul(8.0).add(0.5)),
         step(0.5, fract(floor(wCode.div(8.0).add(0.01)).mul(0.5))),
         floor(fract(floor(wCode.div(16.0).add(0.01)).mul(0.25)).mul(4.0).add(0.5)),
-        floor(wCode.div(64.0).add(0.01))
+        floor(fract(floor(wCode.div(64.0).add(0.01)).mul(0.25)).mul(4.0).add(0.5))
       )
     )
   );
@@ -1479,6 +1664,25 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const basePaint = paint.mul(whiteComp).mul(paintFlop);
   const archLip = smoothstep(archR + 0.05, archR - 0.005, wheelDist).mul(smoothstep(0.6, 0.9, ax));
   const ao = smoothstep(0.22, 0.66, p.y).mul(0.2).add(0.8).mul(one.sub(archLip.mul(0.55)));
+
+  // Road film thrown up by the tyres: over the lower body (higher towards the tail), around & behind the wheel arches
+  // and up the rear, broken into streaks. How dirty a car is comes from its seed: most are fairly clean.
+  const vDirt = varying(vertexStage(fract(floor(wCode.div(256.0).add(0.01)).mul(0.371).add(0.13))));
+  const dirtAmount = vDirt.mul(vDirt).mul(0.8).add(0.12);
+  const dirtMask = () => {
+    const rearward = clamp(p.z.sub(spec.zFront).div(spec.zRear - spec.zFront), 0.0, 1.0);
+    const lowLine = rearward.mul(0.2).add(sillY + 0.2);
+    const low = smoothstep(lowLine, lowLine.sub(0.22), p.y);
+    let spray = float(0.0);
+    for (const axle of [spec.wheelZ, -spec.wheelZ]) {
+      const behind = float(axle - archR).sub(p.z);
+      spray = max(spray, smoothstep(0.75, 0.0, behind).mul(step(-0.02, behind)).mul(smoothstep(spec.wheelRadius * 2 + 0.1, sillY, p.y)));
+    }
+    const arch = smoothstep(archR + 0.1, archR, wheelDist);
+    const tail = smoothstep(rearZone + 0.15, rearZone - 0.1, p.z).mul(smoothstep(-0.2, -0.6, n.z)).mul(smoothstep(plateR + 0.3, sillY, p.y));
+    const streaks = wave(p.z.mul(2.3).add(p.y.mul(0.9))).mul(wave(p.z.mul(5.1).sub(p.y.mul(1.7)).add(0.37))).mul(0.45).add(0.55);
+    return clamp(max(max(low, spray.mul(0.85)), max(arch.mul(0.8), tail)).mul(streaks), 0.0, 1.0);
+  };
   const tlSize = vec2(tlW * 1.04, tlH * 1.2);
 
   // Shared glasshouse polygon evaluation (used by colorNode, roughnessNode & metalnessNode on CAR_PARTS.WINDOW only)
@@ -1582,6 +1786,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       }
       const grime = smoothstep(sillY + 0.16, sillY - 0.01, p.y).mul(0.2);
       bCol.assign(mix(bCol, color(0x2d2b28), grime));
+      bCol.assign(mix(bCol, color(0x6a6357).mul(ao), dirtMask().mul(dirtAmount).mul(0.6)));
 
       // Side doors, handles & liveries (evaluated only on side-facing body fragments)
       If(isSide.greaterThan(0.05), () => {
@@ -1745,7 +1950,24 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
         ? rrect(vec2(p.x.add(0.15), p.z.sub(cab.deck + 0.075)), vec2(0.22, 0.006), 0.003, fwXZ).mul(rearGlass)
         : float(0.0);
 
-      const glassBase = mix(color(0x0a1016), color(0x1a2632), max(smoothstep(0.2, 0.9, n.y), fresnel.mul(0.55)));
+      const carSeed = floor(wCode.div(256.0).add(0.01));
+      const interiorHash = fract(carSeed.mul(0.618034).add(paint.r.mul(7.13)).add(paint.g.mul(13.7)).add(paint.b.mul(17.3)));
+      // Traced only where there is glass, and only near: beyond ~45 m the cabin is a few dim pixels behind the
+      // reflections, so it fades to its average
+      const distance = positionView.z.negate();
+      // (screen derivatives for the view ray, taken here for the glasshouse only: whole quads of it, except along its
+      // edge with the body, where there is no glass)
+      const rayDerivatives = viewRayDerivatives(p);
+      const cabinCol = vec3(0.02).toVar();
+      If(glass.greaterThan(0.004).and(distance.lessThan(45.0)), () => {
+        cabinCol.assign(mix(cabinInterior(spec, p, objectViewRay(rayDerivatives), interiorHash), vec3(0.02), smoothstep(35.0, 45.0, distance)));
+      });
+      // Green-grey laminated glass; privacy glass behind the B-pillar on SUVs & minivans. Fresnel reflection takes
+      // over towards grazing angles
+      const tint = spec.privacyGlass
+        ? mix(vec3(0.6, 0.66, 0.64), vec3(0.17, 0.19, 0.19), step(p.z, cab.pillars[0]))
+        : vec3(0.6, 0.66, 0.64);
+      const glassBase = cabinCol.mul(tint).mul(float(1.0).sub(fresnel.mul(0.85)));
       const tlcSticker = rrect(vec2(p.x.add(bc.x - 0.16), p.z.sub(cab.cowl - 0.14)), vec2(0.045, 0.03), 0.008, fwXZ)
         .mul(frontGlass)
         .mul(isTLC);
@@ -1808,7 +2030,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     const r = float(0.78).toVar();
     If(isBody.greaterThan(0.5), () => {
       const lowMatte = smoothstep(sillY + 0.10, sillY - 0.01, p.y).mul(0.16);
-      r.assign(paintRough.add(lowMatte));
+      r.assign(paintRough.add(lowMatte).add(dirtMask().mul(dirtAmount).mul(0.5)));
     }).ElseIf(isWindow.greaterThan(0.5), () => {
       const { glass, seal } = evalWindowGlass();
       r.assign(mix(mix(paintRough, float(0.78), seal), float(0.08), glass));
@@ -1903,6 +2125,10 @@ export {
   createLoftedCarMaterial,
   createCarWheelMaterial,
   carStyleCode,
+  withCarSeed,
+  viewRayDerivatives,
+  objectViewRay,
+  throughGlass,
   buildLightbarGeometry,
   createLightbarMaterial,
   buildBodyLoft

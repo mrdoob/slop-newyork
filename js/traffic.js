@@ -13,6 +13,7 @@ import {
   createCarWheelMaterial,
   createLoftedCarMaterial,
   carStyleCode,
+  withCarSeed,
   buildLightbarGeometry,
   createLightbarMaterial
 } from './cars.js';
@@ -296,6 +297,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     const car = createVehicle(false, kind.half, kind.halfWidth, kind.axle, CAR_DRIVER, 10 + (i % 5) * 0.9);
     // paint as float32 values, so renderCar() can tell whether an instance slot's paint changes by comparing
     const paint = [Math.fround(col.r), Math.fround(col.g), Math.fround(col.b)];
+    // (each car's own seed in the style code dresses its cabin & occupants)
+    style = withCarSeed(style, i * 97 + 13);
     Object.assign(car, { isPolice, bodyType, paint, style, halfL: kind.halfL, mass: kind.mass, engine: kind.engine });
     cars.push(car);
   }
@@ -2136,7 +2139,7 @@ function createHighwayTraffic(scene, lanes) {
         placed: false, x: 0, y: -1000, z: 0, yaw: 0,
         len: spec.zFront - spec.zRear, engine: CAR_KINDS[kind].engine,
         col: [Math.fround(col.r), Math.fround(col.g), Math.fround(col.b)],
-        style: entry.style
+        style: withCarSeed(entry.style, cars.length * 97 + 29)
       };
       lane.cars.push(car);
       cars.push(car);

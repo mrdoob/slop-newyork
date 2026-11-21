@@ -174,6 +174,21 @@ const tslStub = {
     return arr(a).map(Math.sin);
   }),
   abs: (a) => new TNode(() => arr(a).map(Math.abs)),
+  sign: (a) => new TNode(() => arr(a).map(Math.sign)),
+  select: (c, a, b) => new TNode(() => (arr(c)[0] > 0 ? arr(a) : arr(b))),
+  floor: (a) => new TNode(() => arr(a).map(Math.floor)),
+  atan: (y, x) => new TNode(() => broadcast(y, x, Math.atan2)),
+  pow: (a, b) => new TNode(() => broadcast(a, b, Math.pow)),
+  dot: (a, b) => new TNode(() => {
+    const va = arr(a), vb = arr(b);
+    let s = 0;
+    for (let i = 0; i < va.length; i++) s += va[i] * vb[i];
+    return [s];
+  }),
+  length: (a) => new TNode(() => [Math.hypot(...arr(a))]),
+  fwidth: (a) => new TNode(() => arr(a).map(() => 0)),
+  normalView: new TNode([0, 0, 1]),
+  positionViewDirection: new TNode([0, 0, 1]),
   fract: (a) => new TNode(() => arr(a).map((x) => x - Math.floor(x))),
   max: (a, b) => new TNode(() => broadcast(a, b, Math.max)),
   clamp: (x, lo, hi) => new TNode(() => {
@@ -409,7 +424,7 @@ const { PERSON_BONES, PersonCrowd, PersonRig, buildPersonGeometry, createPersonM
     'three/addons/utils/BufferGeometryUtils.js': { mergeGeometries }
   }
 });
-const STRIDE = 31;
+const STRIDE = 34; // 15 bones x 2 vec4s, 3 appearance vec4s, the info vec4
 
 test('PersonCrowd creates 2 LODs only when farDistance is finite and disables shadow casting on PeopleFar', () => {
   const streetCrowd = new PersonCrowd(16, { farDistance: 34, castShadow: true });
@@ -476,8 +491,8 @@ test('buildPersonGeometry assigns constant partId across every triangle so flat/
 
 test('createPersonMaterial hoists palette hashes to vertex stage, keeps positionNode clean, and makes PeopleFar branch-free', () => {
   const pose = tslStub.attributeArray(2 * STRIDE);
-  const infoOffset = (STRIDE - 1) * 4;
-  pose.value.array.set([7.3, 1.0, 1.02, 0.65], infoOffset);
+  // A real rig's block: its packed appearance & info (seed, female, girth, hair)
+  pose.value.array.set(new PersonRig({ seed: 7.3, female: true, girth: 1.02, hair: 0.65 }).pose, 0);
 
   const nearMat = createPersonMaterial(pose, 1);
   const farMat = createPersonMaterial(pose, 0);
@@ -537,7 +552,6 @@ test('PeopleNear hoisted varyings produce identical fragment color and roughness
 
   const pose = tslStub.attributeArray(STRIDE);
   const nearMat = createPersonMaterial(pose, 1);
-  const infoOffset = (STRIDE - 1) * 4;
   const bary = [0.23, 0.41, 0.36];
 
   for (const [seed, female, girth, hair] of [
@@ -545,7 +559,7 @@ test('PeopleNear hoisted varyings produce identical fragment color and roughness
     [4.2, 1, 0.96, 0.85],
     [9.7, 0, 1.06, 0.05] // tests bald male branch too
   ]) {
-    pose.value.array.set([seed, female, girth, hair], infoOffset);
+    pose.value.array.set(new PersonRig({ seed, female: female === 1, girth, hair }).pose, 0);
 
     // Sample triangles across the entire mesh (every 11th triangle covers all 8 body parts & transitions)
     for (let t = 0; t < idxArr.length; t += 33) {
@@ -570,19 +584,23 @@ test('PeopleNear hoisted varyings produce identical fragment color and roughness
         const val2 = vVar[2].get(key);
         interpVaryings.set(key, val0.map((_, c) => val0[c] * bary[0] + val1[c] * bary[1] + val2[c] * bary[2]));
       }
-      shaderState.varyingSnapshots = interpVaryings;
-      const interpCol = nearMat.colorNode.eval();
-      const interpRough = nearMat.roughnessNode.eval();
-
       // Compare against direct evaluation at the interpolated attributes (no cross-vertex varying bleed)
       shaderState.attrs.position = [0, 1, 2].map((c) =>
         posArr[i0 * 3 + c] * bary[0] + posArr[i1 * 3 + c] * bary[1] + posArr[i2 * 3 + c] * bary[2]);
       shaderState.attrs.skin = [0, 0, 0, skinArr[i0 * 4 + 3]];
       shaderState.attrs.extra = [0, 1, 2].map((c) =>
         extraArr[i0 * 3 + c] * bary[0] + extraArr[i1 * 3 + c] * bary[1] + extraArr[i2 * 3 + c] * bary[2]);
-      shaderState.varyingSnapshots = new Map();
+      const directVaryings = new Map();
+      shaderState.varyingSnapshots = directVaryings;
       const directCol = nearMat.colorNode.eval();
       const directRough = nearMat.roughnessNode.eval();
+
+      // Contact shading (vPersonLocal.w) is shaded per vertex on purpose, so it interpolates rather than matching a
+      // direct evaluation; every other varying must interpolate exactly
+      interpVaryings.get('vPersonLocal')[3] = directVaryings.get('vPersonLocal')[3];
+      shaderState.varyingSnapshots = interpVaryings;
+      const interpCol = nearMat.colorNode.eval();
+      const interpRough = nearMat.roughnessNode.eval();
 
       for (let c = 0; c < 3; c++) {
         assert.ok(Math.abs(interpCol[c] - directCol[c]) < 1e-12, `exact color match at tri ${t / 3}`);

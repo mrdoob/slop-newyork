@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { cityUniforms } from './tsl-materials.js';
 import {
+  Fn,
+  If,
   float,
   vec2,
   vec3,
@@ -11,20 +13,27 @@ import {
   atan,
   abs,
   fract,
+  floor,
   min,
   max,
   clamp,
   mix,
   step,
   smoothstep,
+  select,
+  sqrt,
+  dot,
+  pow,
   length,
   fwidth,
+  normalView,
+  positionViewDirection,
   instanceIndex
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LoftGeometry } from 'three/addons/geometries/LoftGeometry.js';
 import { part, mirrorSection, roundedBox } from './vehicles.js';
-import { CAR_PARTS, buildBodyLoft, carBodyHalfWidthAt } from './cars.js';
+import { CAR_PARTS, buildBodyLoft, carBodyHalfWidthAt, viewRayDerivatives, objectViewRay, throughGlass } from './cars.js';
 
 // A 40-ft low-floor MTA bus lofted with the car body machinery: rounded plan-view corners, a raked windshield, a
 // tight roof radius and arches over the wheels; bumpers, the folded front bike rack, stalk mirrors and the roof AC &
@@ -300,6 +309,107 @@ function createBusWheelMaterial() {
 }
 
 let _busLoftedMat = null;
+
+const BUS_ROWS = { first: 3.4, pitch: 0.78, count: 12 }; // forward-facing seat backs from z = first towards the tail
+const RIDER_SKIN = [0xc68863, 0x8a5535, 0xe0b090, 0x5a3424, 0xa96f4c];
+const RIDER_CLOTHES = [0x1a1c22, 0x4a5060, 0x2a3a5a, 0x8a8478, 0x5a2a2a, 0x2f4a3a];
+
+function pickHex(hexArray, t) {
+  let acc = color(hexArray[0]);
+  for (let i = 1; i < hexArray.length; i++) acc = mix(acc, color(hexArray[i]), step(float(i), t.mul(hexArray.length)));
+  return acc;
+}
+
+/**
+ * The bus's saloon seen through its windows, ray traced in object space from the glass fragment `o` along `d`: light
+ * grey walls under the far windows (daylight through them), the ceiling with its light strips, the floor, the driver,
+ * yellow stanchions along the aisle and rows of seat backs with riders in some of them (`hash` 0..1 varies the riders
+ * per bus). Returns the albedo seen through the glass (before its tint).
+ */
+function busInterior(o, d, hash) {
+  const s = BUS_SPEC;
+  const xi = 1.16;
+  const floorY = 0.42;
+  const ceilY = 2.5;
+  const zFront = s.zFront - 0.45;
+  const zBack = s.zRear + 0.4;
+  const [wy0, wy1] = s.window;
+  const far = float(1e4);
+  const sgn = step(0.0, d).mul(2.0).sub(1.0);
+  const inv = vec3(1.0).div(d.add(sgn.mul(1e-5)));
+  const ahead = (t) => select(t.greaterThan(0.0), t, far);
+
+  // Leaving the saloon: the far side's windows (between mullions) or wall, ceiling or floor, windshield or rear wall
+  const tSide = ahead(sgn.x.mul(xi).sub(o.x).mul(inv.x));
+  const tUp = ahead(select(d.y.greaterThan(0.0), float(ceilY).sub(o.y), float(floorY).sub(o.y)).mul(inv.y));
+  const tEnd = ahead(select(d.z.greaterThan(0.0), float(zFront).sub(o.z), float(zBack).sub(o.z)).mul(inv.z));
+  const tBest = min(tSide, min(tUp, tEnd)).toVar();
+  const h = o.add(d.mul(tBest));
+  const isSide = step(tSide, min(tUp, tEnd));
+  const isUp = step(tUp, min(tSide, tEnd)).mul(float(1.0).sub(isSide));
+  const mullion = step(abs(fract(h.z.mul(0.76).add(0.18)).sub(0.5)), 0.03);
+  const farWindow = step(wy0, h.y).mul(step(h.y, wy1)).mul(float(1.0).sub(mullion)).mul(isSide);
+  const windshield = step(1.2, h.y).mul(step(0.0, d.z)).mul(float(1.0).sub(isSide)).mul(float(1.0).sub(isUp));
+  const ceiling = mix(float(0.42), float(0.75), smoothstep(0.08, 0.04, abs(abs(h.x).sub(0.68))));
+  const shell = mix(mix(vec3(0.28, 0.285, 0.29), vec3(ceiling), step(0.0, d.y).mul(isUp)), vec3(0.05), float(1.0).sub(step(0.0, d.y)).mul(isUp));
+  const seeThrough = max(farWindow, windshield);
+  const col = vec3(mix(shell, throughGlass(d), seeThrough)).toVar();
+  const lit = vec3(mix(vec3(0.45), vec3(0.85), seeThrough)).toVar();
+  const hit = (t, c) => {
+    const nearer = step(t, tBest);
+    tBest.assign(mix(tBest, t, nearer));
+    col.assign(mix(col, c, nearer));
+    lit.assign(mix(lit, vec3(0.45), nearer));
+  };
+
+  // Seat backs: the next few row planes along the ray. Riders sit in some seats (window or aisle), none on the curb
+  // side by the rear door.
+  const { first, pitch, count } = BUS_ROWS;
+  const u = float(first).sub(o.z).div(pitch);
+  const forward = step(0.0, d.z.negate()); // rows are numbered towards the tail
+  const k0 = floor(u).add(forward);
+  const dk = forward.mul(2.0).sub(1.0);
+  for (let i = 0; i < 4; i++) {
+    const k = k0.add(dk.mul(i));
+    const zk = float(first).sub(k.mul(pitch));
+    const t = ahead(zk.sub(o.z).mul(inv.z));
+    const q = o.add(d.mul(t));
+    const ax = abs(q.x);
+    const inRows = step(0.0, k).mul(step(k, count - 1));
+    const doorGap = step(q.x, 0.0).mul(step(-2.12, zk)).mul(step(zk, -0.98));
+    const seat = step(0.32, ax).mul(step(ax, 1.12)).mul(step(0.9, q.y)).mul(step(q.y, 1.52));
+    const r = fract(k.mul(0.618034).add(step(0.0, q.x).mul(0.37)).add(hash));
+    const seated = step(0.5, r);
+    const seatX = mix(float(0.84), float(0.52), step(0.82, r));
+    const head = step(abs(ax.sub(seatX)), 0.085).mul(step(1.5, q.y)).mul(step(q.y, 1.74));
+    const body = step(abs(ax.sub(seatX)), 0.19).mul(step(1.22, q.y)).mul(step(q.y, 1.5));
+    const rider = max(head, body).mul(seated);
+    const riderCol = mix(pickHex(RIDER_CLOTHES, fract(r.mul(5.3))), pickHex(RIDER_SKIN, fract(r.mul(3.1))).mul(0.7), head);
+    const there = inRows.mul(float(1.0).sub(doorGap)).mul(max(seat, rider));
+    hit(select(there.greaterThan(0.5), t, far), mix(color(0x2c3850), riderCol, rider));
+  }
+  // Yellow stanchions at every row along both sides of the aisle, and the grab rails along the ceiling
+  for (const x of [0.3, -0.3]) {
+    const t = ahead(float(x).sub(o.x).mul(inv.x));
+    const q = o.add(d.mul(t));
+    const dz = abs(fract(float(first).sub(q.z).div(pitch).add(0.5)).sub(0.5)).mul(pitch);
+    const pole = step(dz, 0.022).mul(step(q.z, first + 0.4)).mul(step(floorY, q.y));
+    const rail = step(abs(q.y.sub(2.12)), 0.018);
+    const inside = step(zBack, q.z).mul(step(q.z, zFront)).mul(step(q.y, ceilY));
+    hit(select(max(pole, rail).mul(inside).greaterThan(0.5), t, far), color(0xc8a018));
+  }
+  // The driver, behind the windshield on the left (+x)
+  {
+    const c = vec3(0.62, 1.66, 4.95);
+    const oc = o.sub(c).div(vec3(0.08, 0.11, 0.095));
+    const dd = d.div(vec3(0.08, 0.11, 0.095));
+    const a = dot(dd, dd);
+    const b = dot(oc, dd);
+    const disc = b.mul(b).sub(a.mul(dot(oc, oc).sub(1.0)));
+    hit(select(disc.greaterThan(0.0), ahead(b.negate().sub(sqrt(max(disc, 0.0))).div(a)), far), color(0x6b4430).mul(0.8));
+  }
+  return col.mul(lit);
+}
 
 /**
  * Creates the TSL procedural material for MTA New Flyer Xcelsior XD40/XE40 buses:
@@ -584,18 +694,25 @@ function createLoftedBusMaterial() {
   const reverse = rearLens.mul(step(p.y, 0.8));
   const sideMarkers = covAt(0.025, length(vec2(az.sub(s.wheelZ + 0.68), p.y.sub(1.02))), invZY).mul(side);
 
-  // 6. Tinted window glass with interior passenger seats, yellow vertical grab stanchions & ceiling light strip
-  const skyGrad = clamp(p.y.sub(1.22).mul(0.85), 0.0, 1.0);
+  // 6. Tinted window glass over the saloon (seats, riders, stanchions & ceiling lights); these flat masks only shape
+  // the cabin's glow at night
   const seatBack = smoothstep(1.64, 1.54, p.y)
     .mul(smoothstep(0.1, 0.2, abs(fract(p.z.mul(1.15)).sub(0.5))))
     .mul(smoothstep(3.85, 3.75, p.z));
   const grabRail = band(fract(p.z.mul(0.76).add(0.5)).sub(0.5), 0.026, invZRepeat).mul(smoothstep(2.3, 2.26, p.y));
-  const frontInterior = smoothstep(1.62, 1.3, p.y).mul(smoothstep(0.15, 0.35, ax)).mul(front);
   const ceilingStrip = smoothstep(2.12, 2.32, p.y).mul(smoothstep(4.45, 4.35, p.z));
-  const baseGlass = mix(color(0x0f1c2b), color(0x1f3852), skyGrad);
-  const withSeats = mix(baseGlass, color(0x0a1524), max(seatBack.mul(0.68), frontInterior.mul(0.45)));
-  const withRails = mix(withSeats, color(0xb8921c), grabRail.mul(side).mul(0.5));
-  const glassTint = mix(withRails, color(0x324d66), ceilingStrip.mul(0.28));
+  // Behind the glass: the saloon, traced along the view ray (only where there is glass)
+  const busHash = varying(vertexStage(fract(rawIdx.mul(0.618034).add(0.21))));
+  const saloon = Fn(() => {
+    const derivatives = viewRayDerivatives(p);
+    const c = vec3(0.0).toVar();
+    If(glass.greaterThan(0.002), () => {
+      c.assign(busInterior(p, objectViewRay(derivatives), busHash));
+    });
+    return c;
+  })();
+  const fresnel = pow(float(1.0).sub(clamp(dot(normalView, positionViewDirection), 0.0, 1.0)), 3.2);
+  const glassTint = saloon.mul(vec3(0.38, 0.42, 0.43)).mul(float(1.0).sub(fresnel.mul(0.85)));
 
   // Composite body surface
   let body = mix(livery, color(0x12161b), max(seal, max(archFlareMask, max(rearSeam, rearPlateRecess))));
@@ -628,7 +745,7 @@ function createLoftedBusMaterial() {
     float(0.36),
     isPod
   );
-  mat.metalnessNode = mix(mix(float(0.24), float(0.82), glass), float(0.06), max(isTrim, isPod));
+  mat.metalnessNode = mix(mix(float(0.24), mix(float(0.16), float(0.36), fresnel), glass), float(0.06), max(isTrim, isPod));
 
   const brake = state.x;
   const blink = max(state.y.mul(step(0.0, p.x)), state.z.mul(step(p.x, 0.0)));

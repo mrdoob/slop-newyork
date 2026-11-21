@@ -119,7 +119,21 @@ const tslStub = {
   smoothstep: (e0, e1, x) => new TNode(() => broadcast(broadcast(e0, e1, (a, b) => [a, b]), x, () => 0)).mul(0) // replaced below
   ,
   length: (v) => new TNode(() => [Math.hypot(...arr(v))]),
+  sqrt: unary(Math.sqrt),
   fwidth: () => new TNode(() => env.fwidthVal),
+  dFdx: (v) => new TNode(() => arr(v).map(() => 0)),
+  dFdy: (v) => new TNode(() => arr(v).map(() => 0)),
+  cross: (a, b) => new TNode(() => {
+    const u = arr(a), v = arr(b);
+    return [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  }),
+  normalize: (v) => new TNode(() => {
+    const u = arr(v);
+    const len = Math.hypot(...u) || 1;
+    return u.map((x) => x / len);
+  }),
+  select: (c, a, b) => new TNode(() => (arr(c)[0] > 0 ? arr(a) : arr(b))),
+  positionView: wrap([0, 0, -5]),
   normalView: wrap([0, 0, 1]),
   positionViewDirection: wrap([0, 0, 1]),
   uniform: (val) => wrap(val.isVector4 ? [val.x, val.y, val.z, val.w] : [val]),
@@ -158,7 +172,7 @@ const cars = loadModule(readFileSync(join(__dirname, '../js/cars.js'), 'utf8'), 
     'three/tsl': tslStub,
     'three/addons/utils/BufferGeometryUtils.js': { mergeGeometries: () => ({}) },
     'three/addons/geometries/LoftGeometry.js': { LoftGeometry: class {} },
-    './tsl-materials.js': { cityUniforms: { uInteriorGlow: wrap([0.48]) } },
+    './tsl-materials.js': { cityUniforms: { uInteriorGlow: wrap([0.48]), uSkyHorizonColor: wrap([0.8, 0.75, 0.7]) } },
     './vehicles.js': { part: (g) => g, mirrorSection: (s) => s, roundedRectShape: () => ({}), roundedBox: () => ({}) }
   },
   globals: {
