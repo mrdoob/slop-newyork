@@ -1,3 +1,4 @@
+// Tests the data tools (slow), so it stays out of the default run: node --test tests/tools/*.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -6,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
+const root = fileURLToPath(new URL('../../', import.meta.url));
 test('geodata builds with default paths in a checkout containing spaces and non-ASCII characters', { timeout: 180000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'New York 東京 '));
   try {
