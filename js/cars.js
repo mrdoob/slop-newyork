@@ -206,23 +206,66 @@ const BODY_SPECS = {
     privacyGlass: true // tinted glass behind the B-pillar
   }
 };
-// NYC yellow cab: a mid-size hybrid sedan (the 2018-24 Camry Hybrid is the commonest cab), with its own rear as the
-// player's car is mostly seen from behind: wide smoked-red lamps wrapping onto the trunk lid, two LED light bars in
-// each, white reverse lamps on the lid; an emblem & chrome lettering; parking sensors & corner reflectors in the
-// bumper; a black diffuser with no exhaust tips (the hybrid's are hidden)
+// NYC yellow cab: a full-size sedan of the Crown Victoria years, the cab New York is known for. Long & rounded: a level
+// belt, a glasshouse with a thick C-pillar, a long trunk rolling over into a tall tail. Behind: tall lamps at
+// the corners (stepped red optics over amber turn signals) either side of a gloss-black panel across the trunk lid
+// holding the plate & the reverse lamps; a chrome strip under them all; an emblem & an amber trouble light above; a big
+// body-coloured bumper with a rub strip; twin exhausts. In front: an upright face with wide clear reflector lamps
+// (amber at the corners) either side of a chrome-framed mesh grille, a black slot in the bumper.
 BODY_SPECS.taxi = Object.assign({}, BODY_SPECS.sedan, {
   name: 'taxi',
-  sign: true,
+  halfWidth: [[2.22, 0.905], [1.4, 0.92], [0, 0.926], [-1.4, 0.924], [-2.28, 0.918]],
+  sill: [[2.22, 0.275], [1.2, 0.25], [-1.2, 0.25], [-2.28, 0.3]],
+  shoulder: [[2.22, 0.66], [1.75, 0.74], [1.4, 0.755], [0, 0.77], [-1.4, 0.78], [-2.28, 0.74]],
+  edge: [[2.08, 0.835], [1.55, 0.885], [0.82, 0.945], [0.3, 0.968], [-0.4, 0.982], [-1.2, 0.998], [-1.6, 1.0], [-1.88, 0.99], [-2.12, 0.975]],
+  crown: [[2.1, 0.03], [0.95, 0.028], [0.72, 0.004], [-1.46, 0.004], [-1.6, 0.012], [-2.28, 0.01]],
+  tumble: [[2.22, 0.12], [0.9, 0.1], [-1.6, 0.1], [-2.28, 0.115]],
+  nose: { halfWidth: [0.32, 0.69, 2.8], edge: [0.13, 0.79, 2.6], crown: [0.13, 0.012, 2], sill: [0.16, 0.32, 2], shoulder: [0.22, 0.6, 2.6] },
+  tail: { halfWidth: [0.3, 0.72, 2.8], edge: [0.1, 0.93, 3], crown: [0.1, 0.008, 2], sill: [0.16, 0.36, 2], shoulder: [0.22, 0.64, 2.6] },
+  noseRake: { length: 0.55, y: [[0.25, 0.05], [0.36, 0], [0.55, 0], [0.65, 0.018], [0.75, 0.05], [0.83, 0.1]], plan: 0.085 },
+  tailRake: { length: 0.42, y: [[0.3, 0.075], [0.44, 0], [0.58, 0], [0.66, 0.02], [0.74, 0.032], [0.9, 0.045], [0.96, 0.075]], plan: 0.065 },
+  cabin: {
+    cowl: 0.86,
+    roofFront: 0.04,
+    roofRear: -1.06,
+    deck: -1.66,
+    roofY: [[0.04, 1.415], [-0.5, 1.445], [-1.06, 1.41]],
+    rail: [0.62, 0.6],
+    inset: 0.03,
+    bulge: 0.014,
+    roofEdge: 0.05,
+    roofCrown: 0.035,
+    roofRound: 4,
+    pillars: [-0.38],
+    glassEnd: -1.22,
+    quarterGlass: false // the rear door glass runs right back to the C-pillar
+  },
+  doors: [0.82, -0.38, -1.0],
+  handles: [-0.22, -0.86],
+  front: {
+    lamp: { inner: [0.44, 0.668, 0.772], outer: [0.99, 0.668, 0.772], round: 0.016, drl: 'none', projectors: [0.4, 0.7], bowls: true, turn: 'inner' },
+    hood: 0.786,
+    grille: { outline: [[0, 0.6], [0.37, 0.6], [0.405, 0.635], [0.405, 0.758], [0.37, 0.782], [0, 0.782]], round: 0.03, frame: 0.016, blackFrame: true, emblem: [0.07, 0.03] },
+    intake: { outline: [[0, 0.35], [0.6, 0.35], [0.63, 0.42], [0, 0.42]], round: 0.025 },
+    crease: 0.57
+  },
   rear: {
-    lamp: { inner: [0.42, 0.792, 0.896], outer: [1.0, 0.784, 0.902], round: 0.032, led: 'blade' },
-    lid: [0.62, 0.555],
-    emblem: [0.845, 0.048, 0.034],
-    badges: [[-0.45, 0.705, 0.085, 0.013, 0], [0.46, 0.705, 0.07, 0.013, 1]],
-    crease: 0.525,
-    sensors: [0.5, [0.24, 0.62]], // parking sensors: y, |x| of each pair
-    reflector: [0.765, 0.468, 0.055, 0.011],
-    diffuser: 0.43
-  }
+    lamp: { inner: [0.56, 0.694, 0.905], outer: [1.0, 0.694, 0.915], slant: 0.17, round: 0.012, led: 'ribs', turn: 'amber' },
+    lid: [0.73, 0.694],
+    applique: [[0, 0.697], [0.551, 0.697], [0.676, 0.85], [0, 0.85]], // dark panel between the lamps (outline)
+    reverse: [[0.172, 0.706], [0.252, 0.706], [0.31, 0.842], [0.172, 0.842]], // reverse lamps either side of the plate
+    chromeStrip: [0.65, 0.694], // bottom, top; it runs round the corners under the lamps
+    emblem: [0.888, 0.058, 0.021],
+    beacon: [0.3, 0.888, 0.03], // the amber trouble light: x, y, radius
+    badges: [[-0.4, 0.886, 0.085, 0.012, 0]],
+    crease: [0.6, 0.44],
+    diffuser: 0.392, // the shadowed lip under the bumper, the exhausts poking out of it
+    exhaust: [0.66, 0.39, 0.034, 0.02]
+  },
+  plates: [0.485, 0.772],
+  sign: true,
+  chmsl: 'shelf', // the high brake light sits on the parcel shelf, at the foot of the backlight
+  interior: { seats: [-0.5, -1.16] }
 });
 BODY_SPECS.pickup = {
   name: 'pickup',
@@ -715,11 +758,20 @@ function bodyRake(spec) {
   return spec._rake;
 }
 
-// z of a body's nose (front) or tail surface on the centreline at height y, for plates & badges mounted on the tips
+// z of a body's nose (front) or tail surface on the centreline at height y, for plates & badges mounted on the tips:
+// the tip cap is flat between its rows (the tip section's points, see buildTipCap), so this follows those facets rather
+// than the smooth rake curve, which bows out past them where it is concave
 function carTipZ(spec, y, front = true) {
   const rake = bodyRake(spec);
   const z = front ? spec.zFront : spec.zRear;
-  return rake ? rake(0, y, z) : z;
+  if (!rake) return z;
+  const rows = bodyHalfProfile(bodyProfile(spec)(z), 1, spec).map((pt) => pt[1]);
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1];
+    const b = rows[i];
+    if (b > a && y >= a && y <= b) return lerp(rake(0, a, z), rake(0, b, z), (y - a) / (b - a));
+  }
+  return rake(0, y, z);
 }
 
 // Closes a raked body tip with a grid that follows the rake (a flat loft cap can't bow out at the bumper): each
@@ -1805,7 +1857,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       dSideG = max(dSideG, e);
     };
     for (const zp of cab.pillars) pillarCut(zp, 0.038);
-    if (cab.pillars.length === 1) pillarCut(cab.roofRear - 0.04, 0.014);
+    if (cab.pillars.length === 1 && cab.quarterGlass !== false) pillarCut(cab.roofRear - 0.04, 0.014);
     const front = polygonEdge(ax, p.z, frontGlassPlanes, 0.085, fwX, fwZ);
     const sideGlass = cov(dSideG, wSideG);
     const frontGlass = cov(front.d, front.w);
@@ -1841,10 +1893,13 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     const behind = (front ? tipZ.sub(p.z) : p.z.sub(tipZ)).sub(ax.mul(ax).mul(plan));
     const u = ax.add(max(behind, 0.0));
     const fu = fwX.add(fwZ);
-    const t = clamp(u.sub(u0).div(u1 - u0), 0.0, 1.0);
+    // lamp.slant: the inner edge leans outwards by this much from the bottom to the top (a lamp narrowing upwards)
+    const slant = lamp.slant || 0;
+    const uIn = slant ? float(u0).add(clamp(p.y.sub(b0).div(t0 - b0), 0.0, 1.0).mul(slant)) : float(u0);
+    const t = clamp(u.sub(uIn).div(float(u1).sub(uIn)), 0.0, 1.0);
     const bot = mix(float(b0), float(b1), t);
     const top = mix(float(t0), float(t1), t);
-    const dIn = float(u0).sub(u);
+    const dIn = uIn.sub(u).mul((t0 - b0) / Math.hypot(t0 - b0, slant));
     const dOut = u.sub(u1);
     const dBot = bot.sub(p.y);
     const dTop = p.y.sub(top);
@@ -1877,19 +1932,23 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     if (lamp.drl === 'l') drl = max(drl, band(L.dOut.add(0.035), ledW, L.fu).mul(step(0.25, L.v)));
     let bucket = float(0.0);
     let projLens = float(0.0);
+    let radial = float(1.0);
     const [u0, b0, t0] = lamp.inner;
     const [u1, b1, t1] = lamp.outer;
     const fr = L.fu.add(fwY).mul(0.5);
     for (const tk of lamp.projectors) {
       const bk = lerp(b0, b1, tk);
       const hk = lerp(t0, t1, tk) - bk;
-      const dist = length(vec2(L.u.sub(lerp(u0, u1, tk)), p.y.sub(bk + hk * 0.42)));
-      const rk = Math.min(hk * 0.36, 0.034);
+      // projectors: a small lens in a bucket; reflector lamps (bowls): a wide chrome parabola round the bulb
+      const dist = length(vec2(L.u.sub(lerp(u0, u1, tk)).mul(lamp.bowls ? 0.6 : 1.0), p.y.sub(bk + hk * (lamp.bowls ? 0.5 : 0.42))));
+      const rk = lamp.bowls ? hk * 0.46 : Math.min(hk * 0.36, 0.034);
       bucket = max(bucket, cov(dist.sub(rk), fr));
-      projLens = max(projLens, cov(dist.sub(rk * 0.6), fr));
+      projLens = max(projLens, cov(dist.sub(rk * (lamp.bowls ? 0.8 : 0.6)), fr));
+      if (lamp.bowls) radial = min(radial, dist.div(rk));
     }
-    const turn = smoothstep(0.86, 0.9, L.t).mul(lens);
-    return { housing, lens, v: L.v, drl: drl.mul(lens).mul(float(1.0).sub(turn)), bucket: bucket.mul(lens), projLens: projLens.mul(lens), turn };
+    // amber at the outer end round the corner, or (turn: 'inner') at the inner end with a side marker round the corner
+    const turn = (lamp.turn === 'inner' ? max(smoothstep(0.2, 0.17, L.t), smoothstep(0.93, 0.95, L.t)) : smoothstep(0.86, 0.9, L.t)).mul(lens);
+    return { housing, lens, v: L.v, drl: drl.mul(lens).mul(float(1.0).sub(turn)), bucket: bucket.mul(lens), projLens: projLens.mul(lens), radial, turn };
   };
   // Tail lamp: a red lens in a dark housing with its LED signature ('c': lines inside the top & bottom edges joined at
   // the outer end, 'outline': a loop inside the outline, 'stack': bars across the tail section), the white reverse lamp
@@ -1902,12 +1961,23 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     let led;
     let reverse;
     let turn;
+    let ribs = float(0.0);
     if (lamp.led === 'stack') {
       reverse = smoothstep(0.235, 0.215, L.v);
       turn = smoothstep(0.215, 0.235, L.v).mul(smoothstep(0.47, 0.45, L.v));
       const h = (lamp.inner[2] - lamp.inner[1]);
       led = float(0.0);
       for (const vk of [0.58, 0.7, 0.82]) led = max(led, band(L.v.sub(vk).mul(h), 0.006, fwY));
+    } else if (lamp.led === 'ribs') {
+      // bulb lamps: the red lens stepped into horizontal optics (each step's lower edge catches the light) over an
+      // amber turn signal along the bottom; the reverse lamps are elsewhere (rear.reverse)
+      const h = (lamp.inner[2] - lamp.inner[1] + lamp.outer[2] - lamp.outer[1]) / 2;
+      // (the amber section sits inside a red border, and stops short of the corner)
+      reverse = float(0.0);
+      turn = smoothstep(0.21, 0.19, L.v).mul(smoothstep(0.025, 0.045, L.v)).mul(smoothstep(0.02, 0.04, L.t)).mul(smoothstep(0.8, 0.77, L.t));
+      led = float(0.0);
+      const optic = fract(L.v.sub(0.22).mul(3.5 / 0.78)); // three and a half steps, ~5 cm each
+      ribs = mix(float(0.5), smoothstep(0.1, 0.95, optic), fadeMed(fwY.mul(h * 10.0))).mul(smoothstep(0.2, 0.24, L.v));
     } else {
       reverse = smoothstep(0.13, 0.11, L.t);
       turn = smoothstep(0.11, 0.13, L.t).mul(smoothstep(0.36, 0.34, L.t)).mul(step(L.v, 0.5));
@@ -1923,13 +1993,17 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     }
     const amber = lamp.turn === 'amber' ? turn : float(0.0);
     return {
-      housing, lens, v: L.v, t: L.t,
+      housing, lens, v: L.v, t: L.t, u: L.u, fu: L.fu, facing: L.facing,
       led: led.mul(lens).mul(float(1.0).sub(max(reverse, amber))),
       reverse: reverse.mul(lens),
       turn: turn.mul(lens),
-      amber: amber.mul(lens)
+      amber: amber.mul(lens),
+      ribs
     };
   };
+  // Reverse lamps on the trunk lid either side of the plate (rear.reverse: the right one's outline): their outline's
+  // distance & footprint
+  const lidReverse = () => outline(spec.rear.reverse, 0.006);
   const signGlyphMask = () => smoothstep(0.25, 0.58, sin(p.x.mul(90.0)))
     .mul(band(p.x, 0.17, fwX))
     .mul(band(p.y.sub(signY), 0.042, fwY))
@@ -1938,7 +2012,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     ? rrect(vec2(p.x, p.y.sub(spec.barnDoors[1] + 0.055)), vec2(0.16, 0.015), 0.005, fwXY)
         .mul(smoothstep(-0.15, -0.45, n.z))
         .mul(smoothstep(rearZone + 0.05, rearZone - 0.05, p.z))
-    : rrect(vec2(p.x, p.z.sub(cab.roofRear - 0.075)), vec2(0.16, 0.011), 0.005, fwXZ)
+    : rrect(vec2(p.x, p.z.sub(spec.chmsl === 'shelf' ? cab.deck + 0.07 : cab.roofRear - 0.075)), vec2(0.16, 0.011), 0.005, fwXZ)
         .mul(rearGlass())
         .mul(smoothstep(-0.05, -0.2, n.z));
 
@@ -1997,7 +2071,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       const inside = cov(e.d, e.w).mul(face);
       const fill = G.mesh === 'bars' ? slats(26.0) : honeycomb();
       bCol.assign(mix(bCol, color(0x0e1114).mul(fill), inside));
-      if (G.frame) bCol.assign(mix(bCol, trim, max(cov(e.d.sub(G.frame), e.w).mul(face).sub(inside), 0.0)));
+      if (G.frame) bCol.assign(mix(bCol, G.blackFrame ? color(0x111316) : trim, max(cov(e.d.sub(G.frame), e.w).mul(face).sub(inside), 0.0)));
       if (G.bars) {
         let bars = float(0.0);
         for (const yb of G.bars) bars = max(bars, band(p.y.sub(yb), 0.016, fwY));
@@ -2006,8 +2080,16 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       const top = G.outline[G.outline.length - 1][1];
       const bottom = G.outline[0][1];
       const badgeY = G.bars ? (G.bars[0] + G.bars[1]) / 2 : top - (top - bottom) * 0.28;
-      const badge = rrect(vec2(p.x, p.y.sub(badgeY)), vec2(0.034, 0.016), 0.012, fwXY).mul(inside);
-      bCol.assign(mix(bCol, color(0xd4dbe2), badge));
+      if (G.emblem) {
+        // an oval: a chrome ring round a dark field
+        const [ew, eh] = G.emblem;
+        const r = length(vec2(p.x.div(ew), p.y.sub(badgeY).div(eh)));
+        const rw = fwX.div(ew).add(fwY.div(eh)).mul(0.5);
+        bCol.assign(mix(mix(bCol, chrome(), cov(r.sub(1.0), rw).mul(inside)), color(0x1a1d21), cov(r.sub(0.78), rw).mul(inside)));
+      } else {
+        const badge = rrect(vec2(p.x, p.y.sub(badgeY)), vec2(0.034, 0.016), 0.012, fwXY).mul(inside);
+        bCol.assign(mix(bCol, color(0xd4dbe2), badge));
+      }
     }
     // Fog lamp pods, tow hooks, the black lip below
     if (F.fogs) {
@@ -2022,13 +2104,26 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       bCol.assign(mix(bCol, color(0xa8161c), rrect(vec2(ax.sub(hx), p.y.sub(hy)), vec2(0.03, 0.024), 0.01, fwXY).mul(face)));
     }
     if (F.lip) bCol.assign(mix(bCol, color(0x121418), cov(p.y.sub(F.lip), fwY).mul(smoothstep(0.85, 0.6, n.y))));
+    // A crease along the top of the bumper
+    if (F.crease) {
+      bCol.assign(bCol.mul(one.add(band(p.y.sub(F.crease - 0.006), 0.003, fwY).mul(0.12)).sub(band(p.y.sub(F.crease), 0.004, fwY).mul(0.22)).mul(face).add(one.sub(face))));
+    }
     // Headlamps
-    const { housing, lens, v, drl, bucket, projLens, turn } = headLampMasks();
+    const { housing, lens, v, drl, bucket, projLens, radial, turn } = headLampMasks();
     // Behind the clear lens, silver reflectors catching the sky (darker towards the bottom), or a smoked housing on
-    // blacked-out trims; each projector sits in a chrome bezel round a dark bucket
+    // blacked-out trims; each projector sits in a chrome bezel round a dark bucket, each reflector bowl is bright
+    // chrome round its bulb's cap, dimming in rings out to its rim
     const interior = mix(mix(color(0x5c6670), color(0xc9d1d9), v), mix(color(0x0e1115), color(0x2c333b), v.mul(v)), isBlackout);
-    const bezel = mix(color(0x9aa4ae), color(0x14171b), smoothstep(0.55, 0.85, bucket));
-    const lampCol = mix(mix(mix(interior, bezel, min(bucket.mul(1.6), 1.0)), color(0xeef4ff), projLens), color(0xffffff), drl);
+    let lampCol;
+    if (spec.front.lamp.bowls) {
+      // the bowls brighten towards their bulbs, each capped by a small grey shield
+      const bowl = mix(color(0xf2f6fa), interior, smoothstep(0.0, 1.1, radial));
+      const cap = smoothstep(0.16, 0.12, radial).mul(0.6);
+      lampCol = mix(mix(interior, bowl, bucket), color(0xa8b0b8), cap.mul(bucket));
+    } else {
+      const bezel = mix(color(0x9aa4ae), color(0x14171b), smoothstep(0.55, 0.85, bucket));
+      lampCol = mix(mix(mix(interior, bezel, min(bucket.mul(1.6), 1.0)), color(0xeef4ff), projLens), color(0xffffff), drl);
+    }
     bCol.assign(mix(bCol, color(0x121519), housing));
     bCol.assign(mix(bCol, mix(lampCol, color(0xc4782a), turn), lens));
     plateOn(bCol, plateCol, plateF, false, face);
@@ -2039,8 +2134,9 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     const back = smoothstep(0.12, 0.38, n.z.negate()).mul(smoothstep(0.85, 0.6, n.y));
     const trim = trimFinish();
     const [lidW, lidBottom] = R.lid;
+    const TL = tailLampMasks();
     // Shut lines: barn doors, or the trunk lid / liftgate / tailgate outline
-    const platePocket = R.bumper ? float(0.0) : rrect(vec2(p.x, p.y.sub(plateR + 0.01)), vec2(0.24, 0.105), 0.03, fwXY).mul(back);
+    const platePocket = R.bumper || R.applique ? float(0.0) : rrect(vec2(p.x, p.y.sub(plateR + 0.01)), vec2(0.24, 0.105), 0.03, fwXY).mul(back);
     if (spec.barnDoors) {
       const barnSide = ax.sub(lidW);
       const barnBottom = float(trunkBot).sub(p.y);
@@ -2058,7 +2154,36 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     bCol.assign(mix(bCol, bCol.mul(smoothstep(plateR - 0.09, plateR + 0.115, p.y).mul(-0.25).add(0.9)), platePocket));
     // A crease across the bumper: shadow under a highlight
     if (R.crease) {
-      bCol.assign(bCol.mul(one.add(band(p.y.sub(R.crease + 0.006), 0.003, fwY).mul(0.12)).sub(band(p.y.sub(R.crease), 0.004, fwY).mul(0.22)).mul(back).add(one.sub(back))));
+      for (const yc of [].concat(R.crease)) {
+        const groove = band(p.y.sub(yc), 0.004, fwY).mul(0.24).add(smoothstep(yc - 0.03, yc, p.y).mul(smoothstep(yc + 0.001, yc - 0.004, p.y)).mul(0.1));
+        bCol.assign(bCol.mul(one.add(band(p.y.sub(yc + 0.007), 0.003, fwY).mul(0.14)).sub(groove).mul(back).add(one.sub(back))));
+      }
+    }
+    // A chrome strip across the tail under the lamps, carrying on round the corners as far as they do: convex, so it
+    // mirrors the street along its bottom & the sky along its top; a dark gap to the bumper below it
+    if (R.chromeStrip) {
+      const [sb, st] = R.chromeStrip;
+      const strip = cov(float(sb).sub(p.y), fwY).mul(cov(p.y.sub(st), fwY)).mul(cov(TL.u.sub(R.lamp.outer[0]), TL.fu)).mul(TL.facing);
+      const g = p.y.sub(sb).div(st - sb);
+      const stripCol = mix(mix(color(0x2a2f35), color(0x8d969f), smoothstep(0.0, 0.4, g)), color(0xf1f5f9), smoothstep(0.45, 0.62, g));
+      bCol.assign(mix(bCol, stripCol, strip));
+      bCol.assign(bCol.mul(one.sub(band(p.y.sub(sb - 0.004), 0.0025, fwY).mul(cov(TL.u.sub(R.lamp.outer[0]), TL.fu)).mul(TL.facing).mul(0.45))));
+    }
+    // The gloss-black panel across the trunk lid between the lamps, and the reverse lamps in it either side of the
+    // plate: clear, fluted lenses over chrome
+    if (R.applique) {
+      const e = outline(R.applique, 0.008);
+      const ab = R.applique[0][1];
+      const at = R.applique[2][1];
+      bCol.assign(mix(bCol, mix(color(0x1b1e22), color(0x3d4248), smoothstep(ab, at, p.y)), cov(e.d, e.w).mul(back)));
+    }
+    if (R.reverse) {
+      const e = lidReverse();
+      const yb = R.reverse[0][1];
+      const yt = R.reverse[2][1];
+      const flutes = mix(float(0.88), smoothstep(0.1, 0.9, fract(p.y.mul(90.0))).mul(0.3).add(0.75), fadeFine(fwY.mul(4.0)));
+      const lensCol = mix(color(0x8c96a0), color(0xeef3f8), smoothstep(yb, yt, p.y)).mul(flutes);
+      bCol.assign(mix(mix(bCol, color(0xc4ccd4), cov(e.d.sub(0.004), e.w).mul(back)), lensCol, cov(e.d, e.w).mul(back)));
     }
     // Centre emblem: a chrome oval ring round a dark field; chrome lettering on the lid
     if (R.emblem) {
@@ -2070,6 +2195,15 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       bCol.assign(mix(mix(bCol, chrome(), ring), color(0x1a1d21), field));
     }
     bCol.assign(mix(bCol, chrome(), badgeInk.mul(back)));
+    // The amber trouble light on the trunk lid: a dome on a chrome base, lit from above
+    if (R.beacon) {
+      const [bx, by, br] = R.beacon;
+      const d = length(vec2(p.x.sub(bx), p.y.sub(by)));
+      const fw = fwX.add(fwY).mul(0.5);
+      const glint = smoothstep(br * 0.45, 0.0, length(vec2(p.x.sub(bx - br * 0.25), p.y.sub(by + br * 0.4))));
+      const dome = mix(mix(color(0x9c3c06), color(0xff9a24), smoothstep(br, br * 0.2, d)).mul(one.sub(band(d.sub(br * 0.55), 0.002, fw).mul(0.3))), color(0xffe2b0), glint);
+      bCol.assign(mix(mix(bCol, chrome(), cov(d.sub(br - 0.0), fw).mul(back)), dome, cov(d.sub(br - 0.004), fw).mul(back)));
+    }
     // Tailgate: handle, stamped name; the step bumper below with its rubber step & the plate
     if (R.handle) bCol.assign(mix(bCol, color(0x14171b), rrect(vec2(p.x, p.y.sub(R.handle)), vec2(0.09, 0.017), 0.006, fwXY).mul(back)));
     if (R.lettering) {
@@ -2091,13 +2225,11 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       bCol.assign(mix(bCol, color(0x16181b), stepPad));
     }
     // Diffuser & exhausts, skid plate, reflectors
-    if (R.diffuser) {
-      bCol.assign(mix(bCol, color(0x14171b), cov(p.y.sub(R.diffuser), fwY).mul(back)));
-      if (R.exhaust) {
-        const [ex, ey] = R.exhaust;
-        const exhaust = rrectEdge(vec2(ax.sub(ex), p.y.sub(ey)), vec2(0.052, 0.018), 0.009, fwXY);
-        bCol.assign(mix(mix(bCol, color(0x828a92), cov(exhaust.d, exhaust.w).mul(back)), color(0x060709), cov(exhaust.d.add(0.006), exhaust.w).mul(back)));
-      }
+    if (R.diffuser) bCol.assign(mix(bCol, color(0x14171b), cov(p.y.sub(R.diffuser), fwY).mul(back)));
+    if (R.exhaust) {
+      const [ex, ey, ew = 0.052, eh = 0.018] = R.exhaust;
+      const exhaust = rrectEdge(vec2(ax.sub(ex), p.y.sub(ey)), vec2(ew, eh), Math.min(ew, eh) * 0.6, fwXY);
+      bCol.assign(mix(mix(bCol, color(0x828a92), cov(exhaust.d, exhaust.w).mul(back)), color(0x060709), cov(exhaust.d.add(0.006), exhaust.w).mul(back)));
     }
     if (R.skid) {
       const e = outline(R.skid, 0.02);
@@ -2116,12 +2248,15 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     }
     // Tail lamps: a glossy red lens over chrome reflectors (brighter through its middle), its LEDs, the white reverse
     // lamp; the trunk lid's shut line runs through the lamps where they cross onto the lid
-    const { housing, lens, v, led, reverse, amber } = tailLampMasks();
-    const ruby = mix(color(0x7a0c15), color(0xb01c27), smoothstep(0.0, 0.5, v).mul(smoothstep(1.0, 0.55, v)).mul(0.7).add(v.mul(0.3)));
-    const tailCol = mix(mix(mix(ruby, color(0xff3a44), led), color(0xd77016), amber), color(0xe2e9ef), reverse);
+    const { housing, lens, v, led, reverse, amber, ribs } = TL;
+    const ruby = R.lamp.led === 'ribs'
+      ? mix(color(0x5c0810), color(0xc8202f), ribs)
+      : mix(color(0x7a0c15), color(0xb01c27), smoothstep(0.0, 0.5, v).mul(smoothstep(1.0, 0.55, v)).mul(0.7).add(v.mul(0.3)));
+    const amberCol = R.lamp.led === 'ribs' ? mix(color(0xb4500a), color(0xf08a1c), smoothstep(0.0, 0.17, v)) : color(0xd77016);
+    const tailCol = mix(mix(mix(ruby, color(0xff3a44), led), amberCol, amber), color(0xe2e9ef), reverse);
     bCol.assign(mix(bCol, color(0x1a0a0e), housing));
     bCol.assign(mix(bCol, tailCol, lens));
-    if (!spec.barnDoors && !R.bumper) bCol.assign(bCol.mul(one.sub(band(ax.sub(lidW), 0.003, fwX).mul(housing).mul(0.6))));
+    if (!spec.barnDoors && !R.bumper && !R.applique) bCol.assign(bCol.mul(one.sub(band(ax.sub(lidW), 0.003, fwX).mul(housing).mul(0.6))));
     plateOn(bCol, plateCol, plateR, !R.bumper, back);
   };
 
@@ -2376,12 +2511,18 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       }).ElseIf(p.z.lessThan(rearZone), () => {
         const { lens, led, reverse, turn, amber } = tailLampMasks();
         const redArea = lens.mul(one.sub(max(reverse, amber)));
-        const redLens = max(redArea.mul(0.55), led);
+        const redLens = spec.rear.lamp.led === 'ribs' ? redArea.mul(0.8) : max(redArea.mul(0.55), led);
         const tail = color(0xff0c16).mul(redLens.mul(brake.mul(2.3).add(nightHeadlamp.mul(0.55)).add(0.24)));
         // Turn signals: an amber section, or the red lamp's own section brightening
         const turnCol = spec.rear.lamp.turn === 'amber' ? color(0xff9812) : color(0xff1a10);
         let rearEmit = tail.add(turnCol.mul(turn.mul(blink).mul(2.4)));
-        if (fixed) rearEmit = rearEmit.add(color(0xf0f6ff).mul(reverse).mul(state.w).mul(1.8));
+        if (fixed) {
+          const lidLamps = spec.rear.reverse ? (() => {
+            const e = lidReverse();
+            return cov(e.d, e.w).mul(smoothstep(0.12, 0.38, n.z.negate()));
+          })() : float(0.0);
+          rearEmit = rearEmit.add(color(0xf0f6ff).mul(max(reverse, lidLamps)).mul(state.w).mul(1.8));
+        }
         emit.assign(rearEmit);
       });
     }).ElseIf(isSign.greaterThan(0.5), () => {
