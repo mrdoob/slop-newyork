@@ -1,6 +1,6 @@
 import { blockAt } from './city-config.js';
 import { createPedestrianRoutes } from './pedestrian-routes.js';
-import { PersonCrowd, PersonRig, PEDESTRIAN_DIVE_DURATION, PRONE_RISE, SUPINE_RISE, RISE_BLEND } from './pedestrians.js';
+import { PersonCrowd, PersonRig, PRONE_RISE, SUPINE_RISE, RISE_BLEND } from './pedestrians.js';
 import { Ragdoll, RAGDOLL_POINTS, moverLocal } from './ragdoll.js';
 
 // Local pedestrian population: connected walks, curb queues, conversations, keeping out of each other's way and player
@@ -125,9 +125,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       avoidSpeed: 0,
       avoidT: 0,
       resumeDir: 0,
-      dodge: 0,
-      dodgeTarget: 0,
-      shift: 0, // off its walking line, passing someone (as dodge: to the track's right), and where it is heading
+      shift: 0, // off its walking line, passing someone (to the track's right), and where it is heading
       shiftTarget: 0,
       blocked: 0, // seconds stood behind someone or something standing in its way
       steerAt: 0, // when it may next choose a side to pass on
@@ -135,9 +133,6 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       steerCap: Infinity,
       busy: 1, // how busy the sidewalks are where it last chose where to go (crowdDensity)
       index: i,
-      diveStart: -Infinity,
-      diveHeading: 0,
-      diveT: 0,
       type: 'pedestrian',
       fall: null, // knocked down: see knockDown()
       ragdoll: null,
@@ -310,12 +305,10 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       p.walkAt = -1;
       p.avoidUntil = 0;
       p.resumeDir = 0;
-      p.dodge = p.dodgeTarget = 0;
       p.shift = p.shiftTarget = 0;
       p.blocked = 0;
       p.steerAt = 0;
       p.steerRoom = p.steerCap = Infinity;
-      p.diveStart = -Infinity;
       p.fall = null;
       p.avoidCheck = clock + Math.random() * PED_AVOID_INTERVAL;
       p.nextRoute = null;
@@ -343,8 +336,6 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   const PED_ESCAPE_ACCEL = 9;
   const PED_ESCAPE_BRAKE = 6;
   const PED_LOOKAHEAD = 1.5;
-  const PED_DIVE_DISTANCE = 1.9;
-  const PED_DODGE_SPEED = PED_DIVE_DISTANCE / 0.5;
 
   // Limit an escape to the current validated track, respecting curbs and people in either direction.
   // Only threatened pedestrians do this local scan, at most once every 120 ms.
@@ -365,32 +356,26 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
 
   // Sweep the pedestrian against the player's oriented footprint. Short linear segments account for braking,
   // acceleration and track ends without missing fast vehicles between samples or allocating temporary vectors.
-  function playerContactTime(p, speed, room, emergency = true, dodgeTarget = p.dodgeTarget, diving = false) {
+  function playerContactTime(p, speed, room, emergency = true) {
     const dir = speed < 0 ? -1 : speed > 0 ? 1 : p.dir;
-    let v = diving ? speed : dir === p.dir ? p.v * p.dir : 0;
+    let v = dir === p.dir ? p.v * p.dir : 0;
     let moved = 0;
-    let side = p.dodge;
     const dx = p.x - player.x, dz = p.z - player.z;
     let x = dx * player.fz - dz * player.fx, z = dx * player.fx + dz * player.fz;
     const ux = p.ux * player.fz - p.uz * player.fx, uz = p.ux * player.fx + p.uz * player.fz;
     const vx = player.vx * player.fz - player.vz * player.fx, vz = player.vx * player.fx + player.vz * player.fz;
-    const sideways = dodgeTarget !== p.dodge;
-    const diveX = Math.abs(sideways ? uz : ux), diveZ = Math.abs(sideways ? ux : uz);
-    // A prone pedestrian is longer than a standing one; project that body into the car's frame too.
-    const halfW = player.halfW + (diving ? diveX + 0.4 * diveZ : 0.45);
-    const halfL = player.halfL + (diving ? diveZ + 0.4 * diveX : 0.45);
+    const halfW = player.halfW + 0.45;
+    const halfL = player.halfL + 0.45;
     const acceleration = emergency ? PED_ESCAPE_ACCEL : PED_ACCEL;
     const braking = emergency ? PED_ESCAPE_BRAKE : 2 * PED_BRAKE;
     const step = 0.25;
     for (let time = 0; time < PED_LOOKAHEAD; time += step) {
       const rate = Math.abs(speed) > Math.abs(v) ? acceleration : braking;
-      const nextV = diving ? speed : v + clamp(speed - v, -rate * step, rate * step);
+      const nextV = v + clamp(speed - v, -rate * step, rate * step);
       const distance = Math.min(room - moved, Math.abs((v + nextV) * 0.5 * step));
       moved += distance;
-      const sideStep = clamp(dodgeTarget - side, -(diving || dodgeTarget ? PED_DODGE_SPEED : 1.8) * step, (diving || dodgeTarget ? PED_DODGE_SPEED : 1.8) * step);
-      side += sideStep;
-      const sx = ux * dir * distance + uz * sideStep - vx * step;
-      const sz = uz * dir * distance - ux * sideStep - vz * step;
+      const sx = ux * dir * distance - vx * step;
+      const sz = uz * dir * distance - vz * step;
       let enter = 0, exit = 1;
       for (let axis = 0; axis < 2; axis++) {
         const pos = axis ? z : x, delta = axis ? sz : sx;
@@ -418,28 +403,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     p.waiting = false;
   }
 
-  function dodgeClear(p, offset, diving = false) {
-    // Reserve space for the outstretched body as well as its centre when landing.
-    const end = offset + (diving ? Math.sign(offset - p.dodge) * 0.9 : 0);
-    if (!pedRoutes.canDodge(p, end + p.shift)) return false;
-    const dx = p.uz * (end - p.dodge), dz = -p.ux * (end - p.dodge);
-    const lengthSq = dx * dx + dz * dz;
-    for (const q of peds) {
-      if (q === p || !q.placed) continue;
-      const t = clamp(((q.x - p.x) * dx + (q.z - p.z) * dz) / lengthSq, 0, 1);
-      if ((p.x + dx * t - q.x) ** 2 + (p.z + dz * t - q.z) ** 2 < QUEUE_GAP ** 2) return false;
-    }
-    return true;
-  }
-
   function avoidPlayer(p) {
-    // Commit to the landing and get-up; steering or walking during this pose would slide across the ground.
-    if (clock - p.diveStart < PEDESTRIAN_DIVE_DURATION) return;
-    // Stay off the walking line until the approaching vehicle has passed; returning is swept too.
-    if (p.dodgeTarget && clock >= p.avoidUntil) {
-      if ((!p.dodge || dodgeClear(p, 0)) && (!pedRange || playerContactTime(p, 0, 0, true, 0) === Infinity)) p.dodgeTarget = 0;
-      else p.avoidUntil = clock + 0.6;
-    }
     // A retreat is temporary: once clear, turn back toward the original destination instead of walking into
     // the people behind. Corner transitions below discard this old direction along with the escape boundary.
     if (p.resumeDir && (clock >= p.avoidUntil || !pedRange)) {
@@ -450,29 +414,27 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       p.resumeDir = 0;
       p.avoidCheck = 0;
     }
-    if (!pedRange) { if (!p.dodgeTarget) p.avoidUntil = 0; return; }
+    if (!pedRange) { p.avoidUntil = 0; return; }
     const dx = p.x - player.x, dz = p.z - player.z;
     if (dx * dx + dz * dz > pedRange * pedRange || clock < p.avoidCheck) return;
     p.avoidCheck = clock + PED_AVOID_INTERVAL;
     // A standing or creeping vehicle is walked round (steer), not run from
     if (clock >= p.avoidUntil && player.vx * player.vx + player.vz * player.vz < SLOW_PLAYER * SLOW_PLAYER) return;
     const ahead = p.dir > 0 ? p.len - p.t : p.t;
-    const dodging = p.dodge !== 0 || p.dodgeTarget !== 0;
-    const normalSpeed = dodging || p.pause > 0 || p.conversation || p.waiting ? 0 : p.speed;
+    const normalSpeed = p.pause > 0 || p.conversation || p.waiting ? 0 : p.speed;
     const normalRoom = p.node && curbProgress(p) <= KERB + 1e-6 && !mayCross(p) ? Math.max(0, KERB - curbProgress(p)) : ahead;
     const avoiding = clock < p.avoidUntil;
     const escapeAhead = Math.max(0, Math.min(ahead, (p.avoidT - p.t) * p.dir));
-    const contact = playerContactTime(p, p.dir * normalSpeed, normalRoom, false);
-    if (contact === Infinity
+    if (playerContactTime(p, p.dir * normalSpeed, normalRoom, false) === Infinity
       && (!avoiding || playerContactTime(p, p.dir * p.avoidSpeed, escapeAhead) === Infinity)) return;
 
     const forward = escapeRoom(p, p.dir);
     const stop = playerContactTime(p, 0, forward);
     const inRoad = p.node && p.t > 2 && p.t < p.len - 2;
-    let dir = p.dir, speed = 0, room = forward, best = stop, dodgeTarget = p.dodgeTarget;
-    if (!dodging && ((inRoad && player.vx * player.vx + player.vz * player.vz > 1) || stop !== Infinity)) {
+    let dir = p.dir, speed = 0, room = forward;
+    if ((inRoad && player.vx * player.vx + player.vz * player.vz > 1) || stop !== Infinity) {
       speed = PED_ESCAPE_SPEED;
-      best = playerContactTime(p, dir * speed, forward);
+      let best = playerContactTime(p, dir * speed, forward);
       // Corner connectors need their pending route; only full sidewalk/crosswalk tracks can turn around.
       if (p.node || p.route?.edge) {
         const back = escapeRoom(p, -dir);
@@ -482,40 +444,15 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
           dir = -dir; room = back; best = retreat;
         }
       }
-      if (stop > best) { dir = p.dir; speed = 0; room = forward; best = stop; }
+      if (stop > best) { dir = p.dir; speed = 0; room = forward; }
     }
-    if (!inRoad && player.vx * player.vx + player.vz * player.vz > 4 && best !== Infinity) {
-      for (const offset of [p.dodge - PED_DIVE_DISTANCE, p.dodge + PED_DIVE_DISTANCE]) {
-        if (!dodgeClear(p, offset, true)) continue;
-        const escape = playerContactTime(p, 0, 0, true, offset, true);
-        if (escape > best + 0.1) {
-          best = escape; dodgeTarget = offset; dir = p.dir; speed = 0; room = 0;
-        }
-      }
-    }
-    const sideDive = Math.abs(dodgeTarget - p.dodgeTarget) > 0.5;
-    const diveT = p.t + dir * PED_DIVE_DISTANCE;
-    const flatLanding = !p.node || (Math.abs(diveT - 2) > 1 && Math.abs(diveT - (p.len - 2)) > 1);
-    // In a crosswalk, dive along the checked escape route when the car is close. Include the prone body in
-    // the room check and predict the stop at the landing, rather than assuming they keep running afterwards.
-    const forwardDive = !dodging && !sideDive && contact < 1 && speed > 0 && room >= PED_DIVE_DISTANCE + 0.9 && flatLanding
-      && player.vx * player.vx + player.vz * player.vz > 4
-      && playerContactTime(p, dir * PED_DODGE_SPEED, PED_DIVE_DISTANCE, true, dodgeTarget, true) === Infinity;
-    if (sideDive || forwardDive) {
-      p.diveStart = clock;
-      p.diveT = forwardDive ? diveT : p.t;
-      const side = Math.sign(dodgeTarget - p.dodge);
-      p.diveHeading = forwardDive ? Math.atan2(p.ux * dir, p.uz * dir) : Math.atan2(p.uz * side, -p.ux * side);
-      speed = 0;
-    }
-    p.dodgeTarget = dodgeTarget;
     if (p.conversation) endConversation(p.conversation);
     if (!p.resumeDir) p.resumeDir = p.dir;
     if (dir !== p.dir) turnPed(p, dir);
     p.pause = 0;
     p.avoidSpeed = speed;
     p.avoidT = p.t + dir * room;
-    p.avoidUntil = Math.max(clock + 0.6, p.diveStart + PEDESTRIAN_DIVE_DURATION);
+    p.avoidUntil = clock + 0.6;
     p.restTime = Math.max(p.restTime, clock + 5);
     p.socialTime = Math.max(p.socialTime, clock + 5);
   }
@@ -581,13 +518,13 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   // sidewalk (the crosswalk's road surface is open)
   function shiftFits(p, shift, ahead, wide) {
     const limit = p.node ? (wide ? ROUND_CAR : STRIPE_SHIFT) : wide ? 2.6 : LINE_SHIFT;
-    if (Math.abs(shift + p.dodge) > limit) return false;
+    if (Math.abs(shift) > limit) return false;
     if (p.node) return true;
     probe.ax = p.ax; probe.az = p.az; probe.ux = p.ux; probe.uz = p.uz;
     probe.t = clamp(p.t + p.dir * ahead, 0, p.len);
-    probe.x = p.ax + p.ux * probe.t + p.uz * (p.dodge + p.shift);
-    probe.z = p.az + p.uz * probe.t - p.ux * (p.dodge + p.shift);
-    return pedRoutes.canDodge(probe, shift + p.dodge);
+    probe.x = p.ax + p.ux * probe.t + p.uz * p.shift;
+    probe.z = p.az + p.uz * probe.t - p.ux * p.shift;
+    return pedRoutes.canDodge(probe, shift);
   }
 
   // Are p & q bound for the same crosswalk, the same way? (q, standing, is then queuing ahead of p, not in its way)
@@ -774,8 +711,6 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   const walkedNodes = [];
   function walk(p, dt) {
     const avoiding = clock < p.avoidUntil;
-    const diving = clock - p.diveStart < PEDESTRIAN_DIVE_DURATION;
-    const dodging = p.dodge !== 0 || p.dodgeTarget !== 0;
     const brake = avoiding ? PED_ESCAPE_BRAKE : PED_BRAKE;
     if (p.pause > 0) p.pause = Math.max(0, p.pause - dt);
     const ahead = p.dir > 0 ? p.len - p.t : p.t;
@@ -817,7 +752,6 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     }
     // (an easier pace where it's busy)
     let vMax = avoiding ? p.avoidSpeed : p.pause > 0 || p.conversation ? 0 : p.speed * clamp(1.12 - 0.1 * p.busy, 0.72, 1);
-    if (dodging || diving) p.v = vMax = 0;
     if (!p.nextRoute) vMax = Math.min(vMax, Math.sqrt(2 * brake * ahead));
     let room = Infinity;
     if (!p.node && p.nextRoute) {
@@ -880,7 +814,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     if (avoiding) room = Math.min(room, Math.max(0, (p.avoidT - p.t) * p.dir));
     // Keep out of other people's way (and the player's), except escaping a vehicle or queuing at the curb (the queue
     // keeps its own spacing)
-    if (!avoiding && !dodging && !diving && vMax > 0 && !(p.node && curbProgress(p) <= KERB + 0.5)) {
+    if (!avoiding && vMax > 0 && !(p.node && curbProgress(p) <= KERB + 0.5)) {
       // (beyond 70 m, a third of them a frame, holding the room they found, less the ground covered since)
       const fdx = p.x - focusX, fdz = p.z - focusZ;
       if (fdx * fdx + fdz * fdz < 4900 || (frame + p.index) % 3 === 0) {
@@ -898,16 +832,16 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     }
     vMax = Math.min(vMax, Math.sqrt(2 * brake * room));
     p.v += clamp(vMax - p.v, -(avoiding ? brake : 2 * brake) * dt, (avoiding ? PED_ESCAPE_ACCEL : PED_ACCEL) * dt);
-    const movement = diving ? Math.min(Math.abs(p.diveT - p.t), PED_DODGE_SPEED * dt) : Math.min(p.v * dt, room);
+    const movement = Math.min(p.v * dt, room);
     if (p.v * dt > room) p.v = 0;
     let t = p.t + p.dir * movement;
     const reachesCurb = !!p.node && curbProgress(p) <= KERB + 1e-6 && (p.dir > 0 ? t : p.len - t) >= KERB - 1e-6;
-    p.waiting = !diving && reachesCurb && !canCross;
+    p.waiting = reachesCurb && !canCross;
     if (p.waiting) {
       t = p.dir > 0 ? Math.min(t, KERB) : Math.max(t, p.len - KERB);
       p.v = 0;
     }
-    if (!dodging && !diving && (p.dir > 0 ? t >= p.len : t <= 0)) {
+    if (p.dir > 0 ? t >= p.len : t <= 0) {
       t = p.dir > 0 ? p.len : 0;
       if (p.nextRoute) {
         p.avoidUntil = 0;
@@ -935,15 +869,10 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       }
     }
     p.t = t;
-    const dodgeStep = (diving || p.dodgeTarget ? PED_DODGE_SPEED : 1.8) * dt;
-    p.dodge += clamp(p.dodgeTarget - p.dodge, -dodgeStep, dodgeStep);
-    if (!dodging && !diving) {
-      const shiftStep = (p.v > 0.2 ? SHIFT_RATE : 0.4) * dt;
-      p.shift += clamp(p.shiftTarget - p.shift, -shiftStep, shiftStep);
-    }
-    const side = p.dodge + p.shift;
-    p.x = p.ax + p.ux * t + p.uz * side;
-    p.z = p.az + p.uz * t - p.ux * side;
+    const shiftStep = (p.v > 0.2 ? SHIFT_RATE : 0.4) * dt;
+    p.shift += clamp(p.shiftTarget - p.shift, -shiftStep, shiftStep);
+    p.x = p.ax + p.ux * t + p.uz * p.shift;
+    p.z = p.az + p.uz * t - p.ux * p.shift;
     if (p.node && ((t > KERB && t < p.len - KERB) || (p.waiting && walkOn(p.side)))) {
       p.coord = p.side >= 2 ? p.x : p.z;
       if (!p.node.walkers.length) walkedNodes.push(p.node);
@@ -1032,16 +961,13 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   // the next leg of their route over its last metre so the body rounds corners instead of swinging about on the spot.
   function renderPed(p, dt) {
     const draw = !hasView || visible(p.x, p.z, 7);
-    const diveTime = clock - p.diveStart;
-    const diving = diveTime < PEDESTRIAN_DIVE_DURATION;
     const dx = p.x - focusX, dz = p.z - focusZ;
     const distSq = dx * dx + dz * dz;
-    if (!draw && !diving && distSq > 2500) {
+    if (!draw && distSq > 2500) {
       p.rig.placed = false;
       return;
     }
     const partner = p.conversation && (p.conversation.a === p ? p.conversation.b : p.conversation.a);
-    const sideStep = p.dodgeTarget - p.dodge;
     let fx = p.ux * p.dir, fz = p.uz * p.dir;
     const ahead = p.dir > 0 ? p.len - p.t : p.t, leg = p.nextRoute?.[p.nextLeg];
     if (leg && ahead < 1 && p.v >= 0.3) {
@@ -1059,10 +985,8 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       fx += p.uz * lateral;
       fz -= p.ux * lateral;
     }
-    const heading = diving ? p.diveHeading : partner ? Math.atan2(partner.x - p.x, partner.z - p.z)
-      : Math.abs(sideStep) > 0.01 ? Math.atan2(p.uz * Math.sign(sideStep), -p.ux * Math.sign(sideStep))
-      : Math.atan2(fx, fz);
-    p.rig.update(dt, p.x, p.z, heading, pedGround, p, 0, draw, diving ? diveTime : -1);
+    const heading = partner ? Math.atan2(partner.x - p.x, partner.z - p.z) : Math.atan2(fx, fz);
+    p.rig.update(dt, p.x, p.z, heading, pedGround, p, 0, draw);
     if (!draw) return;
     pedCrowd.add(p.rig, Math.sqrt(distSq));
   }
@@ -1171,9 +1095,8 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       if (rvx * rvx + rvz * rvz < KNOCK_SPEED * KNOCK_SPEED) continue;
       if (!posed) {
         // the pose is the last one drawn: one out of view (still stepping its feet) is posed now
-        const diving = clock - p.diveStart < PEDESTRIAN_DIVE_DURATION;
         if (hasView && !visible(p.x, p.z, 7)) {
-          if (diving || p.fall) return null;
+          if (p.fall) return null;
           rig.solve();
         }
         rig.ragdollPoints(_points);
@@ -1187,7 +1110,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     return null;
   }
 
-  // p goes limp where it stands (or dives, or gets up), as it moves; the vehicle does the rest
+  // p goes limp where it stands (or gets up), as it moves; the vehicle does the rest
   function knockDown(p, mover) {
     if (p.conversation) endConversation(p.conversation);
     const rig = p.rig;
@@ -1205,8 +1128,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     p.pause = 0;
     p.waiting = false;
     p.walkAt = -1;
-    p.diveStart = -Infinity;
-    p.dodge = p.dodgeTarget = p.shift = p.shiftTarget = 0;
+    p.shift = p.shiftTarget = 0;
     if (onHit) onHit(p, mover);
   }
 
@@ -1242,7 +1164,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
         f.time = 0;
         rig.update(dt, p.x, p.z, f.yaw, worldGround, p, 0, draw);
       } else {
-        rig.rise(rise.start + t, f.x, f.z, f.yaw, f.ground, rise);
+        rig.rise(t, f.x, f.z, f.yaw, f.ground, rise);
         if (t < RISE_BLEND) rig.blendPose(f.pose, 1 - smoothstep(t / RISE_BLEND));
       }
     } else {
@@ -1271,7 +1193,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     if (draw) pedCrowd.add(rig, Math.sqrt(distSq));
   }
 
-  // From however the ragdoll lies: face down, the end of a dive (head first); face up, sitting up (feet first)
+  // From however the ragdoll lies: face down, pushing up off the ground (head first); face up, sitting up (feet first)
   function startRise(p) {
     const f = p.fall, rig = p.rig, ragdoll = p.ragdoll;
     rig.fromRagdoll(ragdoll.x);

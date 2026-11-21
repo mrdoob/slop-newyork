@@ -14,8 +14,7 @@ function crossing() {
       './ragdoll.js': { Ragdoll: class {}, RAGDOLL_POINTS: {}, moverLocal: () => {} },
       './pedestrians.js': {
         PersonRig: class { update() {} },
-        PersonCrowd: class { meshes = []; begin() {} add() {} end() {} },
-        PEDESTRIAN_DIVE_DURATION: 2.5
+        PersonCrowd: class { meshes = []; begin() {} add() {} end() {} }
       }
     }
   });

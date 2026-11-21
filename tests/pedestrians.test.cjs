@@ -626,15 +626,15 @@ test('PeopleNear hoisted varyings produce identical fragment color and roughness
   }
 });
 
-test('renderPed skips hidden rig updates beyond 50m while preserving <=50m footstep audio gait and dives', () => {
+test('renderPed skips hidden rig updates beyond 50m while preserving <=50m footstep audio gait', () => {
   const match = pedestrianSystemSource.match(/  function renderPed\([^]*?\n  \}/);
   assert.ok(match, 'renderPed is present');
 
-  const runRenderPed = ({ inView, x, z, diveStart = -Infinity, clock = 10 }) => {
+  const runRenderPed = ({ inView, x, z }) => {
     let calls = 0;
     let drawn = 0;
     const ped = {
-      x, z, ux: 0, uz: 1, dir: 1, dodge: 0, dodgeTarget: 0, diveStart, diveHeading: 0.5,
+      x, z, ux: 0, uz: 1, dir: 1,
       rig: { placed: true, update() { calls++; } }
     };
     const renderPed = vm.runInNewContext(`(${match[0].trim()})`, {
@@ -643,8 +643,6 @@ test('renderPed skips hidden rig updates beyond 50m while preserving <=50m foots
       pedGround: () => 0,
       focusX: 0,
       focusZ: 0,
-      clock,
-      PEDESTRIAN_DIVE_DURATION: 2.5,
       Math,
       pedCrowd: { add() { drawn++; } }
     });
@@ -658,16 +656,11 @@ test('renderPed skips hidden rig updates beyond 50m while preserving <=50m foots
   assert.equal(nearHidden.drawn, 0);
   assert.equal(nearHidden.placed, true);
 
-  // Hidden beyond 50 m and not diving: rig.update is skipped and rig is marked unplaced for clean re-entry
+  // Hidden beyond 50 m: rig.update is skipped and rig is marked unplaced for clean re-entry
   const farHidden = runRenderPed({ inView: false, x: 45, z: 45 });
   assert.equal(farHidden.calls, 0);
   assert.equal(farHidden.drawn, 0);
   assert.equal(farHidden.placed, false);
-
-  // Hidden beyond 50 m while diving: dive still completes
-  const farDiving = runRenderPed({ inView: false, x: 45, z: 45, diveStart: 9.0, clock: 10.0 });
-  assert.equal(farDiving.calls, 1);
-  assert.equal(farDiving.drawn, 0);
 
   // Visible beyond 50 m: poses and draws normally
   const farVisible = runRenderPed({ inView: true, x: 80, z: 80 });

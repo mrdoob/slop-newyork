@@ -39,7 +39,7 @@ import { RAGDOLL_POINTS } from './ragdoll.js';
 // Skinned characters for pedestrian-system.js and the player controllers.
 // Each crowd level uses one instanced draw, with 15-bone poses in a storage buffer and seeded appearance.
 // PersonRig plants footsteps in world space and uses two-bone IK to place the legs; it also handles
-// turns, curb steps, running, jumping, evasive dives, cycling and weight shifts while standing.
+// turns, curb steps, running, jumping, getting up after a fall, cycling and weight shifts while standing.
 
 // ============================================================================
 // 1. SKELETON
@@ -1415,23 +1415,6 @@ const IDLE = { shift: 0.045, roll: 0.055, drop: 0.008, minHold: 3.5, maxHold: 11
 const HEEL = new THREE.Vector3(0, -ANKLE_H, -0.07); // heel contact, from the ankle
 const TOE_JOINT = new THREE.Vector3(0, 0.02 - ANKLE_H, 0.135);
 
-const PEDESTRIAN_DIVE_DURATION = 2.5;
-// Time, pelvis height/pitch, chest/head pitch, hand height/forward/spread, left and right ankle height/forward,
-// foot pitch. The hands catch the landing; a short prone pause leads into a push-up, one knee under the body,
-// and a staggered rise. Positions are metres in the escape direction, before each person's height scaling.
-const DIVE_POSES = [
-  [0,    0.957, 0.035, 0.05, 0.05, 0.82, 0.03, 0.23, 0.08, 0,     0.08, 0,     0],
-  [0.12, 0.79,  0.38,  0.50, 0.10, 0.76, 0.42, 0.27, 0.08, -0.06, 0.08, 0.10,  0.15],
-  [0.30, 1.10,  0.88,  1.05, 0.65, 0.92, 0.76, 0.29, 0.61, -0.55, 0.72, -0.52, 0.9],
-  [0.55, 0.50,  1.45,  1.46, 1.05, 0.10, 0.72, 0.32, 0.32, -0.70, 0.41, -0.64, 1.35],
-  [0.72, 0.135, 1.49,  1.45, 1.10, 0.08, 0.60, 0.32, 0.16, -0.80, 0.19, -0.76, 1.4],
-  [1.15, 0.135, 1.49,  1.45, 1.10, 0.08, 0.60, 0.32, 0.16, -0.80, 0.19, -0.76, 1.4],
-  [1.55, 0.40,  1.10,  1.00, 0.25, 0.11, 0.57, 0.30, 0.10, -0.44, 0.12, -0.50, 0.9],
-  [1.90, 0.65,  0.55,  0.60, 0.10, 0.62, 0.40, 0.27, 0.08, 0.15,  0.12, -0.35, 0.3],
-  [2.20, 0.83,  0.20,  0.30, 0.08, 0.80, 0.20, 0.25, 0.08, 0.03,  0.08, -0.03, 0],
-  [PEDESTRIAN_DIVE_DURATION, 0.957, 0.035, 0.05, 0.05, 0.82, 0.03, 0.23, 0.08, 0, 0.08, 0, 0]
-];
-
 const wrap = (a) => a - Math.round(a / (Math.PI * 2)) * Math.PI * 2;
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const clampAbs = (x, m) => (x < -m ? -m : x > m ? m : x);
@@ -1589,8 +1572,7 @@ class PersonRig {
     this.leanCount = 0;
     this.time = seed * 7.3;
     this.leanAt = this.time + IDLE.minHold * hash01(seed + 0.5);
-    this.diving = false;
-    this.diveGround = 0;
+    this.posed = false; // lying or getting up, off the gait: the next walking update stands it afresh
     this.feet = [makeFoot(1), makeFoot(-1)];
     this.pose = new Float32Array(STRIDE * 4);
     this.pose.set(personAppearance(seed, this.female), APPEARANCE * 4);
@@ -1619,7 +1601,7 @@ class PersonRig {
     this.jumpLead = 1;
     this.pelvisYaw = this.pelvisRoll = this.spreadF = this.thighSplit = this.arm = this.headTurn = this.bank = this.lean = 0;
     this.pelvisTilt = 0.025;
-    this.diving = false;
+    this.posed = false;
     this.phase = 0;
     for (const foot of this.feet) {
       this.restPoint(foot, x, z, yaw, _v);
@@ -1658,32 +1640,17 @@ class PersonRig {
    * Walk the body to ground position (x, z), turning towards `heading`. `ground(owner, x, z)` gives the walking
    * surface's height anywhere around. `air` lifts the body off the ground (jumps). Set `updatePose` false for hidden
    * pedestrians: their gait and planted feet still advance, while bone transforms wait until they are drawn.
-   * `diveTime` is elapsed seconds in an evasive dive, or -1 for ordinary locomotion.
    */
-  update(dt, x, z, heading, ground, owner = null, air = 0, updatePose = true, diveTime = -1) {
+  update(dt, x, z, heading, ground, owner = null, air = 0, updatePose = true) {
     const dx = x - this.x;
     const dz = z - this.z;
     if (!this.placed || dx * dx + dz * dz > 9) {
       this.reset(x, z, heading, ground, owner);
-      if (diveTime < 0) return;
+      return;
     }
     dt = Math.min(Math.max(dt, 1e-4), 0.1);
     this.time += dt;
-
-    if (diveTime >= 0) {
-      if (!this.diving) this.diveGround = ground(owner, this.x, this.z);
-      // Crossing a curb in flight changes the landing surface, without stepping the whole airborne body.
-      // Travel ends before .55 s; settle exactly onto the surface by the prone pose at .72 s.
-      this.diveGround += (ground(owner, x, z) - this.diveGround) * (diveTime >= 0.72 ? 1 : ease(dt, 0.06));
-      this.diving = true;
-      this.x = x;
-      this.z = z;
-      this.yaw = wrap(this.yaw + clampAbs(wrap(heading - this.yaw), 10 * dt));
-      this.vx = this.vz = this.tvx = this.tvz = this.speed = this.gait = this.run = 0;
-      if (updatePose) this.solveDive(diveTime, this.diveGround);
-      return;
-    }
-    if (this.diving) {
+    if (this.posed) {
       this.reset(x, z, this.yaw, ground, owner);
       return;
     }
@@ -2338,10 +2305,10 @@ class PersonRig {
     return this.limb(LIMB.thigh[i], LIMB.shin[i], hip, ankleTarget, THIGH * s, SHIN * s, _pole, _front, 0, 0.012);
   }
 
-  // Grounded escape animation, independent of the walking gait and evaluated only for visible people. Also plays the
-  // other ground animations in its layout (getting up after a fall: `keys` with a 14th column, the pelvis' way forward
-  // of where the hands & feet are given from, and a fixed `kneePole` [out, up, forward] for the knees)
-  solveDive(time, groundY, keys = DIVE_POSES, kneePole = null) {
+  // Getting up off the ground, independent of the walking gait: `time` into keyframes `keys` (PRONE_RISE's layout,
+  // an optional 14th column the pelvis' way forward of where the hands & feet are given from), the knees towards a
+  // fixed `kneePole` [out, up, forward] if given
+  solveRise(time, groundY, keys, kneePole = null) {
     const s = this.s;
     let frame = 0;
     while (frame < keys.length - 2 && time > keys[frame + 1][0]) frame++;
@@ -2353,7 +2320,7 @@ class PersonRig {
     const footPitch = key(12);
     const forward = a.length > 13 ? key(13) * s : 0;
     const footClearance = ANKLE_H * Math.cos(footPitch) + 0.208 * Math.sin(footPitch);
-    // a point given in the escape frame (metres before scaling), on the ground under the person
+    // a point given in the person's frame (metres before scaling), on the ground under it
     const local = (out, lx, ly, lz) => {
       out.set(lx, ly, lz).multiplyScalar(s).applyQuaternion(_qRoot);
       out.x += this.x;
@@ -2487,7 +2454,7 @@ class PersonRig {
         }
       }
     }
-    this.diving = true; // back on its feet, it stands afresh
+    this.posed = true;
   }
 
   // Getting up off the ground where it lies at (x, z), facing `yaw` (head first face down, feet first face up), `time`
@@ -2498,8 +2465,8 @@ class PersonRig {
     this.yaw = yaw;
     this.vx = this.vz = this.tvx = this.tvz = this.speed = this.gait = this.run = this.sprint = 0;
     this.placed = true;
-    this.diving = true;
-    this.solveDive(time, groundY, keys.poses, keys.kneePole);
+    this.posed = true;
+    this.solveRise(time, groundY, keys.poses, keys.kneePole);
   }
 
   // Blend the bones towards pose `from` (a copy of an earlier pose) by w: rotations and joint positions
@@ -2736,13 +2703,24 @@ function ragdollFrames(female) {
   return (_ragdollFrames[female] = out);
 }
 
-// Getting up after a fall. Face down: the end of the dive (from lying prone). Face up: sitting up, hands pushing
-// behind, knees drawn up, then rolling forward over the feet and standing (DIVE_POSES' layout, plus the pelvis' way
-// forward of the hands & feet, with the knees pointing forward and up throughout)
+// Getting up after a fall. Face down: a moment lying prone, a push-up, one knee under the body and a staggered rise.
+// Face up: sitting up, hands pushing behind, knees drawn up, then rolling forward over the feet and standing (plus the
+// pelvis' way forward of the hands & feet, with the knees pointing forward and up throughout)
 const RISE_BLEND = 0.4; // s blending from the pose it fell in
-const PRONE_RISE = { poses: DIVE_POSES, start: 0.72, kneePole: null };
+const PRONE_RISE = {
+  kneePole: null,
+  // Time, pelvis height/pitch, chest/head pitch, hand height/forward/spread, left and right ankle height/forward,
+  // foot pitch. Positions are metres in the way it faces, before each person's height scaling.
+  poses: [
+    [0,    0.135, 1.49, 1.45, 1.10, 0.08, 0.60, 0.32, 0.16, -0.80, 0.19, -0.76, 1.4],
+    [0.43, 0.135, 1.49, 1.45, 1.10, 0.08, 0.60, 0.32, 0.16, -0.80, 0.19, -0.76, 1.4],
+    [0.83, 0.40,  1.10, 1.00, 0.25, 0.11, 0.57, 0.30, 0.10, -0.44, 0.12, -0.50, 0.9],
+    [1.18, 0.65,  0.55, 0.60, 0.10, 0.62, 0.40, 0.27, 0.08, 0.15,  0.12, -0.35, 0.3],
+    [1.48, 0.83,  0.20, 0.30, 0.08, 0.80, 0.20, 0.25, 0.08, 0.03,  0.08, -0.03, 0],
+    [1.78, 0.957, 0.035, 0.05, 0.05, 0.82, 0.03, 0.23, 0.08, 0,    0.08, 0,     0]
+  ]
+};
 const SUPINE_RISE = {
-  start: 0,
   kneePole: [0.15, 0.5, 1],
   poses: [
     // t  pelvis y, pitch, chest, head, hand y, fwd, spread, ankle L y, fwd, R y, fwd, foot pitch, pelvis fwd
@@ -2757,11 +2735,11 @@ const SUPINE_RISE = {
 };
 for (const rise of [PRONE_RISE, SUPINE_RISE]) {
   const last = rise.poses[rise.poses.length - 1];
-  rise.duration = last[0] - rise.start;
+  rise.duration = last[0];
   rise.forward = last.length > 13 ? last[13] : 0; // where it stands up, ahead of where it lay (before scaling)
 }
 
 export {
-  BONE as PERSON_BONES, buildPersonGeometry, createPersonMaterial, PersonCrowd, PersonRig, PEDESTRIAN_DIVE_DURATION,
-  PRONE_RISE, SUPINE_RISE, RISE_BLEND
+  BONE as PERSON_BONES, buildPersonGeometry, createPersonMaterial, PersonCrowd, PersonRig, PRONE_RISE, SUPINE_RISE,
+  RISE_BLEND
 };
