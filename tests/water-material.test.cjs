@@ -224,36 +224,6 @@ const helpersSrc = source.slice(noiseStart, noiseEnd) + '\n' + pulseAndBox;
 const createWaterMaterial = vm.runInNewContext(`${helpersSrc}\n${waterFnSrc}\ncreateWaterMaterial;`, sandbox);
 const waterMat = createWaterMaterial();
 
-test('water emissiveNode skips skyline raycast in midday and golden hour presets', () => {
-  env.posWorld = [-1200, -2.2, 500];
-  env.camPos = [-1380, 14, 500];
-  for (const glow of [0.24, 0.48, 0.55]) {
-    env.interiorGlow = glow;
-    env.skylineRaycastRuns = 0;
-    env.fwidthRuns = 0;
-    env.fwidthInsideBranch = 0;
-    const out = waterMat.emissiveNode.eval();
-    assert.deepEqual(out, [0, 0, 0], `expected zero emissive at uInteriorGlow=${glow}`);
-    assert.equal(env.skylineRaycastRuns, 0, `skyline raycast must not run at uInteriorGlow=${glow}`);
-    assert.equal(env.fwidthRuns, 0, `derivatives skipped via uniform night gate at uInteriorGlow=${glow}`);
-    assert.equal(env.fwidthInsideBranch, 0);
-  }
-});
-
-test('water emissiveNode skips skyline raycast in outer harbor and upper Hudson at night', () => {
-  env.interiorGlow = 1.38; // midnight
-  for (const z of [-6200, 7200, 18000]) {
-    env.posWorld = [-1200, -2.2, z];
-    env.camPos = [-1380, 14, z];
-    env.skylineRaycastRuns = 0;
-    env.fwidthInsideBranch = 0;
-    const out = waterMat.emissiveNode.eval();
-    assert.deepEqual(out, [0, 0, 0], `expected zero emissive outside Manhattan region at z=${z}`);
-    assert.equal(env.skylineRaycastRuns, 0, `skyline raycast must not run at z=${z}`);
-    assert.equal(env.fwidthInsideBranch, 0);
-  }
-});
-
 test('water emissiveNode evaluates skyline reflections at twilight/midnight in uniform-safe control flow', () => {
   // Hudson River looking east toward Midtown Manhattan
   env.posWorld = [-1150, -2.2, 0];

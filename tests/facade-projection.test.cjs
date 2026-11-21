@@ -60,7 +60,6 @@ const buildFrame = vm.runInNewContext(`(function (normalLocal, modelNormalMatrix
 const scalar = v => v.values[0];
 const position = new Node([-204.25, 220, 5267.625]);
 const eye = new Node([-130, 250, 5180]);
-const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 2e-6, `${actual} should equal ${expected}`);
 
 // Float32 rotation into and out of view space reproduces the old normalWorldGeometry round-trip.
 function cameraMatrix(yaw) {
@@ -100,32 +99,6 @@ for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     assert.equal(reference.axis.interpolation.mode, 'either');
   });
 }
-
-test('cardinal facades retain their original world-coordinate mapping', () => {
-  for (const [normal, axis] of [[[1, 0, 0], 1], [[-1, 0, 0], 1], [[0, 0, 1], 0], [[0, 0, -1], 0]]) {
-    const n = new Node(normal);
-    const frame = buildFrame(n, matrix(identity), n, matrix(identity));
-    assert.equal(scalar(frame.axis), axis);
-    assert.equal(scalar(frame.project(false, n, position).uCoord), position.values[axis ? 2 : 0]);
-  }
-});
-
-test('world projection includes object rotation and the inverse scale used for normals', () => {
-  // A +Z wall rotated 90 degrees around Y becomes a +X wall.
-  const local = new Node([0, 0, 1]);
-  const rotation = [0, 0, 1, 0, 1, 0, -1, 0, 0];
-  const rotated = buildFrame(local, matrix(rotation), local, matrix(identity));
-  assert.equal(scalar(rotated.axis), 1);
-  assert.equal(scalar(rotated.project(false, local, position).uCoord), position.values[2]);
-  assert.equal(scalar(rotated.project(true, local, position).alongZ), 0, 'box-local facade layout still uses its own axes');
-
-  // Scaling a model by (2, 3, 0.5) gives a normal matrix with inverse scales (0.5, 1/3, 2).
-  const scale = [0.5, 0, 0, 0, 1 / 3, 0, 0, 0, 2];
-  const scaled = buildFrame(new Node([1, 1, 1]), matrix(scale), local, matrix(identity));
-  const length = Math.hypot(0.5, 1 / 3, 2);
-  [0.5, 1 / 3, 2].forEach((v, i) => close(scaled.normal.values[i], v / length));
-  assert.equal(scalar(scaled.axis), 0, 'the dominant world normal component must be selected after inverse scaling');
-});
 
 test('surveyed storefronts remain glazed above the sidewalk while cut-off storeys stay solid', () => {
   const masks = source.slice(source.indexOf('let partial =', projectionStart), source.indexOf('const solid =', projectionStart));

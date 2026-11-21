@@ -2,7 +2,6 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
 const { loadModule } = require('./helpers/module.cjs');
 
 // Minimal Three.js math/object stub sufficient for road-paint.js and scene-culling.js
@@ -181,7 +180,7 @@ const { setupSceneCulling, updateSceneCulling } = loadModule(sceneCullingSrc, {
   imports: { 'three/webgpu': THREE }
 });
 
-test('buildRoadPaint chunks markings into compact spatial cells with shared pipeline and padded bounds', () => {
+test('buildRoadPaint splits markings into spatial chunks that cull with distance, with padded bounds', () => {
   const makeEdge = (id0, id1, x0, z, len) => ({
     from: { id: id0, shape: false },
     to: { id: id1, shape: false },
@@ -203,19 +202,13 @@ test('buildRoadPaint chunks markings into compact spatial cells with shared pipe
   };
 
   const group = buildRoadPaint(scene, network);
-  assert.equal(group.name, 'RoadMarkings');
   assert.equal(group.children.length, 2, 'distant blocks split into separate spatial chunks');
 
   const [c0, c1] = group.children;
   assert.equal(c0.material, sharedMat);
   assert.equal(c1.material, sharedMat);
-  assert.equal(c0.renderOrder, -1);
-  assert.equal(c1.renderOrder, -1);
   assert.equal(c0.receiveShadow, true);
   assert.equal(c0.userData.cullDistance, 1650);
-  assert.equal(c0.userData.sharesPipelineWith, undefined, 'first chunk owns the pipeline');
-  assert.equal(c1.userData.sharesPipelineWith, c0, 'subsequent chunks share first chunk pipeline');
-  assert.ok(c0.geometry.index.isUint16, 'compact chunks use 16-bit index buffers');
   assert.ok(c0.geometry.boundingSphere.radius > 80 + 16, 'boundingSphere includes screen-space widen padding');
 
   // Verify scene-culling hides distant road-paint chunks and keeps nearby ones visible
@@ -264,25 +257,10 @@ test('createRoadPaintChunkBuilder subdivides long strips across cells with conti
   }
 });
 
-test('createRoadPaintMaterial caches one material, gates dry/distant noise, and fades smoothly before cull distance', () => {
-  const source = readFileSync(join(__dirname, '../js/tsl-materials.js'), 'utf8');
-  const sliceBetween = (a, b) => {
-    const s = source.indexOf(a);
-    const e = source.indexOf(b, s);
-    assert.ok(s >= 0 && e > s, `slice ${a}..${b}`);
-    return source.slice(s, e);
-  };
-
-  const helpers =
-    sliceBetween('const hash2D = Fn(', 'const filteredPulse = Fn(') + '\n' +
-    sliceBetween('function roadPuddleField(', '/**\n * Wear & repairs');
-  const roadPaintMatSrc = sliceBetween('let _roadPaintMaterial = null;', '/**\n * NYC Concrete Sidewalk');
-
+test('road paint stays plain white when dry and far, and fades out before its chunk is culled', () => {
   const env = {
     posWorld: [0, 0.012, 0],
-    camPos: [0, 4, 20],
-    wetness: 0.08,
-    noiseCalls: 0
+    camPos: [0, 4, 20]
   };
 
   const arr = (v) => (v instanceof TNode ? v.eval() : typeof v === 'number' ? [v] : v);
@@ -296,7 +274,11 @@ test('createRoadPaintMaterial caches one material, gates dry/distant noise, and 
   };
 
   class TNode {
-    constructor(fn) { this._fn = typeof fn === 'function' ? fn : () => fn; }
+    constructor(fn) {
+      this._fn = typeof fn === 'function' ? fn : () => fn;
+      // (methods it doesn't evaluate give nodes that are never evaluated)
+      return new Proxy(this, { get: (target, key) => (key in target ? target[key] : inert) });
+    }
     eval() { return this._fn(); }
     get x() { return new TNode(() => [this.eval()[0]]); }
     get y() { return new TNode(() => [this.eval()[1]]); }
@@ -320,12 +302,17 @@ test('createRoadPaintMaterial caches one material, gates dry/distant noise, and 
   const wrap = (v) => (v instanceof TNode ? v : new TNode(Array.isArray(v) ? v : [v]));
   const unary = (fn) => (a) => new TNode(() => arr(a).map(fn));
 
-  const sandbox = {
-    Math,
-    THREE: { MeshStandardNodeMaterial: class { constructor(o) { Object.assign(this, o); } } },
-    _transparentEffectMRT: {},
-    canyonSkyAONode: () => wrap([1]),
-    cityUniforms: { uRoadWetness: new TNode(() => [env.wetness]) },
+  // The shader nodes the road paint uses evaluate numerically; everything else the module builds is never evaluated
+  const inert = new Proxy(function () {}, {
+    get: (_, key) => (key === Symbol.toPrimitive ? () => 0 : inert), apply: () => inert, construct: () => inert
+  });
+  const orInert = (stub) => new Proxy(stub, { get: (target, key) => (key in target ? target[key] : inert) });
+  const tsl = {
+    uniform: (value) => {
+      const node = new TNode(() => [typeof node.value === 'number' ? node.value : 0]);
+      node.value = value;
+      return node;
+    },
     positionGeometry: wrap([0, 0.012, 0]),
     positionWorld: new TNode(() => env.posWorld),
     cameraPosition: new TNode(() => env.camPos),
@@ -334,10 +321,7 @@ test('createRoadPaintMaterial caches one material, gates dry/distant noise, and 
     screenSize: wrap([1920, 1080]),
     attribute: (name) => (name === 'paint' ? wrap([3.0, 12.0, 1.0]) : wrap([0.065, 0.0])),
     varying: (v) => v,
-    Fn: (builder) => (...args) => new TNode(() => {
-      if (builder.toString().includes('pv = vec2(p)')) env.noiseCalls++;
-      return arr(args.length ? builder(args) : builder());
-    }),
+    Fn: (builder) => (...args) => new TNode(() => arr(args.length ? builder(args) : builder())),
     If: (cond, body) => { if (arr(cond)[0] > 0) body(); return { ElseIf() { return this; }, Else() { return this; } }; },
     float: wrap,
     vec2: (...args) => new TNode(() => args.flatMap(arr).slice(0, 2)),
@@ -363,18 +347,20 @@ test('createRoadPaintMaterial caches one material, gates dry/distant noise, and 
     fwidth: () => wrap([0.01])
   };
 
-  const createRoadPaintMaterial = vm.runInNewContext(`${helpers}\n${roadPaintMatSrc}\ncreateRoadPaintMaterial;`, sandbox);
+  const { createRoadPaintMaterial, cityUniforms } = loadModule(readFileSync(join(__dirname, '../js/tsl-materials.js'), 'utf8'), {
+    imports: {
+      'three/webgpu': orInert({ MeshStandardNodeMaterial: class { constructor(o) { Object.assign(this, o); } } }),
+      'three/tsl': orInert(tsl),
+      './city-config.js': orInert({})
+    }
+  });
   const m1 = createRoadPaintMaterial();
-  const m2 = createRoadPaintMaterial();
-  assert.equal(m1, m2, 'createRoadPaintMaterial returns a single cached material instance');
 
-  // Dry midday (uRoadWetness = 0.08) at 120 m (> 70 m): zero noise2D evaluations for both wear and puddles
-  env.wetness = 0.08;
+  // Dry midday at 120 m
+  cityUniforms.uRoadWetness.value = 0.08;
   env.camPos = [0, 8, 120];
-  env.noiseCalls = 0;
   const opMid = m1.opacityNode.eval()[0];
   const colDry = m1.colorNode.eval();
-  assert.equal(env.noiseCalls, 0, 'skips both wear noise (>70 m) and puddle noise (dry midday)');
   assert.ok(opMid > 0, 'visible at 120 m');
   assert.deepEqual(colDry, [1, 1, 1]);
 

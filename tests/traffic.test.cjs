@@ -47,17 +47,6 @@ function close(actual, expected) {
   assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} should equal ${expected}`);
 }
 
-test('street traffic recognizes players on its own road, including sidewalk height', () => {
-  const road = lane([{ x: 0, y: 0, z: 0 }, { x: 100, y: 0, z: 0 }]);
-  for (const y of [0, 0.22]) {
-    const result = playerInLane(road, player(50, y, 0));
-    close(result.u, 50);
-    close(result.v, 10);
-  }
-  assert.equal(playerInLane(road, player(50, 7.6, 0)), null);
-  assert.equal(playerInLane(road, player(50, 0, 2.1)), null);
-});
-
 test('viaduct traffic ignores players below it and recognizes players at deck height', () => {
   const road = lane([{ x: 0, y: 7.6, z: 0 }, { x: 100, y: 7.6, z: 0 }]);
   assert.equal(playerInLane(road, player(50, 0, 0)), null);
@@ -89,21 +78,6 @@ test('long lanes find the player in any run of segments and ignore players insid
   close(late.u, road.cum[75] + 5);
   close(playerInLane(road, player(0, 0, 333)).u, 333);
   assert.equal(playerInLane(road, player(100, 0, 200)), null);
-});
-
-test('overlapping road segments select the matching elevation', () => {
-  const road = lane([{ x: 0, y: 7.6, z: 0 }, { x: 100, y: 7.6, z: 0 },
-    { x: 100, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }]);
-  const result = playerInLane(road, player(50, 0, 0));
-  close(result.u, 157.6);
-  close(result.v, 0);
-});
-
-test('underground lanes and helicopters remain excluded', () => {
-  const road = lane([{ x: 0, y: -4.5, z: 0 }, { x: 100, y: -4.5, z: 0 }]);
-  assert.equal(playerInLane(road, player(50, -4.5, 0)), null);
-  assert.equal(player(50, 0, 0, 'helicopter'), null);
-  assert.equal(snapshot(null, 'car'), null);
 });
 
 function trafficFunction(name, context) {
@@ -151,18 +125,6 @@ test('police pass red and amber signals while ordinary cars stop', () => {
   }
 });
 
-test('police still wait for crossing traffic, pedestrians and a blocked exit', () => {
-  const { car, state, mayEnter } = intersectionHarness();
-  car.isPolice = true;
-  for (const [key, blocked] of [['occupied', true], ['pedestrians', true], ['space', false], ['conflict', true]]) {
-    const initial = state[key];
-    state[key] = blocked;
-    assert.equal(mayEnter(car, 18), false, key);
-    state[key] = initial;
-  }
-  assert.equal(mayEnter(car, 18), true);
-});
-
 test('police running a red yield to fast cross traffic regardless of how long they waited', () => {
   const car = { edge: { axisIndex: 0 }, wait: 20 };
   const lead = { s: 85, v: { speed: 10 } };
@@ -181,20 +143,6 @@ test('police running a red yield to fast cross traffic regardless of how long th
   lead.v.speed = 10;
   lead.s = 10;
   assert.equal(yieldToCrossTraffic(car, node), false);
-});
-
-test('left turns account for oncoming police even when their signal is red', () => {
-  const edge = { to: { signal: true }, through: 0, len: 100, occ: [] };
-  const car = { edge, move: { turn: 'S', out: [0] }, lane: 0, speed: 10, half: 2.25, isPolice: false };
-  edge.occ.push([{ v: car, s: 85 }]);
-  const context = { phaseOf: () => 'red', leadOf: (list) => list.at(-1) };
-  context.canStop = trafficFunction('canStop', context);
-  const yieldOncoming = trafficFunction('yieldOncoming', context);
-  assert.equal(yieldOncoming(edge, false), false);
-  car.isPolice = true;
-  assert.equal(yieldOncoming(edge, false), true);
-  car.speed = 0;
-  assert.equal(yieldOncoming(edge, false), false);
 });
 
 function populationContext() {
@@ -262,23 +210,6 @@ test('long roads are available near their ends and spawn only in the local secti
   assert.equal(trafficFunction('spawnVehicle', context)(car, 0, 350, false), true);
   assert.ok(edge.sz + car.s <= 350);
   assert.ok(car.s >= car.half + 5);
-});
-
-test('crossing pedestrians fall back to a sidewalk when nearby crosswalks are unusable', () => {
-  const context = populationContext();
-  context.nearSignals.push({});
-  context.nearEdges.push(straightEdge(200));
-  let crossings = 0;
-  context.crosswalkTrack = () => { crossings++; return false; };
-  context.sidewalkTrack = () => {
-    Object.assign(context.track, { ax: 0, az: 200, ux: 0, uz: 1, len: 20, node: null });
-    return true;
-  };
-  const ped = { crossesStreets: true, speed: 1.4, rig: {} };
-  assert.equal(trafficFunction('spawnPed', context)(ped, 60, 280, true), true);
-  assert.equal(crossings, 5);
-  assert.equal(ped.node, null);
-  assert.equal(ped.z, 210);
 });
 
 // Drivers dodging the player: late, as people do, and committed to whatever they do

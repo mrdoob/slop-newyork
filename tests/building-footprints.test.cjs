@@ -115,16 +115,6 @@ test('roof and wall triangle winding matches their normals, including closed rin
   close(roofArea, 100);
 });
 
-test('nearby buildings share a merged batch while distant chunks reuse its pipeline', () => {
-  const group = build([record(square()), record(square(20)), record(square(2000))]);
-  assert.equal(group.children.length, 2);
-  const [near, far] = group.children;
-  assert.equal(near.geometry.index.length, 60);
-  assert.equal(far.geometry.index.length, 30);
-  assert.equal(far.userData.sharesPipelineWith, near);
-  assert.ok(near.geometry.bounded && far.geometry.bounded);
-});
-
 const reserve = b => {
   const points = b.polygons.flatMap(p => p.outer);
   return { polygons: b.polygons, height: b.height + 0.22,

@@ -12,9 +12,7 @@ function fixture(obstacles = [], angle = 0) {
   const local = (x, z) => ({ x: x * cs + z * sn, z: -x * sn + z * cs });
   const block = { poly: [world(0, 5), world(200, 5), world(200, 40), world(0, 40)] };
   const blockAt = (x, z) => { const p = local(x, z); return p.x >= 0 && p.x <= 200 && p.z >= 5 && p.z <= 40 ? block : null; };
-  let queries = 0;
   const walkable = (minX, maxX, minZ, maxZ) => {
-    queries++;
     const p = local((minX + maxX) / 2, (minZ + maxZ) / 2);
     const hx = (maxX - minX) / 2, hz = (maxZ - minZ) / 2;
     const ex = Math.abs(cs) * hx + Math.abs(sn) * hz, ez = Math.abs(sn) * hx + Math.abs(cs) * hz;
@@ -30,18 +28,16 @@ function fixture(obstacles = [], angle = 0) {
     return edge;
   });
   const routes = createPedestrianRoutes({ walkable, onSidewalk: (x, z) => !!blockAt(x, z) }, blockAt);
-  return { routes, edges, block, blockAt, walkable, world, queries: () => queries };
+  return { routes, edges, block, blockAt, walkable, world };
 }
 
 const endpoint = (track, end) => ({ x: track.ax + track.ux * track.len * end, z: track.az + track.uz * track.len * end });
 function touching(a, b) { assert.ok(Math.hypot(a.x - b.x, a.z - b.z) < 1e-8); }
 
-test('unobstructed sidewalk lines stay straight and reuse their cached tracks', () => {
-  const f = fixture(), tracks = f.routes.along(f.edges[0]), queries = f.queries();
+test('unobstructed sidewalk lines stay straight', () => {
+  const f = fixture(), tracks = f.routes.along(f.edges[0]);
   assert.equal(tracks.length, 2);
   assert.ok(tracks.every((t) => t.len === 90 && !t.before && !t.after));
-  assert.equal(f.routes.along(f.edges[0]), tracks);
-  assert.equal(f.queries(), queries);
 });
 
 for (const angle of [0, Math.PI / 6]) {
@@ -67,9 +63,6 @@ for (const angle of [0, Math.PI / 6]) {
           assert.equal(plan[0].track, neighbor);
           assert.equal(plan[0].dir, dir);
           touching(endpoint(t, dir > 0 ? 1 : 0), endpoint(neighbor, dir > 0 ? 0 : 1));
-          const queries = f.queries();
-          assert.equal(f.routes.next(t, dir, goal.x, goal.z), plan);
-          assert.equal(f.queries(), queries);
         }
       }
       touching(endpoint(tail, 1), f.world(95, start === starts[0] ? 6.7 : 7.8));

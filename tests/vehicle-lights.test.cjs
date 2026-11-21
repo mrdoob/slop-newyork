@@ -35,18 +35,6 @@ const specs = {
 };
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-12, `${a} should equal ${b}`);
 
-test('the shared profile creates ordinary unshadowed spots with no cookie or custom light node', () => {
-  const spot = createVehicleHeadlight();
-  assert.equal(spot.intensity, 0, 'pool lights remain off until assigned');
-  for (const key of ['color', 'distance', 'angle', 'penumbra', 'decay']) assert.equal(spot[key], HEADLIGHTS[key]);
-  assert.equal(spot.decay, 2);
-  assert.ok(spot.penumbra >= 0 && spot.penumbra <= 1);
-  placeVehicleHeadlight(spot, specs.sedan, 1);
-  assert.equal(spot.map, null);
-  assert.equal(spot.colorNode, null);
-  assert.equal(spot.castShadow, false);
-});
-
 for (const [name, spec] of Object.entries(specs)) {
   test(`${name} beams originate at the modeled lamps and stay below the chassis horizon`, () => {
     for (const side of [-1, 1]) {

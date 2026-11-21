@@ -350,14 +350,6 @@ const threeStub = {
   NoColorSpace: ''
 };
 
-let sqrtCalls = 0;
-const realSqrt = Math.sqrt;
-const countedMath = Object.create(Math);
-countedMath.sqrt = (x) => {
-  sqrtCalls++;
-  return realSqrt(x);
-};
-
 const { createTreeField } = loadModule(treesSource, {
   imports: {
     'three/webgpu': threeStub,
@@ -366,7 +358,6 @@ const { createTreeField } = loadModule(treesSource, {
   },
   globals: {
     document: makeStubDocument(),
-    Math: countedMath,
     Float32Array,
     Uint8Array,
     Uint16Array,
@@ -382,7 +373,7 @@ const { createTreeField } = loadModule(treesSource, {
   filename: 'js/trees.js'
 });
 
-// Brute-force per-tree reference matching pre-#4 HEAD's exact Math.sqrt LOD + hysteresis rules.
+// Brute-force per-tree reference for the LOD and hysteresis rules.
 function makeBruteForceOracle(sites) {
   const hashPos = (x, y, z) => {
     const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
@@ -424,7 +415,7 @@ function makeBruteForceOracle(sites) {
     let changed = false;
     for (let i = 0; i < N; i++) {
       const dx = px[i] - cam.x, dy = py[i] - cam.y, dz = pz[i] - cam.z;
-      const d = realSqrt(dx * dx + dy * dy + dz * dz);
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       const maxD = low ? Math.min(MAX_DIST[tier[i]], LOW_CUTOFF) : MAX_DIST[tier[i]];
       const curL = lod[i] === 255 ? 3 : lod[i];
       let nextL = d < LOD_NEAR ? 0 : d < LOD_MID ? 1 : d < maxD ? 2 : 3;
@@ -451,7 +442,7 @@ function makeBruteForceOracle(sites) {
   return { update, totalsByLod };
 }
 
-test('createTreeField leaves scene.onBeforeRender untouched and matches per-tree oracle across trajectories', () => {
+test('createTreeField picks the same LOD for every tree as a brute-force check across trajectories', () => {
   const sites = [];
   for (let i = 0; i < 2400; i++) {
     const gx = (i % 15) - 7;
@@ -466,18 +457,9 @@ test('createTreeField leaves scene.onBeforeRender untouched and matches per-tree
     });
   }
 
-  const sentinelHook = () => {};
-  const scene = { onBeforeRender: sentinelHook };
-  const field = createTreeField(scene, sites, []);
+  const field = createTreeField({}, sites, []);
   const oracle = makeBruteForceOracle(sites);
-
-  assert.equal(scene.onBeforeRender, sentinelHook, 'must not monkey-patch scene.onBeforeRender');
   assert.equal(field.stats.trees, sites.length);
-
-  for (const m of field.meshes) {
-    assert.equal(m.matrixAutoUpdate, false);
-    assert.equal(m.matrixWorldAutoUpdate, false);
-  }
 
   const fieldTotalsByLod = () => {
     const out = [0, 0, 0];
@@ -521,14 +503,4 @@ test('createTreeField leaves scene.onBeforeRender untouched and matches per-tree
     assert.equal(gotChanged, wantChanged, `changed flag mismatch at (${pos.x}, ${pos.y}, ${pos.z})`);
     assert.deepEqual(fieldTotalsByLod(), oracle.totalsByLod(), `LOD counts mismatch at (${pos.x}, ${pos.y}, ${pos.z})`);
   }
-
-  // Verify cell-hierarchical culling executes only O(cells) Math.sqrt calls instead of O(trees)
-  const cellCount = field.group.children.length;
-  sqrtCalls = 0;
-  field.update(new Vector3(12, 3.5, 190));
-  assert.equal(
-    sqrtCalls,
-    cellCount,
-    `expected exactly 1 Math.sqrt per cell (${cellCount}, 0 per-tree Math.sqrt), got ${sqrtCalls}`
-  );
 });

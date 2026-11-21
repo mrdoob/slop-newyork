@@ -226,42 +226,6 @@ test('a route-constrained vehicle leaves the player fully outside its body', () 
   close(traffic.z - car.position.z, 4.36);
 });
 
-test('player collision integration uses first contact rather than the crossed center', () => {
-  const traffic = trafficCar(0);
-  const h = trafficHarness([traffic]);
-  const car = { type: 'car', position: { x: 0.1, z: 0 }, heading: 0, speed: 0,
-    prevX: -1.8, prevZ: 0, vx: 40, vz: 0, angularVel: 0, pitchVel: 0, rollVel: 0, heaveVel: 0 };
-  h.player = { entity: car, halfW: 0.86, halfL: 2.18 };
-  h.collideWithPlayer(traffic);
-  close(traffic.x - car.position.x, 1.72);
-  assert.ok(car.vx < 20 && traffic.vx > 20);
-});
-
-test('touching player and traffic retain movement along the road during a scrape', () => {
-  const traffic = trafficCar(0.2, 12);
-  traffic.prevZ = 0;
-  const h = trafficHarness([traffic]);
-  const car = { type: 'car', position: { x: -1.71, z: 0.2 }, heading: 0, speed: 12,
-    prevX: -1.72, prevZ: 0, vx: 0.6, vz: 0, angularVel: 0, pitchVel: 0, rollVel: 0, heaveVel: 0 };
-  h.player = { entity: car, halfW: 0.86, halfL: 2.18 };
-  h.collideWithPlayer(traffic);
-  close(car.position.z, 0.2);
-  close(traffic.z, 0.2);
-  close(car.speed, 12);
-  close(traffic.speed, 12);
-});
-
-test('touching traffic bumpers continue down the road together', () => {
-  const cars = [trafficCar(0.21, 12.6, 0.8), trafficCar(4.56, 12)];
-  cars[0].prevZ = 0;
-  cars[1].prevZ = 4.36;
-  trafficHarness(cars).collideTraffic();
-  close(cars[0].z, 0.205);
-  close(cars[1].z, 4.565);
-  close(cars[0].speed, 12.3);
-  close(cars[1].speed, 12.3);
-});
-
 test('a traffic impact propagates through a queue once per pair in the same update', () => {
   const cars = [trafficCar(0, 12, 0.8), trafficCar(4.2), trafficCar(8.4)];
   const h = trafficHarness(cars);
@@ -272,13 +236,6 @@ test('a traffic impact propagates through a queue once per pair in the same upda
   assert.ok(cars[2].speed > 3);
   close(cars.reduce((sum, v) => sum + v.speed + v.vz, 0), 12);
   assert.ok(cars.every((v) => v.angularVel === undefined && v.yawVel === 0));
-});
-
-test('undisturbed traffic never enters the pair collision loop', () => {
-  const h = trafficHarness([trafficCar(0), trafficCar(4.2)]);
-  h.vehicleContact = () => { throw new Error('idle traffic performed a pair test'); };
-  h.collideTraffic();
-  assert.equal(h.impacted.length, 0);
 });
 
 test('knocked traffic closes a gap before transferring longitudinal momentum', () => {

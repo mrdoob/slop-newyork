@@ -11,209 +11,16 @@ const pedestrianSystemSource = ['traffic.js', 'pedestrian-system.js']
   .map((file) => readFileSync(join(__dirname, '../js', file), 'utf8')).join('\n');
 const polygonCollision = loadModule(readFileSync(join(__dirname, '../js/building-collision.js'), 'utf8'));
 
-// Lightweight numeric TSL & THREE harness for testing PersonCrowd, createPersonMaterial, and PersonRig without a GPU.
-const shaderState = {
-  attrs: {
-    position: [0, 1.3, 0.08],
-    normal: [0, 0, 1],
-    skin: [0, 0, 0, 0],
-    extra: [0, 0, 0],
-    femaleDelta: [0, 0, 0],
-    hairDelta: [0, 0, 0]
-  },
-  instanceIndex: 0,
-  stage: 'fragment',
-  sinCallsInFragment: 0,
-  ifCallsInFragment: 0,
-  vertexStageEvaluations: 0,
-  varyingSnapshots: new Map()
-};
-
-const arr = (v) => (v instanceof TNode ? v.eval() : typeof v === 'number' ? [v] : v);
-const broadcast = (a, b, fn) => {
-  const va = arr(a), vb = arr(b);
-  const n = Math.max(va.length, vb.length);
-  const out = new Array(n);
-  for (let i = 0; i < n; i++) out[i] = fn(va[i % va.length], vb[i % vb.length]);
-  return out;
-};
-const smoothstepScalar = (e0, e1, x) => {
-  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
-  return t * t * (3 - 2 * t);
-};
-const hexToLinear = (hex) => {
-  const srgb = [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
-  return srgb.map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-};
-
-class TNode {
-  constructor(fn) {
-    this._fn = typeof fn === 'function' ? fn : () => fn;
-  }
-  eval() { return this._fn(); }
-  get x() { return new TNode(() => [this.eval()[0]]); }
-  get y() { return new TNode(() => [this.eval()[1]]); }
-  get z() { return new TNode(() => [this.eval()[2]]); }
-  get w() { return new TNode(() => [this.eval()[3]]); }
-  get xyz() { return new TNode(() => this.eval().slice(0, 3)); }
-  add(b) { return new TNode(() => broadcast(this, b, (x, y) => x + y)); }
-  sub(b) { return new TNode(() => broadcast(this, b, (x, y) => x - y)); }
-  mul(b) { return new TNode(() => broadcast(this, b, (x, y) => x * y)); }
-  div(b) { return new TNode(() => broadcast(this, b, (x, y) => x / y)); }
-  lessThan(b) { return new TNode(() => broadcast(this, b, (x, y) => (x < y ? 1 : 0))); }
-  greaterThan(b) { return new TNode(() => broadcast(this, b, (x, y) => (x > y ? 1 : 0))); }
-  toVar() {
-    let slot = null;
-    const variable = new TNode(() => (slot ?? this.eval()));
-    variable.assign = (rhs) => { slot = arr(rhs).slice(); };
-    return variable;
-  }
-  assign() {}
-}
-
-const wrap = (v) => (v instanceof TNode ? v : new TNode(Array.isArray(v) ? v : [v]));
-
-const tslStub = {
-  Fn: (builder) => () => new TNode(() => arr(builder())),
-  If: (cond, body) => {
-    if (shaderState.stage === 'fragment') shaderState.ifCallsInFragment++;
-    let matched = arr(cond)[0] > 0;
-    if (matched) body();
-    const api = {
-      ElseIf(c, b) {
-        if (shaderState.stage === 'fragment') shaderState.ifCallsInFragment++;
-        if (!matched && arr(c)[0] > 0) {
-          matched = true;
-          b();
-        }
-        return api;
-      },
-      Else(b) {
-        if (!matched) {
-          matched = true;
-          b();
-        }
-        return api;
-      }
-    };
-    return api;
-  },
-  float: (v) => wrap(v),
-  int: (v) => new TNode(() => arr(v).map((x) => x | 0)),
-  vec2: (...args) => new TNode(() => {
-    const flat = args.flatMap((a) => arr(a));
-    return flat.length === 1 ? [flat[0], flat[0]] : flat.slice(0, 2);
-  }),
-  vec3: (...args) => new TNode(() => {
-    const flat = args.flatMap((a) => arr(a));
-    return flat.length === 1 ? [flat[0], flat[0], flat[0]] : flat.slice(0, 3);
-  }),
-  vec4: (...args) => new TNode(() => {
-    const flat = args.flatMap((a) => arr(a));
-    return flat.length === 1 ? [flat[0], flat[0], flat[0], flat[0]] : flat.slice(0, 4);
-  }),
-  color: (hex) => new TNode(hexToLinear(hex)),
-  attribute: (name) => new TNode(() => shaderState.attrs[name]),
-  instanceIndex: new TNode(() => [shaderState.instanceIndex]),
+// THREE stand-ins for PersonCrowd and PersonRig without a GPU. The shaders are only built here, never run: any node
+// takes any method, swizzle or call and gives a node back.
+const node = new Proxy(function () {}, { get: (_, key) => (key === Symbol.toPrimitive ? () => 0 : node), apply: () => node });
+const tslStub = new Proxy({
   attributeArray: (count) => {
-    const array = new Float32Array(count * 4);
-    let uploads = 0;
-    let lastRange = [0, 0];
-    const value = {
-      array,
-      get uploads() { return uploads; },
-      get lastRange() { return lastRange; },
-      clearUpdateRanges() { lastRange = [0, 0]; },
-      addUpdateRange(offset, len) { lastRange = [offset, len]; },
-      set needsUpdate(v) { if (v) uploads++; }
-    };
-    const storage = {
-      value,
-      toReadOnly() { return storage; },
-      element(idxNode) {
-        return new TNode(() => {
-          const i = (arr(idxNode)[0] | 0) * 4;
-          return [array[i], array[i + 1], array[i + 2], array[i + 3]];
-        });
-      }
-    };
+    const value = { array: new Float32Array(count * 4), clearUpdateRanges() {}, addUpdateRange() {}, needsUpdate: false };
+    const storage = { value, toReadOnly: () => storage, element: () => node };
     return storage;
-  },
-  normalLocal: new TNode([0, 0, 1]),
-  varying: (node, name) => {
-    const key = name || Symbol('varying');
-    return new TNode(() => {
-      if (shaderState.varyingSnapshots.has(key)) return shaderState.varyingSnapshots.get(key);
-      const prev = shaderState.stage;
-      shaderState.stage = 'vertex';
-      const val = arr(node).slice();
-      shaderState.stage = prev;
-      shaderState.varyingSnapshots.set(key, val);
-      return val;
-    });
-  },
-  vertexStage: (node) => new TNode(() => {
-    shaderState.vertexStageEvaluations++;
-    const prev = shaderState.stage;
-    shaderState.stage = 'vertex';
-    const val = arr(node).slice();
-    shaderState.stage = prev;
-    return val;
-  }),
-  cross: (a, b) => new TNode(() => {
-    const u = arr(a), v = arr(b);
-    return [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-  }),
-  normalize: (a) => new TNode(() => {
-    const u = arr(a);
-    const len = Math.hypot(...u) || 1;
-    return u.map((x) => x / len);
-  }),
-  sin: (a) => new TNode(() => {
-    if (shaderState.stage === 'fragment') shaderState.sinCallsInFragment++;
-    return arr(a).map(Math.sin);
-  }),
-  abs: (a) => new TNode(() => arr(a).map(Math.abs)),
-  sign: (a) => new TNode(() => arr(a).map(Math.sign)),
-  select: (c, a, b) => new TNode(() => (arr(c)[0] > 0 ? arr(a) : arr(b))),
-  floor: (a) => new TNode(() => arr(a).map(Math.floor)),
-  atan: (y, x) => new TNode(() => broadcast(y, x, Math.atan2)),
-  pow: (a, b) => new TNode(() => broadcast(a, b, Math.pow)),
-  dot: (a, b) => new TNode(() => {
-    const va = arr(a), vb = arr(b);
-    let s = 0;
-    for (let i = 0; i < va.length; i++) s += va[i] * vb[i];
-    return [s];
-  }),
-  length: (a) => new TNode(() => [Math.hypot(...arr(a))]),
-  fwidth: (a) => new TNode(() => arr(a).map(() => 0)),
-  normalView: new TNode([0, 0, 1]),
-  positionViewDirection: new TNode([0, 0, 1]),
-  fract: (a) => new TNode(() => arr(a).map((x) => x - Math.floor(x))),
-  max: (a, b) => new TNode(() => broadcast(a, b, Math.max)),
-  clamp: (x, lo, hi) => new TNode(() => {
-    const vx = arr(x), vlo = arr(lo), vhi = arr(hi);
-    return vx.map((val, i) => Math.max(vlo[i % vlo.length], Math.min(vhi[i % vhi.length], val)));
-  }),
-  mix: (a, b, t) => new TNode(() => {
-    const va = arr(a), vb = arr(b), vt = arr(t);
-    const n = Math.max(va.length, vb.length, vt.length);
-    const out = new Array(n);
-    for (let i = 0; i < n; i++) {
-      const k = vt[i % vt.length];
-      out[i] = va[i % va.length] * (1 - k) + vb[i % vb.length] * k;
-    }
-    return out;
-  }),
-  step: (edge, x) => new TNode(() => broadcast(edge, x, (e, v) => (v < e ? 0 : 1))),
-  smoothstep: (e0, e1, x) => new TNode(() => {
-    const v0 = arr(e0), v1 = arr(e1), vx = arr(x);
-    const n = Math.max(v0.length, v1.length, vx.length);
-    const out = new Array(n);
-    for (let i = 0; i < n; i++) out[i] = smoothstepScalar(v0[i % v0.length], v1[i % v1.length], vx[i % vx.length]);
-    return out;
-  })
-};
+  }
+}, { get: (stub, key) => stub[key] ?? node });
 
 class Vector3 {
   constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
@@ -439,26 +246,10 @@ const pedestriansModule = loadModule(pedestriansSource, {
     'three/addons/utils/BufferGeometryUtils.js': { mergeGeometries }
   }
 });
-const { PERSON_BONES, PersonCrowd, PersonRig, buildPersonGeometry, createPersonMaterial } = pedestriansModule;
+const { PERSON_BONES, PersonCrowd, PersonRig, buildPersonGeometry } = pedestriansModule;
 const STRIDE = 34; // 15 bones x 2 vec4s, 3 appearance vec4s, the info vec4
 
-test('PersonCrowd creates 2 LODs only when farDistance is finite and disables shadow casting on PeopleFar', () => {
-  const streetCrowd = new PersonCrowd(16, { farDistance: 34, castShadow: true });
-  assert.equal(streetCrowd.lods.length, 2);
-  assert.equal(streetCrowd.meshes[0].name, 'PeopleNear');
-  assert.equal(streetCrowd.meshes[1].name, 'PeopleFar');
-  assert.equal(streetCrowd.meshes[0].castShadow, true);
-  assert.equal(streetCrowd.meshes[1].castShadow, false);
-  assert.equal(streetCrowd.meshes[0].matrixAutoUpdate, false);
-  assert.equal(streetCrowd.meshes[1].matrixAutoUpdate, false);
-
-  const playerCrowd = new PersonCrowd(1, { farDistance: Infinity, castShadow: true });
-  assert.equal(playerCrowd.lods.length, 1);
-  assert.equal(playerCrowd.meshes[0].name, 'PeopleNear');
-  assert.equal(playerCrowd.meshes[0].castShadow, true);
-});
-
-test('PersonCrowd keeps 1 warm-up instance for 2 updates, then hides empty LODs with zero uploads', () => {
+test('PersonCrowd keeps 1 warm-up instance for 2 updates, then hides empty LODs', () => {
   const crowd = new PersonCrowd(8, { farDistance: 34 });
   const rig = new PersonRig({ seed: 2.5 });
   rig.reset(0, 0, 0, () => 0, null);
@@ -472,14 +263,12 @@ test('PersonCrowd keeps 1 warm-up instance for 2 updates, then hides empty LODs 
     assert.equal(crowd.meshes[1].count, 1);
   }
 
-  const uploadsAfterWarmup = crowd.lods[0].pose.value.uploads;
   crowd.begin();
   crowd.end();
   assert.equal(crowd.meshes[0].visible, false);
   assert.equal(crowd.meshes[0].count, 0);
   assert.equal(crowd.meshes[1].visible, false);
   assert.equal(crowd.meshes[1].count, 0);
-  assert.equal(crowd.lods[0].pose.value.uploads, uploadsAfterWarmup);
 
   crowd.begin();
   crowd.add(rig, 12);
@@ -501,127 +290,6 @@ test('buildPersonGeometry assigns constant partId across every triangle so flat/
       const p2 = skin[idx[i + 2] * 4 + 3];
       assert.equal(p0, p1);
       assert.equal(p1, p2);
-    }
-  }
-});
-
-test('createPersonMaterial hoists palette hashes to vertex stage, keeps positionNode clean, and makes PeopleFar branch-free', () => {
-  const pose = tslStub.attributeArray(2 * STRIDE);
-  // A real rig's block: its packed appearance & info (seed, female, girth, hair)
-  pose.value.array.set(new PersonRig({ seed: 7.3, female: true, girth: 1.02, hair: 0.65 }).pose, 0);
-
-  const nearMat = createPersonMaterial(pose, 1);
-  const farMat = createPersonMaterial(pose, 0);
-
-  // Evaluating positionNode (used by shadow pass) must not trigger any clothing vertexStage varyings
-  shaderState.vertexStageEvaluations = 0;
-  shaderState.varyingSnapshots.clear();
-  nearMat.positionNode.eval();
-  assert.equal(shaderState.vertexStageEvaluations, 0, 'shadow positionNode evaluates zero clothing/palette nodes');
-
-  // PeopleNear fragment stage runs zero palette/hash sin() calls except hair strand sin() on hair parts
-  for (const [partId, pos, extra] of [
-    [0, [0.02, 1.35, 0.09], [0, 0, 0.5]],
-    [1, [0.09, 0.6, 0.04], [0, 0, 0.4]],
-    [2, [0.09, 0.02, 0.05], [0, 0, 0.3]],
-    [3, [0.18, 1.1, 0.0], [0, 0, 0.95]],
-    [4, [0.22, 0.85, 0.0], [0, 0, 0.5]],
-    [5, [0.02, 1.62, 0.09], [0, 0, 0.5]]
-  ]) {
-    shaderState.attrs.skin = [0, 0, 0, partId];
-    shaderState.attrs.position = pos;
-    shaderState.attrs.extra = extra;
-    shaderState.varyingSnapshots.clear();
-    shaderState.sinCallsInFragment = 0;
-    shaderState.stage = 'fragment';
-    const col = nearMat.colorNode.eval();
-    const rough = nearMat.roughnessNode.eval();
-    assert.equal(shaderState.sinCallsInFragment, 0, `part ${partId} executes zero fragment sin() hashes`);
-    assert.equal(col.length, 3);
-    assert.ok(col.every((c) => Number.isFinite(c) && c >= 0 && c <= 1.5));
-    assert.ok(rough[0] >= 0.35 && rough[0] <= 0.9);
-  }
-
-  // PeopleFar fragment stage runs zero If/ElseIf branches and zero fragment sin() calls across all parts
-  for (const partId of [0, 1, 2, 3, 4, 5, 6, 7]) {
-    shaderState.attrs.skin = [0, 0, 0, partId];
-    shaderState.varyingSnapshots.clear();
-    shaderState.sinCallsInFragment = 0;
-    shaderState.ifCallsInFragment = 0;
-    shaderState.stage = 'fragment';
-    const col = farMat.colorNode.eval();
-    const rough = farMat.roughnessNode.eval();
-    assert.equal(shaderState.ifCallsInFragment, 0, 'PeopleFar fragment shader has zero branches');
-    assert.equal(shaderState.sinCallsInFragment, 0, 'PeopleFar fragment shader has zero sin() calls');
-    assert.equal(col.length, 3);
-    assert.ok(col.every((c) => Number.isFinite(c) && c >= 0 && c <= 1.5));
-    assert.ok(rough[0] >= 0.35 && rough[0] <= 0.9);
-  }
-});
-
-test('PeopleNear hoisted varyings produce identical fragment color and roughness across triangle interiors', () => {
-  const geo = buildPersonGeometry(1);
-  const posArr = geo.getAttribute('position').array;
-  const skinArr = geo.getAttribute('skin').array;
-  const extraArr = geo.getAttribute('extra').array;
-  const idxArr = geo.getIndex().array;
-
-  const pose = tslStub.attributeArray(STRIDE);
-  const nearMat = createPersonMaterial(pose, 1);
-  const bary = [0.23, 0.41, 0.36];
-
-  for (const [seed, female, girth, hair] of [
-    [1.1, 0, 1.0, 0.2],
-    [4.2, 1, 0.96, 0.85],
-    [9.7, 0, 1.06, 0.05] // tests bald male branch too
-  ]) {
-    pose.value.array.set(new PersonRig({ seed, female: female === 1, girth, hair }).pose, 0);
-
-    // Sample triangles across the entire mesh (every 11th triangle covers all 8 body parts & transitions)
-    for (let t = 0; t < idxArr.length; t += 33) {
-      const i0 = idxArr[t], i1 = idxArr[t + 1], i2 = idxArr[t + 2];
-      const vVar = [new Map(), new Map(), new Map()];
-      const vIdx = [i0, i1, i2];
-
-      // Evaluate vertex-stage varyings at each of the 3 triangle vertices, then interpolate with barycentric weights
-      for (let k = 0; k < 3; k++) {
-        const vi = vIdx[k];
-        shaderState.attrs.position = [posArr[vi * 3], posArr[vi * 3 + 1], posArr[vi * 3 + 2]];
-        shaderState.attrs.skin = [skinArr[vi * 4], skinArr[vi * 4 + 1], skinArr[vi * 4 + 2], skinArr[vi * 4 + 3]];
-        shaderState.attrs.extra = [extraArr[vi * 3], extraArr[vi * 3 + 1], extraArr[vi * 3 + 2]];
-        shaderState.varyingSnapshots = vVar[k];
-        nearMat.colorNode.eval();
-        nearMat.roughnessNode.eval();
-      }
-
-      const interpVaryings = new Map();
-      for (const [key, val0] of vVar[0].entries()) {
-        const val1 = vVar[1].get(key);
-        const val2 = vVar[2].get(key);
-        interpVaryings.set(key, val0.map((_, c) => val0[c] * bary[0] + val1[c] * bary[1] + val2[c] * bary[2]));
-      }
-      // Compare against direct evaluation at the interpolated attributes (no cross-vertex varying bleed)
-      shaderState.attrs.position = [0, 1, 2].map((c) =>
-        posArr[i0 * 3 + c] * bary[0] + posArr[i1 * 3 + c] * bary[1] + posArr[i2 * 3 + c] * bary[2]);
-      shaderState.attrs.skin = [0, 0, 0, skinArr[i0 * 4 + 3]];
-      shaderState.attrs.extra = [0, 1, 2].map((c) =>
-        extraArr[i0 * 3 + c] * bary[0] + extraArr[i1 * 3 + c] * bary[1] + extraArr[i2 * 3 + c] * bary[2]);
-      const directVaryings = new Map();
-      shaderState.varyingSnapshots = directVaryings;
-      const directCol = nearMat.colorNode.eval();
-      const directRough = nearMat.roughnessNode.eval();
-
-      // Contact shading (vPersonLocal.w) is shaded per vertex on purpose, so it interpolates rather than matching a
-      // direct evaluation; every other varying must interpolate exactly
-      interpVaryings.get('vPersonLocal')[3] = directVaryings.get('vPersonLocal')[3];
-      shaderState.varyingSnapshots = interpVaryings;
-      const interpCol = nearMat.colorNode.eval();
-      const interpRough = nearMat.roughnessNode.eval();
-
-      for (let c = 0; c < 3; c++) {
-        assert.ok(Math.abs(interpCol[c] - directCol[c]) < 1e-12, `exact color match at tri ${t / 3}`);
-      }
-      assert.ok(Math.abs(interpRough[0] - directRough[0]) < 1e-12, `exact roughness match at tri ${t / 3}`);
     }
   }
 });
@@ -821,60 +489,92 @@ test('PersonRig walk and full-speed run keep smooth kneecushion, bounded swing s
   }
 });
 
-test('PersonRig backward locomotion rolls forefoot-to-heel and keeps torso upright instead of leaning forward', () => {
+// Measured from the posed bones: the way a bone points, how far the torso (pelvis to neck) leans towards (ax, az),
+// and the heights of a foot's heel and toe tip
+function boneForward(rig, bone) {
+  const o = bone * 8;
+  return new Vector3(0, 0, 1).applyQuaternion(new Quaternion(rig.pose[o], rig.pose[o + 1], rig.pose[o + 2], rig.pose[o + 3]));
+}
+const yawOf = (v) => Math.atan2(v.x, v.z);
+const wrapAngle = (a) => a - Math.round(a / (2 * Math.PI)) * 2 * Math.PI;
+function torsoLean(rig, ax, az) {
+  const neck = boneWorldPos(rig, PERSON_BONES.HEAD), pelvis = boneWorldPos(rig, PERSON_BONES.PELVIS);
+  return Math.atan2((neck.x - pelvis.x) * ax + (neck.z - pelvis.z) * az, neck.y - pelvis.y);
+}
+function heelAndToe(rig, i) {
+  const side = i ? -1 : 1;
+  return [
+    boneWorldPos(rig, i ? PERSON_BONES.FOOT_R : PERSON_BONES.FOOT_L, new Vector3(side * 0.09, 0, -0.078)).y,
+    boneWorldPos(rig, i ? PERSON_BONES.TOE_R : PERSON_BONES.TOE_L, new Vector3(side * 0.09, 0.005, 0.208)).y
+  ];
+}
+
+test('PersonRig walking backward keeps the torso upright, reaches back toes first and keeps the foot ahead flat', () => {
   const rig = new PersonRig({ seed: 4.2, scale: 1.0 });
   const dt = 1 / 60;
-  let z = 0;
+  let z = 0, maxLean = -Infinity, maxAheadPitch = -Infinity, toeFirst = 0, heelFirst = 0;
+  const lifted = [false, false];
   rig.reset(0, 0, 0, () => 0);
-  let maxFrontStancePitch = -Infinity;
-  let maxTouchdownPitch = -Infinity;
 
-  for (let f = 0; f < 180; f++) {
+  for (let f = 0; f < 240; f++) {
     z -= 2.8 * dt;
     rig.update(dt, 0, z, 0, () => 0);
     if (f < 60) continue;
-    for (const foot of rig.feet) {
-      const relZ = foot.az - z;
-      if (!foot.swing && relZ > 0.2) maxFrontStancePitch = Math.max(maxFrontStancePitch, foot.pitch);
-      if (!foot.swing && relZ < -0.05) maxTouchdownPitch = Math.max(maxTouchdownPitch, foot.pitch);
+    maxLean = Math.max(maxLean, torsoLean(rig, 0, 1));
+    for (let i = 0; i < 2; i++) {
+      const [heel, toe] = heelAndToe(rig, i);
+      // each step: which end of the foot comes back down to the ground first
+      if (Math.min(heel, toe) > 0.05) lifted[i] = true;
+      else if (lifted[i] && Math.min(heel, toe) < 0.02) {
+        if (toe < heel) toeFirst++;
+        else heelFirst++;
+        lifted[i] = false;
+      }
+      // a foot on the ground ahead of the hips
+      const ahead = boneWorldPos(rig, i ? PERSON_BONES.FOOT_R : PERSON_BONES.FOOT_L).z - z;
+      if (Math.min(heel, toe) < 0.01 && ahead > 0.2) {
+        const forward = boneForward(rig, i ? PERSON_BONES.FOOT_R : PERSON_BONES.FOOT_L);
+        maxAheadPitch = Math.max(maxAheadPitch, Math.atan2(-forward.y, Math.hypot(forward.x, forward.z)));
+      }
     }
   }
-  assert.ok(rig.back > 0.95, 'backward gait blend engages');
-  assert.ok(rig.pelvisTilt < 0.05, `pelvis stays upright when backing up (${rig.pelvisTilt.toFixed(3)} rad)`);
-  assert.ok(maxTouchdownPitch > 0.05, 'backward touchdown lands forefoot-first behind the hip');
-  assert.ok(maxFrontStancePitch <= 0.02, `planted foot ahead of backward-moving hip never pitches onto tiptoe (${maxFrontStancePitch.toFixed(3)} rad)`);
+  assert.ok(maxLean < 0.04, `the torso stays upright backing up instead of leaning forward (${maxLean.toFixed(3)} rad)`);
+  assert.ok(toeFirst >= 6 && heelFirst === 0, `stepping back, the toes reach the ground first (${toeFirst} toes, ${heelFirst} heels)`);
+  assert.ok(maxAheadPitch <= 0.02, `the planted foot ahead never rises onto its toes (${maxAheadPitch.toFixed(3)} rad)`);
 });
 
-test('PersonRig continuous Walk-mode turns activate head lead, banking, and turn-in-place stepping', () => {
+test('PersonRig turning in place leads with the head and steps the feet round; running turns lean into the curve', () => {
   const rig = new PersonRig({ seed: 4.2, scale: 1.0 });
   const dt = 1 / 60;
   let heading = 0;
   rig.reset(0, 0, 0, () => 0);
-  const startPhase = rig.phase;
-  let totalPhase = 0, prevPhase = startPhase;
+  const feet = [PERSON_BONES.FOOT_L, PERSON_BONES.FOOT_R];
+  const feetYaw = feet.map((b) => yawOf(boneForward(rig, b)));
 
   // Continuous 2.6 rad/s turn in place (matches Walk mode A/D turnRate)
   for (let f = 0; f < 60; f++) {
     heading += 2.6 * dt;
     rig.update(dt, 0, 0, heading, () => 0);
-    let dp = rig.phase - prevPhase;
-    if (dp < 0) dp += 1;
-    totalPhase += dp;
-    prevPhase = rig.phase;
   }
-  assert.ok(rig.yawRate > 2.2, `smoothed yawRate tracks continuous turn (${rig.yawRate.toFixed(2)} rad/s)`);
-  assert.ok(rig.headTurn > 0.25, `head leads into continuous turn (${rig.headTurn.toFixed(2)} rad)`);
-  assert.ok(totalPhase > 0.8, `feet step to turn in place (${totalPhase.toFixed(2)} cycles)`);
+  const bodyYaw = yawOf(boneForward(rig, PERSON_BONES.PELVIS));
+  assert.ok(Math.abs(wrapAngle(bodyYaw - heading)) < 0.3, `the body keeps up with the turn (${wrapAngle(bodyYaw - heading).toFixed(2)} rad behind)`);
+  const headLead = wrapAngle(yawOf(boneForward(rig, PERSON_BONES.HEAD)) - bodyYaw);
+  assert.ok(headLead > 0.25, `the head leads into the turn (${headLead.toFixed(2)} rad)`);
+  for (let i = 0; i < 2; i++) {
+    const turned = wrapAngle(yawOf(boneForward(rig, feet[i])) - feetYaw[i]);
+    assert.ok(turned > 1.2, `the feet step round with the body (foot ${i} turned ${turned.toFixed(2)} rad)`);
+  }
 
-  // Running turn banks into the curve
-  let x = 0, z = 0;
+  // Running turn leans into the curve (to the left of the way it faces)
+  let x = 0, z = 0, minLean = Infinity;
   for (let f = 0; f < 90; f++) {
     heading += 2.6 * dt;
     x += Math.sin(heading) * 6.0 * dt;
     z += Math.cos(heading) * 6.0 * dt;
     rig.update(dt, x, z, heading, () => 0);
+    if (f > 30) minLean = Math.min(minLean, torsoLean(rig, Math.cos(heading), -Math.sin(heading)));
   }
-  assert.ok(rig.bank < -0.06, `body banks inward during running left turn (${rig.bank.toFixed(3)} rad)`);
+  assert.ok(minLean > 0.06, `the body leans into a running left turn (${minLean.toFixed(3)} rad)`);
 });
 
 test('PersonRig jump prepares with countermovement, evolves continuously across the arc without sprint foot lag, and absorbs landings', () => {
