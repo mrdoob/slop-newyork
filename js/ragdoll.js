@@ -47,6 +47,8 @@ const SLEEP_SPEED = 0.12; // m/s: below this for SLEEP_TIME, a ragdoll stops sim
 const SLEEP_TIME = 0.6;
 const SETTLE_DISTANCE = 0.05; // ...as it does once its pelvis and head have moved less than this in SETTLE_TIME
 const SETTLE_TIME = 0.8;
+// m: how far a body's points can be from its pelvis during a frame (its reach, plus a frame's motion and pushes)
+const NEAR_MARGIN = 4;
 
 // Rotate point i about centre c so that unit direction a turns towards unit direction b (by LIMIT_STIFFNESS of the
 // angle; Rodrigues)
@@ -158,6 +160,7 @@ class Ragdoll {
     this.impact = 0; // the hardest hit it took (m/s)
     this.speed = 0; // its fastest point's speed (m/s)
     this.walls = [];
+    this.near = []; // the movers close enough to touch it this frame
     this.settle = new Float64Array(6); // pelvis & head where it last checked if it had settled
     this.settleTime = 0;
   }
@@ -214,15 +217,21 @@ class Ragdoll {
       for (let m = 0; m < movers.length; m++) if (this.touches(movers[m])) { this.wake(); break; }
       if (this.asleep) return;
     }
-    // static colliders around it, gathered once a frame
+    // static colliders and vehicles around it, gathered once a frame
     const cx = this.pelvisX, cz = this.pelvisZ;
     const near = world.colliders ? world.colliders(cx, cz, 2.5) : null;
     this.walls.length = 0;
     if (near) for (let i = 0; i < near.length; i++) this.walls.push(near[i]);
+    this.near.length = 0;
+    for (let m = 0; m < movers.length; m++) {
+      const mv = movers[m];
+      const dx = cx - mv.x, dz = cz - mv.z, d = Math.sqrt(mv.shape.reach * mv.shape.reach + 4) + NEAR_MARGIN;
+      if (dx * dx + dz * dz <= d * d) this.near.push(mv);
+    }
     const steps = Math.max(1, Math.ceil(dt / SUBSTEP - 1e-6));
     const h = dt / steps;
     let fastest = 0;
-    for (let s = 0; s < steps; s++) fastest = this.substep(h, world, movers, s / steps, (s + 1) / steps);
+    for (let s = 0; s < steps; s++) fastest = this.substep(h, world, this.near, s / steps, (s + 1) / steps);
     this.speed = fastest;
     this.still = fastest < SLEEP_SPEED ? this.still + dt : 0;
     // settled: pelvis and head about where they were a moment ago (a limb may still be twitching)
