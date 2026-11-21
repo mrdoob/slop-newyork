@@ -5,12 +5,56 @@ import { PersonCrowd, PersonRig, PEDESTRIAN_DIVE_DURATION } from './pedestrians.
 // Local pedestrian population: connected walks, curb queues, conversations, keeping out of each other's way and player
 // avoidance.
 // Traffic supplies crossing permissions and view checks; this system owns the crowd and its animation.
-const NUM_PEDS = 340;
+const NUM_PEDS = 480; // the pool: how many are out depends on how busy the area is, PED_BASE around an ordinary one
+const PED_BASE = 340;
 const PED_RADIUS = 320;
 const NEAR_RADIUS = 350;
 const PED_SPAWN_DISTANCE = 150;
 const PED_AVOID_INTERVAL = 0.12;
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+// How busy the sidewalks are around (x, z), relative to an ordinary midtown block (5th Ave is x = 0, 42nd St z = 0,
+// north is -z): the places crowds gather, as segments [x0, z0, x1, z1, reach (m), weight], over a level that falls
+// off uptown, towards the rivers and below the Midtown core. Spawning, people's destinations and how often they stop
+// all follow it, so a crowd builds up where it should and stays there.
+const HOTSPOTS = [
+  [-532, 0, -630, -402, 140, 3.2], // Times Square & Duffy Square, 42nd to 47th St
+  [-357, 556, -288, 726, 150, 2.2], // Herald Square
+  [-760, 700, -700, 860, 140, 1.9], // Penn Station & Madison Square Garden
+  [311, -67, 311, -67, 200, 1.9], // Grand Central
+  [-310, 82, -83, 82, 140, 1.5], // Bryant Park & the Library
+  [0, -560, 0, -1180, 90, 1.8], // Fifth Avenue's shops, Rockefeller Center to the Plaza
+  [-300, -560, -130, -640, 140, 1.6], // Rockefeller Center
+  [-860, -1375, -860, -1375, 160, 1.4], // Columbus Circle
+  [-1135, 0, 470, 0, 45, 1.3], // 42nd St
+  [-860, 641, 155, 641, 45, 1.3], // 34th St
+  [180, 1990, 300, 2210, 170, 1.9], // Union Square
+  [29, 1566, 29, 1566, 170, 1.3], // Madison Square & the Flatiron
+  [-20, 2870, -20, 2870, 170, 1.4], // Washington Square
+  [345, 3300, 305, 3950, 90, 1.7], // Broadway through SoHo
+  [-100, 3550, 400, 3700, 220, 1.3], // SoHo
+  [-100, 4080, 1050, 4225, 60, 1.4], // Canal St
+  [650, 4250, 650, 4250, 220, 1.5], // Chinatown
+  [300, 5300, 300, 5300, 200, 1.3], // Fulton St & the Oculus
+  [-204, 5255, -204, 5255, 180, 1.3], // the World Trade Center
+  [265, 5753, 265, 5753, 220, 1.4], // Wall St
+  [-900, -6723, 470, -6723, 50, 1.5] // 125th St
+];
+function crowdDensity(x, z) {
+  let level = z < -5300 ? 0.7 : z < -1300 ? 0.75 : z > 750 ? 0.95 : 1.15; // Harlem, uptown, downtown, Midtown
+  if (x < -1250 || x > 900) level *= 0.85; // out towards the rivers
+  let boost = 0;
+  for (const [x0, z0, x1, z1, reach, weight] of HOTSPOTS) {
+    const sx = x1 - x0, sz = z1 - z0;
+    const t = sx || sz ? clamp(((x - x0) * sx + (z - z0) * sz) / (sx * sx + sz * sz), 0, 1) : 0;
+    const dx = x - x0 - sx * t, dz = z - z0 - sz * t;
+    const u = 1 - (dx * dx + dz * dz) / (reach * reach);
+    if (u > 0) boost = Math.max(boost, (weight - 1) * u * u);
+  }
+  return level * (1 + boost);
+}
+// Avenues & the wide crosstown streets are busier than side streets
+const roadBusyness = (e) => (e.axis === 'ave' || e.general ? 1.3 : e.half >= 7 ? 1.15 : 0.8);
 
 function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCross, walkOn, visible, nearView }) {
   let clock = 0;
@@ -81,6 +125,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       steerAt: 0, // when it may next choose a side to pass on
       steerRoom: Infinity, // the room & speed limit its last look ahead found
       steerCap: Infinity,
+      busy: 1, // how busy the sidewalks are where it last chose where to go (crowdDensity)
       index: i,
       diveStart: -Infinity,
       diveHeading: 0,
@@ -149,26 +194,43 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     }
   }
 
-  // Sidewalks to spawn on are picked by how much of them lies around the focus (each road once, as both edges of a
-  // two-way road share its sidewalks), so short blocks and two-way streets get no more than their share of people
+  // Sidewalks to spawn on (and walk to) are picked by how much of them lies around the focus (each road once, as both
+  // edges of a two-way road share its sidewalks) and how busy they are: the busiest stretch of each (sampled every
+  // 40 m) for the road, then a spot along it in proportion to how busy that is (densityAccepts)
   const spawnWeights = [];
+  const edgePeak = new Map();
   let spawnTotal = 0, spawnCount = -1, spawnFirst = null, spawnLast = null;
-  function spawnEdge() {
+  let pedTarget = PED_BASE; // how many people are out: more where it's busier on the whole, fewer where it's quiet
+  function refreshSpawnWeights() {
     if (nearEdges.length !== spawnCount || nearEdges[0] !== spawnFirst || nearEdges[nearEdges.length - 1] !== spawnLast) {
       spawnCount = nearEdges.length;
       spawnFirst = nearEdges[0];
       spawnLast = nearEdges[nearEdges.length - 1];
       spawnWeights.length = 0;
       spawnTotal = 0;
+      let sidewalk = 0;
       for (const e of nearEdges) {
-        // the length of e within NEAR_RADIUS of the focus
+        // the stretch of e within NEAR_RADIUS of the focus, and its busiest point
         const s = (focusX - e.sx) * e.dx + (focusZ - e.sz) * e.dz;
         const ox = e.sx + e.dx * s - focusX, oz = e.sz + e.dz * s - focusZ;
         const half = Math.sqrt(Math.max(0, NEAR_RADIUS * NEAR_RADIUS - ox * ox - oz * oz));
-        spawnTotal += Math.max(0, Math.min(e.len, s + half) - Math.max(0, s - half)) * pedRoutes.share(e);
+        const s0 = Math.max(0, s - half), s1 = Math.min(e.len, s + half);
+        let peak = 0;
+        const samples = Math.max(1, Math.ceil((s1 - s0) / 40));
+        for (let k = 0; k <= samples; k++) {
+          const sk = s0 + ((s1 - s0) * k) / samples;
+          peak = Math.max(peak, crowdDensity(e.sx + e.dx * sk, e.sz + e.dz * sk));
+        }
+        edgePeak.set(e, peak);
+        spawnTotal += Math.max(0, s1 - s0) * pedRoutes.share(e) * peak * roadBusyness(e);
         spawnWeights.push(spawnTotal);
+        sidewalk += Math.max(0, s1 - s0) * pedRoutes.share(e);
       }
+      pedTarget = Math.round(PED_BASE * clamp(spawnTotal / Math.max(sidewalk, 1) / 1.2, 0.65, NUM_PEDS / PED_BASE));
     }
+  }
+  function spawnEdge() {
+    refreshSpawnWeights();
     const r = Math.random() * spawnTotal;
     let lo = 0, hi = spawnWeights.length - 1;
     while (lo < hi) {
@@ -178,6 +240,8 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     }
     return nearEdges[lo];
   }
+  // Keep a spot on edge e in proportion to how busy it is against the busiest of the edge
+  const densityAccepts = (e, x, z) => Math.random() * (edgePeak.get(e) || 1) <= crowdDensity(x, z);
   // People within r of (x, z) (from the neighbour grid)
   function crowdAt(x, z, r) {
     let count = 0;
@@ -198,9 +262,10 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     const rMinSq = rMin * rMin, rMaxSq = rMax * rMax, gapSq = QUEUE_GAP * QUEUE_GAP;
     for (let attempt = 0; attempt < 10; attempt++) {
       const crosswalk = p.crossesStreets && nearSignals.length > 0 && attempt < 5;
+      const edge = crosswalk || !nearEdges.length ? null : spawnEdge();
       const ok = crosswalk
         ? crosswalkTrack(nearSignals[Math.floor(Math.random() * nearSignals.length)])
-        : nearEdges.length > 0 && sidewalkTrack(spawnEdge());
+        : !!edge && sidewalkTrack(edge);
       if (!ok) continue;
       const along = (focusX - track.ax) * track.ux + (focusZ - track.az) * track.uz;
       const minT = Math.max(0, along - rMax), maxT = Math.min(track.len, along + rMax);
@@ -212,7 +277,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       const d2 = dx * dx + dz * dz;
       if (d2 < rMinSq || d2 > rMaxSq || (protectView && nearView(x, z, 2, PED_SPAWN_DISTANCE))) continue;
       if (player.active && (x - player.x) * (x - player.x) + (z - player.z) * (z - player.z) < 100) continue;
-      if (!crosswalk && crowdAt(x, z, 4) >= 2) continue;
+      if (!crosswalk && (!densityAccepts(edge, x, z) || crowdAt(x, z, 4) >= 2)) continue;
       if (crosswalk) {
         let crowded = false;
         const curb = track.node.curb;
@@ -244,7 +309,8 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       p.nextRoute = null;
       p.nextLeg = 0;
       p.goalTime = 0;
-      p.restTime = clock + 25 + Math.random() * 45;
+      p.busy = crowdDensity(x, z);
+      p.restTime = clock + (25 + Math.random() * 45) / p.busy;
       p.socialTime = clock + 5 + Math.random() * 15;
       p._curbNode = null;
       p.rig.placed = false; // stands afresh where it now is
@@ -703,10 +769,26 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     const ahead = p.dir > 0 ? p.len - p.t : p.t;
     const gdx = p.x - p.goalX, gdz = p.z - p.goalZ;
     if (clock >= p.goalTime || gdx * gdx + gdz * gdz < 625) {
-      const destination = nearEdges[Math.floor(Math.random() * nearEdges.length)];
-      p.goalX = destination ? destination.sx + destination.dx * destination.len * 0.5 : p.x;
-      p.goalZ = destination ? destination.sz + destination.dz * destination.len * 0.5 : p.z;
+      p.busy = crowdDensity(p.x, p.z);
       p.goalTime = clock + 120 + Math.random() * 180;
+      // Where it's busy, people mostly mill about: somewhere else as busy within a block or two. Otherwise anywhere
+      // around, busy places more likely (a few tries at a spot the density map keeps)
+      let found = false;
+      if (p.busy > 1.4 && Math.random() > 1.2 / p.busy) {
+        for (let k = 0; k < 4 && !found; k++) {
+          p.goalX = p.x + (Math.random() - 0.5) * 240;
+          p.goalZ = p.z + (Math.random() - 0.5) * 240;
+          found = Math.random() * p.busy <= crowdDensity(p.goalX, p.goalZ);
+        }
+      }
+      const destination = found || !nearEdges.length ? null : spawnEdge();
+      for (let k = 0; destination && k < 4; k++) {
+        const s = Math.random() * destination.len;
+        p.goalX = destination.sx + destination.dx * s;
+        p.goalZ = destination.sz + destination.dz * s;
+        if (densityAccepts(destination, p.goalX, p.goalZ)) break;
+      }
+      if (!found && !destination) { p.goalX = p.x; p.goalZ = p.z; }
     }
     if (!p.nextRoute && p.route && ahead < 4) {
       p.nextRoute = pedRoutes.next(p.route, p.dir, p.goalX, p.goalZ, queuePenalty);
@@ -716,10 +798,13 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     // (stopping for a moment on its walking line, away from anyone)
     if (!p.node && p.route?.edge && p.t > 6 && p.t < p.len - 6 && clock >= p.restTime && p.shift === 0 && p.shiftTarget === 0
       && crowdAt(p.x, p.z, 1.2) <= 1) {
-      p.pause = 1.5 + Math.random() * 3;
-      p.restTime = clock + 35 + Math.random() * 55;
+      // (more often, and longer, where it's busy: looking about, waiting for someone)
+      p.busy = crowdDensity(p.x, p.z);
+      p.pause = (1.5 + Math.random() * 3) * Math.sqrt(p.busy);
+      p.restTime = clock + (35 + Math.random() * 55) / p.busy;
     }
-    let vMax = avoiding ? p.avoidSpeed : p.pause > 0 || p.conversation ? 0 : p.speed;
+    // (an easier pace where it's busy)
+    let vMax = avoiding ? p.avoidSpeed : p.pause > 0 || p.conversation ? 0 : p.speed * clamp(1.12 - 0.1 * p.busy, 0.72, 1);
     if (dodging || diving) p.v = vMax = 0;
     if (!p.nextRoute) vMax = Math.min(vMax, Math.sqrt(2 * brake * ahead));
     let room = Infinity;
@@ -986,9 +1071,22 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     let pedBudget = jump ? NUM_PEDS : 6;
     const keepRadius = jump ? NEAR_RADIUS : PED_RADIUS;
     const keepRadiusSq = keepRadius * keepRadius;
+    refreshSpawnWeights();
     for (let scanned = 0; scanned < NUM_PEDS && pedBudget > 0; scanned++) {
       const p = peds[pedCursor];
       pedCursor = (pedCursor + 1) % NUM_PEDS;
+      if (p.index >= pedTarget) {
+        // a quieter area has fewer people out: the spares leave where nobody sees them go
+        if (p.placed) {
+          const dx = p.x - focusX, dz = p.z - focusZ;
+          if (jump || dx * dx + dz * dz > PED_SPAWN_DISTANCE * PED_SPAWN_DISTANCE || (hasView && !visible(p.x, p.z, 7))) {
+            if (p.conversation) endConversation(p.conversation);
+            p.placed = false;
+            p.rig.placed = false;
+          }
+        }
+        continue;
+      }
       if (p.placed) {
         const dx = p.x - focusX, dz = p.z - focusZ;
         if (dx * dx + dz * dz <= keepRadiusSq) continue;

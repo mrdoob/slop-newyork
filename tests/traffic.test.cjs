@@ -210,8 +210,9 @@ function populationContext() {
     place: (v, e, lane, s) => Object.assign(v, { edge: e, lane, s })
   };
   context.nearView = trafficFunction('nearView', context);
-  // spawnPed's neighbours: the length-weighted sidewalk pick, the crowd check and the neighbour grid
-  Object.assign(context, { spawnEdge: () => context.nearEdges[0], crowdAt: () => 0, gridAdd: () => {} });
+  // spawnPed's neighbours: the busyness-weighted sidewalk pick & spot, the crowd check and the neighbour grid
+  Object.assign(context, { spawnEdge: () => context.nearEdges[0], densityAccepts: () => true, crowdDensity: () => 1,
+    crowdAt: () => 0, gridAdd: () => {} });
   return context;
 }
 
