@@ -1137,7 +1137,9 @@ function buildRoofRails(spec) {
   return list;
 }
 
-// NYC medallion roof light: a lit, gently tapered box on a black mount
+// NYC cab roof topper, as the Crown Victoria cabs carried it: a long sign along the roof on a rail, tapering towards its
+// rounded top, an ad on either side and the cab's medallion number lit on either end (taxiTopperTexture)
+const TOPPER = { length: 1.06, base: 0.12, top: 0.08, height: 0.33, lift: 0.05 };
 function taxiSignPlacement(spec) {
   const L = carLayout(spec);
   const cab = spec.cabin;
@@ -1148,28 +1150,27 @@ function taxiSignPlacement(spec) {
 
 function buildTaxiSign(spec) {
   const { z, y } = taxiSignPlacement(spec);
+  const { length, base, top, height, lift } = TOPPER;
   const shape = new THREE.Shape();
-  const hw0 = 0.3;
-  const hw1 = 0.27;
-  const h = 0.15;
   const r = 0.035;
-  shape.moveTo(-hw0, 0);
-  shape.lineTo(hw0, 0);
-  shape.lineTo(hw1, h - r);
-  shape.quadraticCurveTo(hw1 - 0.004, h, hw1 - r, h);
-  shape.lineTo(-hw1 + r, h);
-  shape.quadraticCurveTo(-hw1 + 0.004, h, -hw1, h - r);
-  shape.lineTo(-hw0, 0);
+  shape.moveTo(-base, 0);
+  shape.lineTo(base, 0);
+  shape.lineTo(top, height - r);
+  shape.quadraticCurveTo(top, height, top - r, height);
+  shape.lineTo(-top + r, height);
+  shape.quadraticCurveTo(-top, height, -top, height - r);
+  shape.lineTo(-base, 0);
+  const bevel = 0.014;
   const sign = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.12,
+    depth: length - 2 * bevel,
     bevelEnabled: true,
-    bevelThickness: 0.025,
-    bevelSize: 0.012,
+    bevelThickness: bevel,
+    bevelSize: 0.01,
     bevelSegments: 2,
     curveSegments: 3
-  }).translate(0, y + 0.03, z - 0.06);
-  const mount = new THREE.BoxGeometry(0.46, 0.04, 0.12).translate(0, y + 0.012, z);
-  return [part(sign, CAR_PARTS.SIGN), part(mount, CAR_PARTS.TRIM)];
+  }).translate(0, y + lift, z - length / 2 + bevel);
+  const rail = new THREE.BoxGeometry(0.16, lift + 0.01, length * 0.82).translate(0, y + lift / 2 - 0.005, z);
+  return [part(sign, CAR_PARTS.SIGN), part(rail, CAR_PARTS.TRIM)];
 }
 
 // Matte-black tonneau cover and bed-side rail caps over a pickup truck's bed (behind cabin.deck)
@@ -1225,7 +1226,8 @@ function buildCarProxyGeometry(spec) {
   }
   if (spec.sign) {
     const { z, y } = taxiSignPlacement(spec);
-    parts.push(part(new THREE.BoxGeometry(0.58, 0.16, 0.16).translate(0, y + 0.1, z), CAR_PARTS.SIGN));
+    const box = new THREE.BoxGeometry(TOPPER.base + TOPPER.top, TOPPER.height, TOPPER.length);
+    parts.push(part(box.translate(0, y + TOPPER.lift + TOPPER.height / 2, z), CAR_PARTS.SIGN));
   }
   return mergeGeometries(parts);
 }
@@ -1504,6 +1506,7 @@ const _carMaterialCache = new Map();
 const _carWheelMaterialCache = new Map();
 let _carPlateTexture;
 let _carBadgeTexture;
+let _taxiTopperTexture;
 // Made-up model names, lettered in chrome on the trunk lids & liftgates
 const BADGE_WORDS = ['MERIDIAN', 'HYBRID'];
 
@@ -1684,6 +1687,68 @@ function carBadgeTexture() {
   return _carBadgeTexture;
 }
 
+// The roof toppers' faces, five 128 px rows top to bottom: the medallion numbers lit on the ends (traffic cabs' 5J22,
+// the player's 7Y48), then four ads for the sides, for brands as made up as the billboards'
+const TOPPER_ADS = 4;
+function taxiTopperTexture() {
+  if (_taxiTopperTexture) return _taxiTopperTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128 * (1 + TOPPER_ADS);
+  const ctx = canvas.getContext('2d');
+  const text = (str, x, y, font, fill, maxWidth = 480) => {
+    ctx.font = font;
+    ctx.fillStyle = fill;
+    ctx.fillText(str, x, y, maxWidth);
+  };
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // medallion numbers: black on the lit panel
+  ['5J22', '7Y48'].forEach((number, i) => {
+    ctx.fillStyle = '#fff3c4';
+    ctx.fillRect(i * 256, 0, 256, 128);
+    text(number, i * 256 + 128, 70, 'bold 92px sans-serif', '#15171a', 236);
+  });
+  const row = (i) => 128 * (1 + i);
+  // Gotham Cola: a white wave on red
+  ctx.fillStyle = '#c8102e';
+  ctx.fillRect(0, row(0), 512, 128);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, row(0) + 96, 512, 10);
+  text('Gotham Cola', 256, row(0) + 52, 'italic bold 64px serif', '#ffffff');
+  text('ICE COLD · TASTE THE SKYLINE', 256, row(0) + 114, 'bold 14px sans-serif', '#c8102e');
+  // CHRONO GENÈVE: gold on black, framed
+  ctx.fillStyle = '#0d0d0f';
+  ctx.fillRect(0, row(1), 512, 128);
+  ctx.fillStyle = '#b8954a';
+  ctx.fillRect(10, row(1) + 10, 492, 3);
+  ctx.fillRect(10, row(1) + 115, 492, 3);
+  text('CHRONO GENÈVE', 256, row(1) + 58, '600 50px serif', '#d9b866');
+  text('FIFTH AVENUE FLAGSHIP', 256, row(1) + 96, '500 17px sans-serif', '#b8954a');
+  // a show: gold on deep purple
+  ctx.fillStyle = '#2a0f45';
+  ctx.fillRect(0, row(2), 512, 128);
+  ctx.fillStyle = '#4a1d72';
+  ctx.fillRect(0, row(2) + 84, 512, 44);
+  text('THE GILDED HOUR', 256, row(2) + 46, 'bold 54px serif', '#f2c75c');
+  text('NOW ON BROADWAY', 256, row(2) + 106, 'bold 24px sans-serif', '#ffffff');
+  // skyline tours: white on sky blue over a skyline
+  ctx.fillStyle = '#1f8fd6';
+  ctx.fillRect(0, row(3), 512, 128);
+  ctx.fillStyle = '#0f5f9a';
+  for (let x = 0, k = 0; x < 512; k++) {
+    const w = 18 + ((k * 37) % 23), h = 22 + ((k * 53) % 46);
+    ctx.fillRect(x, row(3) + 128 - h, w - 3, h);
+    x += w;
+  }
+  text('SKYLINE TOURS', 256, row(3) + 44, 'bold 56px sans-serif', '#ffffff');
+  text('SEE NEW YORK FROM THE TOP', 256, row(3) + 84, 'bold 20px sans-serif', '#ffe680');
+  _taxiTopperTexture = new THREE.CanvasTexture(canvas);
+  _taxiTopperTexture.colorSpace = THREE.SRGBColorSpace;
+  _taxiTopperTexture.anisotropy = 16;
+  return _taxiTopperTexture;
+}
+
 /**
  * Creates the TSL material for lofted vehicles.
  * Instanced traffic reads the per-instance `paintColor` (vec3) and `carState` (vec4: brake, left (+x) & right (-x)
@@ -1749,7 +1814,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const rearZone = spec.zRear + 0.58;
   const sillY = spec.sill[1][1];
   const rearSill = spec.tail.sill[1];
-  const signY = taxiSignPlacement(spec).y + 0.105;
   const doorMid = (spec.doors[0] + spec.doors[1]) / 2;
   const trunkBot = spec.rear.lid[1];
   const one = float(1.0);
@@ -2004,10 +2068,29 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   // Reverse lamps on the trunk lid either side of the plate (rear.reverse: the right one's outline): their outline's
   // distance & footprint
   const lidReverse = () => outline(spec.rear.reverse, 0.006);
-  const signGlyphMask = () => smoothstep(0.25, 0.58, sin(p.x.mul(90.0)))
-    .mul(band(p.x, 0.17, fwX))
-    .mul(band(p.y.sub(signY), 0.042, fwY))
-    .mul(fadeFine(fwX));
+  // The taxi's roof topper: an ad in a frame on either side (by the cab's seed; the player's cab shows the show), its
+  // medallion number lit on either end, each read left to right from where it faces. One texture sample
+  // (taxiTopperTexture's rows), taken outside the part branches, shared by the colour & emissive graphs
+  const topper = spec.sign ? (() => {
+    const { z: tz, y: ty } = taxiSignPlacement(spec);
+    const y0 = ty + TOPPER.lift;
+    const rel = p.z.sub(tz);
+    const side = smoothstep(0.6, 0.85, abs(n.x));
+    const end = smoothstep(0.6, 0.85, abs(n.z));
+    const halfLen = TOPPER.length / 2 - 0.05, v0 = y0 + 0.04, v1 = y0 + TOPPER.height - 0.05;
+    const su = float(0.5).sub(step(0.0, n.x).mul(2.0).sub(1.0).mul(rel).div(2 * halfLen));
+    const sv = p.y.sub(v0).div(v1 - v0);
+    const ew = 0.15, eh = 0.075, ec = y0 + TOPPER.height * 0.6;
+    const eu = float(0.5).add(step(0.0, n.z).mul(2.0).sub(1.0).mul(p.x).div(ew));
+    const ev = p.y.sub(ec).div(eh).add(0.5);
+    const rows = 1 + TOPPER_ADS;
+    const ad = fixed ? float(2.0) : floor(fract(floor(wCode.div(256.0).add(0.01)).mul(0.618034)).mul(TOPPER_ADS));
+    const sideUV = vec2(clamp(su, 0.01, 0.99), float(TOPPER_ADS - 1).sub(ad).add(clamp(sv, 0.02, 0.98)).div(rows));
+    const endUV = vec2(clamp(eu, 0.02, 0.98).add(fixed ? 1.0 : 0.0).mul(0.5), clamp(ev, 0.03, 0.97).add(TOPPER_ADS).div(rows));
+    const inSide = cov(abs(rel).sub(halfLen), fwZ).mul(cov(float(v0).sub(p.y), fwY)).mul(cov(p.y.sub(v1), fwY)).mul(side);
+    const inEnd = cov(abs(p.x).sub(ew / 2), fwX).mul(cov(abs(p.y.sub(ec)).sub(eh / 2), fwY)).mul(end);
+    return { y0, panel: max(inSide, inEnd), end: inEnd, col: texture(taxiTopperTexture(), mix(endUV, sideUV, step(end, side))).rgb };
+  })() : null;
   const chmslMask = (rearGlass) => spec.barnDoors
     ? rrect(vec2(p.x, p.y.sub(spec.barnDoors[1] + 0.055)), vec2(0.16, 0.015), 0.005, fwXY)
         .mul(smoothstep(-0.15, -0.45, n.z))
@@ -2277,6 +2360,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       clamp(p.y.sub(plateCenterY).div(0.115).add(0.5), 0.06, 0.94).add(plateVariant).div(5.0)
     );
     const plateCol = texture(carPlateTexture(), plateUV).rgb;
+    const topperCol = topper ? vec3(topper.col).toVar() : null;
     // Badge lettering on the rear (the badge on this side of the car): read left to right from behind
     let badgeInk = float(0.0);
     const badges = spec.rear.badges || [];
@@ -2447,9 +2531,13 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       const mirrorCapPaint = mix(basePaint, color(0x121519), max(isTwoTone, isBlackout));
       outCol.assign(mix(mix(mirrorCapPaint, color(0x8896a2), mirrorGlass), color(0x98a4ae), mirrorTurn));
     }).ElseIf(isSign.greaterThan(0.5), () => {
-      const signFace = smoothstep(0.55, 0.75, abs(n.z));
-      const signGlyph = signGlyphMask();
-      outCol.assign(mix(color(0xf3efe2), mix(color(0xfff1b8), color(0x15181b), signGlyph), signFace));
+      if (!topper) {
+        outCol.assign(color(0xeef0f2)); // (only taxis have one)
+        return;
+      }
+      // white plastic round the panels, a little darker down by the rail
+      const shell = mix(color(0xb9bdc2), color(0xeef0f2), smoothstep(topper.y0, topper.y0 + 0.12, p.y));
+      outCol.assign(mix(shell, topperCol, topper.panel));
     });
 
     return outCol;
@@ -2472,7 +2560,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     }).ElseIf(isMirror.greaterThan(0.5), () => {
       r.assign(0.12);
     }).ElseIf(isSign.greaterThan(0.5), () => {
-      r.assign(0.35);
+      r.assign(topper ? mix(float(0.35), float(0.18), topper.panel) : float(0.35));
     });
     return r;
   });
@@ -2499,6 +2587,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
 
   const emissiveFn = Fn(() => {
     const emit = vec3(0.0).toVar();
+    const topperGlow = topper ? vec3(topper.col).toVar() : null; // (the colour graph's sample)
     If(isBody.greaterThan(0.5), () => {
       If(p.z.greaterThan(frontZone), () => {
         const { lens, drl, projLens, turn } = headLampMasks();
@@ -2526,9 +2615,8 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
         emit.assign(rearEmit);
       });
     }).ElseIf(isSign.greaterThan(0.5), () => {
-      const signFace = smoothstep(0.55, 0.75, abs(n.z));
-      const signGlyph = signGlyphMask();
-      emit.assign(color(0xffe28a).mul(signFace.mul(one.sub(signGlyph.mul(0.9))).mul(1.65)));
+      // backlit: the ads glow faintly by day and brightly at night, the medallion number brighter still
+      if (topper) emit.assign(topperGlow.mul(topper.panel.mul(nightHeadlamp.mul(0.9).add(0.3)).add(topper.end.mul(0.7))));
     }).ElseIf(isWindow.mul(brake).greaterThan(0.5), () => {
       const chmsl = chmslMask(() => {
         const rear = polygonEdge(ax, p.z, rearGlassPlanes, 0.085, fwX, fwZ);
