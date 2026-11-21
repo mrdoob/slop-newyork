@@ -97,3 +97,27 @@ test('a cached route can weave between obstacles on opposite sides of the sidewa
     }
   }
 });
+
+test('both directions of a two-way road share one set of sidewalks, which still lead on at its junctions', () => {
+  const f = fixture();
+  // the opposite direction of the first road, along the same centreline
+  const [a, b] = [f.edges[0].from, f.edges[0].to];
+  const end = f.world(95, 0);
+  const back = { from: b, to: a, sx: end.x, sz: end.z, dx: -f.edges[0].dx, dz: -f.edges[0].dz,
+    rx: -f.edges[0].rx, rz: -f.edges[0].rz, half: 5, len: 90 };
+  b.out.push(back); a.in.push(back);
+  const tracks = f.routes.along(back); // laid out along the opposite direction first
+  assert.equal(tracks.length, 2);
+  assert.equal(f.routes.along(f.edges[0]), tracks);
+  assert.equal(f.routes.share(back), 0.5);
+  assert.equal(f.routes.share(f.edges[0]), 0.5);
+  assert.equal(f.routes.share(f.edges[1]), 1);
+  // walking on towards the second road from the end of either line
+  const goal = f.world(500, 7);
+  for (const t of tracks) {
+    const dir = t.ux * f.edges[0].dx + t.uz * f.edges[0].dz > 0 ? 1 : -1;
+    const plan = f.routes.next(t, dir, goal.x, goal.z);
+    assert.ok(plan, 'a way on from the shared sidewalk');
+    assert.equal(plan.at(-1).track.edge, f.edges[1]);
+  }
+});

@@ -2,7 +2,8 @@ import { blockAt } from './city-config.js';
 import { createPedestrianRoutes } from './pedestrian-routes.js';
 import { PersonCrowd, PersonRig, PEDESTRIAN_DIVE_DURATION } from './pedestrians.js';
 
-// Local pedestrian population: connected walks, curb queues, conversations and player avoidance.
+// Local pedestrian population: connected walks, curb queues, conversations, keeping out of each other's way and player
+// avoidance.
 // Traffic supplies crossing permissions and view checks; this system owns the crowd and its animation.
 const NUM_PEDS = 340;
 const PED_RADIUS = 320;
@@ -17,6 +18,8 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   let hasView = false;
   let pedRange = 0;
   let pedCursor = 0;
+  let mode = '';
+  let frame = 0;
 
   for (const n of network.nodes) {
     n.walkers = []; // pedestrians on its crosswalks
@@ -72,6 +75,13 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       resumeDir: 0,
       dodge: 0,
       dodgeTarget: 0,
+      shift: 0, // off its walking line, passing someone (as dodge: to the track's right), and where it is heading
+      shiftTarget: 0,
+      blocked: 0, // seconds stood behind someone or something standing in its way
+      steerAt: 0, // when it may next choose a side to pass on
+      steerRoom: Infinity, // the room & speed limit its last look ahead found
+      steerCap: Infinity,
+      index: i,
       diveStart: -Infinity,
       diveHeading: 0,
       diveT: 0,
@@ -139,6 +149,50 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     }
   }
 
+  // Sidewalks to spawn on are picked by how much of them lies around the focus (each road once, as both edges of a
+  // two-way road share its sidewalks), so short blocks and two-way streets get no more than their share of people
+  const spawnWeights = [];
+  let spawnTotal = 0, spawnCount = -1, spawnFirst = null, spawnLast = null;
+  function spawnEdge() {
+    if (nearEdges.length !== spawnCount || nearEdges[0] !== spawnFirst || nearEdges[nearEdges.length - 1] !== spawnLast) {
+      spawnCount = nearEdges.length;
+      spawnFirst = nearEdges[0];
+      spawnLast = nearEdges[nearEdges.length - 1];
+      spawnWeights.length = 0;
+      spawnTotal = 0;
+      for (const e of nearEdges) {
+        // the length of e within NEAR_RADIUS of the focus
+        const s = (focusX - e.sx) * e.dx + (focusZ - e.sz) * e.dz;
+        const ox = e.sx + e.dx * s - focusX, oz = e.sz + e.dz * s - focusZ;
+        const half = Math.sqrt(Math.max(0, NEAR_RADIUS * NEAR_RADIUS - ox * ox - oz * oz));
+        spawnTotal += Math.max(0, Math.min(e.len, s + half) - Math.max(0, s - half)) * pedRoutes.share(e);
+        spawnWeights.push(spawnTotal);
+      }
+    }
+    const r = Math.random() * spawnTotal;
+    let lo = 0, hi = spawnWeights.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (spawnWeights[mid] < r) lo = mid + 1;
+      else hi = mid;
+    }
+    return nearEdges[lo];
+  }
+  // People within r of (x, z) (from the neighbour grid)
+  function crowdAt(x, z, r) {
+    let count = 0;
+    const cx = gridCol(x), cz = gridRow(z);
+    for (let gz = Math.max(0, cz - 1); gz <= Math.min(GRID_N - 1, cz + 1); gz++) {
+      for (let gx = Math.max(0, cx - 1); gx <= Math.min(GRID_N - 1, cx + 1); gx++) {
+        for (let k = gridHead[gz * GRID_N + gx]; k >= 0; k = gridNext[k]) {
+          const q = peds[k];
+          if ((q.x - x) * (q.x - x) + (q.z - z) * (q.z - z) < r * r) count++;
+        }
+      }
+    }
+    return count;
+  }
+
   // Try crosswalks first for crossing pedestrians, then fall back to sidewalks if no suitable crossing fits.
   function spawnPed(p, rMin, rMax, protectView) {
     const rMinSq = rMin * rMin, rMaxSq = rMax * rMax, gapSq = QUEUE_GAP * QUEUE_GAP;
@@ -146,7 +200,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       const crosswalk = p.crossesStreets && nearSignals.length > 0 && attempt < 5;
       const ok = crosswalk
         ? crosswalkTrack(nearSignals[Math.floor(Math.random() * nearSignals.length)])
-        : nearEdges.length > 0 && sidewalkTrack(nearEdges[Math.floor(Math.random() * nearEdges.length)]);
+        : nearEdges.length > 0 && sidewalkTrack(spawnEdge());
       if (!ok) continue;
       const along = (focusX - track.ax) * track.ux + (focusZ - track.az) * track.uz;
       const minT = Math.max(0, along - rMax), maxT = Math.min(track.len, along + rMax);
@@ -158,6 +212,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       const d2 = dx * dx + dz * dz;
       if (d2 < rMinSq || d2 > rMaxSq || (protectView && nearView(x, z, 2, PED_SPAWN_DISTANCE))) continue;
       if (player.active && (x - player.x) * (x - player.x) + (z - player.z) * (z - player.z) < 100) continue;
+      if (!crosswalk && crowdAt(x, z, 4) >= 2) continue;
       if (crosswalk) {
         let crowded = false;
         const curb = track.node.curb;
@@ -180,6 +235,10 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       p.avoidUntil = 0;
       p.resumeDir = 0;
       p.dodge = p.dodgeTarget = 0;
+      p.shift = p.shiftTarget = 0;
+      p.blocked = 0;
+      p.steerAt = 0;
+      p.steerRoom = p.steerCap = Infinity;
       p.diveStart = -Infinity;
       p.avoidCheck = clock + Math.random() * PED_AVOID_INTERVAL;
       p.nextRoute = null;
@@ -190,6 +249,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       p._curbNode = null;
       p.rig.placed = false; // stands afresh where it now is
       p.placed = true;
+      gridAdd(p); // later spawns this frame must see it
       if (crosswalk) atCurb(p);
       return true;
     }
@@ -283,7 +343,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   function dodgeClear(p, offset, diving = false) {
     // Reserve space for the outstretched body as well as its centre when landing.
     const end = offset + (diving ? Math.sign(offset - p.dodge) * 0.9 : 0);
-    if (!pedRoutes.canDodge(p, end)) return false;
+    if (!pedRoutes.canDodge(p, end + p.shift)) return false;
     const dx = p.uz * (end - p.dodge), dz = -p.ux * (end - p.dodge);
     const lengthSq = dx * dx + dz * dz;
     for (const q of peds) {
@@ -316,6 +376,8 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     const dx = p.x - player.x, dz = p.z - player.z;
     if (dx * dx + dz * dz > pedRange * pedRange || clock < p.avoidCheck) return;
     p.avoidCheck = clock + PED_AVOID_INTERVAL;
+    // A standing or creeping vehicle is walked round (steer), not run from
+    if (clock >= p.avoidUntil && player.vx * player.vx + player.vz * player.vz < SLOW_PLAYER * SLOW_PLAYER) return;
     const ahead = p.dir > 0 ? p.len - p.t : p.t;
     const dodging = p.dodge !== 0 || p.dodgeTarget !== 0;
     const normalSpeed = dodging || p.pause > 0 || p.conversation || p.waiting ? 0 : p.speed;
@@ -380,6 +442,257 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     p.socialTime = Math.max(p.socialTime, clock + 5);
   }
 
+  // ---- Keeping out of each other's way --------------------------------------------------------------------------
+  // Everyone placed sits in a 5 m grid around the focus (linked lists in typed arrays), rebuilt every frame. A walker
+  // looks a few metres ahead along its track for whoever is in its path: other people, the player on foot, or the
+  // player's car or bicycle while it stands or creeps (moving faster, it is run from instead: avoidPlayer). It passes
+  // on whichever side is clear, stepping off its walking line (on the sidewalk only where the sidewalk is free; out of
+  // the stripes on a crosswalk, or right round a car standing on it), slowing until it is clear; it follows a slower
+  // walker it can't pass, and waits behind someone standing in its way, turning back after a few seconds if they stay.
+  // Walkers meeting each give way, half the room each, keeping right unless already passing the other way.
+  const GRID = 5;
+  const GRID_N = 150; // cells a side: everyone within NEAR_RADIUS (and some) of the focus
+  const gridHead = new Int32Array(GRID_N * GRID_N); // first person in each cell, -1 for none
+  const gridNext = new Int32Array(NUM_PEDS); // the next person in the same cell
+  let gridX0 = 0, gridZ0 = 0; // the grid's corner
+  const gridCol = (x) => Math.floor((x - gridX0) / GRID);
+  const gridRow = (z) => Math.floor((z - gridZ0) / GRID);
+  function gridAdd(p) {
+    const cx = gridCol(p.x), cz = gridRow(p.z);
+    if (cx < 0 || cz < 0 || cx >= GRID_N || cz >= GRID_N) return;
+    const c = cz * GRID_N + cx;
+    gridNext[p.index] = gridHead[c];
+    gridHead[c] = p.index;
+  }
+  function rebuildGrid() {
+    gridX0 = focusX - GRID_N * GRID * 0.5;
+    gridZ0 = focusZ - GRID_N * GRID * 0.5;
+    gridHead.fill(-1);
+    for (let i = 0; i < peds.length; i++) if (peds[i].placed) gridAdd(peds[i]);
+  }
+
+  const BODY = QUEUE_GAP; // centre to centre, two people passing each other
+  const SHIFT_RATE = 0.75; // m/s stepping sideways while walking
+  const LINE_SHIFT = 1.3; // how far a walker strays from its line on a sidewalk (the other line is 1.1 m away)
+  const STRIPE_SHIFT = 0.8; // ... within the stripes of a crosswalk
+  const ROUND_CAR = 3.8; // ... on a crosswalk, walking round a car standing across it
+  const SLOW_PLAYER = 1.5; // m/s: a player vehicle slower than this is walked round, not run from
+  const BLOCKED_TURN = 3; // s waiting behind someone standing still before turning back
+  // Who is around the walker in its own frame (f metres ahead, l to its right): the band of l its centre must keep out
+  // of, over a stretch of f
+  const MAX_NEAR = 48;
+  const nearL0 = new Float64Array(MAX_NEAR), nearL1 = new Float64Array(MAX_NEAR);
+  const nearF0 = new Float64Array(MAX_NEAR), nearF1 = new Float64Array(MAX_NEAR);
+  let nearCount = 0;
+  const probe = { ax: 0, az: 0, ux: 0, uz: 1, t: 0, x: 0, z: 0 };
+  let steerRoom = Infinity, steerCap = Infinity;
+
+  // Is lateral position l (to the walker's right) clear of everyone but `skip` from f0 to f1 ahead, and on the way there?
+  function laneFree(l, f0, f1, skip) {
+    for (let k = 0; k < nearCount; k++) {
+      if (k === skip || nearF1[k] < f0 || nearF0[k] > f1) continue;
+      const lo = nearL0[k], hi = nearL1[k];
+      if (l > lo && l < hi) return false;
+      // stepping across to l: nobody beside the walker in between
+      if (nearF0[k] < 0.8 && nearF1[k] > -0.6 && Math.min(0, l) < hi && Math.max(0, l) > lo) return false;
+    }
+    return true;
+  }
+
+  // May the walker stand at offset `shift` (track units) about `ahead` metres on? Within its bounds, and on the
+  // sidewalk (the crosswalk's road surface is open)
+  function shiftFits(p, shift, ahead, wide) {
+    const limit = p.node ? (wide ? ROUND_CAR : STRIPE_SHIFT) : wide ? 2.6 : LINE_SHIFT;
+    if (Math.abs(shift + p.dodge) > limit) return false;
+    if (p.node) return true;
+    probe.ax = p.ax; probe.az = p.az; probe.ux = p.ux; probe.uz = p.uz;
+    probe.t = clamp(p.t + p.dir * ahead, 0, p.len);
+    probe.x = p.ax + p.ux * probe.t + p.uz * (p.dodge + p.shift);
+    probe.z = p.az + p.uz * probe.t - p.ux * (p.dodge + p.shift);
+    return pedRoutes.canDodge(probe, shift + p.dodge);
+  }
+
+  // Are p & q bound for the same crosswalk, the same way? (q, standing, is then queuing ahead of p, not in its way)
+  function sameQueue(p, q) {
+    if (!q._curbNode || q._curbNode !== p._curbNode) return false;
+    const a = p.node ? null : nextCrossingLeg(p), b = q.node ? null : nextCrossingLeg(q);
+    const ta = p.node ? p : a?.track, tb = q.node ? q : b?.track;
+    return !!ta && !!tb && ta.side === tb.side && (p.node ? p.dir : a.dir) === (q.node ? q.dir : b.dir);
+  }
+
+  function steer(p, dt, ahead) {
+    steerRoom = steerCap = Infinity;
+    const fx = p.ux * p.dir, fz = p.uz * p.dir, rx = -fz, rz = fx;
+    const look = Math.min(GRID, 3 + p.speed * 1.4); // (within the 3 x 3 grid cells around)
+    nearCount = 0;
+    // The first one in the way: its entry, how far ahead (centre to centre; a footprint counts from its face), how fast
+    // it moves the walker's way, and what it is (0 a walker, 1 someone queuing ahead of it, 2 the player, 3 someone
+    // waiting to cross elsewhere, who lets it through)
+    let block = -1, blockF = Infinity, blockV = 0, blockKind = 0, blockFacing = false;
+    const cx = gridCol(p.x), cz = gridRow(p.z);
+    for (let gz = Math.max(0, cz - 1); gz <= Math.min(GRID_N - 1, cz + 1); gz++) {
+      for (let gx = Math.max(0, cx - 1); gx <= Math.min(GRID_N - 1, cx + 1); gx++) {
+        for (let k = gridHead[gz * GRID_N + gx]; k >= 0 && nearCount < MAX_NEAR; k = gridNext[k]) {
+          const q = peds[k];
+          if (q === p) continue;
+          const ox = q.x - p.x, oz = q.z - p.z;
+          const f = ox * fx + oz * fz;
+          if (f < -1.2 || f > look) continue;
+          const l = ox * rx + oz * rz;
+          if (l > 2.8 || l < -2.8) continue;
+          const i = nearCount++;
+          nearL0[i] = l - BODY; nearL1[i] = l + BODY; nearF0[i] = f - 0.3; nearF1[i] = f + 0.3;
+          if (f > 0 && l > -BODY && l < BODY && f < blockF) {
+            block = i; blockF = f;
+            const heading = q.dir * (q.ux * fx + q.uz * fz);
+            blockV = q.v * heading;
+            // coming the other way, or stopped facing the walker but about to (not resting, talking or queuing)
+            blockFacing = heading < -0.5 && !(q.pause > 0) && !q.conversation && !q.waiting;
+            blockKind = q.v >= 0.3 ? 0 : sameQueue(p, q) ? 1 : q.waiting || (q.node && curbProgress(q) <= KERB + 0.5) ? 3 : 0;
+          }
+        }
+      }
+    }
+    // The player: on foot like anyone else; a standing or creeping vehicle as its footprint
+    if (player.active && nearCount < MAX_NEAR && (mode === 'person' || player.vx * player.vx + player.vz * player.vz < SLOW_PLAYER * SLOW_PLAYER)) {
+      const ox = player.x - p.x, oz = player.z - p.z;
+      const f = ox * fx + oz * fz, l = ox * rx + oz * rz;
+      // the footprint's half extents in the walker's frame (its forward & right half vectors projected), plus the
+      // walker's own half width
+      const hfx = player.fx * player.halfL, hfz = player.fz * player.halfL;
+      const hrx = -player.fz * player.halfW, hrz = player.fx * player.halfW;
+      const ef = Math.abs(hfx * fx + hfz * fz) + Math.abs(hrx * fx + hrz * fz);
+      const el = Math.abs(hfx * rx + hfz * rz) + Math.abs(hrx * rx + hrz * rz) + 0.35;
+      if (f + ef > -1.2 && f - ef < look && Math.abs(l) < el + 2.8) {
+        const i = nearCount++;
+        nearL0[i] = l - el; nearL1[i] = l + el; nearF0[i] = f - ef - 0.3; nearF1[i] = f + ef + 0.3;
+        const face = f - ef + 0.3; // as far as a person would be, centre to centre, standing against the face
+        if (f + ef > 0 && l > -el && l < el && face < blockF) {
+          block = i; blockF = Math.max(0.3, face); blockKind = 2; blockFacing = false;
+          blockV = player.vx * fx + player.vz * fz;
+        }
+      }
+    }
+
+    // Nobody in the way: drift back onto the walking line once it is clear (and before the end of the track, to
+    // round the corner on it)
+    if (block < 0) {
+      p.blocked = 0;
+      if (p.shiftTarget !== 0 && (ahead < 2.5 || laneFree(p.shift * p.dir, -0.6, 2.5, -1))) p.shiftTarget = 0;
+      return;
+    }
+    const oncoming = blockKind === 0 && (blockV < -0.3 || blockFacing);
+    // Queuing at the curb, or following a walker going (nearly) as fast
+    if (blockKind === 1 || (blockKind === 0 && blockV > p.speed * 0.8)) {
+      p.blocked = 0;
+      steerRoom = Math.max(0, blockF - QUEUE_GAP);
+      if (blockKind === 0) steerCap = blockV;
+      return;
+    }
+    // Pass. Keep the side already chosen while it stays clear, else choose one, at most every 0.4 s as the sidewalk
+    // has to be checked
+    const lo = nearL0[block], hi = nearL1[block], centre = (lo + hi) * 0.5;
+    let target = (p.shiftTarget - p.shift) * -p.dir; // where the walker is stepping to, from where it is, to its right
+    if (!((target <= lo || target >= hi) && laneFree(target, 0, blockF + 1.2, block))) {
+      target = NaN;
+      if (oncoming) {
+        // Meeting: each makes half the room, on the side both agree on as each sees the other at the same distance to
+        // its right: keep to the right unless already passing the other way. Never switch sides: a walker that can't
+        // step far enough steps as far as it can (the other keeps stepping until they are clear), slowing down
+        const want = centre < 0.05 ? (centre + BODY) * 0.5 + 0.05 : (centre - BODY) * 0.5 - 0.05;
+        if (clock >= p.steerAt) {
+          p.steerAt = clock + 0.4;
+          let step = 0;
+          for (const part of [1, 0.6, 0.3]) {
+            if (shiftFits(p, p.shift - p.dir * want * part, Math.min(blockF, 2), false)) { step = want * part; break; }
+          }
+          p.shiftTarget = p.shift - p.dir * step;
+        }
+        // close in only as fast as the two of them stepping aside make the room (the other may be stuck: edge on)
+        p.blocked = 0;
+        const clearIn = Math.max(0.05, (BODY - Math.abs(centre)) / (2 * SHIFT_RATE));
+        steerCap = Math.max(p.speed * 0.3, (blockF - 0.3) / clearIn + blockV);
+        return;
+      }
+      // Overtaking or going round someone standing: on whichever side is nearer and clear, the left if about even
+      const right = hi + 0.05, left = lo - 0.05;
+      if (clock >= p.steerAt) {
+        p.steerAt = clock + 0.4;
+        const wide = blockKind === 2 && mode !== 'person';
+        for (const l of right < -left - 0.3 ? [right, left] : [left, right]) {
+          const shift = p.shift - p.dir * l;
+          if (laneFree(l, 0, blockF + 1.2, block) && shiftFits(p, shift, Math.min(blockF, 2), wide)) {
+            target = l;
+            p.shiftTarget = shift;
+            break;
+          }
+        }
+      }
+      if (target !== target && blockKind === 3) {
+        // people waiting to cross elsewhere let a walker through: it edges by them, as far right as it may
+        const limit = p.node ? STRIPE_SHIFT : LINE_SHIFT * 0.5;
+        p.shiftTarget = clamp(p.shift - p.dir * right, -limit, limit);
+        steerCap = p.speed * 0.5;
+        p.blocked = 0;
+        return;
+      }
+    }
+    if (target === target) {
+      // Passing: close in only as fast as the step aside clears them (an oncoming walker steps aside as well)
+      p.blocked = 0;
+      const exit = target > 0 ? hi : -lo;
+      const clearIn = exit / (oncoming ? 2 * SHIFT_RATE : SHIFT_RATE);
+      steerCap = Math.max(0, (blockF - 0.45) / Math.max(clearIn, 0.05) + blockV);
+      return;
+    }
+    // Stuck behind them: a slower walker is followed; someone (or something) standing is waited for, then turned from
+    steerRoom = Math.max(0, blockF - 0.75);
+    if (blockV > 0.2) {
+      p.blocked = 0;
+      steerCap = blockV;
+      return;
+    }
+    p.blocked += dt;
+    const canTurn = !p.node ? !!p.route?.edge : curbProgress(p) <= KERB + 0.2;
+    if (p.blocked > BLOCKED_TURN && canTurn) {
+      p.blocked = 0;
+      p.shiftTarget = 0;
+      turnPed(p, -p.dir);
+      p.pause = TURN_TIME;
+      steerRoom = 0;
+    }
+  }
+
+  // A crossing with a long queue at its curb puts people off: they take another way if there is one
+  function queuePenalty(path) {
+    for (let i = 0; i < path.length; i++) {
+      const track = path[i].track;
+      if (!track.node) continue;
+      let queued = 0;
+      for (const q of track.node.curb) {
+        const leg = q.node ? null : nextCrossingLeg(q);
+        if (!q.node && !leg) continue;
+        if ((q.node ? q.side : leg.track.side) === track.side && (q.node ? q.dir : leg.dir) === path[i].dir) queued++;
+      }
+      return queued > 4 ? (queued - 4) * 0.6 : 0;
+    }
+    return 0;
+  }
+
+  // Is the player's vehicle about to drive over p's crosswalk? Nobody steps off in front of it, even on the WALK: its
+  // centre line crosses the crosswalk's within the next 4 s, anywhere between the curbs
+  function playerComing(p) {
+    if (!pedRange) return false;
+    const vx = player.vx, vz = player.vz;
+    if (vx * vx + vz * vz < 4) return false;
+    const denom = vx * p.uz - vz * p.ux;
+    if (Math.abs(denom) < 1e-6) return false;
+    const ox = p.ax - player.x, oz = p.az - player.z;
+    const time = (ox * p.uz - oz * p.ux) / denom; // when the vehicle reaches the crosswalk's line
+    const along = (ox * vz - vx * oz) / denom; // where along the track it crosses it
+    return time > -0.5 && time < 4 && along > -player.halfL - 1 && along < p.len + player.halfL + 1;
+  }
+
   const walkedNodes = [];
   function walk(p, dt) {
     const avoiding = clock < p.avoidUntil;
@@ -396,11 +709,13 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       p.goalTime = clock + 120 + Math.random() * 180;
     }
     if (!p.nextRoute && p.route && ahead < 4) {
-      p.nextRoute = pedRoutes.next(p.route, p.dir, p.goalX, p.goalZ);
+      p.nextRoute = pedRoutes.next(p.route, p.dir, p.goalX, p.goalZ, queuePenalty);
       p.nextLeg = 0;
       if (!p.node && p.nextRoute) atCurb(p);
     }
-    if (!p.node && p.route?.edge && p.t > 6 && p.t < p.len - 6 && clock >= p.restTime) {
+    // (stopping for a moment on its walking line, away from anyone)
+    if (!p.node && p.route?.edge && p.t > 6 && p.t < p.len - 6 && clock >= p.restTime && p.shift === 0 && p.shiftTarget === 0
+      && crowdAt(p.x, p.z, 1.2) <= 1) {
       p.pause = 1.5 + Math.random() * 3;
       p.restTime = clock + 35 + Math.random() * 55;
     }
@@ -456,7 +771,7 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
         if (!walk) p.walkAt = -1;
         else if (p.walkAt < 0) p.walkAt = clock + p.walkDelay;
         // React to WALK independently of the queue or vehicles still clearing the crossing.
-        canCross = walk && (avoiding || clock >= p.walkAt) && mayCross(p);
+        canCross = walk && (avoiding || clock >= p.walkAt) && mayCross(p) && !playerComing(p);
       }
       room = s <= KERB + 1e-6 && !canCross ? Math.max(0, KERB - s) : Infinity;
       for (const q of p.node.curb) {
@@ -466,6 +781,24 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       }
     }
     if (avoiding) room = Math.min(room, Math.max(0, (p.avoidT - p.t) * p.dir));
+    // Keep out of other people's way (and the player's), except escaping a vehicle or queuing at the curb (the queue
+    // keeps its own spacing)
+    if (!avoiding && !dodging && !diving && vMax > 0 && !(p.node && curbProgress(p) <= KERB + 0.5)) {
+      // (beyond 70 m, a third of them a frame, holding the room they found, less the ground covered since)
+      const fdx = p.x - focusX, fdz = p.z - focusZ;
+      if (fdx * fdx + fdz * fdz < 4900 || (frame + p.index) % 3 === 0) {
+        steer(p, dt, ahead);
+        p.steerRoom = steerRoom;
+        p.steerCap = steerCap;
+      } else {
+        p.steerRoom = Math.max(0, p.steerRoom - p.v * dt);
+      }
+      room = Math.min(room, p.steerRoom);
+      vMax = Math.min(vMax, p.steerCap);
+    } else {
+      p.steerRoom = p.steerCap = Infinity;
+      if (vMax === 0) p.blocked = 0;
+    }
     vMax = Math.min(vMax, Math.sqrt(2 * brake * room));
     p.v += clamp(vMax - p.v, -(avoiding ? brake : 2 * brake) * dt, (avoiding ? PED_ESCAPE_ACCEL : PED_ACCEL) * dt);
     const movement = diving ? Math.min(Math.abs(p.diveT - p.t), PED_DODGE_SPEED * dt) : Math.min(p.v * dt, room);
@@ -484,6 +817,11 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
         p.resumeDir = 0;
         p.avoidCheck = 0;
         const leg = p.nextRoute[p.nextLeg++];
+        // stay where it is sideways: the part of its offset that lies across the new track
+        if (p.shift !== 0) {
+          p.shift *= p.uz * leg.track.uz + p.ux * leg.track.ux;
+          p.shiftTarget = p.shift;
+        }
         Object.assign(p, leg.track);
         p.route = leg.track;
         p.walkAt = -1;
@@ -502,8 +840,13 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     p.t = t;
     const dodgeStep = (diving || p.dodgeTarget ? PED_DODGE_SPEED : 1.8) * dt;
     p.dodge += clamp(p.dodgeTarget - p.dodge, -dodgeStep, dodgeStep);
-    p.x = p.ax + p.ux * t + p.uz * p.dodge;
-    p.z = p.az + p.uz * t - p.ux * p.dodge;
+    if (!dodging && !diving) {
+      const shiftStep = (p.v > 0.2 ? SHIFT_RATE : 0.4) * dt;
+      p.shift += clamp(p.shiftTarget - p.shift, -shiftStep, shiftStep);
+    }
+    const side = p.dodge + p.shift;
+    p.x = p.ax + p.ux * t + p.uz * side;
+    p.z = p.az + p.uz * t - p.ux * side;
     if (p.node && ((t > KERB && t < p.len - KERB) || (p.waiting && walkOn(p.side)))) {
       p.coord = p.side >= 2 ? p.x : p.z;
       if (!p.node.walkers.length) walkedNodes.push(p.node);
@@ -612,6 +955,13 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
         fz += (nz - fz) * w;
       }
     }
+    const passing = p.shiftTarget - p.shift;
+    if (p.v > 0.3 && Math.abs(passing) > 0.02) {
+      // stepping aside while walking: face along the way it moves
+      const lateral = Math.sign(passing) * SHIFT_RATE / p.v;
+      fx += p.uz * lateral;
+      fz -= p.ux * lateral;
+    }
     const heading = diving ? p.diveHeading : partner ? Math.atan2(partner.x - p.x, partner.z - p.z)
       : Math.abs(sideStep) > 0.01 ? Math.atan2(p.uz * Math.sign(sideStep), -p.ux * Math.sign(sideStep))
       : Math.atan2(fx, fz);
@@ -625,8 +975,11 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     focusX = x;
     focusZ = z;
     hasView = view;
+    mode = activeMode;
+    frame++;
     pedRange = player.active && (activeMode === 'car' || activeMode === 'cyclist') && player.entity.position.y > -1
       ? Math.sqrt(player.vx * player.vx + player.vz * player.vz) * PED_LOOKAHEAD + player.halfL + 6 : 0;
+    rebuildGrid();
 
     for (const n of walkedNodes) n.walkers.length = 0;
     walkedNodes.length = 0;

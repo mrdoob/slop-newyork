@@ -21,10 +21,24 @@ function createPedestrianRoutes({ walkable, onSidewalk }, blockAt) {
     return true;
   }
 
+  // A two-way road is a pair of directed edges along one centreline (one-way roads have a single edge): both share one
+  // set of sidewalks, laid out along the first of the pair asked for
+  const twins = new Map();
+  function twin(e) {
+    if (!twins.has(e)) twins.set(e, e.to.out.find((o) => o.to === e.from && o.dx * e.dx + o.dz * e.dz < -0.99) || null);
+    return twins.get(e);
+  }
+
   function along(e) {
     if (sidewalks.has(e)) return sidewalks.get(e);
+    const other = twin(e);
+    if (other && sidewalks.has(other)) {
+      sidewalks.set(e, sidewalks.get(other));
+      return sidewalks.get(e);
+    }
     const result = [];
     sidewalks.set(e, result);
+    if (other) sidewalks.set(other, result);
     // Two walking lines on each side leave room for people to pass or stop together.
     for (const sign of [-1, 1]) {
       for (const inset of [1.7, 2.8]) {
@@ -72,10 +86,12 @@ function createPedestrianRoutes({ walkable, onSidewalk }, blockAt) {
     const result = [], seen = new Set();
     junctions.set(n, result);
     for (const e of [...n.in, ...n.out]) {
-      if (seen.has(e)) continue;
-      seen.add(e);
-      const end = e.from === n ? 0 : 1;
-      for (const track of along(e)) if (!(end ? track.after : track.before)) result.push({ track, end });
+      for (const track of along(e)) {
+        if (seen.has(track)) continue;
+        seen.add(track);
+        const end = track.from === n ? 0 : 1; // (the track runs along whichever edge of a two-way pair laid it out)
+        if (!(end ? track.after : track.before)) result.push({ track, end });
+      }
     }
     for (const track of across(n)) result.push({ track, end: 0 }, { track, end: 1 });
     return result;
@@ -193,7 +209,7 @@ function createPedestrianRoutes({ walkable, onSidewalk }, blockAt) {
     return result;
   }
 
-  function next(track, dir, goalX, goalZ) {
+  function next(track, dir, goalX, goalZ, penalty = null) {
     let best = null, bestScore = -Infinity;
     const a = point(track, dir > 0 ? 1 : 0);
     const gx = goalX - a.x, gz = goalZ - a.z, distance = Math.hypot(gx, gz) || 1;
@@ -201,7 +217,7 @@ function createPedestrianRoutes({ walkable, onSidewalk }, blockAt) {
       const last = path[path.length - 1], target = last.track;
       const ux = target.ux * last.dir, uz = target.uz * last.dir;
       const back = ux * track.ux * dir + uz * track.uz * dir < -0.8;
-      const score = (ux * gx + uz * gz) / distance + Math.random() * 0.7 - (back ? 2 : 0);
+      const score = (ux * gx + uz * gz) / distance + Math.random() * 0.7 - (back ? 2 : 0) - (penalty ? penalty(path) : 0);
       if (score > bestScore) { best = path; bestScore = score; }
     }
     return best;
@@ -213,7 +229,10 @@ function createPedestrianRoutes({ walkable, onSidewalk }, blockAt) {
     return !!block && onSidewalk(target.x, target.z) && cornerClear(p, target, block);
   }
 
-  return { along, across, next, canDodge };
+  // How much of a road an edge stands for, to spread people by sidewalk length: half of a two-way road
+  const share = (e) => (twin(e) ? 0.5 : 1);
+
+  return { along, across, next, canDodge, share };
 }
 
 export { createPedestrianRoutes };
