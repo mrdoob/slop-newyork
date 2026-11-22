@@ -57,6 +57,7 @@ import {
   createTunnelShadeMaterial
 } from './tsl-materials.js';
 import { createRoadPaintChunkBuilder } from './road-paint.js';
+import { pointInPolygon, polygonArea, polygonBounds } from './polygon.js';
 import { GEO } from './nyc-geodata.js';
 
 // Live construction data consumed by the building and street-detail builders after buildCityGrid().
@@ -69,18 +70,14 @@ let fdrViaduct;
 let streetGroundSurfaces = [];
 
 function addStreetGround(poly, height) {
-  streetGroundSurfaces.push({
-    poly, height,
-    minX: Math.min(...poly.map((p) => p.x)), maxX: Math.max(...poly.map((p) => p.x)),
-    minZ: Math.min(...poly.map((p) => p.z)), maxZ: Math.max(...poly.map((p) => p.z))
-  });
+  streetGroundSurfaces.push({ poly, height, ...polygonBounds(poly) });
 }
 
 function getStreetGroundHeight(x, z) {
   let height = 0.22;
   for (const s of streetGroundSurfaces) {
     if (s.height > height && x >= s.minX && x <= s.maxX && z >= s.minZ && z <= s.maxZ
-      && pointInPolygonXZ(s.poly, x, z)) height = s.height;
+      && pointInPolygon(s.poly, x, z)) height = s.height;
   }
   return height;
 }
@@ -293,13 +290,7 @@ function rectPolygon(minX, maxX, minZ, maxZ) {
  * The part inside must be connected.
  */
 function clipPolygonToConvex(pts, convex) {
-  let area = 0;
-  for (let i = 0; i < convex.length; i++) {
-    const a = convex[i];
-    const b = convex[(i + 1) % convex.length];
-    area += a.x * b.z - b.x * a.z;
-  }
-  const s = area > 0 ? 1 : -1;
+  const s = polygonArea(convex) > 0 ? 1 : -1;
   let out = pts;
   for (let i = 0; i < convex.length && out.length; i++) {
     const a = convex[i];
@@ -334,13 +325,7 @@ function offsetConvexPolygon(pts, d) {
     return Math.hypot(q.x - p.x, q.z - p.z) > 0.05;
   });
   const n = src.length;
-  let area = 0;
-  for (let i = 0; i < n; i++) {
-    const a = src[i];
-    const b = src[(i + 1) % n];
-    area += a.x * b.z - b.x * a.z;
-  }
-  const s = area > 0 ? 1 : -1;
+  const s = polygonArea(src) > 0 ? 1 : -1;
   const out = [];
   for (let i = 0; i < n; i++) {
     const p0 = src[(i + n - 1) % n];
@@ -374,8 +359,7 @@ function offsetConvexPolygon(pts, d) {
 function offsetPolygonInward(pts, d) {
   const n = pts.length;
   if (n < 3) return null;
-  let area = 0;
-  for (let i = 0, j = n - 1; i < n; j = i++) area += pts[j].x * pts[i].z - pts[i].x * pts[j].z;
+  const area = polygonArea(pts);
   const s = area > 0 ? 1 : -1; // positive area: the inside lies left of each edge, i.e. along (-dz, dx)
   const out = [];
   for (let i = 0; i < n; i++) {
@@ -397,33 +381,17 @@ function offsetPolygonInward(pts, d) {
     const len = Math.min(3 * d, d / Math.max(1e-3, cos));
     out.push({ x: q.x + mx * len, z: q.z + mz * len });
   }
-  let a2 = 0;
-  for (let i = 0, j = n - 1; i < n; j = i++) a2 += out[j].x * out[i].z - out[i].x * out[j].z;
+  const a2 = polygonArea(out);
   return a2 * area > 0 && Math.abs(a2) < Math.abs(area) ? out : null;
 }
 
-function polygonCentroidArea(pts) {
-  let a = 0;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += pts[j].x * pts[i].z - pts[i].x * pts[j].z;
-  return a * 0.5;
-}
-function pointInPolygonXZ(pts, x, z) {
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const a = pts[i], b = pts[j];
-    if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
-  }
-  return inside;
-}
 
 /** Polygon offset by d (d > 0 inward, d < 0 outward), mitred corners clamped to 3|d|; null if it degenerates */
 function offsetPolygon(pts, d) {
   if (d > 0) return offsetPolygonInward(pts, d);
   const n = pts.length;
   if (n < 3) return null;
-  let area = 0;
-  for (let i = 0, j = n - 1; i < n; j = i++) area += pts[j].x * pts[i].z - pts[i].x * pts[j].z;
-  const s = area > 0 ? -1 : 1; // outward normal side
+  const s = polygonArea(pts) > 0 ? -1 : 1; // outward normal side
   const D = -d;
   const out = [];
   for (let i = 0; i < n; i++) {
@@ -1637,9 +1605,7 @@ function buildCityGrid(scene) {
     setPavingStyle(top.geometry, style);
     group.add(top);
     addStreetGround(topPoly, topY);
-    const xs = pts.map((p) => p.x);
-    const zs = pts.map((p) => p.z);
-    pavedRects.push({ minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) });
+    pavedRects.push(polygonBounds(pts));
   }
   function addBox(mat, x, y, z, w, h, d, rotY = 0, cast = true) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -1698,7 +1664,7 @@ function buildCityGrid(scene) {
       const west = clipPolygonHalfPlane(strip, -1, 0, -(ave.x - aveHalf)); // keeps x <= ave.x - aveHalf
       const east = clipPolygonHalfPlane(strip, 1, 0, ave.x + aveHalf); // keeps x >= ave.x + aveHalf
       for (const piece of [west, east]) {
-        if (piece.length >= 3 && Math.abs(polygonCentroidArea(piece)) > 25) pieces.push({ pts: piece, zN, zS, west: piece === west });
+        if (piece.length >= 3 && Math.abs(polygonArea(piece)) > 25) pieces.push({ pts: piece, zN, zS, west: piece === west });
       }
     }
     return pieces;
@@ -1708,9 +1674,8 @@ function buildCityGrid(scene) {
   const tsPieces = tsDef ? plazaPieces(tsDef, 47, 42, '7') : [];
   const hsPieces = hsDef ? plazaPieces(hsDef, 35, 33, '6') : [];
   const footprintOf = (pts) => {
-    const xs = pts.map((p) => p.x);
-    const zs = pts.map((p) => p.z);
-    addFootprint((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
+    const b = polygonBounds(pts);
+    addFootprint((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2, b.maxX - b.minX, b.maxZ - b.minZ);
   };
   for (const pc of [...tsPieces, ...hsPieces]) {
     addPavedPlaza(pc.pts, 1);
@@ -1719,12 +1684,12 @@ function buildCityGrid(scene) {
   // Times Square: long, low granite benches of the 2017 plaza redesign in staggered rows along the bowtie, planters
   // closing each piece towards the cross streets
   const pieceBox = (pc) => {
-    const xs = pc.pts.map((p) => p.x);
-    return { minX: Math.min(...xs), maxX: Math.max(...xs), cx: (Math.min(...xs) + Math.max(...xs)) / 2 };
+    const { minX, maxX } = polygonBounds(pc.pts);
+    return { minX, maxX, cx: (minX + maxX) / 2 };
   };
   const insidePiece = (pc, x, z, m = 1.5) => {
     const inner = offsetPolygonInward(pc.pts, m);
-    return inner && pointInPolygonXZ(inner, x, z);
+    return inner && pointInPolygon(inner, x, z);
   };
   for (const pc of tsPieces) {
     const bx = pieceBox(pc);
@@ -2020,41 +1985,20 @@ function buildCityGrid(scene) {
   const BED_Y = 0.41; // lawn top inside the granite bed copings
   const parkLawnGeos = [];
   const parkFenceGeos = [];
-  const inPolygon = (x, z, pts) => {
-    let inside = false;
-    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const a = pts[i];
-      const b = pts[j];
-      if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
-    }
-    return inside;
-  };
   const prand = (x, z, k = 0) => {
     const s = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453;
     return s - Math.floor(s);
-  };
-  const polygonArea = (pts) => {
-    let a = 0;
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i];
-      const q = pts[(i + 1) % pts.length];
-      a += p.x * q.z - q.x * p.z;
-    }
-    return a * 0.5;
   };
 
   // Scatters trees on a jittered grid inside polygon `pts` (kept `margin` m from its edges)
   function scatterParkTrees(pts, spacing, y, margin, speciesMix) {
     const inner = offsetConvexPolygon(pts, -margin);
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-    for (const p of inner) {
-      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
-    }
+    const { minX: x0, maxX: x1, minZ: z0, maxZ: z1 } = polygonBounds(inner);
     for (let gx = x0; gx <= x1; gx += spacing) {
       for (let gz = z0; gz <= z1; gz += spacing) {
         const tx = gx + (prand(gx, gz) - 0.5) * spacing * 0.7;
         const tz = gz + (prand(gz, gx, 1) - 0.5) * spacing * 0.7;
-        if (!inPolygon(tx, tz, inner)) continue;
+        if (!pointInPolygon(inner, tx, tz)) continue;
         const r = prand(tx, tz, 2);
         const species = r < speciesMix[0] ? 0 : (r < speciesMix[0] + speciesMix[1] ? 1 : 2);
         treeSites.push({ x: tx, y, z: tz, scale: 0.95 + prand(tx, tz, 3) * 0.35, species });
@@ -2327,7 +2271,7 @@ function buildCityGrid(scene) {
         const tz = gz + (prand(gz, gx, 1) - 0.5) * SP * 0.7;
         if (prand(tx, tz, 9) < 0.3) continue; // glades
         const inner = lawnTop || bed;
-        if (!inPolygon(tx, tz, inner)) continue;
+        if (!pointInPolygon(inner, tx, tz)) continue;
         const r = prand(tx, tz, 2);
         treeSites.push({ x: tx, y: BED_Y, z: tz, scale: 0.9 + prand(tx, tz, 3) * 0.4, species: r < 0.55 ? 0 : (r < 0.75 ? 1 : 2) });
       }
@@ -2361,7 +2305,7 @@ function buildCityGrid(scene) {
       const plazaIn = offsetPolygonInward(pmBlock.poly, 3.0);
       for (let x = pmBlock.minX + 4.5; x < pmBlock.maxX; x += 9) {
         for (let z = pmBlock.minZ + 4.5; z < pmBlock.maxZ; z += 9) {
-          if (!plazaIn || !inPolygon(x, z, plazaIn) || inTerminal(x, z)) continue;
+          if (!plazaIn || !pointInPolygon(plazaIn, x, z) || inTerminal(x, z)) continue;
           treeSites.push({ x, y: PARK_Y, z, scale: 0.85 + prand(x, z, 5) * 0.3, species: prand(z, x, 6) < 0.55 ? 1 : 0 });
         }
       }
@@ -2379,8 +2323,7 @@ function buildCityGrid(scene) {
     for (let i = (iStart - 1 + C.length) % C.length, k = 0; k < C.length && onTip(C[i]); i = (i - 1 + C.length) % C.length, k++) back.push(C[i]);
     tip.push(...back.reverse(), ...fwd);
     const nearCastle = (x, z, m) => Math.hypot(x - castleC.x, z - castleC.z) < castleC.r + m;
-    let signA = 0;
-    for (let i = 0, j = C.length - 1; i < C.length; j = i++) signA += C[j].x * C[i].z - C[i].x * C[j].z;
+    const signA = polygonArea(C);
     const edgeO = (a, b) => {
       const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
       const s0 = signA > 0 ? 1 : -1; // outward = right of travel for a CCW ring

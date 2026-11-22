@@ -51,6 +51,7 @@ import {
   streetZ
 } from './city-config.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { pointInPolygon, polygonBounds, distToSegment } from './polygon.js';
 
 // Surrounding land, buildings, harbor islands and bridges, with detailed skyline landmarks.
 // World frame: 1 unit = 1 m, x = Manhattan-grid east, z = grid south; origin at 5th Ave & 42nd St.
@@ -89,37 +90,6 @@ const toLinear = (c) => Math.pow(c, 2.2);
 const srgb = (r, g, b) => vec3(toLinear(r), toLinear(g), toLinear(b));
 // The same as a uniform: materials that differ only by such values share one shader
 const srgbUniform = (r, g, b) => uniform(new THREE.Vector3(toLinear(r), toLinear(g), toLinear(b)));
-
-function pointInPolygon(pts, x, z) {
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const a = pts[i];
-    const b = pts[j];
-    if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
-  }
-  return inside;
-}
-
-function polygonBounds(pts) {
-  const b = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
-  for (const p of pts) {
-    b.minX = Math.min(b.minX, p.x);
-    b.maxX = Math.max(b.maxX, p.x);
-    b.minZ = Math.min(b.minZ, p.z);
-    b.maxZ = Math.max(b.maxZ, p.z);
-  }
-  return b;
-}
-
-function distToSegment(px, pz, ax, az, bx, bz) {
-  const dx = bx - ax;
-  const dz = bz - az;
-  const len2 = dx * dx + dz * dz;
-  const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / len2)) : 0;
-  const cx = ax + dx * t - px;
-  const cz = az + dz * t - pz;
-  return Math.sqrt(cx * cx + cz * cz);
-}
 
 // Distance from (x, z) to the nearest edge of a small polygon (edges farther than maxReach on either axis are skipped)
 function distToPolygonEdges(pts, x, z, maxReach = Infinity) {

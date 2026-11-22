@@ -21,6 +21,7 @@ import { placeStreetTrees } from './tree-placements.js';
 import { createSubwayEntranceParts, createFoodCartParts } from './street-props.js';
 import { createSubwayEntrances } from './subway-entrances.js';
 import { pavedPlazaRects, centralParkClearings, parkTreeSites, parkLampSites } from './city-grid.js';
+import { pointInPolygon, polygonBounds, distToSegment } from './polygon.js';
 import { bryantParkLawn } from './landmarks.js';
 
 // Instanced street furniture, traffic signals, trees and nearby light pools.
@@ -870,38 +871,25 @@ function buildStreetDetails(scene, colliders = []) {
   //     North Woods (north of 102nd St), with glades
   if (cpClear) {
     const withBox = (pts) => {
-      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-      for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
-      return { pts, x0: x0 - 4, x1: x1 + 4, z0: z0 - 4, z1: z1 + 4 };
+      const b = polygonBounds(pts);
+      return { pts, x0: b.minX - 4, x1: b.maxX + 4, z0: b.minZ - 4, z1: b.maxZ + 4 };
     };
     const polys = cpClear.polygons.map(withBox);
     const drives = cpClear.drives.map((wp) => {
       const b = withBox(wp.map(([x, z]) => ({ x, z })));
       return { wp, x0: b.x0 - 4, x1: b.x1 + 4, z0: b.z0 - 4, z1: b.z1 + 4 };
     });
-    const inPoly = (x, z, pts) => {
-      let inside = false;
-      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-        const a = pts[i];
-        const b = pts[j];
-        if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
-      }
-      return inside;
-    };
-    const segDist = (px, pz, [ax, az], [bx, bz]) => {
-      const dx = bx - ax;
-      const dz = bz - az;
-      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
-      return Math.hypot(px - ax - dx * t, pz - az - dz * t);
-    };
     const blocked = (x, z) => {
       for (const P of polys) {
         if (x < P.x0 || x > P.x1 || z < P.z0 || z > P.z1) continue;
-        for (const [ox, oz] of [[0, 0], [3.5, 0], [-3.5, 0], [0, 3.5], [0, -3.5]]) if (inPoly(x + ox, z + oz, P.pts)) return true;
+        for (const [ox, oz] of [[0, 0], [3.5, 0], [-3.5, 0], [0, 3.5], [0, -3.5]]) if (pointInPolygon(P.pts, x + ox, z + oz)) return true;
       }
       for (const D of drives) {
         if (x < D.x0 || x > D.x1 || z < D.z0 || z > D.z1) continue;
-        for (let i = 0; i < D.wp.length - 1; i++) if (segDist(x, z, D.wp[i], D.wp[i + 1]) < 7.5) return true;
+        for (let i = 0; i < D.wp.length - 1; i++) {
+          const [ax, az] = D.wp[i], [bx, bz] = D.wp[i + 1];
+          if (distToSegment(x, z, ax, az, bx, bz) < 7.5) return true;
+        }
       }
       for (const r of cpClear.rects) if (x > r.minX - 2.5 && x < r.maxX + 2.5 && z > r.minZ - 2.5 && z < r.maxZ + 2.5) return true;
       for (const c of cpClear.circles) if (Math.hypot(x - c.x, z - c.z) < c.r) return true;
