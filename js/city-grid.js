@@ -59,6 +59,7 @@ import {
 import { createRoadPaintChunkBuilder } from './road-paint.js';
 import { pointInPolygon, polygonArea, polygonBounds } from './polygon.js';
 import { prand, minStdRandom } from './random.js';
+import { batchStaticGroupMeshes, geometryFromArrays } from './batching.js';
 import { GEO } from './nyc-geodata.js';
 
 // Live construction data consumed by the building and street-detail builders after buildCityGrid().
@@ -169,57 +170,6 @@ function buildManhattanSchistGeometry() {
   }
   nonIndexed.computeVertexNormals();
   return nonIndexed;
-}
-
-/**
- * Merges static non-instanced THREE.Mesh objects sharing the same material into a single
- * batched BufferGeometry per material to minimize WebGPU render & shadow pass draw calls.
- */
-function batchStaticGroupMeshes(rootGroup, excludeMaterials = null) {
-  rootGroup.updateMatrixWorld(true);
-  const invRoot = new THREE.Matrix4().copy(rootGroup.matrixWorld).invert();
-  const buckets = new Map();
-
-  rootGroup.traverse((obj) => {
-    if (!obj.isMesh || obj.isInstancedMesh || !obj.geometry || !obj.material) return;
-    if (excludeMaterials && excludeMaterials.has(obj.material)) return;
-    const attrs = obj.geometry.attributes;
-    if (!attrs.position || !attrs.normal || !attrs.uv) return;
-    if (!buckets.has(obj.material)) {
-      buckets.set(obj.material, []);
-    }
-    buckets.get(obj.material).push(obj);
-  });
-
-  for (const [mat, meshes] of buckets.entries()) {
-    if (meshes.length < 2) continue;
-    const geos = [];
-    let anyCast = false;
-    let anyReceive = false;
-
-    for (const m of meshes) {
-      const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
-      for (const key of Object.keys(g.attributes)) {
-        if (key !== 'position' && key !== 'normal' && key !== 'uv') {
-          g.deleteAttribute(key);
-        }
-      }
-      const relMat = new THREE.Matrix4().multiplyMatrices(invRoot, m.matrixWorld);
-      g.applyMatrix4(relMat);
-      geos.push(g);
-      if (m.castShadow) anyCast = true;
-      if (m.receiveShadow) anyReceive = true;
-      if (m.parent) m.parent.remove(m);
-    }
-
-    const merged = mergeGeometries(geos, false);
-    if (merged) {
-      const batchedMesh = new THREE.Mesh(merged, mat);
-      batchedMesh.castShadow = anyCast;
-      batchedMesh.receiveShadow = anyReceive;
-      rootGroup.add(batchedMesh);
-    }
-  }
 }
 
 /**
@@ -438,11 +388,18 @@ function buildFenceStripGeometry(segments, y0, h) {
       uvs.push(u, v);
     }
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  return g;
+  return geometryFromArrays(pos, nor, uvs);
+}
+
+// A mesh in `group` from accumulated { pos, nor, uv } arrays (none if they are empty), receiving shadows
+function addArrayMesh(group, A, material, castShadow = false, name = '') {
+  if (!A.pos.length) return null;
+  const mesh = new THREE.Mesh(geometryFromArrays(A.pos, A.nor, A.uv), material);
+  mesh.name = name;
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
 }
 
 /**
@@ -2890,27 +2847,15 @@ function buildManhattanWaterfrontEdge(group, { blockSidewalks, treeSites, lawnMa
   }
 
   // ---- Meshes -----------------------------------------------------------------------------------------------------
-  const addMesh = (A, mat, cast = false) => {
-    if (!A.pos.length) return null;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(A.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(A.nor, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(A.uv, 2));
-    const m = new THREE.Mesh(g, mat);
-    m.castShadow = cast;
-    m.receiveShadow = true;
-    group.add(m);
-    return m;
-  };
-  addMesh(lawn, lawnMat);
-  addMesh(curbs, curbMat);
-  addMesh(wall, createParkWallMaterial(), true);
-  addMesh(concrete, new THREE.MeshStandardNodeMaterial({ color: 0x7f7c76, roughness: 0.92, metalness: 0.0 }));
-  addMesh(fence, createIronFenceMaterial());
+  addArrayMesh(group, lawn, lawnMat);
+  addArrayMesh(group, curbs, curbMat);
+  addArrayMesh(group, wall, createParkWallMaterial(), true);
+  addArrayMesh(group, concrete, new THREE.MeshStandardNodeMaterial({ color: 0x7f7c76, roughness: 0.92, metalness: 0.0 }));
+  addArrayMesh(group, fence, createIronFenceMaterial());
   // West St's underpass portal in the South Street Viaduct portal's materials (its lawn roof went in with the lawns)
-  addMesh(wPortal.conc, viaduct.portalMats.conc, true);
-  addMesh(wPortal.dark, viaduct.portalMats.dark);
-  const wShade = addMesh(wPortal.shade, viaduct.portalMats.shade);
+  addArrayMesh(group, wPortal.conc, viaduct.portalMats.conc, true);
+  addArrayMesh(group, wPortal.dark, viaduct.portalMats.dark);
+  const wShade = addArrayMesh(group, wPortal.shade, viaduct.portalMats.shade);
   if (wShade) wShade.renderOrder = 1; // over the lane markings (renderOrder -1)
 
   if (!roadPaint) {
@@ -3314,31 +3259,18 @@ function buildSouthStreetViaduct(group, opts) {
   }
 
   // ---- Meshes & keep-clear boxes ----------------------------------------------------------------------------------
-  const addMesh = (A, mat, cast, name) => {
-    if (!A.pos.length) return;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(A.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(A.nor, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(A.uv, 2));
-    const m = new THREE.Mesh(g, mat);
-    m.name = name;
-    m.castShadow = cast;
-    m.receiveShadow = true;
-    group.add(m);
-    return m;
-  };
   // (the portal's materials are shared with West St's portal: portalMats)
   const portalMats = {
     conc: new THREE.MeshStandardNodeMaterial({ color: 0x8b877f, roughness: 0.9, metalness: 0.0 }),
     dark: new THREE.MeshBasicNodeMaterial({ color: 0x020203 }),
     shade: createTunnelShadeMaterial()
   };
-  addMesh(deck, roadMat, false, 'SouthStreetViaductDeck');
-  addMesh(conc, portalMats.conc, true, 'SouthStreetViaductConcrete');
-  addMesh(steel, new THREE.MeshStandardNodeMaterial({ color: 0x55625b, roughness: 0.6, metalness: 0.3 }), true, 'SouthStreetViaductSteel');
-  addMesh(roof, lawnMat, false, 'BatteryUnderpassRoof');
-  addMesh(dark, portalMats.dark, false, 'BatteryUnderpassMouth');
-  const shadeMesh = addMesh(shade, portalMats.shade, false, 'BatteryUnderpassShade');
+  addArrayMesh(group, deck, roadMat, false, 'SouthStreetViaductDeck');
+  addArrayMesh(group, conc, portalMats.conc, true, 'SouthStreetViaductConcrete');
+  addArrayMesh(group, steel, new THREE.MeshStandardNodeMaterial({ color: 0x55625b, roughness: 0.6, metalness: 0.3 }), true, 'SouthStreetViaductSteel');
+  addArrayMesh(group, roof, lawnMat, false, 'BatteryUnderpassRoof');
+  addArrayMesh(group, dark, portalMats.dark, false, 'BatteryUnderpassMouth');
+  const shadeMesh = addArrayMesh(group, shade, portalMats.shade, false, 'BatteryUnderpassShade');
   if (shadeMesh) shadeMesh.renderOrder = 1; // over the lane markings (renderOrder -1)
 
   // Buildings and trees keep 2.5 m clear of the deck edges (oriented boxes every ~12 m)
@@ -3472,7 +3404,6 @@ function buildUnderpassPortal(frames, acc, quad, lights, colliders) {
 export {
   buildCityGrid,
   getStreetGroundHeight,
-  batchStaticGroupMeshes,
   centralParkClearings,
   parkTreeSites,
   parkLampSites,

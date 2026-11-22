@@ -53,6 +53,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { pointInPolygon, polygonBounds, distToSegment } from './polygon.js';
 import { mulberry32 } from './random.js';
+import { createPartCollector } from './batching.js';
 
 // Surrounding land, buildings, harbor islands and bridges, with detailed skyline landmarks.
 // World frame: 1 unit = 1 m, x = Manhattan-grid east, z = grid south; origin at 5th Ave & 42nd St.
@@ -1841,46 +1842,6 @@ function buildBuildingChunks(list, material, chunkSize, name) {
 // =====================================================================================================================
 // 7. HARBOR ISLANDS & BOROUGH LANDMARKS
 // =====================================================================================================================
-
-// Collects static parts per material and merges them into one mesh per material (few draw calls)
-function createPartCollector() {
-  const buckets = new Map();
-  const unitBox = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const e = new THREE.Euler();
-  const p = new THREE.Vector3();
-  const s = new THREE.Vector3();
-  const add = (material, geometry, matrix) => {
-    const g = geometry.index ? geometry.toNonIndexed() : geometry.clone();
-    for (const key of Object.keys(g.attributes)) if (key !== 'position' && key !== 'normal') g.deleteAttribute(key);
-    if (!g.attributes.normal) g.computeVertexNormals();
-    if (matrix) g.applyMatrix4(matrix);
-    let arr = buckets.get(material);
-    if (!arr) buckets.set(material, (arr = []));
-    arr.push(g);
-  };
-  const matrixOf = (x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) =>
-    m.compose(p.set(x, y, z), q.setFromEuler(e.set(rx, ry, rz)), s.set(sx, sy, sz)).clone();
-  return {
-    add,
-    matrixOf,
-    // Box with its base centre at (x, y, z)
-    box(material, x, y, z, w, h, d, ry = 0) {
-      add(material, unitBox, matrixOf(x, y, z, w, h, d, 0, ry, 0));
-    },
-    build(parent, { castShadow = false, receiveShadow = false } = {}) {
-      for (const [material, geos] of buckets) {
-        const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
-        if (!merged) continue;
-        const mesh = new THREE.Mesh(merged, material);
-        mesh.castShadow = castShadow;
-        mesh.receiveShadow = receiveShadow;
-        parent.add(mesh);
-      }
-    }
-  };
-}
 
 // Stone / metal surfaces (sRGB swatch) with a little world-space weathering, optional ashlar coursing (block height
 // in metres) and optional night floodlighting. The swatch & amounts are uniforms, so every coursed (or plain) and

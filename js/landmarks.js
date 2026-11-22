@@ -7,7 +7,7 @@ import {
   createChryslerCrownMaterial,
   createBillboardMaterial
 } from './tsl-materials.js';
-import { batchStaticGroupMeshes } from './city-grid.js';
+import { batchStaticGroupMeshes } from './batching.js';
 
 let bryantParkLawn;
 
