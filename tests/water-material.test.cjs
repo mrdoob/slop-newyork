@@ -83,7 +83,9 @@ const wrap = (v) => (v instanceof TNode ? v : new TNode(Array.isArray(v) ? v : [
 const unary = (fn) => (a) => new TNode(() => arr(a).map(fn));
 
 function Fn(builder) {
-  return (...args) => new TNode(() => arr(args.length ? builder(args) : builder()));
+  const fn = (...args) => new TNode(() => arr(args.length ? builder(args) : builder()));
+  fn.setLayout = () => fn;
+  return fn;
 }
 
 function evalCond(cond) {

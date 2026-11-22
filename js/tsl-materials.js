@@ -81,12 +81,15 @@ const cityUniforms = {
   uCanyonBounce: uniform(0.52)
 };
 
+// The leaf helpers below with a layout (setLayout) are WGSL functions, built once per shader; without one, a Fn's body
+// is built again into the shader at every call.
+
 // Deterministic 2D -> [0, 1) hash: fract(sin(dot(p, k)) * 43758.5) on the input wrapped (exactly) into [0, 1024), so
 // sin's argument stays below ~1e5. Unwrapped, it reaches the millions for centimetre detail a few hundred metres from
 // the origin, where sin loses its precision and the hash breaks down into rows & stripes of repeats.
 const hash2D = Fn(([p]) => {
   return hashWrapped(fract(vec2(p).mul(1.0 / 1024.0)).mul(1024.0));
-});
+}).setLayout({ name: 'hash2D', type: 'float', inputs: [{ name: 'p', type: 'vec2' }] });
 const hashWrapped = (q) => fract(sin(dot(q, vec2(12.9898, 78.233))).mul(43758.5453));
 
 // Smooth 2D value noise in TSL (its lattice wraps every 1024 cells, like hash2D's: the cell is wrapped once and its far
@@ -103,7 +106,7 @@ const noise2D = Fn(([p]) => {
   const c = hashWrapped(vec2(i0.x, i1.y));
   const d = hashWrapped(i1);
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-});
+}).setLayout({ name: 'noise2D', type: 'float', inputs: [{ name: 'p', type: 'vec2' }] });
 
 // Value noise from a table: 256 x 256 random lattice values in four independent channels, interpolated by the texture
 // unit (the fade applied to the coordinates first): one fetch for what noise2D works out from four hashes, and four
@@ -165,7 +168,8 @@ const bumpNormal = Fn(([height]) => {
 
 /**
  * Filter-Width Anti-Aliased Filled Band (ported from CityGenerator.js)
- * Wrapped in Fn() so NodeBuilder emits a single WGSL function instead of inlining fwidth trees.
+ * Wrapped in Fn() so its inputs are evaluated once into variables before fwidth (inlined at each call: a WGSL function
+ * can't take the derivatives of its caller's values).
  */
 const lineAA = Fn(([coord, halfWidth]) => {
   const c = float(coord).toVar();
@@ -202,6 +206,10 @@ const filteredPulse = Fn(([x, a, b, w]) => {
   const hw = max(float(w), 0.0001).mul(0.5).toVar();
   const integral = (t) => floor(t).mul(hi.sub(lo)).add(clamp(fract(t), lo, hi).sub(lo));
   return integral(p.add(hw)).sub(integral(p.sub(hw))).div(hw.mul(2.0));
+}).setLayout({
+  name: 'filteredPulse',
+  type: 'float',
+  inputs: [{ name: 'x', type: 'float' }, { name: 'a', type: 'float' }, { name: 'b', type: 'float' }, { name: 'w', type: 'float' }]
 });
 
 // Share of [x - s, x + s] covered by the non-repeating interval [a, b].
@@ -209,6 +217,10 @@ const boxCoverage = Fn(([x, a, b, s]) => {
   const xv = float(x).toVar();
   const sv = max(float(s), 0.001).toVar();
   return clamp(min(xv.add(sv), b).sub(max(xv.sub(sv), a)).div(sv.mul(2.0)), 0.0, 1.0);
+}).setLayout({
+  name: 'boxCoverage',
+  type: 'float',
+  inputs: [{ name: 'x', type: 'float' }, { name: 'a', type: 'float' }, { name: 'b', type: 'float' }, { name: 's', type: 'float' }]
 });
 
 // Keep distant lit windows in 1–2 pixel clusters. Adjacent world-anchored scales cross-fade, and

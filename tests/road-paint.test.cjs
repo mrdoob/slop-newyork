@@ -322,7 +322,7 @@ test('road paint stays plain white when dry and far, and fades out before its ch
     screenSize: wrap([1920, 1080]),
     attribute: (name) => (name === 'paint' ? wrap([3.0, 12.0, 1.0]) : wrap([0.065, 0.0])),
     varying: (v) => v,
-    Fn: (builder) => (...args) => new TNode(() => arr(args.length ? builder(args) : builder())),
+    Fn: (builder) => Object.assign((...args) => new TNode(() => arr(args.length ? builder(args) : builder())), { setLayout() { return this; } }),
     If: (cond, body) => { if (arr(cond)[0] > 0) body(); return { ElseIf() { return this; }, Else() { return this; } }; },
     float: wrap,
     vec2: (...args) => new TNode(() => args.flatMap(arr).slice(0, 2)),
