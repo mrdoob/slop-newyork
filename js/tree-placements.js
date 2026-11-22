@@ -1,9 +1,5 @@
 import { blockAt } from './city-config.js';
-
-function hashPos(x, y, z) {
-  const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
-  return s - Math.floor(s);
-}
+import { hashPos } from './random.js';
 
 // Fit surveyed street trees to the modeled curbs, preserving nearby park and plaza trees.
 function placeStreetTrees(points, existingSites, isClear) {

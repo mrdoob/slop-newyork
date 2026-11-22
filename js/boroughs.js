@@ -52,6 +52,7 @@ import {
 } from './city-config.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { pointInPolygon, polygonBounds, distToSegment } from './polygon.js';
+import { mulberry32 } from './random.js';
 
 // Surrounding land, buildings, harbor islands and bridges, with detailed skyline landmarks.
 // World frame: 1 unit = 1 m, x = Manhattan-grid east, z = grid south; origin at 5th Ave & 42nd St.
@@ -74,15 +75,6 @@ const LLs = (pairs) => pairs.map(([lon, lat]) => LL(lon, lat));
 // 1. GEOMETRY HELPERS & LAND MASSES
 // =====================================================================================================================
 
-function mulberry32(seed) {
-  let s = seed >>> 0;
-  return function () {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 // Colour constants in this file are authored as sRGB swatches (like the hex colours elsewhere) and converted to the
 // linear values the shaders and lighting work in

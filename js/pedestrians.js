@@ -35,6 +35,7 @@ import {
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RAGDOLL_POINTS } from './ragdoll.js';
+import { prand } from './random.js';
 
 // Skinned characters for pedestrian-system.js and the player controllers.
 // Each crowd level uses one instanced draw, with 15-bone poses in a storage buffer and seeded appearance.
@@ -809,7 +810,7 @@ const unpackColor = (f) => {
  *   2: hem height, bare-leg height (-1: covered legs), outfit code, flags
  */
 function personAppearance(seed, female) {
-  const lane = (salt) => hash01(seed + salt);
+  const lane = (salt) => prand(seed + salt);
   const pick = (palette, t) => palette[Math.min(palette.length - 1, Math.floor(t * palette.length))];
   const f = female ? 1 : 0;
   const topRoll = lane(89);
@@ -1442,10 +1443,6 @@ const smin = (a, b, k) => {
   const h = Math.max(k - Math.abs(a - b), 0) / k;
   return Math.min(a, b) - h * h * k * 0.25;
 };
-const hash01 = (x) => {
-  const v = Math.sin(x * 12.9898) * 43758.5453;
-  return v - Math.floor(v);
-};
 // Highest a hip at (hx, hz) can be with a leg of length `reach` down to the ankle at (ax, ay, az)
 const reachTop = (ax, ay, az, hx, hz, reach) => {
   const dx = ax - hx;
@@ -1571,7 +1568,7 @@ class PersonRig {
     this.leanTarget = 0;
     this.leanCount = 0;
     this.time = seed * 7.3;
-    this.leanAt = this.time + IDLE.minHold * hash01(seed + 0.5);
+    this.leanAt = this.time + IDLE.minHold * prand(seed + 0.5);
     this.posed = false; // lying or getting up, off the gait: the next walking update stands it afresh
     this.feet = [makeFoot(1), makeFoot(-1)];
     this.pose = new Float32Array(STRIDE * 4);
@@ -1866,10 +1863,10 @@ class PersonRig {
   updateLean() {
     if (this.time >= this.leanAt) {
       const n = ++this.leanCount;
-      const r = hash01(this.seed * 3.71 + n * 1.13);
+      const r = prand(this.seed * 3.71 + n * 1.13);
       const side = this.leanTarget ? -Math.sign(this.leanTarget) : r < 0.5 ? 1 : -1;
-      this.leanTarget = r < 0.18 ? 0 : side * (0.55 + 0.45 * hash01(this.seed * 5.3 + n * 2.71));
-      this.leanAt = this.time + lerp(IDLE.minHold, IDLE.maxHold, hash01(this.seed * 1.9 + n * 0.77));
+      this.leanTarget = r < 0.18 ? 0 : side * (0.55 + 0.45 * prand(this.seed * 5.3 + n * 2.71));
+      this.leanAt = this.time + lerp(IDLE.minHold, IDLE.maxHold, prand(this.seed * 1.9 + n * 0.77));
     }
     this.lean += (this.leanTarget * (1 - this.gait) - this.lean) * _e35;
   }

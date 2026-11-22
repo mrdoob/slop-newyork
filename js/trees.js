@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { createTreeMaterial } from './tsl-materials.js';
 import { polygonBoxOverlaps } from './building-collision.js';
+import { mulberry32, hashPos } from './random.js';
 
 // Seeded street and park trees with three geometry levels, regrouped by spatial cell as the camera moves.
 // Bark tubes and leaf cards share a material; atlas mipmaps preserve leaf coverage at a distance.
@@ -8,17 +9,6 @@ import { polygonBoxOverlaps } from './building-collision.js';
 
 const V3 = THREE.Vector3;
 
-// Seeded PRNG (mulberry32): every species, variant and level grows the same tree on every load
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (e0, e1, x) => {
@@ -813,11 +803,6 @@ const LOD_HYSTERESIS = 6;
 // LOW_CUTOFF is behind the buildings anyway
 const MAX_DIST = [3000, 1600, 950];
 const LOW_CUTOFF = 1150;
-
-function hashPos(x, y, z) {
-  const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
-  return s - Math.floor(s);
-}
 
 // Placement checks run once, against nearby buildings and bridge structures.
 function createTreeClearance(colliders) {

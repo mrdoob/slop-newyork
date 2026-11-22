@@ -3,12 +3,14 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
+const random = loadModule(readFileSync(join(__dirname, '../js/random.js'), 'utf8'));
 
 // A straight 60 m sidewalk line along +z at x = 0. `room` is how far off its line the sidewalk lets anyone stand.
 function sidewalk({ room = 1.3, player = { active: false } } = {}) {
   const edge = {};
   const { createPedestrianSystem } = loadModule(readFileSync(join(__dirname, '../js/pedestrian-system.js'), 'utf8'), {
     imports: {
+      './random.js': random,
       './city-config.js': { blockAt: () => null },
       './pedestrian-routes.js': {
         createPedestrianRoutes: () => ({ next: () => null, share: () => 1, canDodge: (p, offset) => Math.abs(offset) <= room })

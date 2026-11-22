@@ -58,6 +58,7 @@ import {
 } from './tsl-materials.js';
 import { createRoadPaintChunkBuilder } from './road-paint.js';
 import { pointInPolygon, polygonArea, polygonBounds } from './polygon.js';
+import { prand, minStdRandom } from './random.js';
 import { GEO } from './nyc-geodata.js';
 
 // Live construction data consumed by the building and street-detail builders after buildCityGrid().
@@ -753,8 +754,7 @@ function buildWaterfrontPiers(group) {
   const DY = 0.12; // deck top, just above the esplanade
   const Y_AXIS = new THREE.Vector3(0, 1, 0);
   const trees = [];
-  let seed = 1234567;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const rnd = minStdRandom(1234567);
 
   // Local frame: u runs seaward from the bulkhead, s across the pier (rotation about Y as in Object3D.rotation.y)
   const frame = (x0, z0, theta) => {
@@ -1985,10 +1985,6 @@ function buildCityGrid(scene) {
   const BED_Y = 0.41; // lawn top inside the granite bed copings
   const parkLawnGeos = [];
   const parkFenceGeos = [];
-  const prand = (x, z, k = 0) => {
-    const s = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453;
-    return s - Math.floor(s);
-  };
 
   // Scatters trees on a jittered grid inside polygon `pts` (kept `margin` m from its edges)
   function scatterParkTrees(pts, spacing, y, margin, speciesMix) {
@@ -2523,7 +2519,6 @@ function buildManhattanWaterfrontEdge(group, { blockSidewalks, treeSites, lawnMa
   const COPING_Y = -0.04; // seawall coping top (section 2)
   const LAWN_Y = 0.2;
   const UP = new THREE.Vector3(0, 1, 0);
-  const hash = (a, b) => { const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return s - Math.floor(s); };
   const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
   const shoreX = (z, west) => { const b = getIslandBoundsAtZ(z); return west ? b.westX : b.eastX; };
 
@@ -2743,14 +2738,14 @@ function buildManhattanWaterfrontEdge(group, { blockSidewalks, treeSites, lawnMa
     const z0 = rows[0].z;
     for (let zt = z0; zt <= rows[rows.length - 1].z; zt += spacing) {
       for (let k = 0; k < 8; k++) {
-        const z = zt + (k % 2) * spacing * 0.5 + (hash(zt, k) - 0.5) * spacing * 0.45;
+        const z = zt + (k % 2) * spacing * 0.5 + (prand(zt, k) - 0.5) * spacing * 0.45;
         const r = rows[Math.round((z - z0) / STEP)];
         if (!r || !r[key]) continue;
         const [a, b] = r[key];
-        const d = a + 1.9 + k * rowGap + (hash(k, zt) - 0.5) * 1.0;
+        const d = a + 1.9 + k * rowGap + (prand(k, zt) - 0.5) * 1.0;
         if (d > b - 1.6) break;
-        if (blocked(r, d) || (key === 'river' && blocked(r, a)) || hash(z, d) < 0.1) continue;
-        treeSites.push({ x: X(r, d), y: LAWN_Y, z, scale: s0 + hash(d, z) * (s1 - s0), species: pickSpecies(hash(z * 0.37, d), mix), tier });
+        if (blocked(r, d) || (key === 'river' && blocked(r, a)) || prand(z, d) < 0.1) continue;
+        treeSites.push({ x: X(r, d), y: LAWN_Y, z, scale: s0 + prand(d, z) * (s1 - s0), species: pickSpecies(prand(z * 0.37, d), mix), tier });
       }
     }
   }
@@ -2759,10 +2754,10 @@ function buildManhattanWaterfrontEdge(group, { blockSidewalks, treeSites, lawnMa
     const z0 = rows[0].z;
     const z1 = rows[rows.length - 1].z;
     for (let zt = z0 + 4; zt <= z1; zt += 16) {
-      const z = zt + (hash(zt, 3.1) - 0.5) * 3;
+      const z = zt + (prand(zt, 3.1) - 0.5) * 3;
       const r = rows[Math.round((z - z0) / STEP)];
       if (!r || r.river || blocked(r, -4.4)) continue;
-      treeSites.push({ x: X(r, -4.4), y: COPING_Y, z, scale: 0.8 + hash(z, 7.7) * 0.25, species: hash(z, 1.9) < 0.6 ? 0 : 1, tier: 1 });
+      treeSites.push({ x: X(r, -4.4), y: COPING_Y, z, scale: 0.8 + prand(z, 7.7) * 0.25, species: prand(z, 1.9) < 0.6 ? 0 : 1, tier: 1 });
     }
     for (let z = z0 + 12; z <= z1; z += 26) {
       const r = rows[Math.round((z - z0) / STEP)];

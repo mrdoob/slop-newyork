@@ -6,6 +6,7 @@ import { createMover, vehicleShape } from './ragdoll.js';
 import { signalPhase, walkSignal } from './city-config.js';
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from './tsl-materials.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
+import { minStdRandom } from './random.js';
 import {
   BODY_SPECS,
   buildCarGeometry,
@@ -2219,8 +2220,7 @@ function createHighwayTraffic(scene, lanes) {
       { hex: 0x15181c, style: carStyleCode({ livery: 0, metallic: 1, trim: 2, wheel: 3 }) }
     ]
   };
-  let seed = 20240917;
-  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const rand = minStdRandom(20240917);
 
   // Lanes: arc length and heading at every centre-line vertex, bounds for the player test, cars every 24-74 m
   const cars = [];

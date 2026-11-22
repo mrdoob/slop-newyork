@@ -3,12 +3,14 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
+const random = loadModule(readFileSync(join(__dirname, '../js/random.js'), 'utf8'));
 
 function crossing() {
   const node = {};
   const state = { walk: false, clear: true };
   const { createPedestrianSystem } = loadModule(readFileSync(join(__dirname, '../js/pedestrian-system.js'), 'utf8'), {
     imports: {
+      './random.js': random,
       './city-config.js': { blockAt: () => null },
       './pedestrian-routes.js': { createPedestrianRoutes: () => ({ next: () => null }) },
       './ragdoll.js': { Ragdoll: class {}, RAGDOLL_POINTS: {}, moverLocal: () => {} },

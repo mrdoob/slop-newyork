@@ -22,6 +22,7 @@ import { createSubwayEntranceParts, createFoodCartParts } from './street-props.j
 import { createSubwayEntrances } from './subway-entrances.js';
 import { pavedPlazaRects, centralParkClearings, parkTreeSites, parkLampSites } from './city-grid.js';
 import { pointInPolygon, polygonBounds, distToSegment } from './polygon.js';
+import { hashPos } from './random.js';
 import { bryantParkLawn } from './landmarks.js';
 
 // Instanced street furniture, traffic signals, trees and nearby light pools.
@@ -973,11 +974,6 @@ function buildStreetDetails(scene, colliders = []) {
     pit.userData.cullDistance = 950;
   }
   group.add(pitCurbInst, pitSoilInst, pitGrateInst);
-
-  function hashPos(x, y, z) {
-    const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
-    return s - Math.floor(s);
-  }
 
   // =========================================================================
   // 8. CLUSTERED STREETLIGHTS & STREET FURNITURE LIGHT POOLS

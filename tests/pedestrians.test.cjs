@@ -4,6 +4,7 @@ const { join } = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const { loadModule } = require('./helpers/module.cjs');
+const random = loadModule(readFileSync(join(__dirname, '../js/random.js'), 'utf8'));
 
 const pedestriansSource = readFileSync(join(__dirname, '../js/pedestrians.js'), 'utf8');
 const controllersSource = readFileSync(join(__dirname, '../js/controllers.js'), 'utf8');
@@ -241,6 +242,7 @@ const ragdollModule = loadModule(readFileSync(join(__dirname, '../js/ragdoll.js'
 const pedestriansModule = loadModule(pedestriansSource, {
   imports: {
     './ragdoll.js': ragdollModule,
+    './random.js': random,
     'three/webgpu': { Vector3, Quaternion, Matrix4, BufferAttribute, BufferGeometry, Float32BufferAttribute, MeshStandardNodeMaterial, Mesh },
     'three/tsl': tslStub,
     'three/addons/utils/BufferGeometryUtils.js': { mergeGeometries }
@@ -830,6 +832,7 @@ test('PersonRig bind-pose ragdoll points rebuild the bind pose exactly', () => {
 test('a vehicle driving into a walker knocks them down; they lie a while, get up and walk back to their way', () => {
   const { createPedestrianSystem } = loadModule(readFileSync(join(__dirname, '../js/pedestrian-system.js'), 'utf8'), {
     imports: {
+      './random.js': random,
       './city-config.js': { blockAt: () => null },
       './pedestrian-routes.js': { createPedestrianRoutes: () => ({ next: () => null, share: () => 1, canDodge: () => true }) },
       './pedestrians.js': pedestriansModule,

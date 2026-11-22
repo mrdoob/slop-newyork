@@ -2,6 +2,7 @@ import { blockAt } from './city-config.js';
 import { createPedestrianRoutes } from './pedestrian-routes.js';
 import { PersonCrowd, PersonRig, PRONE_RISE, SUPINE_RISE, RISE_BLEND } from './pedestrians.js';
 import { Ragdoll, RAGDOLL_POINTS, moverLocal } from './ragdoll.js';
+import { prand } from './random.js';
 
 // Local pedestrian population: connected walks, curb queues, conversations, keeping out of each other's way and player
 // avoidance, and falls: anyone a vehicle hits goes limp (a ragdoll), lies a moment, gets up and walks back to its way.
@@ -81,14 +82,10 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
   // One instanced draw per level of detail; every pedestrian has a PersonRig that plants its footsteps on the
   // sidewalk (no sliding), with their own build, height, sex, hair, clothes and gait
   const pedCrowd = new PersonCrowd(NUM_PEDS);
-  const hash = (i, salt) => {
-    const v = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453;
-    return v - Math.floor(v);
-  };
   const peds = [];
   for (let i = 0; i < NUM_PEDS; i++) {
-    const female = hash(i, 1) < 0.48;
-    const hairRoll = hash(i, 2);
+    const female = prand(i, 1) < 0.48;
+    const hairRoll = prand(i, 2);
     peds.push({
       placed: false,
       crossesStreets: i % 6 === 0, // some start near crossings; everyone can use them along their route
@@ -106,9 +103,9 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       coord: 0,
       line: 0, // its line over the crosswalk, off the centre line
       waiting: false,
-      walkDelay: 0.2 + hash(i, 8) * 1.3,
+      walkDelay: 0.2 + prand(i, 8) * 1.3,
       walkAt: -1,
-      speed: 1.22 + (i % 5) * 0.1 + hash(i, 3) * 0.08, // preferred walking speed
+      speed: 1.22 + (i % 5) * 0.1 + prand(i, 3) * 0.08, // preferred walking speed
       v: 0, // current speed, easing up to it and down to stops
       pause: 0,
       route: null,
@@ -139,11 +136,11 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
       rig: new PersonRig({
         seed: i * 1.6180339 + 0.13,
         female,
-        scale: (female ? 0.91 : 0.97) + hash(i, 4) * 0.1,
-        girth: 0.9 + hash(i, 5) * 0.24,
+        scale: (female ? 0.91 : 0.97) + prand(i, 4) * 0.1,
+        girth: 0.9 + prand(i, 5) * 0.24,
         hair: female ? (hairRoll < 0.68 ? 1 : 0.3 + hairRoll * 0.25) : hairRoll < 0.08 ? 1 : hairRoll * 0.35,
-        armSwing: 0.75 + hash(i, 6) * 0.5,
-        stride: 0.94 + hash(i, 7) * 0.12
+        armSwing: 0.75 + prand(i, 6) * 0.5,
+        stride: 0.94 + prand(i, 7) * 0.12
       })
     });
   }

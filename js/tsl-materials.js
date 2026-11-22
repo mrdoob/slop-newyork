@@ -66,6 +66,7 @@ import {
   LONG_ISLAND_POLYGONS,
   streetZ
 } from './city-config.js';
+import { mulberry32 } from './random.js';
 
 // Procedural city materials: facades and interiors, vegetation, roads, water and lighting effects.
 
@@ -2855,13 +2856,7 @@ function getWaterWaveTexture() {
   if (_waterWaveTexture) return _waterWaveTexture;
   const N = 256;
   const size = N * N;
-  let seed = 0x2f6b9d1;
-  const rand = () => { // mulberry32
-    seed = (seed + 0x6D2B79F5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  const rand = mulberry32(0x2f6b9d1);
   const gRe = new Float64Array(size);
   const gIm = new Float64Array(size);
   for (let i = 0; i < size; i++) { // complex Gaussian white noise (Box-Muller)

@@ -3,6 +3,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
+const random = loadModule(readFileSync(join(__dirname, '../js/random.js'), 'utf8'));
 
 const source = readFileSync(join(__dirname, '../js/tree-placements.js'), 'utf8');
 const rectangle = (x, z, w, d, angle = 0, extra = {}) => ({ park: 0, ...extra,
@@ -19,7 +20,7 @@ function contains(b, x, z) {
 }
 function setup(blocks) {
   const blockAt = (x, z) => blocks.find(b => contains(b, x, z)) || null;
-  return loadModule(source, { imports: { './city-config.js': { blockAt } } }).placeStreetTrees;
+  return loadModule(source, { imports: { './city-config.js': { blockAt }, './random.js': random } }).placeStreetTrees;
 }
 const clear = () => true;
 

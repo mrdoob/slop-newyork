@@ -3,6 +3,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
+const random = loadModule(readFileSync(join(__dirname, '../js/random.js'), 'utf8'));
 
 // Minimal Three.js math/object stub sufficient for road-paint.js and scene-culling.js
 class Vector3 {
@@ -351,7 +352,8 @@ test('road paint stays plain white when dry and far, and fades out before its ch
     imports: {
       'three/webgpu': orInert({ MeshStandardNodeMaterial: class { constructor(o) { Object.assign(this, o); } } }),
       'three/tsl': orInert(tsl),
-      './city-config.js': orInert({})
+      './city-config.js': orInert({}),
+      './random.js': random
     }
   });
   const m1 = createRoadPaintMaterial();

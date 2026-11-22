@@ -3,6 +3,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
+const random = loadModule(readFileSync(join(__dirname, '../js/random.js'), 'utf8'));
 
 const treesSource = readFileSync(join(__dirname, '../js/trees.js'), 'utf8');
 const buildingCollision = loadModule(readFileSync(join(__dirname, '../js/building-collision.js'), 'utf8'));
@@ -354,7 +355,8 @@ const { createTreeField } = loadModule(treesSource, {
   imports: {
     'three/webgpu': threeStub,
     './tsl-materials.js': { createTreeMaterial: () => ({ name: 'TreeMat' }) },
-    './building-collision.js': buildingCollision
+    './building-collision.js': buildingCollision,
+    './random.js': random
   },
   globals: {
     document: makeStubDocument(),
