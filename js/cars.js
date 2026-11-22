@@ -39,7 +39,8 @@ import {
   uniform,
   texture,
   time,
-  instanceIndex
+  instanceIndex,
+  struct
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LoftGeometry } from 'three/addons/geometries/LoftGeometry.js';
@@ -1755,8 +1756,8 @@ function taxiTopperTexture() {
  * turn signal, style/livery code from `carStyleCode` where 1 = NYPD) attributes; with a fixed `fixedColorHex` (the
  * player's taxi, or fixed wheels) the state is the `material.userData.carState` uniform instead, with its fourth
  * component controlling reverse lights.
- * Every mask is built once and shared by the colour, roughness, metalness & emissive graphs (TSL turns nodes used
- * more than once into temporaries), so the fragment shader evaluates each SDF a single time.
+ * The colour, roughness, metalness & emissive come out of one function of per-part branches (a CarSurface struct),
+ * so the fragment shader evaluates each of its part's masks a single time.
  */
 function createLoftedCarMaterial(spec, fixedColorHex = null) {
   const cacheKey = `${spec.name}_${fixedColorHex ?? 'instanced'}`;
@@ -1910,7 +1911,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     return clamp(max(max(low, spray.mul(0.85)), max(arch.mul(0.8), tail)).mul(streaks), 0.0, 1.0);
   };
 
-  // Shared glasshouse polygon evaluation (used by colorNode, roughnessNode & metalnessNode on CAR_PARTS.WINDOW only)
+  // Glasshouse polygon evaluation (the window branch's colour, roughness, metalness & high brake light)
   const evalWindowGlass = () => {
     const side = polygonEdge(p.z, p.y, sideGlassPlanes, 0.065, fwZ, fwY);
     let dSideG = side.d;
@@ -1939,7 +1940,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     return { glass, frontGlass, rearGlass, seal };
   };
 
-  // ---- Fascia lamps (masks shared by the colour and emissive graphs, each evaluates them in its own branch) -------
+  // ---- Fascia lamps (masks shared by the fascia's colour and emissive) ----------------------------------------------
   // A lamp (spec.front.lamp / spec.rear.lamp) is a quad in the unwrapped coordinate u: |x| across the face plus how far
   // the surface lies behind the fascia's centreline (its tip line, straight over the lamp's heights, set back by the
   // rake's plan-view rounding), so a lamp carries on round the corner along the fender or quarter panel. Returns the
@@ -2096,7 +2097,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
         .mul(smoothstep(-0.15, -0.45, n.z))
         .mul(smoothstep(rearZone + 0.05, rearZone - 0.05, p.z))
     : rrect(vec2(p.x, p.z.sub(spec.chmsl === 'shelf' ? cab.deck + 0.07 : cab.roofRear - 0.075)), vec2(0.16, 0.011), 0.005, fwXZ)
-        .mul(rearGlass())
+        .mul(rearGlass)
         .mul(smoothstep(-0.05, -0.2, n.z));
 
   // ---- Fascias -------------------------------------------------------------------------------------------------
@@ -2192,7 +2193,8 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       bCol.assign(bCol.mul(one.add(band(p.y.sub(F.crease - 0.006), 0.003, fwY).mul(0.12)).sub(band(p.y.sub(F.crease), 0.004, fwY).mul(0.22)).mul(face).add(one.sub(face))));
     }
     // Headlamps
-    const { housing, lens, v, drl, bucket, projLens, radial, turn } = headLampMasks();
+    const H = headLampMasks();
+    const { housing, lens, v, drl, bucket, projLens, radial, turn } = H;
     // Behind the clear lens, silver reflectors catching the sky (darker towards the bottom), or a smoked housing on
     // blacked-out trims; each projector sits in a chrome bezel round a dark bucket, each reflector bowl is bright
     // chrome round its bulb's cap, dimming in rings out to its rim
@@ -2210,6 +2212,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     bCol.assign(mix(bCol, color(0x121519), housing));
     bCol.assign(mix(bCol, mix(lampCol, color(0xc4782a), turn), lens));
     plateOn(bCol, plateCol, plateF, false, face);
+    return H;
   };
 
   const fasciaRear = (bCol, plateCol, badgeInk) => {
@@ -2218,6 +2221,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     const trim = trimFinish();
     const [lidW, lidBottom] = R.lid;
     const TL = tailLampMasks();
+    const lidRev = R.reverse ? lidReverse() : null;
     // Shut lines: barn doors, or the trunk lid / liftgate / tailgate outline
     const platePocket = R.bumper || R.applique ? float(0.0) : rrect(vec2(p.x, p.y.sub(plateR + 0.01)), vec2(0.24, 0.105), 0.03, fwXY).mul(back);
     if (spec.barnDoors) {
@@ -2261,7 +2265,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       bCol.assign(mix(bCol, mix(color(0x1b1e22), color(0x3d4248), smoothstep(ab, at, p.y)), cov(e.d, e.w).mul(back)));
     }
     if (R.reverse) {
-      const e = lidReverse();
+      const e = lidRev;
       const yb = R.reverse[0][1];
       const yt = R.reverse[2][1];
       const flutes = mix(float(0.88), smoothstep(0.1, 0.9, fract(p.y.mul(90.0))).mul(0.3).add(0.75), fadeFine(fwY.mul(4.0)));
@@ -2341,11 +2345,47 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
     bCol.assign(mix(bCol, tailCol, lens));
     if (!spec.barnDoors && !R.bumper && !R.applique) bCol.assign(bCol.mul(one.sub(band(ax.sub(lidW), 0.003, fwX).mul(housing).mul(0.6))));
     plateOn(bCol, plateCol, plateR, !R.bumper, back);
+    return { ...TL, lidRev };
   };
 
-  // ---- Colour (per-part If branches so each fragment only evaluates its own part's masks) ---------------------------
-  const colorFn = Fn(() => {
+  // ---- Roughness & metalness (glossy clearcoat with tight sun highlight & strong SSR/IBL reflection) ---------------
+  const paintRough = mix(float(0.11), float(0.16), isMetallic);
+  const paintMetal = mix(float(0.32), float(0.42), isMetallic).add(fresnel.mul(0.14));
+
+  // ---- Emissive: the lamps, the taxi's topper & the high brake light -----------------------------------------------
+  const brake = state.x;
+  const blink = max(state.y.mul(step(0.0, p.x)), state.z.mul(step(p.x, 0.0)));
+  const nightHeadlamp = smoothstep(0.60, 1.15, cityUniforms.uInteriorGlow);
+  // Low beams through the projector lenses (a little of the lens around them), running lights; both dim on the side
+  // that is signalling, where the amber marker blinks
+  const headlampGlow = ({ lens, drl, projLens, turn }) => {
+    const beams = projLens.mul(nightHeadlamp.mul(1.35).add(1.45)).add(lens.mul(nightHeadlamp.mul(0.035).add(0.01)));
+    const running = drl.mul(nightHeadlamp.mul(0.75).add(1.65));
+    const headlamps = color(0xfff8ec).mul(beams.add(running)).mul(one.sub(drl.mul(blink)));
+    return headlamps.add(color(0xff9812).mul(max(turn, drl.mul(0.75)).mul(blink).mul(2.4)));
+  };
+  const tailLampGlow = ({ lens, led, reverse, turn, amber, lidRev }) => {
+    const redArea = lens.mul(one.sub(max(reverse, amber)));
+    const redLens = spec.rear.lamp.led === 'ribs' ? redArea.mul(0.8) : max(redArea.mul(0.55), led);
+    const tail = color(0xff0c16).mul(redLens.mul(brake.mul(2.3).add(nightHeadlamp.mul(0.55)).add(0.24)));
+    // Turn signals: an amber section, or the red lamp's own section brightening
+    const turnCol = spec.rear.lamp.turn === 'amber' ? color(0xff9812) : color(0xff1a10);
+    let rearEmit = tail.add(turnCol.mul(turn.mul(blink).mul(2.4)));
+    if (fixed) {
+      const lidLamps = lidRev ? cov(lidRev.d, lidRev.w).mul(smoothstep(0.12, 0.38, n.z.negate())) : float(0.0);
+      rearEmit = rearEmit.add(color(0xf0f6ff).mul(max(reverse, lidLamps)).mul(state.w).mul(1.8));
+    }
+    return rearEmit;
+  };
+
+  // ---- The surface: per-part If branches, so each fragment only evaluates its own part's masks, each once for its
+  // colour, roughness, metalness & emissive ---------------------------------------------------------------------------
+  const CarSurface = struct({ color: 'vec3', roughness: 'float', metalness: 'float', emissive: 'vec3' }, 'CarSurface');
+  const surfaceFn = Fn(() => {
     const outCol = vec3(color(0x181b1f)).toVar();
+    const rough = float(0.78).toVar();
+    const metal = float(0.04).toVar();
+    const emit = vec3(0.0).toVar();
 
     // Sample plate texture outside If() so hardware mipmaps + anisotropy filter cleanly without derivative issues
     // Passenger plates (0-2) by paint, T plates on for-hire black cars (3), medallion plates on yellow cabs (4)
@@ -2391,7 +2431,8 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
       }
       const grime = smoothstep(sillY + 0.16, sillY - 0.01, p.y).mul(0.2);
       bCol.assign(mix(bCol, color(0x2d2b28), grime));
-      bCol.assign(mix(bCol, color(0x6a6357).mul(ao), dirtMask().mul(dirtAmount).mul(0.6)));
+      const dirt = dirtMask().mul(dirtAmount);
+      bCol.assign(mix(bCol, color(0x6a6357).mul(ao), dirt.mul(0.6)));
 
       // Side doors, handles & liveries (evaluated only on side-facing body fragments)
       If(isSide.greaterThan(0.05), () => {
@@ -2448,13 +2489,16 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
 
       // Front & rear fascias: grilles, bumpers, lamps & NY license plates (fasciaFront / fasciaRear)
       If(p.z.greaterThan(frontZone), () => {
-        fasciaFront(bCol, plateCol);
+        emit.assign(headlampGlow(fasciaFront(bCol, plateCol)));
       }).ElseIf(p.z.lessThan(rearZone), () => {
-        fasciaRear(bCol, plateCol, badgeInk);
+        emit.assign(tailLampGlow(fasciaRear(bCol, plateCol, badgeInk)));
       });
 
       const under = smoothstep(-0.25, -0.55, n.y);
       outCol.assign(mix(bCol, color(0x0c0e11), under));
+      const lowMatte = smoothstep(sillY + 0.10, sillY - 0.01, p.y).mul(0.16);
+      rough.assign(paintRough.add(lowMatte).add(dirt.mul(0.5)));
+      metal.assign(paintMetal);
     }).ElseIf(isWindow.greaterThan(0.5), () => {
       const { glass, frontGlass, rearGlass, seal } = evalWindowGlass();
       const beltStrip = band(p.y.sub(belt.add(0.01)), 0.007, fwY)
@@ -2462,7 +2506,7 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
         .mul(cov(float(glassEndZ + 0.03).sub(p.z), fwZ))
         .mul(cov(p.z.sub(cab.cowl - 0.07), fwZ));
       const chromeBelt = beltStrip.mul(hasChrome);
-      const chmsl = chmslMask(() => rearGlass);
+      const chmsl = chmslMask(rearGlass);
       const rearWiper = spec.rearWiper
         ? rrect(vec2(p.x.add(0.15), p.z.sub(cab.deck + 0.075)), vec2(0.22, 0.006), 0.003, fwXZ).mul(rearGlass)
         : float(0.0);
@@ -2519,8 +2563,16 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
         chmsl
       );
       outCol.assign(mix(wCol, color(0x14171a), rearWiper));
+      rough.assign(mix(mix(paintRough, float(0.78), seal), float(0.08), glass));
+      metal.assign(mix(mix(paintMetal, float(0.04), seal), mix(float(0.16), float(0.36), fresnel), glass));
+      // The high brake light
+      If(isWindow.mul(brake).greaterThan(0.5), () => {
+        emit.assign(color(0xff0c16).mul(chmsl.mul(2.3)));
+      });
     }).ElseIf(isAlloyFace.greaterThan(0.5), () => {
       outCol.assign(evalAlloyColor(wheelVec, rNorm, fwRing, fwSpoke, isPolice, isBlackout, wheelCode));
+      rough.assign(mix(float(0.22), float(0.52), isPolice));
+      metal.assign(mix(float(0.84), float(0.22), isPolice));
     }).ElseIf(isTyreRubber.greaterThan(0.5), () => {
       outCol.assign(evalTyreColor(rNorm, fwRing));
     }).ElseIf(isMirror.greaterThan(0.5), () => {
@@ -2530,110 +2582,33 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
         .mul(cov(float(0.88).sub(ax), fwX));
       const mirrorCapPaint = mix(basePaint, color(0x121519), max(isTwoTone, isBlackout));
       outCol.assign(mix(mix(mirrorCapPaint, color(0x8896a2), mirrorGlass), color(0x98a4ae), mirrorTurn));
+      rough.assign(0.12);
+      metal.assign(mix(paintMetal, float(0.65), mirrorGlass));
     }).ElseIf(isSign.greaterThan(0.5), () => {
       if (!topper) {
         outCol.assign(color(0xeef0f2)); // (only taxis have one)
+        rough.assign(0.35);
         return;
       }
       // white plastic round the panels, a little darker down by the rail
       const shell = mix(color(0xb9bdc2), color(0xeef0f2), smoothstep(topper.y0, topper.y0 + 0.12, p.y));
       outCol.assign(mix(shell, topperCol, topper.panel));
-    });
-
-    return outCol;
-  });
-
-  // ---- Roughness & metalness (glossy clearcoat with tight sun highlight & strong SSR/IBL reflection) ---------------
-  const paintRough = mix(float(0.11), float(0.16), isMetallic);
-  const paintMetal = mix(float(0.32), float(0.42), isMetallic).add(fresnel.mul(0.14));
-
-  const roughFn = Fn(() => {
-    const r = float(0.78).toVar();
-    If(isBody.greaterThan(0.5), () => {
-      const lowMatte = smoothstep(sillY + 0.10, sillY - 0.01, p.y).mul(0.16);
-      r.assign(paintRough.add(lowMatte).add(dirtMask().mul(dirtAmount).mul(0.5)));
-    }).ElseIf(isWindow.greaterThan(0.5), () => {
-      const { glass, seal } = evalWindowGlass();
-      r.assign(mix(mix(paintRough, float(0.78), seal), float(0.08), glass));
-    }).ElseIf(isAlloyFace.greaterThan(0.5), () => {
-      r.assign(mix(float(0.22), float(0.52), isPolice));
-    }).ElseIf(isMirror.greaterThan(0.5), () => {
-      r.assign(0.12);
-    }).ElseIf(isSign.greaterThan(0.5), () => {
-      r.assign(topper ? mix(float(0.35), float(0.18), topper.panel) : float(0.35));
-    });
-    return r;
-  });
-
-  const metalFn = Fn(() => {
-    const m = float(0.04).toVar();
-    If(isBody.greaterThan(0.5), () => {
-      m.assign(paintMetal);
-    }).ElseIf(isWindow.greaterThan(0.5), () => {
-      const { glass, seal } = evalWindowGlass();
-      m.assign(mix(mix(paintMetal, float(0.04), seal), mix(float(0.16), float(0.36), fresnel), glass));
-    }).ElseIf(isAlloyFace.greaterThan(0.5), () => {
-      m.assign(mix(float(0.84), float(0.22), isPolice));
-    }).ElseIf(isMirror.greaterThan(0.5), () => {
-      m.assign(mix(paintMetal, float(0.65), smoothstep(0.45, 0.65, n.z.negate())));
-    });
-    return m;
-  });
-
-  // ---- Emissive (evaluated only on front/rear lamp zones, taxi sign, or braking rear window) -----------------------
-  const brake = state.x;
-  const blink = max(state.y.mul(step(0.0, p.x)), state.z.mul(step(p.x, 0.0)));
-  const nightHeadlamp = smoothstep(0.60, 1.15, cityUniforms.uInteriorGlow);
-
-  const emissiveFn = Fn(() => {
-    const emit = vec3(0.0).toVar();
-    const topperGlow = topper ? vec3(topper.col).toVar() : null; // (the colour graph's sample)
-    If(isBody.greaterThan(0.5), () => {
-      If(p.z.greaterThan(frontZone), () => {
-        const { lens, drl, projLens, turn } = headLampMasks();
-        // Low beams through the projector lenses (a little of the lens around them), running lights; both dim on the
-        // side that is signalling, where the amber marker blinks
-        const beams = projLens.mul(nightHeadlamp.mul(1.35).add(1.45)).add(lens.mul(nightHeadlamp.mul(0.035).add(0.01)));
-        const running = drl.mul(nightHeadlamp.mul(0.75).add(1.65));
-        const headlamps = color(0xfff8ec).mul(beams.add(running)).mul(one.sub(drl.mul(blink)));
-        emit.assign(headlamps.add(color(0xff9812).mul(max(turn, drl.mul(0.75)).mul(blink).mul(2.4))));
-      }).ElseIf(p.z.lessThan(rearZone), () => {
-        const { lens, led, reverse, turn, amber } = tailLampMasks();
-        const redArea = lens.mul(one.sub(max(reverse, amber)));
-        const redLens = spec.rear.lamp.led === 'ribs' ? redArea.mul(0.8) : max(redArea.mul(0.55), led);
-        const tail = color(0xff0c16).mul(redLens.mul(brake.mul(2.3).add(nightHeadlamp.mul(0.55)).add(0.24)));
-        // Turn signals: an amber section, or the red lamp's own section brightening
-        const turnCol = spec.rear.lamp.turn === 'amber' ? color(0xff9812) : color(0xff1a10);
-        let rearEmit = tail.add(turnCol.mul(turn.mul(blink).mul(2.4)));
-        if (fixed) {
-          const lidLamps = spec.rear.reverse ? (() => {
-            const e = lidReverse();
-            return cov(e.d, e.w).mul(smoothstep(0.12, 0.38, n.z.negate()));
-          })() : float(0.0);
-          rearEmit = rearEmit.add(color(0xf0f6ff).mul(max(reverse, lidLamps)).mul(state.w).mul(1.8));
-        }
-        emit.assign(rearEmit);
-      });
-    }).ElseIf(isSign.greaterThan(0.5), () => {
+      rough.assign(mix(float(0.35), float(0.18), topper.panel));
       // backlit: the ads glow faintly by day and brightly at night, the medallion number brighter still
-      if (topper) emit.assign(topperGlow.mul(topper.panel.mul(nightHeadlamp.mul(0.9).add(0.3)).add(topper.end.mul(0.7))));
-    }).ElseIf(isWindow.mul(brake).greaterThan(0.5), () => {
-      const chmsl = chmslMask(() => {
-        const rear = polygonEdge(ax, p.z, rearGlassPlanes, 0.085, fwX, fwZ);
-        return cov(rear.d, rear.w);
-      });
-      emit.assign(color(0xff0c16).mul(chmsl.mul(2.3)));
+      emit.assign(topperCol.mul(topper.panel.mul(nightHeadlamp.mul(0.9).add(0.3)).add(topper.end.mul(0.7))));
     });
-    return emit;
+
+    return CarSurface(outCol, rough, metal, emit);
   });
 
   const mat = new THREE.MeshStandardNodeMaterial();
   mat.envMapIntensity = 1.35;
   if (fixed) mat.userData.carState = stateUniform;
-  mat.colorNode = colorFn();
-  mat.roughnessNode = roughFn();
-  mat.metalnessNode = metalFn();
-  mat.emissiveNode = emissiveFn();
+  const surface = surfaceFn();
+  mat.colorNode = surface.get('color');
+  mat.roughnessNode = surface.get('roughness');
+  mat.metalnessNode = surface.get('metalness');
+  mat.emissiveNode = surface.get('emissive');
 
   _carMaterialCache.set(cacheKey, mat);
   return mat;

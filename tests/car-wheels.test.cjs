@@ -33,6 +33,7 @@ class TNode {
   get g() { return this.y; }
   get b() { return this.z; }
   get rgb() { return new TNode(() => this.eval().slice(0, 3)); }
+  get(member) { return new TNode(() => this.eval()[member]); } // (a struct's member)
   add(b) { return new TNode(() => broadcast(this, b, (x, y) => x + y)); }
   sub(b) { return new TNode(() => broadcast(this, b, (x, y) => x - y)); }
   mul(b) { return new TNode(() => broadcast(this, b, (x, y) => x * y)); }
@@ -141,7 +142,8 @@ const tslStub = {
     return wrap([0.9, 0.7, 0.1, 1]);
   },
   time: wrap([0]),
-  instanceIndex: wrap([0])
+  instanceIndex: wrap([0]),
+  struct: (layout) => (...values) => new TNode(() => Object.fromEntries(Object.keys(layout).map((name, i) => [name, arr(values[i])])))
 };
 tslStub.smoothstep = (e0, e1, x) => new TNode(() => {
   const v0 = arr(e0), v1 = arr(e1), vx = arr(x);
