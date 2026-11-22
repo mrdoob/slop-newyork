@@ -24,7 +24,7 @@ import {
   createLoftedHelicopterMaterial
 } from './helicopter.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
-import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
+import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight, headlightBeamScale } from './vehicle-lights.js';
 import { bryantParkLawn } from './landmarks.js';
 import { polygonContact } from './building-collision.js';
 
@@ -1146,7 +1146,7 @@ class ThirdPersonControllerManager {
 
     // Modulate clustered vehicle & bike lights by time of day (off during Midday & Golden Hour; fade in at Dusk & Night)
     const glow = cityUniforms && cityUniforms.uInteriorGlow ? cityUniforms.uInteriorGlow.value : 0.48;
-    const beamScale = Math.min(1.28, Math.max(0.0, (glow - 0.60) * 1.45));
+    const beamScale = headlightBeamScale(glow);
     const car = this.entities.car;
     if (car.headLights) {
       for (const spot of car.headLights) {

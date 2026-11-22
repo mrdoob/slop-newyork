@@ -5,7 +5,14 @@ import { vehicleContact, resolveVehicleContact, sweptVehicleContact } from './ve
 import { createMover, vehicleShape } from './ragdoll.js';
 import { signalPhase, walkSignal } from './city-config.js';
 import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from './tsl-materials.js';
-import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
+import {
+  HEADLIGHTS,
+  placeVehicleHeadlight,
+  createHeadlightPool,
+  parkHeadlights,
+  headlightBeamScale,
+  headlightDistance
+} from './vehicle-lights.js';
 import { minStdRandom } from './random.js';
 import {
   BODY_SPECS,
@@ -106,6 +113,52 @@ function createBusDestinationTexture() {
 }
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+// Flags the first n items of an attribute for upload (static usage: once per frame, not once per render pass)
+function flagRange(attr, n) {
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(0, n * attr.itemSize);
+  attr.needsUpdate = true;
+}
+
+// Car bodies' per-instance paint & lamp state (carState: brake, left & right turn signal, style code), uploaded only
+// when a slot changes hands or its lamps change
+function createCarAttributes() {
+  const dirtyPaint = new Set();
+  const dirtyState = new Set();
+  return {
+    write(mesh, slot, paint, brake, left, right, style) {
+      const attrs = mesh.geometry.attributes;
+      const p = attrs.paintColor.array;
+      const o3 = slot * 3;
+      if (p[o3] !== paint[0] || p[o3 + 1] !== paint[1] || p[o3 + 2] !== paint[2]) {
+        p[o3] = paint[0];
+        p[o3 + 1] = paint[1];
+        p[o3 + 2] = paint[2];
+        dirtyPaint.add(mesh);
+      }
+      const s = attrs.carState.array;
+      const o4 = slot * 4;
+      if (s[o4] !== brake || s[o4 + 1] !== left || s[o4 + 2] !== right || s[o4 + 3] !== style) {
+        s[o4] = brake;
+        s[o4 + 1] = left;
+        s[o4 + 2] = right;
+        s[o4 + 3] = style;
+        dirtyState.add(mesh);
+      }
+    },
+    // Flags the first n instances of mesh for upload: their matrices, and their paint & state if any changed
+    upload(mesh, n) {
+      flagRange(mesh.instanceMatrix, n);
+      if (dirtyPaint.has(mesh)) flagRange(mesh.geometry.attributes.paintColor, n);
+      if (dirtyState.has(mesh)) flagRange(mesh.geometry.attributes.carState, n);
+    },
+    clear() {
+      dirtyPaint.clear();
+      dirtyState.clear();
+    }
+  };
+}
 
 function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   const group = new THREE.Group();
@@ -542,14 +595,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   trafficLightsGroup.name = 'TrafficClusteredLights';
   group.add(trafficLightsGroup);
 
-  const headlightPool = [];
-  for (let i = 0; i < HEADLIGHT_POOL_SIZE; i++) {
-    const spot = createVehicleHeadlight();
-    spot.position.set(0, -1000, 0);
-    spot.target.position.set(0, -1001, 0);
-    trafficLightsGroup.add(spot, spot.target);
-    headlightPool.push(spot);
-  }
+  const headlightPool = createHeadlightPool(trafficLightsGroup, HEADLIGHT_POOL_SIZE);
 
   const policeLightPool = [];
   for (let i = 0; i < POLICE_LIGHT_POOL_SIZE; i++) {
@@ -1696,8 +1742,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   // body + 4 separate wheel instances; vehicles outside the view frustum (with a margin for cast shadows and headlight
   // cones) are skipped altogether.
   const CAR_PROXY_DISTANCE = 90;
-  const dirtyPaint = new Set();
-  const dirtyState = new Set();
+  const carAttributes = createCarAttributes();
   let dirtyWheelStyles = false;
   const litVehicles = [];
   let litVehicleCount = 0;
@@ -1707,10 +1752,12 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   let visibleBuses = 0;
   let updates = 0;
 
-  function flagRange(attr, n) {
-    attr.clearUpdateRanges();
-    attr.addUpdateRange(0, n * attr.itemSize);
-    attr.needsUpdate = true;
+  // Wheels roll with the distance v travelled along its heading this frame (at most about a twelfth of a turn a frame,
+  // so they never seem to spin backwards)
+  function spinWheels(v, sinY, cosY, radius) {
+    const forwardDist = (v.x - v.prevX) * sinY + (v.z - v.prevZ) * cosY;
+    const rawStep = forwardDist / radius;
+    v.wheelSpin = (v.wheelSpin + Math.sign(rawStep) * Math.min(Math.abs(rawStep), 0.48)) % (Math.PI * 2);
   }
 
   // 3D spinning alloy wheels & tires (left & right, front & rear), exact 1:1 ground rolling, steering front wheels.
@@ -1735,11 +1782,27 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
 
   // Lamp state for the car & bus materials: brake lights while slowing down or standing, the turn signal on the side
   // v is heading for (left = +x)
-  function writeLampState(v, array, o) {
+  const lamps = [0, 0, 0];
+  function lampState(v) {
     const blinkOn = v.blink !== 0 && (clock + v.blinkPhase) % 0.8 <= 0.4;
-    array[o] = v.acc < -0.8 || v.speed < 0.3 ? 1 : 0;
-    array[o + 1] = blinkOn && v.blink < 0 ? 1 : 0;
-    array[o + 2] = blinkOn && v.blink > 0 ? 1 : 0;
+    lamps[0] = v.acc < -0.8 || v.speed < 0.3 ? 1 : 0;
+    lamps[1] = blinkOn && v.blink < 0 ? 1 : 0;
+    lamps[2] = blinkOn && v.blink > 0 ? 1 : 0;
+    return lamps;
+  }
+
+  // Queues v for a pair of headlights from the pool (and a police light) if it is near the camera
+  function considerLit(v, sinY, cosY) {
+    const dxCam = v.x - camX;
+    const dzCam = v.z - camZ;
+    const distSq = dxCam * dxCam + dzCam * dzCam + camY * camY;
+    if (distSq >= MAX_LIGHT_DIST_SQ) return;
+    const effDist = headlightDistance(Math.sqrt(distSq), dxCam * camFwdX + dzCam * camFwdZ);
+    if (effDist >= MAX_LIGHT_DIST) return;
+    v._effDist = effDist;
+    v._sinY = sinY;
+    v._cosY = cosY;
+    litVehicles[litVehicleCount++] = v;
   }
 
   function renderCar(c) {
@@ -1747,9 +1810,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     const sinY = Math.sin(rotY);
     const cosY = Math.cos(rotY);
     const spec = BODY_SPECS[c.bodyType];
-    const forwardDist = (c.x - c.prevX) * sinY + (c.z - c.prevZ) * cosY;
-    const rawStep = forwardDist / spec.wheelRadius;
-    c.wheelSpin = (c.wheelSpin + Math.sign(rawStep) * Math.min(Math.abs(rawStep), 0.48)) % (Math.PI * 2);
+    spinWheels(c, sinY, cosY, spec.wheelRadius);
     if (hasView && !visible(c.x, c.z, 18)) return;
 
     const near = Math.hypot(c.x - focusX, c.z - focusZ) < CAR_PROXY_DISTANCE;
@@ -1766,29 +1827,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       if (lb) lb.setMatrixAt(policeDrawn[c.bodyType]++, dummy.matrix);
     }
 
-    const attrs = bodyInst.geometry.attributes;
-    const paint = attrs.paintColor.array;
-    const o3 = slot * 3;
-    if (paint[o3] !== c.paint[0] || paint[o3 + 1] !== c.paint[1] || paint[o3 + 2] !== c.paint[2]) {
-      paint[o3] = c.paint[0];
-      paint[o3 + 1] = c.paint[1];
-      paint[o3 + 2] = c.paint[2];
-      dirtyPaint.add(bodyInst);
-    }
-    const state = attrs.carState.array;
-    const o4 = slot * 4;
-    const blinkOn = c.blink !== 0 && (clock + c.blinkPhase) % 0.8 <= 0.4;
-    const b0 = c.acc < -0.8 || c.speed < 0.3 ? 1 : 0;
-    const b1 = blinkOn && c.blink < 0 ? 1 : 0;
-    const b2 = blinkOn && c.blink > 0 ? 1 : 0;
-    const b3 = c.style;
-    if (state[o4] !== b0 || state[o4 + 1] !== b1 || state[o4 + 2] !== b2 || state[o4 + 3] !== b3) {
-      state[o4] = b0;
-      state[o4 + 1] = b1;
-      state[o4 + 2] = b2;
-      state[o4 + 3] = b3;
-      dirtyState.add(bodyInst);
-    }
+    const L = lampState(c);
+    carAttributes.write(bodyInst, slot, c.paint, L[0], L[1], L[2], c.style);
 
     // Soft Under-Car Contact Shadow (AO) stays flat on the asphalt, sized to the body kind
     const visIdx = visibleCars++;
@@ -1798,23 +1838,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     dummy.scale.set(shadowW, 1.0, shadowL);
     dummy.updateMatrix();
     carShadowInst.setMatrixAt(visIdx, dummy.matrix);
-
-    const dxCam = c.x - camX;
-    const dzCam = c.z - camZ;
-    const distSq = dxCam * dxCam + dzCam * dzCam + camY * camY;
-    if (distSq < MAX_LIGHT_DIST_SQ) {
-      const d = Math.sqrt(distSq);
-      const forwardDot = dxCam * camFwdX + dzCam * camFwdZ;
-      const effDist = d + Math.max(0, 5.0 - forwardDot) * 3.2;
-      if (effDist < MAX_LIGHT_DIST) {
-        c._camDistSq = distSq;
-        c._effDist = effDist;
-        c._sinY = sinY;
-        c._cosY = cosY;
-        c._braking = b0;
-        litVehicles[litVehicleCount++] = c;
-      }
-    }
+    considerLit(c, sinY, cosY);
 
     if (near) {
       const wi = wheelCars * 2;
@@ -1831,9 +1855,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     const rotY = b.yaw + b.yawOffset;
     const sinY = Math.sin(rotY);
     const cosY = Math.cos(rotY);
-    const forwardDist = (b.x - b.prevX) * sinY + (b.z - b.prevZ) * cosY;
-    const rawStep = forwardDist / BUS_SPEC.wheelRadius;
-    b.wheelSpin = (b.wheelSpin + Math.sign(rawStep) * Math.min(Math.abs(rawStep), 0.48)) % (Math.PI * 2);
+    spinWheels(b, sinY, cosY, BUS_SPEC.wheelRadius);
     if (hasView && !visible(b.x, b.z, 22)) return;
 
     const i = visibleBuses++;
@@ -1850,25 +1872,9 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     dummy.updateMatrix();
     busBodyInst.setMatrixAt(i, dummy.matrix);
     busHeaderInst.setMatrixAt(i, dummy.matrix);
-    writeLampState(b, busStates.array, i * 4);
+    busStates.array.set(lampState(b), i * 4);
     busStates.array[i * 4 + 3] = (b.variant ?? i) + 1;
-
-    const dxCam = b.x - camX;
-    const dzCam = b.z - camZ;
-    const distSq = dxCam * dxCam + dzCam * dzCam + camY * camY;
-    if (distSq < MAX_LIGHT_DIST_SQ) {
-      const d = Math.sqrt(distSq);
-      const forwardDot = dxCam * camFwdX + dzCam * camFwdZ;
-      const effDist = d + Math.max(0, 5.0 - forwardDot) * 3.2;
-      if (effDist < MAX_LIGHT_DIST) {
-        b._camDistSq = distSq;
-        b._effDist = effDist;
-        b._sinY = sinY;
-        b._cosY = cosY;
-        b._braking = b.acc < -0.8 || b.speed < 0.3 ? 1 : 0;
-        litVehicles[litVehicleCount++] = b;
-      }
-    }
+    considerLit(b, sinY, cosY);
 
     placeWheels(b, i, rotY, 0, BUS_SPEC.wheelRadius, BUS_SPEC.wheelX, BUS_SPEC.wheelZ, busWheelLeftInst, busWheelRightInst, BUS_SPEC.wheelRadius);
   }
@@ -1885,8 +1891,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     }
 
     const glow = cityUniforms && cityUniforms.uInteriorGlow ? cityUniforms.uInteriorGlow.value : 0.48;
-    // Front headlights are off during Midday (0.24) & Golden Hour (0.48); fade in smoothly for Dusk (1.25) & Night (1.55)
-    const beamScale = clamp((glow - 0.60) * 1.45, 0.0, 1.28);
+    const beamScale = headlightBeamScale(glow);
     const tailScale = clamp(0.18 + glow * 0.66, 0.24, 1.22);
 
     const maxDualVehicles = HEADLIGHT_POOL_SIZE >> 1;
@@ -1922,11 +1927,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
         }
       }
     }
-    for (let i = spotUsed; i < HEADLIGHT_POOL_SIZE; i++) {
-      const spot = headlightPool[i];
-      spot.intensity = 0;
-      spot.position.set(0, -1000, 0);
-    }
+    parkHeadlights(headlightPool, spotUsed);
 
     // 1. NYPD emergency roof lightbar flashes (smoothly pulsing red/blue 360° PointLights on nearby patrol cruisers)
     let policeLightsUsed = 0;
@@ -2078,12 +2079,9 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
         }
         continue;
       }
-      flagRange(m.instanceMatrix, n);
-      if (dirtyPaint.has(m)) flagRange(m.geometry.attributes.paintColor, n);
-      if (dirtyState.has(m)) flagRange(m.geometry.attributes.carState, n);
+      carAttributes.upload(m, n);
     }
-    dirtyPaint.clear();
-    dirtyState.clear();
+    carAttributes.clear();
     const syncInst = (inst, n) => {
       inst.visible = n > 0 || !hideEmpty;
       if (n === 0) {
@@ -2308,14 +2306,7 @@ function createHighwayTraffic(scene, lanes) {
   hwyLightsGroup.name = 'HighwayClusteredLights';
   group.add(hwyLightsGroup);
 
-  const hwySpotPool = [];
-  for (let i = 0; i < HWY_SPOT_POOL; i++) {
-    const spot = createVehicleHeadlight();
-    spot.position.set(0, -1000, 0);
-    spot.target.position.set(0, -1001, 0);
-    hwyLightsGroup.add(spot, spot.target);
-    hwySpotPool.push(spot);
-  }
+  const hwySpotPool = createHeadlightPool(hwyLightsGroup, HWY_SPOT_POOL);
   const hwyLitCars = [];
   let hwyLitCount = 0;
   function addFlare(px, py, pz, size, r, g, b) {
@@ -2342,15 +2333,8 @@ function createHighwayTraffic(scene, lanes) {
   const pos = new THREE.Vector3();
   const ONE = new THREE.Vector3(1, 1, 1);
   const fwd = new THREE.Vector3();
-  const dirtyPaint = new Set();
-  const dirtyState = new Set();
+  const carAttributes = createCarAttributes();
   let updates = 0;
-  // Flags the first n items of an attribute for upload (static usage: once per frame, not once per render pass)
-  function flagRange(attr, n) {
-    attr.clearUpdateRanges();
-    attr.addUpdateRange(0, n * attr.itemSize);
-    attr.needsUpdate = true;
-  }
 
   // The player's arc position and speed along `lane` if they are in it (within 2 m of the centre line and near
   // its road height, not on its underground stretches), else null
@@ -2470,33 +2454,15 @@ function createHighwayTraffic(scene, lanes) {
       const mesh = meshes[c.kind][lod];
       const slot = mesh.count++;
       m4.toArray(mesh.instanceMatrix.array, slot * 16);
-      // Paint & brake lights change only when a slot changes hands or a car brakes: flagged for upload just then
-      const attrs = mesh.geometry.attributes;
-      const paint = attrs.paintColor.array;
-      const o3 = slot * 3;
-      if (paint[o3] !== c.col[0] || paint[o3 + 1] !== c.col[1] || paint[o3 + 2] !== c.col[2]) {
-        paint.set(c.col, o3);
-        dirtyPaint.add(mesh);
-      }
-      const brake = c.acc < -1.2 ? 1 : 0; // brake lights
-      const state = attrs.carState.array;
-      const o4 = slot * 4;
-      if (state[o4] !== brake || state[o4 + 3] !== c.style) {
-        state[o4] = brake;
-        state[o4 + 3] = c.style;
-        dirtyState.add(mesh);
-      }
+      // Paint & brake lights (no turn signals on the highway)
+      carAttributes.write(mesh, slot, c.col, c.acc < -1.2 ? 1 : 0, 0, 0, c.style);
 
       if (d2 < HWY_LIGHT_DIST_SQ && dip > 1) {
-        const d = Math.sqrt(d2);
-        const forwardDot = dx * fwd.x + dz * fwd.z;
-        const effDist = d + Math.max(0, 5.0 - forwardDot) * 3.2;
+        const effDist = headlightDistance(Math.sqrt(d2), dx * fwd.x + dz * fwd.z);
         if (effDist < HWY_LIGHT_DIST) {
-          c._d2 = d2;
           c._effDist = effDist;
           c._mesh = mesh;
           c._slot = slot;
-          c._brake = brake;
           hwyLitCars[hwyLitCount++] = c;
         }
       }
@@ -2531,14 +2497,10 @@ function createHighwayTraffic(scene, lanes) {
       for (const mesh of meshes[kind]) {
         const n = mesh.count;
         mesh.visible = n > 0 || !hideEmpty;
-        if (n === 0) continue;
-        flagRange(mesh.instanceMatrix, n);
-        if (dirtyPaint.has(mesh)) flagRange(mesh.geometry.attributes.paintColor, n);
-        if (dirtyState.has(mesh)) flagRange(mesh.geometry.attributes.carState, n);
+        if (n > 0) carAttributes.upload(mesh, n);
       }
     }
-    dirtyPaint.clear();
-    dirtyState.clear();
+    carAttributes.clear();
     flares.visible = flareCount > 0;
     flares.count = flareCount;
     if (flareCount > 0) {
@@ -2552,7 +2514,7 @@ function createHighwayTraffic(scene, lanes) {
       hwyLitCars.sort((a, b) => a._effDist - b._effDist);
     }
     const glow = cityUniforms && cityUniforms.uInteriorGlow ? cityUniforms.uInteriorGlow.value : 0.48;
-    const beamScale = clamp((glow - 0.60) * 1.45, 0.0, 1.28);
+    const beamScale = headlightBeamScale(glow);
     const maxHwyVeh = HWY_SPOT_POOL >> 1;
     const hwyCutoff = hwyLitCount > maxHwyVeh
       ? Math.min(HWY_LIGHT_DIST, hwyLitCars[maxHwyVeh]._effDist)
@@ -2575,11 +2537,7 @@ function createHighwayTraffic(scene, lanes) {
         }
       }
     }
-    for (let i = spotUsed; i < HWY_SPOT_POOL; i++) {
-      const spot = hwySpotPool[i];
-      spot.intensity = 0;
-      spot.position.set(0, -1000, 0);
-    }
+    parkHeadlights(hwySpotPool, spotUsed);
   }
 
   return { group, update, cars, lanes };
