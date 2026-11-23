@@ -98,6 +98,8 @@ function createRoadPaintChunkBuilder(name, { cellSize = PAINT_CELL_SIZE, cullDis
       else first = mesh;
       group.add(mesh);
     }
+    // The geometry holds its own copies: drop the cells' arrays (the city grid keeps this builder for the session)
+    cells.clear();
     return group;
   }
 

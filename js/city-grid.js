@@ -395,6 +395,8 @@ function buildFenceStripGeometry(segments, y0, h) {
 function addArrayMesh(group, A, material, castShadow = false, name = '') {
   if (!A.pos.length) return null;
   const mesh = new THREE.Mesh(geometryFromArrays(A.pos, A.nor, A.uv), material);
+  // The geometry holds its own (typed) copies: release the accumulator's arrays, which closures may keep alive
+  A.pos.length = A.nor.length = A.uv.length = 0;
   mesh.name = name;
   mesh.castShadow = castShadow;
   mesh.receiveShadow = true;
