@@ -105,6 +105,15 @@ async function initApp() {
   };
 
   await renderer.init();
+  // WebGPU only: on the WebGL2 fallback the city runs at a fraction of the frame rate and its people, whose poses are
+  // read from a storage buffer, are not drawn
+  if (!renderer.backend.isWebGPUBackend) {
+    renderer.dispose();
+    renderer.domElement.remove();
+    if (loadingFill) loadingFill.parentElement.style.visibility = 'hidden';
+    if (loadingStatus) loadingStatus.textContent = 'Slop New York needs WebGPU, which this browser does not have. Try a recent Chrome, Edge or Safari.';
+    return;
+  }
   markInit('renderer');
 
   // 2. Scene, atmosphere and lighting
