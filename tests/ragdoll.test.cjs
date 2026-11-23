@@ -118,6 +118,19 @@ test('a knee swung straight slows down before its limit instead of stopping dead
   assert.ok(straightest > 6, `stopped short of straight (bent ${straightest.toFixed(0)} degrees at most)`);
 });
 
+test('a kick flings the arms back and the legs along without moving the body', () => {
+  const r = new Ragdoll();
+  r.start(standing(), standing(), 1, 0, 0, 0);
+  let seed = 1;
+  r.kick(0, 12, 12, () => (seed = (seed * 16807) % 2147483647) / 2147483647);
+  let pz = 0, py = 0;
+  for (let i = 0; i < 17; i++) { pz += r.v[i * 3 + 2] / r.w[i]; py += r.v[i * 3 + 1] / r.w[i]; }
+  assert.ok(Math.abs(pz) < 1e-6 && Math.abs(py) < 1e-6, 'its momentum is unchanged');
+  const rel = (i) => r.v[i * 3 + 2] - r.v[P.SPINE * 3 + 2];
+  assert.ok(rel(P.WRIST_L) < -1 && rel(P.WRIST_R) < -1, 'the arms are thrown back');
+  assert.ok(rel(P.ANKLE_L) > 1 && rel(P.ANKLE_R) > 1, 'the legs are swept along');
+});
+
 test('a car driving into a standing person throws them ahead, takes the push back and they come to rest', () => {
   const r = new Ragdoll();
   r.start(standing(0, 0), standing(), 1, 0, 0, 0);

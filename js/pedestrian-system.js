@@ -1114,7 +1114,10 @@ function createPedestrianSystem(network, { player, nearEdges, nearSignals, mayCr
     const ragdoll = p.ragdoll || (p.ragdoll = new Ragdoll());
     if (!p.fall || p.fall.mode !== 'tumble') {
       rig.ragdollPoints(_points);
-      ragdoll.start(_points, rig.ragdollBind(_bind), rig.s, p.fall ? 0 : rig.vx, 0, p.fall ? 0 : rig.vz);
+      const vx = p.fall ? 0 : rig.vx, vz = p.fall ? 0 : rig.vz;
+      ragdoll.start(_points, rig.ragdollBind(_bind), rig.s, vx, 0, vz);
+      // the blow flings the limbs: legs swept along, arms thrown back
+      ragdoll.kick(mover.vx - vx, mover.vz - vz, Math.hypot(mover.vx - vx, mover.vz - vz));
     }
     ragdoll.wake();
     const f = p.fall || (p.fall = p.fallState || (p.fallState = { mode: '', time: 0, lie: 0, start: 0, x: 0, z: 0, yaw: 0, ground: 0, rise: null, pose: null }));

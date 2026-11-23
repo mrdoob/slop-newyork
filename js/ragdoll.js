@@ -280,6 +280,37 @@ class Ragdoll {
     this.anglesValid = false;
   }
 
+  /**
+   * Fling the limbs as a blow low on the body (a vehicle's bumper) throws it along (dx, dz) at `speed` m/s: the legs
+   * are swept along with it, the arms flung back against it and up, each limb a little differently (random() in
+   * [0, 1)). The body's momentum doesn't change
+   */
+  kick(dx, dz, speed, random = Math.random) {
+    const l = Math.hypot(dx, dz);
+    if (l < 1e-6 || !(speed > 0)) return;
+    dx /= l; dz /= l;
+    const v = this.v, w = this.w;
+    let px = 0, py = 0, pz = 0, mass = 0;
+    const add = (i, sx, sy, sz) => {
+      const o = i * 3, m = 1 / w[i];
+      v[o] += sx; v[o + 1] += sy; v[o + 2] += sz;
+      px += sx * m; py += sy * m; pz += sz * m;
+    };
+    for (let side = 0; side < 2; side++) {
+      const arm = speed * 0.35 * (0.5 + random() * 0.8), leg = speed * 0.3 * (0.6 + random() * 0.6);
+      add(side ? P.ELBOW_R : P.ELBOW_L, -dx * arm * 0.5, arm * 0.4, -dz * arm * 0.5);
+      add(side ? P.WRIST_R : P.WRIST_L, -dx * arm, arm * 0.8, -dz * arm);
+      add(side ? P.KNEE_R : P.KNEE_L, dx * leg * 0.5, 0, dz * leg * 0.5);
+      add(side ? P.ANKLE_R : P.ANKLE_L, dx * leg, leg * 0.2, dz * leg);
+      add(side ? P.TOE_R : P.TOE_L, dx * leg, leg * 0.2, dz * leg);
+    }
+    // ...and the momentum that took back from the whole body, so that it only turns the limbs
+    for (let i = 0; i < COUNT; i++) mass += 1 / w[i];
+    px /= mass; py /= mass; pz /= mass;
+    for (let i = 0; i < COUNT; i++) { v[i * 3] -= px; v[i * 3 + 1] -= py; v[i * 3 + 2] -= pz; }
+    this.wake();
+  }
+
   get pelvisX() { return (this.x[0] + this.x[3]) * 0.5; }
   get pelvisY() { return (this.x[1] + this.x[4]) * 0.5; }
   get pelvisZ() { return (this.x[2] + this.x[5]) * 0.5; }
