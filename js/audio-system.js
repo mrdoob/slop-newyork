@@ -217,7 +217,7 @@ class CityAudioSystem {
       const hash = Math.sin(source.seed * 127.1 + 311.7) * 43758.5453;
       const variation = hash - Math.floor(hash);
       state = { variation, phase: source.phase, grounded: source.grounded, x: source.x, z: source.z,
-        signal: now + variation, horn: now + 8 + variation * 13, stopped: 0, stepSequence: 0 };
+        signal: now + variation, horn: now + 8 + variation * 13, stopped: 0, stepSequence: 0, warning: false, warned: -Infinity };
       this.states.set(source.id, state);
     }
     return state;
@@ -492,6 +492,11 @@ class CityAudioSystem {
     for (const source of sources.motors) {
       if (source.player || source.kind === 'helicopter' || source.kind === 'cyclist') continue;
       const state = this.state(source, now);
+      // a driver who sees the player about to hit it leans on the horn as it reacts
+      if (source.warning && !state.warning && now - state.warned > 2) {
+        if (this.emit('horn', source, { intensity: 0.8, priority: true })) state.warned = this.lastHorn = now;
+      }
+      state.warning = source.warning;
       state.stopped = source.blocked ? state.stopped + dt : 0;
       if (state.stopped > 4 && now > state.horn && now - this.lastHorn > 3) {
         if (this.emit('horn', source, { intensity: 0.55 })) {

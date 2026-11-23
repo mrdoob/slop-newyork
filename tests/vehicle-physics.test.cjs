@@ -179,13 +179,16 @@ test('touching vehicles at equal velocity are never rewound', () => {
 });
 
 const trafficSource = readFileSync(join(__dirname, '../js/traffic.js'), 'utf8');
+const trafficConst = (name) => trafficSource.match(new RegExp(`^const ${name} = .*$`, 'm'))[0].replace(/^const /, 'var ');
 function trafficHarness(vehicles) {
-  const context = { ...physics, vehicles, contactA: {}, contactB: {}, vehicleHit: {}, impacted: [], collisionStep: 0,
+  const context = { ...physics, vehicles, contactA: {}, contactB: {}, vehicleHit: {}, impacted: [], collisionStep: 0, clock: 0,
     clamp: (value, lo, hi) => Math.max(lo, Math.min(hi, value)),
     shove(v, dx, dz) { v.x += dx; v.z += dz; },
     reportCollision() {}, spawnCollisionSparks() {}, changeLanes() {},
     accelerate(v) { v.acc = -3; }, steer() {}, enter() {}, leave() {} };
-  for (const name of ['readTrafficBody', 'writeTrafficVelocity', 'impactSuspension', 'collideWithPlayer', 'collideTraffic', 'drive']) {
+  vm.runInNewContext(['CRASH_SPEED', 'SLIDE_FRICTION', 'SHOVE_REACH'].map(trafficConst).join('\n'), context);
+  for (const name of ['readTrafficBody', 'writeTrafficVelocity', 'impact', 'touch', 'crunch', 'collideWithPlayer', 'collideTraffic',
+    'drive', 'knock', 'lampState']) {
     const source = trafficSource.match(new RegExp(`  function ${name}\\([^]*?\\n  \\}`))?.[0];
     assert.ok(source, name);
     context[name] = vm.runInNewContext(`(${source})`, context);
@@ -194,7 +197,8 @@ function trafficHarness(vehicles) {
 }
 
 function trafficCar(z, speed = 0, impactTime = 0) {
-  return { x: 0, z, prevX: 0, prevZ: z, yaw: 0, yawOffset: 0, yawRate: 0, yawVel: 0,
+  return { x: 0, z, prevX: 0, prevZ: z, yaw: 0, yawOffset: 0, yawRate: 0, yawVel: 0, shaken: 0, blink: 0, blinkPhase: 0,
+    driver: { a: 2, b: 3, bMax: 8 }, acc: 0,
     half: 2.25, halfWidth: 0.86, tx: 0, tz: 1, speed, vx: 0, vz: 0, impactTime, pitchVel: 0, rollVel: 0,
     edge: { len: 100 }, s: z, conn: null, axle: 1.38, dl: 0, dlv: 0, nose: 0,
     laneTimer: 10, gap: Infinity, leaderSpeed: 0, wait: 0 };
@@ -255,3 +259,61 @@ test('knocked traffic closes a gap before transferring longitudinal momentum', (
     }
   }
 });
+
+test('a hard hit stops the driver, hazards flashing, for a few seconds; a nudge does not', () => {
+  const nudged = trafficCar(4.2), hit = trafficCar(4.2);
+  const h = trafficHarness([nudged, hit]);
+  h.lamps = [0, 0, 0];
+  h.impact(nudged, 0, 1, 1);
+  h.impact(hit, 0, 1, 5);
+  assert.equal(nudged.shaken, 0);
+  assert.ok(hit.shaken >= 4 && hit.shaken <= 7, `shaken for ${hit.shaken} s`);
+  hit.speed = 8;
+  h.accelerate = (v) => { v.acc = 2; };
+  let stoppedAt = null;
+  for (let t = 0; t < 7; t += 1 / 60) {
+    h.clock = t;
+    h.drive(hit, 1 / 60);
+    if (stoppedAt === null && hit.speed === 0) stoppedAt = t;
+    if (stoppedAt !== null && t < hit.shaken - 0.1) assert.equal(hit.speed, 0, 'stays put once stopped');
+    if (t > 0.1 && t < hit.shaken) {
+      const lamps = h.lampState(hit);
+      assert.equal(lamps[1], lamps[2], 'both indicators flash together');
+    }
+  }
+  assert.ok(stoppedAt < 1.5, `stopped after ${stoppedAt} s`);
+  assert.ok(hit.speed > 0, 'and drives on afterwards');
+});
+
+test('a car knocked sideways slides to a stop at the tyres\' grip', () => {
+  const car = trafficCar(0);
+  const h = trafficHarness([car]);
+  car.vx = 5;
+  let slid = 0;
+  for (let k = 0; k < 120; k++) {
+    const x = car.x;
+    h.knock(car, 1 / 120);
+    slid += car.x - x;
+  }
+  close(car.vx, 0);
+  // v^2 / (2 * 7.5 m/s^2)
+  assert.ok(Math.abs(slid - 25 / 15) < 0.05, `slid ${slid.toFixed(2)} m`);
+});
+
+test('a shove carries a car up to the curb and no further', () => {
+  const context = { clamp: (value, lo, hi) => Math.max(lo, Math.min(hi, value)), connector() {}, curvePoint() {},
+    network: { isRoadClear: (x) => x >= -3.1 && x <= 3.1 } };
+  vm.runInNewContext(trafficConst('SHOVE_REACH') + '\n' + trafficSource.match(/^  const sidePoint = .*$/m)[0].replace(/^\s*const /, 'var ')
+    + '\n' + trafficSource.match(/^  const at = .*$/m)[0].replace(/^\s*const /, 'var '), context);
+  for (const name of ['shove', 'sideOnRoad', 'pathPoint', 'lanePoint', 'locate']) {
+    context[name] = vm.runInNewContext(`(${trafficSource.match(new RegExp(`  function ${name}\\([^]*?\\n  \\}`))[0]})`, context);
+  }
+  const edge = { sx: 0, sz: 0, dx: 0, dz: 1, rx: -1, rz: 0, len: 500, lanes: [0] };
+  const car = { edge, lane: 0, s: 50, conn: null, trail: null, dl: 0, half: 2.25, halfWidth: 0.86, yaw: 0, tx: 0, tz: 1 };
+  context.locate(car);
+  // pushed 4 m towards +x (its left): stopped with its side at the curb, 3.1 - 0.86 m out
+  assert.equal(context.shove(car, 4, 0), true);
+  assert.ok(Math.abs(car.x - (3.1 - 0.86)) < 0.1, `at x ${car.x.toFixed(2)}`);
+  assert.equal(context.shove(car, -1, 0), false, 'and back off it freely');
+});
+

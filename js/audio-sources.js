@@ -49,6 +49,7 @@ function writeMotor(item, id, kind, x, y, z, speed, load, heading, player, seed,
   item.player = player;
   item.seed = seed;
   item.blocked = blocked;
+  item.warning = false;
   item.gain = gain;
   item.range = range;
 }
@@ -120,6 +121,7 @@ class CityAudioSources {
     const item = this.motors.take(player ? -1 : d2);
     if (!item) return;
     writeMotor(item, id, kind, x, y, z, speed, load, heading, player, seed, blocked, gain, range, verticalSpeed);
+    return item;
   }
 
   person(id, x, y, z, speed, grounded, rig, player = false, priority = player) {
@@ -154,8 +156,10 @@ class CityAudioSources {
       }
       const green = !v.edge.to.signal || signalPhase(elapsed, v.edge.axisIndex === 0) === 'green';
       const blocked = v.wait > 2 && v.speed < 0.5 && v.gap < 8 && v.leaderSpeed < 0.5 && green && !v.conn && !v.yielding;
-      this.motor(v, v.bus ? 'bus' : v.engine, v.x, 0.7, v.z,
+      const item = this.motor(v, v.bus ? 'bus' : v.engine, v.x, 0.7, v.z,
         v.speed, roadLoad(v.speed, v.acc, v.driver.a), v.yaw + v.yawOffset, !!v.isPolice, false, seedAt(seedOffset + i), blocked);
+      // (a driver dodging the player, see traffic.js react)
+      if (item) item.warning = !!v.warning;
     }
   }
 

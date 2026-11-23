@@ -45,14 +45,28 @@ const NUM_BUSES = 12;
 // acceleration drivers accept in bends, which sets how fast they take each turn or lane shift; and how hard they brake
 // in an emergency. At the wheel (see steer): the sideways acceleration the tyres grip up to, how far the front wheels
 // turn (radians), and how fast the driver turns them at speed (rad/s, ~250°/s at the steering wheel; up to three times
-// as fast at walking pace, 2.5 times as fast in a panic).
+// as fast at walking pace, 3.5 times as fast in a panic).
 const CAR_DRIVER = { a: 2.0, b: 3.0, T: 1.2, s0: 2.0, aLat: 3.5, bMax: 8, grip: 8, lock: 0.6, steerRate: 0.3 };
 const BUS_DRIVER = { a: 1.1, b: 2.5, T: 1.5, s0: 2.5, aLat: 2.0, bMax: 6, grip: 5, lock: 0.9, steerRate: 0.3 };
 const LOOKAHEAD = 70; // metres a driver looks ahead for vehicles, stop lines and signals
-// Dodging the player (see react): seconds before the player would hit it that a driver notices, and the least it keeps
-// up its manoeuvre once it reacts
-const AVOID_NOTICE = 1.8;
-const AVOID_HOLD = 1.2;
+// Dodging the player (see react): seconds ahead a driver sees a collision coming, the clearance it wants (m), how long
+// it keeps up its manoeuvre after the danger has passed (s), the time step it judges the player's course at (s), how
+// far across it will swerve at once (m), how much nearer the other way out must be to change its mind (m), and the
+// fastest it expects the player to keep turning (rad/s)
+const AVOID_NOTICE = 2.2;
+const AVOID_MARGIN = 0.5;
+const AVOID_HOLD = 1.0;
+const AVOID_STEP = 0.1;
+const AVOID_REACH = 3.6;
+const AVOID_SWITCH = 1.0;
+const AVOID_TURN = 1.2;
+const AVOID_BRAKE = 1.5; // m/s²: braking while swerving round a player coming at it (more takes the speed it steers with)
+// Crashes: the change of velocity (m/s) beyond which a hit driver stops and gathers itself, hazards on, for 4 to 7 s
+// (less is a nudge it drives on from); and the tyres' grip stopping a car shoved sideways (m/s²) or spun (rad/s²)
+const CRASH_SPEED = 2;
+const SLIDE_FRICTION = 7.5;
+const SPIN_FRICTION = 6;
+const SHOVE_REACH = 6; // m: the furthest a knock carries a vehicle off its path
 
 // Car body kinds (BODY_SPECS keys) in street & highway traffic: half-length for spacing, half-width & axle for the
 // path, collision half-length & mass, and the engine voice (audio-sources.js)
@@ -228,7 +242,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       move: null, out: 0, conn: null, cs: 0, trail: null, commit: null, claimed: false, yielding: false, yieldAt: 0,
       wait: 0, laneTimer: Math.random() * 0.5,
       dl: 0, dlv: 0, blink: 0, blinkPhase: Math.random() * 0.8,
-      evade: 0, alarm: 0, panicUntil: 0, panicAcc: 0, reaction: 0.6 + Math.random() * 0.4,
+      evade: 0, evadeSide: 0, alarm: 0, panic: false, panicAcc: 0, lastDanger: -Infinity, warning: false, shaken: 0,
+      reaction: 0.6 + Math.random() * 0.4,
       x: 0, z: 0, prevX: 0, prevZ: 0, tx: 0, tz: 1, nose: 0, yaw: 0, yawRate: 0, steer: 0, delta: 0,
       pitch: 0, roll: 0, pitchVel: 0, rollVel: 0, vx: 0, vz: 0, yawOffset: 0, yawVel: 0, impactTime: 0,
       pAhead: Infinity, pRight: 0, pSpeed: 0, wheelSpin: Math.random() * Math.PI * 2
@@ -487,7 +502,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   // =========================================================================
   // 3. PEDESTRIAN SYSTEM
   // =========================================================================
-  const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0, fx: 0, fz: 1,
+  const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0, fx: 0, fz: 1, heading: 0, yawRate: 0,
     halfW: 0.86, halfL: 2.18 };
   const nearEdges = [];
   const nearSignals = [];
@@ -1145,7 +1160,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   // pulling out of an intersection or dodging the player, nor in the last 12 m before the next.
   function changeLanes(v) {
     const e = v.edge;
-    if (v.conn || v.commit || clock < v.panicUntil) return;
+    if (v.conn || v.commit || v.panic) return;
     if (Math.abs(v.dl) > 0.5 || v.s < v.half || e.len - v.s - v.half < 12) return;
     let target = -1;
     if (v.move.out[v.lane] < 0) {
@@ -1255,8 +1270,9 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       }
       cap = bendSpeed(v, v.conn);
     }
-    const pg = playerGap(v, 0);
-    if (pg > 0 && pg < LOOKAHEAD) { // (a player alongside, not yet clear ahead, isn't one to follow)
+    // (a player alongside, not yet clear ahead, isn't one to follow; nor is one it is swerving round: dodge brakes then)
+    const pg = v.panic && v.evadeSide ? Infinity : playerGap(v, 0);
+    if (pg > 0 && pg < LOOKAHEAD) {
       worst = Math.min(worst, brake(v, pg, v.pSpeed));
       if (pg < v.gap) {
         v.gap = pg;
@@ -1273,104 +1289,184 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     }
     const acc = Math.min(freeAcc(v) + worst, (cap - v.speed) * 2);
     v.acc = clamp(acc, -9, v.driver.a);
-    // dodging the player: braking (as hard as it can, unless that would stop it before it has swerved out of the way),
-    // or flooring it (unless it must brake for something ahead)
-    if (clock < v.panicUntil) {
-      if (v.panicAcc < 0) v.acc = Math.min(v.acc, v.evade ? -v.driver.b : -v.driver.bMax);
-      else if (v.acc > -v.driver.b && v.speed < 1.5 * v.v0) v.acc = Math.max(v.acc, 1.5 * v.driver.a);
-    }
+    // dodging the player (see dodge): braking, or flooring it (unless it must brake for something ahead)
+    if (v.panic && v.panicAcc < 0) v.acc = Math.min(v.acc, v.panicAcc);
+    else if (v.panic && v.panicAcc > 0 && v.acc > -v.driver.b && v.speed < 1.5 * v.v0) v.acc = Math.max(v.acc, v.panicAcc);
   }
 
-  // Dodging the player, as people do: late, and without second thoughts. A driver who sees the player about to hit it
-  // (within AVOID_NOTICE seconds, both keeping on as they go) reacts only once that has lasted its reaction time, by
-  // when it is almost too late. Then it commits to one manoeuvre: braking if the player would hit its front half (hard,
-  // unless it swerves too: a car that stops can't get out of the way), flooring it if its rear half (braking would only
-  // make that worse), and swerving to one side if the road is clear
-  // there: away from the player (behind a player crossing its way, to the right if the player comes straight at it),
-  // unless there is more room the other way.
-  // It keeps that up for AVOID_HOLD seconds at least, and for as long as the player is still about to hit it.
+  // Dodging the player. A driver watches the player's course (curving as the player steers) against its own over the
+  // next AVOID_NOTICE seconds. If they would meet (closer than AVOID_MARGIN), it has seen the stretch of road the player
+  // will sweep across while level with it, and reacts once it has seen that for its reaction time: it steers the least
+  // it must, right or left of its lane, to clear that stretch (the side the road and the traffic around it leave room
+  // on; on a near tie the right, away from oncoming traffic), braking as it does, or braking hard if there is no way
+  // out. From behind, it floors it instead. It sounds its horn as it reacts, and re-judges every frame, so a player
+  // who swerves the same way is not driven into; it keeps up its manoeuvre until the danger has passed for AVOID_HOLD.
   function react(v, dt) {
-    const t = player.active && v.impactTime === 0 ? threatTime(v) : Infinity;
-    if (v.impactTime > 0 || (v.panicUntil && clock >= v.panicUntil)) {
-      v.evade = v.panicUntil = v.panicAcc = v.alarm = 0; // hit after all, or over
-    }
-    if (v.panicUntil) {
-      if (t < AVOID_NOTICE) v.panicUntil = Math.max(v.panicUntil, clock + 0.5);
+    if (!player.active || v.impactTime > 0 || clock < v.shaken) {
+      calm(v);
       return;
     }
-    if (t >= AVOID_NOTICE) {
-      v.alarm = 0;
+    const d = assess(v);
+    if (d.time < AVOID_NOTICE) v.lastDanger = clock;
+    if (!v.panic) {
+      if (d.time >= AVOID_NOTICE) {
+        v.alarm = 0;
+        return;
+      }
+      v.alarm += dt;
+      if (v.alarm < v.reaction) return;
+      v.panic = true;
+      v.warning = true;
+    } else if (clock - v.lastDanger > AVOID_HOLD) {
+      calm(v);
       return;
     }
-    v.alarm += dt;
-    if (v.alarm < v.reaction) return;
-    v.panicUntil = clock + AVOID_HOLD;
-    v.panicAcc = threat.ahead < 0 ? 1 : -1;
-    if (v.speed < 2) return;
-    // where the player will be across v's way a moment after it would hit: v swerves away from there, or the other way
-    // if there is more room on that side
-    const later = threat.aside + threat.across * 0.5;
-    const side = Math.abs(later) < 0.3 ? 1 : -Math.sign(later);
-    const room = swerveRoom(v, side);
-    const other = swerveRoom(v, -side);
-    v.evade = other > room ? -side * other : side * room;
+    if (d.time < AVOID_NOTICE) dodge(v, d);
   }
 
-  // Seconds until the player would hit v (with a little margin), both keeping on straight as they go; Infinity if not
-  // within AVOID_NOTICE. Where it would hit goes in `threat`: the player's position ahead of v and to its right then,
-  // and its speed across v's heading.
-  const threat = { ahead: 0, aside: 0, across: 0 };
-  function threatTime(v) {
-    const dx = player.x - v.x;
-    const dz = player.z - v.z;
-    if (Math.abs(dx) > 90 || Math.abs(dz) > 90) return Infinity;
-    const hx = Math.sin(v.yaw);
-    const hz = Math.cos(v.yaw);
-    const ahead = dx * hx + dz * hz;
-    const aside = dz * hx - dx * hz;
-    const along = player.vx * hx + player.vz * hz - v.speed;
-    const across = player.vz * hx - player.vx * hz;
-    // the player's half extents along and across v's heading, as it is turned
-    const c = Math.abs(player.fx * hx + player.fz * hz);
-    const s = Math.abs(player.fz * hx - player.fx * hz);
-    const reachAhead = v.halfL + player.halfL * c + player.halfW * s + 0.3;
-    const reachAside = v.halfWidth + player.halfL * s + player.halfW * c + 0.3;
-    let enter = 0;
-    let exit = AVOID_NOTICE;
-    for (let k = 0; k < 2; k++) {
-      const p = k ? aside : ahead;
-      const m = k ? across : along;
-      const r = k ? reachAside : reachAhead;
-      if (Math.abs(m) < 1e-6) {
-        if (Math.abs(p) >= r) return Infinity;
-        continue;
-      }
-      const t0 = (-r - p) / m;
-      const t1 = (r - p) / m;
-      enter = Math.max(enter, Math.min(t0, t1));
-      exit = Math.min(exit, Math.max(t0, t1));
-    }
-    if (enter >= exit) return Infinity;
-    threat.ahead = ahead + along * enter;
-    threat.aside = aside + across * enter;
-    threat.across = across;
-    return enter;
+  function calm(v) {
+    v.panic = v.warning = false;
+    v.evade = v.evadeSide = v.panicAcc = v.alarm = 0;
   }
 
-  // How far right (side 1) or left (-1) of its lane centre v can swerve: well over, a little, or not at all, as far as
-  // the road is clear beside it there and a little way ahead
-  function swerveRoom(v, side) {
-    const rx = -v.tz;
-    const rz = v.tx;
-    for (const r of [2.2, 1.2]) {
-      const off = side * (r + v.halfWidth) - v.dl;
-      let clear = true;
-      for (const a of [0, v.half + v.speed * 0.6]) {
-        if (!network.isRoadClear(v.x + rx * off + v.tx * a, v.z + rz * off + v.tz * a, 0.2)) clear = false;
-      }
-      if (clear) return r;
+  // The player's position and heading t seconds on, at its speed and turning as it is (no faster than people keep
+  // turning: AVOID_TURN)
+  const course = { x: 0, z: 0, fx: 0, fz: 1 };
+  function predictPlayer(t, out) {
+    const w = clamp(player.yawRate, -AVOID_TURN, AVOID_TURN);
+    const a = w * t;
+    if (Math.abs(a) < 1e-4) {
+      out.x = player.x + player.vx * t;
+      out.z = player.z + player.vz * t;
+    } else {
+      // its velocity, turning through a as it goes (heading h -> h + a), integrated
+      const sin = Math.sin(a), cos = Math.cos(a);
+      out.x = player.x + (player.vx * sin + player.vz * (1 - cos)) / w;
+      out.z = player.z + (player.vx * (cos - 1) + player.vz * sin) / w;
     }
-    return 0;
+    const sin = Math.sin(a), cos = Math.cos(a);
+    out.fx = player.fx * cos + player.fz * sin;
+    out.fz = player.fz * cos - player.fx * sin;
+    return out;
+  }
+
+  // How v and the player would meet, both keeping on as they go (v down its path at its speed): seconds until the
+  // player would come within AVOID_MARGIN of v (Infinity if not within AVOID_NOTICE), whether at v's front half or
+  // its rear, whether crossing v's way, and the stretch of road across v's path the player sweeps while level with it
+  // ([lo, hi], metres right of v's path, the player's width included)
+  const danger = { time: Infinity, front: true, crossing: false, lo: 0, hi: 0 };
+  function assess(v) {
+    danger.time = Infinity;
+    if (!player.active || Math.abs(player.x - v.x) > 90 || Math.abs(player.z - v.z) > 90) return danger;
+    // v's path through where it is (dl is measured from it), along (tx, tz), to the right (-tz, tx)
+    const ox = v.x + v.tz * v.dl, oz = v.z - v.tx * v.dl;
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k * AVOID_STEP <= AVOID_NOTICE + 1e-6; k++) {
+      const t = k * AVOID_STEP;
+      predictPlayer(t, course);
+      const rx = course.x - ox, rz = course.z - oz;
+      const along = rx * v.tx + rz * v.tz - v.speed * t;
+      const across = rz * v.tx - rx * v.tz;
+      // the player's half extents along and across v's path, as it is turned
+      const c = Math.abs(course.fx * v.tx + course.fz * v.tz), s = Math.abs(course.fz * v.tx - course.fx * v.tz);
+      if (Math.abs(along) > v.half + player.halfL * c + player.halfW * s + AVOID_MARGIN) continue;
+      const half = player.halfL * s + player.halfW * c;
+      lo = Math.min(lo, across - half);
+      hi = Math.max(hi, across + half);
+      if (danger.time === Infinity && Math.abs(across - v.dl) < half + spread(v) + AVOID_MARGIN) {
+        danger.time = t;
+        // (coming at v rather than catching up with it from behind)
+        danger.front = player.vx * v.tx + player.vz * v.tz < v.speed;
+        // the player coming across v's way rather than along it
+        danger.crossing = Math.abs(player.vz * v.tx - player.vx * v.tz) > Math.abs(player.vx * v.tx + player.vz * v.tz);
+      }
+    }
+    danger.lo = lo;
+    danger.hi = hi;
+    return danger;
+  }
+
+  // How far v reaches across its path either side, as it is turned (at an angle, its corners reach further)
+  function spread(v) {
+    return v.halfWidth * Math.cos(v.nose) + v.half * Math.abs(Math.sin(v.nose));
+  }
+
+  // Get out of the way the danger leaves (see react), the way that gets it clear soonest: each way out is how far it
+  // must move across, how much of that the road and the traffic around it leave room for, and whether it can make it
+  // in time; round the player's far side (across its path) only if it can. Sticking to the way it has taken unless the
+  // other is clearly better (the right on a near tie), a little further than it must if it can. Braking lightly as it
+  // swerves (a car can only move across as fast as it moves along: AVOID_BRAKE), hard for a player crossing its way or
+  // with no way clear (edging away from the player as far as there is room then); flooring it for a player coming up
+  // from behind
+  function dodge(v, d) {
+    const need = v.halfWidth + AVOID_MARGIN;
+    // the nearest places clear of the player's stretch either side, in metres right of v's path
+    const right = d.hi + need, left = d.lo - need;
+    const t = Math.max(d.time, 0.5);
+    // how far it can move across in that time: at about the tyres' grip, no faster than its speed lets it, after the
+    // moment it takes to turn the wheel
+    const steering = Math.max(0, t - 0.3);
+    const reach = Math.min(0.35 * v.driver.grip * steering * steering, 0.45 * v.speed * steering);
+    const middle = (d.lo + d.hi) / 2;
+    let side = 0, move = 0, room = 0, best = Infinity;
+    for (const s of [1, -1]) {
+      const m = s > 0 ? Math.max(0, right - v.dl) : Math.max(0, v.dl - left);
+      if ((middle - v.dl) * s > 0.4 && m >= reach) continue; // (the player clearly that side)
+      let r = 0;
+      for (const f of [1, 0.75, 0.5, 0.25]) {
+        if (m * f < AVOID_REACH && clearTo(v, v.dl + s * m * f, t)) {
+          r = m * f;
+          break;
+        }
+      }
+      if (r === 0 && m > 0) continue;
+      const bias = v.evadeSide === s ? AVOID_SWITCH : !v.evadeSide && s > 0 ? 0.5 : 0;
+      const cost = 3 * (m - r) + m + Math.max(0, m - reach) - bias;
+      if (cost < best) {
+        best = cost;
+        side = s;
+        move = m;
+        room = r;
+      }
+    }
+    v.evadeSide = side;
+    const clear = side !== 0 && room >= move;
+    if (!clear) {
+      v.evade = v.dl + side * room;
+    } else {
+      const goal = side > 0 ? right : left;
+      const further = goal + side * AVOID_MARGIN;
+      const aim = Math.abs(further - v.dl) < AVOID_REACH && clearTo(v, further, t) ? further : goal;
+      v.evade = side > 0 ? Math.max(v.dl, aim) : Math.min(v.dl, aim);
+    }
+    if (!d.front) v.panicAcc = 1.5 * v.driver.a;
+    else v.panicAcc = clear && !d.crossing ? -AVOID_BRAKE : -v.driver.bMax;
+  }
+
+  // Could v be `target` metres right of its path for the next t seconds: its outer side on the road (with room to
+  // spare for overshooting a little), and clear of the vehicles around it as they go on?
+  function clearTo(v, target, t) {
+    const ox = v.x + v.tz * v.dl, oz = v.z - v.tx * v.dl;
+    const outer = target + Math.sign(target - v.dl || 1) * (v.halfWidth + 0.4);
+    for (const a of [0, v.half, v.half + v.speed * t]) {
+      if (!network.isRoadClear(ox + v.tx * a - v.tz * outer, oz + v.tz * a + v.tx * outer, 0.2)) return false;
+    }
+    for (const o of vehicles) {
+      if (o === v || !o.edge) continue;
+      const rx = o.x - ox, rz = o.z - oz;
+      if (Math.abs(rx) > 60 || Math.abs(rz) > 60) continue;
+      const heading = o.yaw + o.yawOffset;
+      const fx = Math.sin(heading), fz = Math.cos(heading);
+      const c = Math.abs(fx * v.tx + fz * v.tz), s = Math.abs(fz * v.tx - fx * v.tz);
+      for (const tt of [0, t * 0.5, t]) {
+        const x = rx + (fx * o.speed + o.vx) * tt, z = rz + (fz * o.speed + o.vz) * tt;
+        const along = x * v.tx + z * v.tz - v.speed * tt;
+        const across = z * v.tx - x * v.tz;
+        if (Math.abs(along) < v.half + o.half * c + o.halfWidth * s
+          && Math.abs(across - target) < v.halfWidth + o.halfWidth * c + o.half * s + 0.3) return false;
+      }
+    }
+    return true;
   }
 
   // Front bumper at the stop line: cross if allowed, or if going too fast to stop; otherwise wait there
@@ -1411,6 +1507,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     // Give the driver a moment to recover after an impact before accelerating again.
     v.impactTime = Math.max(0, v.impactTime - dt);
     if (v.impactTime > 0) v.acc = Math.min(0, v.acc);
+    // after a crash: to a stop, and staying there for a while (see impact)
+    if (clock < v.shaken) v.acc = Math.min(v.acc, -0.75 * v.driver.bMax);
     const speed = v.speed;
     v.speed = Math.max(0, v.speed + v.acc * dt);
     let ds = v.speed * Math.cos(v.nose) * dt; // (along its path, heading off it as it may be)
@@ -1454,14 +1552,13 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     const want = Math.atan((wheelbase * bend) / 2) + v.nose + Math.atan(((panic ? 3 : 1.2) * off) / (1 + v.speed));
     const lateral = panic ? v.driver.grip : 1.3 * v.driver.aLat; // the sideways acceleration it steers up to
     const most = Math.min(v.driver.lock, Math.atan((lateral * wheelbase) / Math.max(v.speed * v.speed, 1e-3)));
-    const rate = v.driver.steerRate * (panic ? 2.5 : clamp(8 / Math.max(v.speed, 1), 1, 3)) * dt;
+    const rate = v.driver.steerRate * (panic ? 3.5 : clamp(8 / Math.max(v.speed, 1), 1, 3)) * dt;
     v.delta += clamp(clamp(want, -most, most) - v.delta, -rate, rate);
     const slide = v.driver.grip / Math.max(v.speed, 0.1);
     v.yawRate = clamp((v.speed * Math.tan(v.delta)) / wheelbase, -slide, slide);
     v.yaw += (v.yawRate + v.yawVel) * dt;
     v.yaw -= Math.round(v.yaw / (Math.PI * 2)) * Math.PI * 2;
-    v.yawVel *= Math.exp(-4 * dt);
-    if (Math.abs(v.yawVel) < 1e-3) v.yawVel = 0;
+    v.yawVel -= Math.sign(v.yawVel) * Math.min(Math.abs(v.yawVel), SPIN_FRICTION * dt); // (the tyres scrubbing a spin off)
     // across its path, heading off it (nose: how far right of its path it heads)
     let nose = Math.atan2(v.tx, v.tz) - v.yaw;
     nose -= Math.round(nose / (Math.PI * 2)) * Math.PI * 2;
@@ -1513,13 +1610,42 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     v.nose = nose - Math.round(nose / (Math.PI * 2)) * Math.PI * 2;
   }
 
-  // Move v along and across its path by (dx, dz), as far as the road allows
+  // Move v along and across its path by (dx, dz), as far as the road allows: along within its path, across until its
+  // side meets the curb (or SHOVE_REACH from its lane). Returns whether the curb stopped it
   function shove(v, dx, dz) {
     const along = dx * v.tx + dz * v.tz;
     if (v.conn) v.cs = clamp(v.cs + along, -v.half, v.conn.len - 0.01);
     else v.s = clamp(v.s + along, 0, v.edge.len - v.half);
-    v.dl = clamp(v.dl + dz * v.tx - dx * v.tz, -2.5, 2.5);
+    const to = clamp(v.dl + dz * v.tx - dx * v.tz, -SHOVE_REACH, SHOVE_REACH);
+    let blocked = false;
+    if (to !== v.dl && !sideOnRoad(v, to)) {
+      // as far as it fits
+      let lo = 0, hi = 1;
+      for (let k = 0; k < 6; k++) {
+        const mid = (lo + hi) / 2;
+        if (sideOnRoad(v, v.dl + (to - v.dl) * mid)) lo = mid;
+        else hi = mid;
+      }
+      v.dl += (to - v.dl) * lo;
+      blocked = true;
+    } else {
+      v.dl = to;
+    }
     locate(v);
+    return blocked;
+  }
+
+  // Would v's side (the one towards `dl`) still be on the road, front and back, `dl` metres right of its path?
+  const sidePoint = { x: 0, z: 0, dx: 0, dz: 0 };
+  function sideOnRoad(v, dl) {
+    pathPoint(v, v.conn ? v.cs : v.s, sidePoint);
+    const outer = dl + Math.sign(dl - v.dl) * v.halfWidth;
+    for (const a of [-0.8 * v.half, 0.8 * v.half]) {
+      const x = sidePoint.x + sidePoint.dx * a - sidePoint.dz * outer;
+      const z = sidePoint.z + sidePoint.dz * a + sidePoint.dx * outer;
+      if (!network.isRoadClear(x, z, 0.05)) return false;
+    }
+    return true;
   }
 
   // Steering shown on the front wheels, turn signals, and body pitch & roll from acceleration & turning (the heading
@@ -1539,14 +1665,19 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     v.roll = clamp(v.roll + v.rollVel * dt, -0.26, 0.26);
   }
 
-  // Knock velocity from collisions carries v along and across its path, and dies down
+  // Knock velocity from collisions (a sideways slide, a roll backwards) carries v along and across its path until the
+  // tyres' grip stops it (SLIDE_FRICTION), or sideways, the curb does
   function knock(v, dt) {
     if (v.vx === 0 && v.vz === 0) return;
-    shove(v, v.vx * dt, v.vz * dt);
-    const damp = Math.exp(-3.5 * dt);
-    v.vx *= damp;
-    v.vz *= damp;
-    if (v.vx * v.vx + v.vz * v.vz < 1e-4) v.vx = v.vz = 0;
+    if (shove(v, v.vx * dt, v.vz * dt)) {
+      const across = v.vz * v.tx - v.vx * v.tz;
+      v.vx += v.tz * across;
+      v.vz -= v.tx * across;
+    }
+    const k = Math.hypot(v.vx, v.vz);
+    const keep = Math.max(0, k - SLIDE_FRICTION * dt) / (k || 1);
+    v.vx *= keep;
+    v.vz *= keep;
   }
 
   const contactA = {}, contactB = {}, vehicleHit = {};
@@ -1579,15 +1710,34 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     v.yawVel = body.angularVel - v.yawRate;
   }
 
-  function impactSuspension(v, nx, nz, speed) {
+  // A knock's toll on v, its velocity changed by dv along (nx, nz): the suspension's jolt, a moment off the throttle,
+  // and after a real crash (dv over CRASH_SPEED) the driver stopping, hazards on, for 4 to 7 s (see drive, lampState)
+  function impact(v, nx, nz, dv) {
     const along = nx * v.tx + nz * v.tz;
     const across = nx * v.tz - nz * v.tx;
-    const kick = Math.min(10, speed);
+    const kick = Math.min(10, dv);
     v.pitchVel += along * kick * 0.12;
     v.rollVel -= across * kick * 0.16;
     v.impactTime = Math.max(v.impactTime, 0.8);
+    if (dv > CRASH_SPEED) v.shaken = Math.max(v.shaken, clock + 4 + Math.min(3, (dv - CRASH_SPEED) * 0.5));
   }
 
+  // Do bodies a and b touch this frame (swept from where they were, or overlapping)? Then the contact is in vehicleHit,
+  // its impulse applied to their velocities, and the speed they closed at is returned (0 just touching); else -1
+  function touch(a, b) {
+    if (!sweptVehicleContact(a, b, vehicleHit) && !vehicleContact(a, b, vehicleHit)) return -1;
+    return resolveVehicleContact(a, b, vehicleHit);
+  }
+
+  // The sound and sparks of vehicleHit, `speed` hard, `y` up
+  function crunch(a, b, y, speed) {
+    const hit = vehicleHit;
+    reportCollision(a, b, hit.x, y, hit.z, hit.nx, hit.nz, speed);
+    if (speed > 2.2) spawnCollisionSparks(hit.x, y, hit.z, hit.nx, hit.nz, speed);
+  }
+
+  // The player (its car, bike or self) against traffic vehicle v: kept apart (the player taking the share v can't, held
+  // by its path and the curb), momentum exchanged
   function collideWithPlayer(v) {
     const pe = player.entity;
     const reach = v.half + player.halfL + player.halfW;
@@ -1607,13 +1757,13 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     a.vz = a.cos * (pe.speed || 0) + (pe.vz || 0);
     a.angularVel = pe.type === 'car' ? pe.angularVel || 0 : 0;
     readTrafficBody(v, b);
-    if (!sweptVehicleContact(a, b, hit) && !vehicleContact(a, b, hit)) return;
-    const speed = resolveVehicleContact(a, b, hit);
+    const speed = touch(a, b);
+    if (speed < 0) return;
     const pShare = b.mass / (a.mass + b.mass);
     pe.position.x = hit.ax + hit.nx * hit.depth * pShare;
     pe.position.z = hit.az + hit.nz * hit.depth * pShare;
     shove(v, hit.bx - v.x - hit.nx * hit.depth * (1 - pShare), hit.bz - v.z - hit.nz * hit.depth * (1 - pShare));
-    // A route boundary can prevent traffic taking its full share of the correction.
+    // what v's path or the curb kept it from taking
     const remainder = Math.max(0, hit.depth * (1 - pShare) + (v.x - hit.bx) * hit.nx + (v.z - hit.bz) * hit.nz);
     pe.position.x += hit.nx * remainder;
     pe.position.z += hit.nz * remainder;
@@ -1631,13 +1781,12 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       pe.rollVel -= (hit.nx * a.cos - hit.nz * a.sin) * kick * 0.2;
       pe.heaveVel += Math.min(0.7, kick * 0.06);
     }
-    impactSuspension(v, -hit.nx, -hit.nz, hit.impulse / b.mass);
-    if (pe.type !== 'person') reportCollision(pe, v, hit.x, 0.58, hit.z, hit.nx, hit.nz, speed);
-    if (speed > 2.2) spawnCollisionSparks(hit.x, 0.58, hit.z, hit.nx, hit.nz, speed);
+    impact(v, -hit.nx, -hit.nz, hit.impulse / b.mass);
+    if (pe.type !== 'person') crunch(pe, v, 0.58, speed);
   }
 
-  // Only disturbed traffic needs pair contacts. Newly struck cars join the same
-  // queue, and each pair is visited once before any instance matrices are written.
+  // Traffic against traffic. Only vehicles knocked about need pair contacts: they are queued, and so is each vehicle
+  // they hit in turn, every pair met once a frame (before any instance matrices are written)
   function collideTraffic() {
     collisionStep++;
     impacted.length = 0;
@@ -1657,19 +1806,18 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
           || Math.abs(dz) > reach + Math.abs(dz - v.prevZ + o.prevZ)) continue;
         readTrafficBody(v, contactA);
         readTrafficBody(o, contactB);
+        const speed = touch(contactA, contactB);
+        if (speed < 0) continue;
         const hit = vehicleHit;
-        if (!sweptVehicleContact(contactA, contactB, hit) && !vehicleContact(contactA, contactB, hit)) continue;
-        const speed = resolveVehicleContact(contactA, contactB, hit);
         const share = contactB.mass / (contactA.mass + contactB.mass);
         shove(v, hit.ax - v.x + hit.nx * hit.depth * share, hit.az - v.z + hit.nz * hit.depth * share);
         shove(o, hit.bx - o.x - hit.nx * hit.depth * (1 - share), hit.bz - o.z - hit.nz * hit.depth * (1 - share));
         if (speed <= 0) continue;
         writeTrafficVelocity(v, contactA);
         writeTrafficVelocity(o, contactB);
-        impactSuspension(v, hit.nx, hit.nz, hit.impulse / contactA.mass);
-        impactSuspension(o, -hit.nx, -hit.nz, hit.impulse / contactB.mass);
-        reportCollision(v, o, hit.x, 0.56, hit.z, hit.nx, hit.nz, speed);
-        if (speed > 2.2) spawnCollisionSparks(hit.x, 0.56, hit.z, hit.nx, hit.nz, speed);
+        impact(v, hit.nx, hit.nz, hit.impulse / contactA.mass);
+        impact(o, -hit.nx, -hit.nz, hit.impulse / contactB.mass);
+        crunch(v, o, 0.56, speed);
         if (o.contactStep !== collisionStep) {
           o.contactStep = collisionStep;
           impacted.push(o);
@@ -1701,7 +1849,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     v.acc = 0;
     v.impactTime = 0;
     v.dl = v.dlv = 0;
-    v.evade = v.alarm = v.panicUntil = v.panicAcc = 0;
+    calm(v);
+    v.shaken = 0;
     v.vx = v.vz = v.yawOffset = v.yawVel = v.pitch = v.pitchVel = v.roll = v.rollVel = 0;
     locate(v);
     v.prevX = v.x;
@@ -1784,10 +1933,11 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   // v is heading for (left = +x)
   const lamps = [0, 0, 0];
   function lampState(v) {
-    const blinkOn = v.blink !== 0 && (clock + v.blinkPhase) % 0.8 <= 0.4;
+    const hazard = clock < v.shaken; // (after a crash, see impact)
+    const blinkOn = (v.blink !== 0 || hazard) && (clock + v.blinkPhase) % 0.8 <= 0.4;
     lamps[0] = v.acc < -0.8 || v.speed < 0.3 ? 1 : 0;
-    lamps[1] = blinkOn && v.blink < 0 ? 1 : 0;
-    lamps[2] = blinkOn && v.blink > 0 ? 1 : 0;
+    lamps[1] = blinkOn && (v.blink < 0 || hazard) ? 1 : 0;
+    lamps[2] = blinkOn && (v.blink > 0 || hazard) ? 1 : 0;
     return lamps;
   }
 
@@ -2018,6 +2168,11 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       player.z = playerEntity.position.z;
       player.fx = Math.sin(heading);
       player.fz = Math.cos(heading);
+      // how fast it turns: the car's own yaw rate, or (walking, cycling) its heading's change since last frame
+      let turned = heading - player.heading;
+      turned -= Math.round(turned / (Math.PI * 2)) * Math.PI * 2;
+      player.yawRate = playerEntity.angularVel ?? (dt > 0 ? turned / dt : 0);
+      player.heading = heading;
       player.vx = player.fx * speed + (playerEntity.vx || 0);
       player.vz = player.fz * speed + (playerEntity.vz || 0);
     }
