@@ -49,11 +49,34 @@ const SETTLE_DISTANCE = 0.05; // ...as it does once its pelvis and head have mov
 const SETTLE_TIME = 0.8;
 // m: how far a body's points can be from its pelvis during a frame (its reach, plus a frame's motion and pushes)
 const NEAR_MARGIN = 4;
+// Muscles (Ragdoll.muscles): even limp, a body's joints don't swing freely between hard stops. Each is pulled gently
+// towards the neutral body posture, the relaxed pose a body floats in without gravity (NASA's, loosely: hips bent
+// ~52 degrees and spread a little, knees ~47, feet relaxed ~20 down, back and neck tipped forward, upper arms ~36
+// forward and ~24 out, elbows ~80), too gently to lift a limb against its own weight; and within SOFT_ZONE of a joint's
+// limit its ligaments and tendons stretch, stiffening and soaking up its motion instead of stopping it dead
+const TONE = 14; // 1/s^2 per radian off the relaxed pose (gravity pulls a hanging forearm back at ~70)
+const TONE_DAMPING = 3; // 1/s: the muscles' resistance to the joints' motion
+const SOFT_ZONE = 0.3; // rad
+const SOFT_STIFFNESS = 1600; // 1/s^2 at a limit, from 0 where its zone starts
+const SOFT_DAMPING = 45; // 1/s at a limit, from 0 where its zone starts
+const MAX_MUSCLE_TURN = 0.2; // rad a substep
+// Each joint's relaxed [flex, abduction] and the [min, max] it can't pass of each (solveLimits'; NONE where it has no
+// limit), in the joint's frame (see Ragdoll.joints)
+const NONE = [-Infinity, Infinity];
+const JOINT = {
+  spine: [0.12, 0, [-0.35, 1.15], [-0.45, 0.45]],
+  neck: [0.4, 0, NONE, NONE],
+  shoulder: [0.63, 0.42, NONE, NONE],
+  elbow: [1.4, 0, NONE, NONE],
+  hip: [0.9, 0.12, [-0.35, 2.0], [-0.25, 0.85]],
+  knee: [-0.82, 0, [-2.27, 0], [-0.36, 0.36]],
+  ankle: [0.78, 0, [-0.18, 1.47], [-0.3, 0.3]]
+};
 
-// Rotate point i about centre c so that unit direction a turns towards unit direction b (by LIMIT_STIFFNESS of the
-// angle; Rodrigues)
-function rotatePoint(x, i, c, ax, ay, az, bx, by, bz) {
-  bx = ax + (bx - ax) * LIMIT_STIFFNESS; by = ay + (by - ay) * LIMIT_STIFFNESS; bz = az + (bz - az) * LIMIT_STIFFNESS;
+// Rotate point i about centre c so that unit direction a turns towards unit direction b (by share k of the angle;
+// Rodrigues)
+function rotatePoint(x, i, c, ax, ay, az, bx, by, bz, k = LIMIT_STIFFNESS) {
+  bx = ax + (bx - ax) * k; by = ay + (by - ay) * k; bz = az + (bz - az) * k;
   const bl = Math.sqrt(bx * bx + by * by + bz * bz);
   if (bl < 1e-9) return;
   bx /= bl; by /= bl; bz /= bl;
@@ -70,15 +93,16 @@ function rotatePoint(x, i, c, ax, ay, az, bx, by, bz) {
   x[o + 2] = x[oc + 2] + vz * cos + (kx * vy - ky * vx) * sin + kz * dot;
 }
 
-// Turn a limb (points `group`) about its joint (point c) from direction a towards b (rotatePoint), keeping their
-// momentum: the limb and the joint then shift back together by what the turn moved them, mass-weighted
+// Turn a limb (points `group`) about its joint (point c) from direction a towards b (by `share` of the angle,
+// rotatePoint), keeping their momentum: the limb and the joint then shift back together by what the turn moved them,
+// mass-weighted
 const _before = new Float64Array(COUNT * 3);
-function rotateGroup(x, w, group, c, ax, ay, az, bx, by, bz) {
+function rotateGroup(x, w, group, c, ax, ay, az, bx, by, bz, share = LIMIT_STIFFNESS) {
   let px = 0, py = 0, pz = 0, mass = 1 / w[c];
   for (let k = 0; k < group.length; k++) {
     const o = group[k] * 3;
     _before[o] = x[o]; _before[o + 1] = x[o + 1]; _before[o + 2] = x[o + 2];
-    rotatePoint(x, group[k], c, ax, ay, az, bx, by, bz);
+    rotatePoint(x, group[k], c, ax, ay, az, bx, by, bz, share);
     const m = 1 / w[group[k]];
     px += (x[o] - _before[o]) * m; py += (x[o + 1] - _before[o + 1]) * m; pz += (x[o + 2] - _before[o + 2]) * m;
     mass += m;
@@ -131,10 +155,72 @@ function clampLimb(f, dx, dy, dz, side, flexMin, flexMax, abdMin, abdMax, out) {
   return true;
 }
 
+// Direction d (unit) as clampLimb's angles in frame f, [flex, abduction] (out)
+function limbAngles(f, dx, dy, dz, side, out) {
+  const lx = (dx * f[0] + dy * f[1] + dz * f[2]) * side;
+  const ly = dx * f[3] + dy * f[4] + dz * f[5];
+  const lz = dx * f[6] + dy * f[7] + dz * f[8];
+  out[0] = Math.atan2(lz, -ly);
+  out[1] = Math.asin(Math.max(-1, Math.min(1, lx)));
+  return out;
+}
+
+// ...and back: the direction at those angles in frame f
+function limbDirection(f, side, flex, abd, out) {
+  const nx = Math.sin(abd) * side, ny = -Math.cos(abd) * Math.cos(flex), nz = Math.cos(abd) * Math.sin(flex);
+  out[0] = nx * f[0] + ny * f[3] + nz * f[6];
+  out[1] = nx * f[1] + ny * f[4] + nz * f[7];
+  out[2] = nx * f[2] + ny * f[5] + nz * f[8];
+  return out;
+}
+
+const wrapAngle = (a) => a - Math.round(a / (Math.PI * 2)) * Math.PI * 2;
+
+// The muscles' change to a joint angle a this substep of h seconds, as it moved by `rate` since the last: the tone's
+// pull towards its relaxed angle, against its motion, and within SOFT_ZONE of a limit (lo or hi) a spring stiffening up
+// to it and damping that soaks up the motion into it
+function muscle(a, rate, relaxed, lo, hi, h) {
+  let d = (wrapAngle(relaxed - a) * TONE * h - rate * TONE_DAMPING) * h;
+  const zone = Math.min(SOFT_ZONE, (hi - lo) / 3);
+  const over = a - (hi - zone);
+  if (over > 0) {
+    const t = Math.min(1, over / zone);
+    d -= over * t * SOFT_STIFFNESS * h * h + Math.max(0, rate) * Math.min(1, t * SOFT_DAMPING * h);
+  }
+  const under = lo + zone - a;
+  if (under > 0) {
+    const t = Math.min(1, under / zone);
+    d += under * t * SOFT_STIFFNESS * h * h - Math.min(0, rate) * Math.min(1, t * SOFT_DAMPING * h);
+  }
+  return Math.max(-MAX_MUSCLE_TURN, Math.min(MAX_MUSCLE_TURN, d));
+}
+
+// The pelvis' frame in positions pos: x to the left, y up the spine, z forward
+function pelvisFrame(out, pos) {
+  const L = P.HIP_L * 3, R = P.HIP_R * 3, S = P.SPINE * 3;
+  return frameYX(out, pos[S] - (pos[L] + pos[R]) * 0.5, pos[S + 1] - (pos[L + 1] + pos[R + 1]) * 0.5,
+    pos[S + 2] - (pos[L + 2] + pos[R + 2]) * 0.5, pos[L] - pos[R], pos[L + 1] - pos[R + 1], pos[L + 2] - pos[R + 2]);
+}
+
+// A frame's x & z kept and y flipped: a cone around its +y for clampLimb & limbAngles (the spine's, the neck's)
+function flipY(out, f) {
+  out[0] = f[0]; out[1] = f[1]; out[2] = f[2];
+  out[3] = -f[3]; out[4] = -f[4]; out[5] = -f[5];
+  out[6] = f[6]; out[7] = f[7]; out[8] = f[8];
+  return out;
+}
+
+const HEAD_ONLY = [P.HEAD];
+const ARM = [[P.ELBOW_L, P.WRIST_L], [P.ELBOW_R, P.WRIST_R]];
+const FOREARM = [[P.WRIST_L], [P.WRIST_R]];
 const _f = new Float64Array(9);
 const _g = new Float64Array(9);
 const _n = new Float64Array(3);
 const _local = { x: 0, y: 0, z: 0 };
+const _pelvis = new Float64Array(9);
+const _chest = new Float64Array(9);
+const _limb = new Float64Array(9);
+const _ang = new Float64Array(2);
 
 class Ragdoll {
   constructor() {
@@ -163,6 +249,9 @@ class Ragdoll {
     this.near = []; // the movers close enough to touch it this frame
     this.settle = new Float64Array(6); // pelvis & head where it last checked if it had settled
     this.settleTime = 0;
+    this.gravity = GRAVITY;
+    this.angles = new Float64Array(2 * 12); // each joint's [flex, abduction] last substep (see joints)
+    this.anglesValid = false;
   }
 
   /**
@@ -188,6 +277,7 @@ class Ragdoll {
     this.settleTime = 0;
     this.time = 0;
     this.impact = 0;
+    this.anglesValid = false;
   }
 
   get pelvisX() { return (this.x[0] + this.x[3]) * 0.5; }
@@ -202,6 +292,7 @@ class Ragdoll {
   }
 
   wake() {
+    if (this.asleep) this.anglesValid = false;
     this.asleep = false;
     this.still = 0;
   }
@@ -280,13 +371,14 @@ class Ragdoll {
     for (let i = 0; i < COUNT; i++) {
       const o = i * 3;
       v[o] *= 0.999; v[o + 2] *= 0.999;
-      v[o + 1] -= GRAVITY * h;
+      v[o + 1] -= this.gravity * h;
       p[o] = x[o]; p[o + 1] = x[o + 1]; p[o + 2] = x[o + 2];
       this.ground[i] = world.ground(p[o], p[o + 2]);
       x[o] += v[o] * h; x[o + 1] += v[o + 1] * h; x[o + 2] += v[o + 2] * h;
       this.touched[i] = this.contact[i];
       this.contact[i] = 0;
     }
+    this.muscles(h);
     for (let it = 0; it < ITERATIONS; it++) {
       this.solveSegments();
       this.solveLimits();
@@ -346,6 +438,67 @@ class Ragdoll {
       if (speed > fastest) fastest = speed;
     }
     return Math.sqrt(fastest);
+  }
+
+  // The muscles (see TONE), once a substep: each joint's limb turned in turn, from the spine out, by muscle()'s change
+  // to its angles (which moved since the last substep by the change in this.angles)
+  muscles(h) {
+    this.joints(this.x, this.angles, this.anglesValid ? h : 0);
+    this.anglesValid = true;
+  }
+
+  // Every joint's angles in positions pos, into ang (replacing last substep's), and with h each joint's limb turned by
+  // the muscles: the spine & neck, then each shoulder & elbow, then each hip, knee & ankle (not a foot on the ground)
+  joints(pos, ang, h) {
+    const S = P.SPINE * 3, N = P.NECK * 3, SL = P.SHOULDER_L * 3, SR = P.SHOULDER_R * 3;
+    let j = 0;
+    this.joint(pos, flipY(_g, pelvisFrame(_pelvis, pos)), 1, P.SPINE, P.NECK, UPPER, j++, ang, h, JOINT.spine);
+    // chest frame (the pelvis' axes), flipped for the neck's
+    frameYX(_chest, pos[N] - pos[S], pos[N + 1] - pos[S + 1], pos[N + 2] - pos[S + 2], pos[SL] - pos[SR], pos[SL + 1] - pos[SR + 1], pos[SL + 2] - pos[SR + 2]);
+    this.joint(pos, flipY(_g, _chest), 1, P.NECK, P.HEAD, HEAD_ONLY, j++, ang, h, JOINT.neck);
+    for (let side = 0; side < 2; side++) {
+      const sign = side ? -1 : 1;
+      const shoulder = side ? P.SHOULDER_R : P.SHOULDER_L, elbow = side ? P.ELBOW_R : P.ELBOW_L;
+      this.joint(pos, _chest, sign, shoulder, elbow, ARM[side], j++, ang, h, JOINT.shoulder);
+      // the elbow's frame: y up the upper arm, x the chest's
+      const os = shoulder * 3, oe = elbow * 3;
+      frameYX(_limb, pos[os] - pos[oe], pos[os + 1] - pos[oe + 1], pos[os + 2] - pos[oe + 2], _chest[0], _chest[1], _chest[2]);
+      this.joint(pos, _limb, sign, elbow, side ? P.WRIST_R : P.WRIST_L, FOREARM[side], j++, ang, h, JOINT.elbow);
+    }
+    pelvisFrame(_pelvis, pos);
+    for (let side = 0; side < 2; side++) {
+      const sign = side ? -1 : 1;
+      const hip = side ? P.HIP_R : P.HIP_L, knee = side ? P.KNEE_R : P.KNEE_L;
+      const ankle = side ? P.ANKLE_R : P.ANKLE_L, toe = side ? P.TOE_R : P.TOE_L;
+      this.joint(pos, _pelvis, sign, hip, knee, LEG[side], j++, ang, h, JOINT.hip);
+      // the knee's frame: y up the thigh, x the pelvis'; the ankle's: y up the shin, x the knee's
+      const oh = hip * 3, ok = knee * 3, oa = ankle * 3;
+      frameYX(_limb, pos[oh] - pos[ok], pos[oh + 1] - pos[ok + 1], pos[oh + 2] - pos[ok + 2], _pelvis[0], _pelvis[1], _pelvis[2]);
+      this.joint(pos, _limb, sign, knee, ankle, SHIN[side], j++, ang, h, JOINT.knee);
+      frameYX(_limb, pos[ok] - pos[oa], pos[ok + 1] - pos[oa + 1], pos[ok + 2] - pos[oa + 2], _limb[0], _limb[1], _limb[2]);
+      const footDown = this.touched[toe] === 1 || this.touched[ankle] === 1;
+      this.joint(pos, _limb, sign, ankle, toe, TOE[side], j++, ang, footDown ? 0 : h, JOINT.ankle);
+    }
+  }
+
+  // Joint j of joints(): limb a -> b's angles in frame f (`side`, as clampLimb's) into ang (whose last ones give their
+  // rate), and with h the limb (points `group`) turned about a by the muscles' change to them, for the joint's `spec`
+  // (see JOINT)
+  joint(pos, f, side, a, b, group, j, ang, h, spec) {
+    const oa = a * 3, ob = b * 3;
+    let dx = pos[ob] - pos[oa], dy = pos[ob + 1] - pos[oa + 1], dz = pos[ob + 2] - pos[oa + 2];
+    const l = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    dx /= l; dy /= l; dz /= l;
+    limbAngles(f, dx, dy, dz, side, _ang);
+    const flex = _ang[0], abd = _ang[1];
+    const lastFlex = ang[j * 2], lastAbd = ang[j * 2 + 1];
+    ang[j * 2] = flex; ang[j * 2 + 1] = abd;
+    if (!h) return;
+    const flexLimits = spec[2], abdLimits = spec[3];
+    const toFlex = flex + muscle(flex, wrapAngle(flex - lastFlex), spec[0], flexLimits[0], flexLimits[1], h);
+    const toAbd = abd + muscle(abd, abd - lastAbd, spec[1], abdLimits[0], abdLimits[1], h);
+    limbDirection(f, side, toFlex, toAbd, _n);
+    rotateGroup(pos, this.w, group, a, dx, dy, dz, _n[0], _n[1], _n[2], 1);
   }
 
   solveSegments() {

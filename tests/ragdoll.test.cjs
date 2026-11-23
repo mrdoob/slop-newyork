@@ -74,6 +74,50 @@ test('a limp body falls, keeps its shape and comes to rest on the ground', () =>
   assert.ok(Math.abs(segment(r, P.HIP_L, P.HIP_R) - 0.18) < 0.01 && Math.abs(segment(r, P.SPINE, P.NECK) - 0.4) < 0.01, 'the pelvis and chest stay rigid');
 });
 
+// The angle in degrees between segments a -> b and c -> d
+function between(r, a, b, c, d) {
+  const u = [0, 1, 2].map((k) => r.x[b * 3 + k] - r.x[a * 3 + k]);
+  const w = [0, 1, 2].map((k) => r.x[d * 3 + k] - r.x[c * 3 + k]);
+  const dot = u[0] * w[0] + u[1] * w[1] + u[2] * w[2];
+  return Math.acos(Math.max(-1, Math.min(1, dot / Math.hypot(...u) / Math.hypot(...w)))) * 180 / Math.PI;
+}
+const space = { ground: () => -100, colliders: null, contact: () => false };
+
+test('without gravity a limp body relaxes into the neutral body posture', () => {
+  const r = new Ragdoll();
+  r.start(standing(0, 0, 3), standing(), 1, 0, 0, 0);
+  r.gravity = 0;
+  for (let t = 0; t < 4; t += 1 / 60) r.step(1 / 60, space, []);
+  const knee = between(r, P.HIP_L, P.KNEE_L, P.KNEE_L, P.ANKLE_L);
+  const elbow = between(r, P.SHOULDER_R, P.ELBOW_R, P.ELBOW_R, P.WRIST_R);
+  const hip = between(r, P.NECK, P.SPINE, P.HIP_R, P.KNEE_R);
+  const arm = between(r, P.NECK, P.SPINE, P.SHOULDER_L, P.ELBOW_L);
+  assert.ok(knee > 35 && knee < 60, `knees bent (${knee.toFixed(0)} degrees)`);
+  assert.ok(hip > 40 && hip < 75, `hips bent (${hip.toFixed(0)} degrees)`);
+  assert.ok(elbow > 60 && elbow < 100, `elbows bent (${elbow.toFixed(0)} degrees)`);
+  assert.ok(arm > 30 && arm < 60, `upper arms forward & out (${arm.toFixed(0)} degrees off the trunk)`);
+});
+
+test('a knee swung straight slows down before its limit instead of stopping dead at it', () => {
+  const pose = standing(0, 0, 3);
+  // the left shin bent back level
+  const set = (i, y, z) => { pose[i * 3 + 1] = y + 3; pose[i * 3 + 2] = z; };
+  set(P.ANKLE_L, 0.5, -0.42);
+  set(P.TOE_L, 0.44, -0.44);
+  const r = new Ragdoll();
+  r.start(pose, standing(), 1, 0, 0, 0);
+  r.gravity = 0;
+  // swung forward at ~12 rad/s
+  r.v[P.ANKLE_L * 3 + 1] = -5;
+  r.v[P.TOE_L * 3 + 1] = -5.5;
+  let straightest = 180;
+  for (let t = 0; t < 0.5; t += 1 / 120) {
+    r.step(1 / 120, space, []);
+    straightest = Math.min(straightest, between(r, P.HIP_L, P.KNEE_L, P.KNEE_L, P.ANKLE_L));
+  }
+  assert.ok(straightest > 6, `stopped short of straight (bent ${straightest.toFixed(0)} degrees at most)`);
+});
+
 test('a car driving into a standing person throws them ahead, takes the push back and they come to rest', () => {
   const r = new Ragdoll();
   r.start(standing(0, 0), standing(), 1, 0, 0, 0);
