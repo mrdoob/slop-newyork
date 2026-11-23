@@ -1973,10 +1973,41 @@ const roadCracks = Fn(([wxz, foot, worn]) => {
 });
 
 /**
+ * The asphalt's relief as octaves of footprint-filtered value noise (frequency in cells a metre, height in metres, lattice
+ * turn in radians): the megatexture of a worn surface (ravelled patches & dips a few centimetres across) and the
+ * macrotexture of its stones (5-11 mm across, ~0.8 mm RMS height & ~0.26 RMS slope: an aged, coarse surface course).
+ * Value noise of height (n - 0.5) * a over cells 1 / f m across has an RMS slope of 0.384 a f along each axis (measured).
+ * An octave shades through the bump while its cells span a few pixels (asphaltReliefResolved), and hands its slope
+ * variance over to the specular roughness as they shrink below that (asphaltReliefUnresolved): nearer Nyquist, the
+ * screen-space derivatives behind the bump would turn it into steep, sparkling noise.
+ */
+const ASPHALT_RELIEF = [
+  { f: 8.5, a: 0.005, turn: 0.3 },
+  { f: 19.0, a: 0.0022, turn: 1.1 },
+  { f: 36.0, a: 0.0016, turn: 2.3 },
+  { f: 90.0, a: 0.003, turn: 0.7 },
+  { f: 200.0, a: 0.002, turn: 1.9 }
+];
+// How much of octave i the pixel resolves along the short & the long axes of its footprint (fwidth of world xz)
+const reliefCellsPerPixel = (i, extent) => extent.mul(ASPHALT_RELIEF[i].f);
+const asphaltReliefResolved = (i, foot) => float(1.0).sub(smoothstep(0.2, 0.5, reliefCellsPerPixel(i, min(foot.x, foot.y))));
+const asphaltReliefUnresolved = (i, foot) =>
+  smoothstep(0.2, 0.5, reliefCellsPerPixel(i, foot.x)).add(smoothstep(0.2, 0.5, reliefCellsPerPixel(i, foot.y))).mul(0.5);
+// Its octave i at world xz, given the gradients of xz across the pixel (gx, gy)
+function asphaltReliefOctave(i, xz, gx, gy) {
+  const { f, turn } = ASPHALT_RELIEF[i];
+  const c = Math.cos(turn) * f, s = Math.sin(turn) * f;
+  const turned = (v) => vec2(v.x.mul(c).sub(v.y.mul(s)), v.x.mul(s).add(v.y.mul(c)));
+  return tableNoiseFiltered(turned(xz).add(13.7 * i), turned(gx), turned(gy)).x.sub(0.5).mul(ASPHALT_RELIEF[i].a);
+}
+
+/**
  * Unified Manhattan Roadway Asphalt with physically based reflectances: weathered asphalt (aggregate in an oxidised
- * binder) averages about 9% (fresh blacktop 4-5%, only in the newer patches), dry asphalt is a very rough dielectric,
- * and the cast-iron manhole covers are bare metal where tyres polish them. Footprint-filtered aggregate grain &
- * `bumpNormal` relief, wear & repairs (transverse, longitudinal & block cracks, tar snakes, tar-sealed utility-cut
+ * binder) averages about 9% (fresh blacktop 4-5%, only in the newer patches), and the cast-iron manhole covers are bare
+ * metal where tyres polish them. The stones' relief (ASPHALT_RELIEF) shades through `bumpNormal` where the pixel
+ * resolves it; where it is finer than the pixel its slopes widen the specular lobe (GGX roughness) instead, and the
+ * diffuse is rough (EON, energy-preserving Oren-Nayar): the stones shadow each other under a low sun and the surface
+ * brightens with the sun behind the viewer. Footprint-filtered aggregate grain, wear & repairs (transverse, longitudinal & block cracks, tar snakes, tar-sealed utility-cut
  * patches & trenches, potholes, oil drips, exposed stone chips, a gentle swell of the paving; see roadWear &
  * roadCracks) & post-rain wetness (upgraded with techniques from CityGenerator.js `createRoadMaterial`).
  * cityUniforms.uRoadWetness drives damp stains, a faint wet sheen & standing puddles (roadWetMasks): bone dry at
@@ -1989,9 +2020,9 @@ const roadCracks = Fn(([wxz, foot, worn]) => {
  * Lane markings are separate geometry built from the road network (js/road-paint.js).
  */
 function createRoadSurfaceMaterial() {
-  const mat = new THREE.MeshStandardNodeMaterial({
+  const mat = new THREE.MeshPhysicalNodeMaterial({
     metalness: 0.0,
-    roughness: 0.9
+    roughness: 0.65
   });
 
   // Albedos: weathered asphalt between its dark binder & its exposed stone (9% on average), utility-cut patches either
@@ -2168,18 +2199,24 @@ function createRoadSurfaceMaterial() {
   })();
 
   mat.roughnessNode = Fn(() => {
-    const px = float(pixelSize).toVar();
-    const microRough = fadedDetail(px.lessThan(0.08), 0.04, () =>
-      mix(float(0.04), tableNoise(positionWorld.xz.mul(12.0)).w.mul(0.08), smoothstep(0.08, 0.03, px)));
-    // Dry asphalt is very rough; tar sealant is satin, oil a little glossier, fresh patches a little tighter, potholes
-    // & cracks rougher. Bare iron is polished by the traffic, the grime around it rough.
-    const dry = float(0.86).add(microRough)
-      .sub(patchSeal.mul(0.3))
-      .sub(tarSnake.mul(0.32))
-      .sub(oilDrip.mul(0.18))
+    // The micro roughness of the stones' traffic-polished faces & of the binder (rougher where the binder has
+    // oxidised & ravelled), widened by the slope variance of the relief too fine for the pixel: GGX alpha^2 grows by
+    // twice the per-axis slope variance of each octave the pixel cannot resolve (it shades through the bump where it can)
+    const foot = vec2(footprint).toVar();
+    let unresolved = float(0.0);
+    for (let i = 0; i < ASPHALT_RELIEF.length; i++) {
+      const slope = 0.384 * ASPHALT_RELIEF[i].a * ASPHALT_RELIEF[i].f;
+      unresolved = unresolved.add(asphaltReliefUnresolved(i, foot).mul(2.0 * slope * slope));
+    }
+    const micro = float(0.58).add(worn.mul(0.06)).add(tableNoise(positionWorld.xz.mul(0.7).add(5.0)).w.sub(0.5).mul(0.1));
+    const asphalt = sqrt(sqrt(pow(micro, 4.0).add(unresolved)));
+    // Tar sealant is a smooth film of bitumen, oil satin, fresh patches a little tighter, potholes & cracks rougher.
+    // Bare iron is polished by the traffic, the grime around it rough.
+    const dry = mix(asphalt, float(0.45), max(patchSeal, tarSnake))
+      .sub(oilDrip.mul(0.15))
       .sub(patchCover.mul(patchFresh).mul(0.06))
-      .add(pothole.mul(0.06))
-      .add(crack.mul(0.08));
+      .add(pothole.mul(0.1))
+      .add(crack.mul(0.1));
     const road = mix(dry, mix(float(0.88), float(0.56), mhPolish), isManhole);
     // The wet film only takes the edge off the asphalt's mattness (a soft sheen, too rough for SSR); real gloss is kept
     // for the damp stains and the standing water
@@ -2193,30 +2230,36 @@ function createRoadSurfaceMaterial() {
   const waterMetal = clamp(waterFresnel.mul(1.6), 0.0, 0.85).mul(max(puddle, max(damp.mul(0.35), film.mul(0.15))));
   mat.metalnessNode = mix(waterMetal, mhPolish, isManhole.mul(float(1.0).sub(puddle)));
 
-  // Footprint-gated asphalt relief via bumpNormal (from CityGenerator.js): a gentle swell & sag of the paving, shallow
-  // ruts & ripples, 6 mm ravelled coarse texture + 2.2 mm & 1.6 mm aggregate grit, stone chips, crack grooves, raised
-  // patches with their tar seals, tar-snake beads, pothole bowls and the manhole covers' frames, patterns, seams & pick
-  // holes. Steps ramp over >= 2 px so no edge sparkles; the finest relief fades before it shrinks to a pixel. Flattens
-  // to mirror-smooth 0.0 inside standing rainwater puddles so SSR reflections stay crisp!
+  // Rough diffuse (EON): the pores & stone flanks between the stones shadow & mask each other; tar sealant is
+  // smoother, and water filling the texture levels it
+  mat.diffuseRoughnessNode = float(0.4).mul(float(1.0).sub(tarSnake.mul(0.6)))
+    .mul(float(1.0).sub(max(puddle, max(damp.mul(0.8), film.mul(0.5)))));
+
+  // Relief via bumpNormal (from CityGenerator.js): a gentle swell & sag of the paving, shallow ruts & ripples, the
+  // megatexture & the stones (ASPHALT_RELIEF, filtered for the pixel: where it cannot resolve them they flatten here
+  // and roughen the specular instead; a film of water partly fills them), stone chips, crack grooves, raised patches
+  // with their tar seals, tar-snake beads, pothole bowls and the manhole covers' frames, patterns, seams & pick holes.
+  // Steps ramp over >= 2 px so no edge sparkles. Flattens to mirror-smooth 0.0 inside standing rainwater puddles so SSR
+  // reflections stay crisp!
   mat.normalNode = Fn(() => {
     const wx = positionWorld.x;
     const wz = positionWorld.z;
     const px = float(pixelSize).toVar();
     const coarseFade = smoothstep(0.12, 0.035, px).toVar();
     const midFade = smoothstep(0.035, 0.012, px).toVar();
-    const fineFade = smoothstep(0.02, 0.006, px).mul(float(1.0).sub(film.mul(0.6))).toVar();
     const ramp = max(float(0.012), px.mul(2.0));
+    const gx = vec2(positionWorld.xz.dFdx()).toVar();
+    const gy = vec2(positionWorld.xz.dFdy()).toVar();
 
     const swell = tableNoiseFine(vec2(wx.mul(0.55), wz.mul(0.55)).add(23.0)).x.sub(0.5).mul(0.02)
       .add(tableNoiseFine(vec2(wx.mul(1.9), wz.mul(1.9))).y.sub(0.5).mul(0.005));
     const ripples = fadedDetail(px.lessThan(0.3), 0.0, () =>
       tableNoiseFine(vec2(wx.mul(3.6), wz.mul(3.6)).add(61.0)).z.sub(0.5).mul(0.004).mul(smoothstep(0.3, 0.1, px)));
-    const coarseGrit = fadedDetail(px.lessThan(0.12), 0.0, () =>
-      tableNoiseFine(vec2(wx.mul(8.5), wz.mul(8.5))).w.sub(0.5).mul(0.006).mul(coarseFade));
-    const midGrit = fadedDetail(px.lessThan(0.035), 0.0, () =>
-      tableNoiseFine(vec2(wx.mul(19.0), wz.mul(19.0)).add(3.0)).x.sub(0.5).mul(0.0022).mul(midFade));
-    const fineGrit = fadedDetail(px.lessThan(0.02), 0.0, () =>
-      tableNoiseFine(vec2(wx.mul(36.0), wz.mul(36.0))).y.sub(0.5).mul(0.0016).mul(fineFade));
+    const foot = vec2(footprint).toVar();
+    let relief = float(0.0);
+    for (let i = 0; i < ASPHALT_RELIEF.length; i++) {
+      relief = relief.add(asphaltReliefOctave(i, positionWorld.xz, gx, gy).mul(asphaltReliefResolved(i, foot)));
+    }
     const chipRelief = chips.mul(0.0015).mul(midFade);
     const snakeBead = tarSnake.mul(0.0018);
     const crackGroove = crack.mul(0.003).mul(smoothstep(0.03, 0.006, px));
@@ -2226,8 +2269,8 @@ function createRoadSurfaceMaterial() {
     // The cover sits a few millimetres below the asphalt in its frame
     const manholeRelief = manhole.z.sub(0.004).mul(coarseFade);
 
-    const height = swell.add(ripples).add(coarseGrit).add(midGrit).add(fineGrit).add(chipRelief).add(snakeBead).sub(crackGroove)
-      .add(patchStep).add(sealBead).sub(bowl);
+    const height = swell.add(ripples).add(relief.mul(float(1.0).sub(film.mul(0.5)))).add(chipRelief).add(snakeBead)
+      .sub(crackGroove).add(patchStep).add(sealBead).sub(bowl);
     return bumpNormal(mix(height, manholeRelief, isManhole).mul(float(1.0).sub(puddle)));
   })();
 
