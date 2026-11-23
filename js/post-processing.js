@@ -22,9 +22,11 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 // Exposure and white balance belong to the camera, independently of the physical lighting presets.
 // Keep exposure restrained for ACES; stronger bloom stays selective so midtones retain their contrast.
+// Midday is exposed as a camera meters a sunny day ("sunny 16"): an 18% grey card in the sun comes out middle grey
+// (sRGB ~130), so that the materials' physical albedos read true (weathered asphalt a dark grey, concrete a light one).
 const LOOKS = {
   golden:   { exposure: 1.04, contrast: 1.12, saturation: 1.08, balance: [1.045, 1.00, 0.955], bloom: 0.24, threshold: 1.20 },
-  midday:   { exposure: 1.00, contrast: 1.10, saturation: 1.06, balance: [1.015, 1.00, 0.985], bloom: 0.18, threshold: 1.35 },
+  midday:   { exposure: 0.42, contrast: 1.10, saturation: 1.06, balance: [1.015, 1.00, 0.985], bloom: 0.18, threshold: 1.35 },
   twilight: { exposure: 1.06, contrast: 1.10, saturation: 1.08, balance: [1.025, 0.995, 1.015], bloom: 0.28, threshold: 1.05 },
   midnight: { exposure: 1.04, contrast: 1.08, saturation: 1.06, balance: [0.985, 1.00, 1.035], bloom: 0.30, threshold: 1.00 }
 };
