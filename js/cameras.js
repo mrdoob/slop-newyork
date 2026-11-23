@@ -17,6 +17,11 @@ const CAMERA_PRESETS = [
   { id: 'drone',       name: 'Auto-Director Aerial',     category: 'scenic', fov: 50 }
 ];
 
+// Degrees the chase & action cameras widen their field of view by per m/s, and at most (reached at 40 m/s, a little
+// over the taxi's top speed)
+const SPEED_FOV = 0.35;
+const SPEED_FOV_MAX = 14;
+
 class CameraSystem {
   constructor(domElement, controllerManager) {
     this.domElement = domElement;
@@ -180,18 +185,24 @@ class CameraSystem {
       this.orbitYawOffset += (0.0 - this.orbitYawOffset) * (1 - Math.exp(-dt * 2.2));
     }
 
-    // The follow cameras pull back with speed, eased so that they drift back as the entity speeds up (and in as it
-    // slows down); speedLag is about how far their former world-space smoothing left them trailing at 60 FPS
+    // The follow cameras keep their distance and widen their field of view with speed instead, eased so that it
+    // opens as the entity speeds up (and narrows as it slows down)
     this.smoothedSpeed += (Math.abs(entity.speed) - this.smoothedSpeed) * (1 - Math.exp(-dt * 3.0));
-    const speedLag = this.smoothedSpeed * 0.1;
+    const preset = this.getActivePreset();
+    const speedFov = this.activePresetId === 'chase' || this.activePresetId === 'action'
+      ? Math.min(SPEED_FOV_MAX, this.smoothedSpeed * SPEED_FOV) : 0;
+    if (Math.abs(this.camera.fov - (preset.fov + speedFov)) > 0.02) {
+      this.camera.fov = preset.fov + speedFov;
+      this.camera.updateProjectionMatrix();
+    }
 
     const totalYaw = entity.heading + this.orbitYawOffset;
 
     switch (this.activePresetId) {
       case 'chase': {
-        const dist = entity.chaseDistance * this.zoomMultiplier * (1 + Math.min(0.25, this.smoothedSpeed * 0.01));
+        const dist = entity.chaseDistance * this.zoomMultiplier;
         const height = entity.chaseHeight * this.zoomMultiplier + Math.sin(this.orbitPitchOffset) * dist * 0.85;
-        const horizDist = Math.cos(this.orbitPitchOffset) * dist + speedLag;
+        const horizDist = Math.cos(this.orbitPitchOffset) * dist;
 
         desiredPos.set(
           entity.position.x - Math.sin(totalYaw) * horizDist,
@@ -212,7 +223,7 @@ class CameraSystem {
 
       case 'action': {
         const sideOffset = entity.type === 'car' ? 2.65 : (entity.type === 'helicopter' ? 4.2 : 0.95);
-        const backDist = (entity.type === 'car' ? 3.6 : (entity.type === 'helicopter' ? 8.5 : 2.8)) + speedLag;
+        const backDist = entity.type === 'car' ? 3.6 : (entity.type === 'helicopter' ? 8.5 : 2.8);
         const lowY = entity.type === 'helicopter' ? entity.position.y + 1.2 : entity.position.y + 0.92;
 
         desiredPos.set(
@@ -336,8 +347,8 @@ class CameraSystem {
       // Smoothed in the followed entity's frame rather than in world space. A world-space follower trails a moving
       // target by a distance that depends on the frame time (about speed x dt), so with uneven frame times the camera
       // surged back and forth behind an accelerating or fast car. Relative to the entity a steady drive keeps the
-      // camera steady, while turns, orbit drags, zoom & the speed pull-back are still eased. The entity's height is
-      // eased in world space (curbs, park lawns, jumps, the helicopter climbing).
+      // camera steady, while turns, orbit drags & zoom are still eased. The entity's height is eased in world space
+      // (curbs, park lawns, jumps, the helicopter climbing).
       if (this.followEntity !== entity) {
         // preset or mode switch: start from where the camera is and glide over to the new framing
         this.followEntity = entity;

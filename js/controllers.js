@@ -618,7 +618,7 @@ class ThirdPersonControllerManager {
       steerAngle: 0,
       wheelSpin: 0,
       cameraTargetOffset: new THREE.Vector3(0, 0.96, 0),
-      chaseDistance: 6.9,
+      chaseDistance: 5.5,
       chaseHeight: 2.12
     };
   }

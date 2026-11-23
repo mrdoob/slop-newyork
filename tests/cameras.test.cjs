@@ -262,3 +262,25 @@ test('the chase camera keeps the entity centred as it orbits around it', () => {
     }
   }
 });
+
+test('the follow cameras keep their distance at speed and widen their field of view instead', () => {
+  for (const preset of ['chase', 'action']) {
+    const h = cameraHarness();
+    h.camera.setCameraPreset(preset, true);
+    const behind = () => Math.hypot(h.camera.camera.position.x - h.entity.position.x, h.camera.camera.position.z - h.entity.position.z);
+    for (let i = 0; i < 120; i++) h.camera.update(1 / 60, i / 60);
+    const restDistance = behind();
+    assert.equal(h.camera.camera.fov, preset === 'chase' ? 56 : 60);
+    h.entity.speed = 30;
+    for (let i = 0; i < 300; i++) {
+      h.entity.position.z += 30 / 60;
+      h.camera.update(1 / 60, 2 + i / 60);
+    }
+    close(behind(), restDistance);
+    assert.ok(Math.abs(h.camera.camera.fov - ((preset === 'chase' ? 56 : 60) + 30 * 0.35)) < 0.05, `${preset} fov ${h.camera.camera.fov}`);
+    // a scenic camera keeps its own field of view whatever the speed
+    h.camera.setCameraPreset('drone');
+    h.camera.update(1 / 60, 8);
+    assert.equal(h.camera.camera.fov, 50);
+  }
+});
