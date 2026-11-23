@@ -127,8 +127,11 @@ function noiseTable() {
   }
   _noiseTable = new THREE.DataTexture(data, NOISE_TABLE, NOISE_TABLE, THREE.RGBAFormat);
   _noiseTable.wrapS = _noiseTable.wrapT = THREE.RepeatWrapping;
-  _noiseTable.magFilter = _noiseTable.minFilter = THREE.LinearFilter;
-  _noiseTable.generateMipmaps = false;
+  _noiseTable.magFilter = THREE.LinearFilter;
+  // Mipmaps & anisotropy for tableNoiseFiltered; every other lookup reads level 0
+  _noiseTable.minFilter = THREE.LinearMipmapLinearFilter;
+  _noiseTable.generateMipmaps = true;
+  _noiseTable.anisotropy = 16;
   _noiseTable.needsUpdate = true;
   return _noiseTable;
 }
@@ -140,6 +143,18 @@ const tableNoise = Fn(([p]) => {
   return texture(noiseTable(), fract(i.mul(1.0 / NOISE_TABLE)).add(u.add(0.5).mul(1.0 / NOISE_TABLE))).level(0);
 });
 const tableCell = (i) => texture(noiseTable(), fract(vec2(i).mul(1.0 / NOISE_TABLE)).add(0.5 / NOISE_TABLE)).level(0);
+// The same noise filtered for the pixel's footprint by the texture unit, trilinear & anisotropic from the gradients of p
+// across the pixel (gx, gy): it settles to its mean as its cells shrink below a pixel, and at grazing angles keeps its
+// detail along the footprint's short axis, as a texture would, instead of fading out with the long one. The gradients
+// need uniform control flow (take them first); the lookup itself can go in a branch.
+const tableNoiseFiltered = Fn(([p, gx, gy]) => {
+  const pv = vec2(p).toVar();
+  const i = floor(pv);
+  const f = pv.sub(i);
+  const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0)));
+  return texture(noiseTable(), fract(i.mul(1.0 / NOISE_TABLE)).add(u.add(0.5).mul(1.0 / NOISE_TABLE)))
+    .grad(vec2(gx).mul(1.0 / NOISE_TABLE), vec2(gy).mul(1.0 / NOISE_TABLE));
+});
 // The same noise interpolated in full precision from the cell's four corners, smooth enough for bump relief
 const tableNoiseFine = Fn(([p]) => {
   const pv = vec2(p).toVar();
@@ -1973,7 +1988,8 @@ const roadTarSnakes = Fn(([wxz, px]) => {
  * midday, a few small pools at golden hour, glossy stains & pools mirroring the lights at night. Water's Fresnel rides
  * on metalness (as for the rivers), so puddles reflect the street through SSR at grazing angles yet only darken seen
  * from above.
- * Its noise all comes from the noise table (tableNoise, tableCell; tableNoiseFine for the relief): the roadway covers
+ * Its noise all comes from the noise table (tableNoise, tableNoiseFiltered, tableCell; tableNoiseFine for the relief):
+ * the roadway covers
  * most of the screen, and a texture fetch costs a fraction of the four hashes behind each noise2D value.
  * Lane markings are separate geometry built from the road network (js/road-paint.js).
  */
@@ -2066,15 +2082,15 @@ function createRoadSurfaceMaterial() {
   mat.colorNode = Fn(() => {
     const wx = positionWorld.x;
     const wz = positionWorld.z;
-    const px = float(pixelSize).toVar();
     const camDist = length(positionWorld.sub(cameraPosition)).toVar();
     const detail = smoothstep(240.0, 22.0, camDist).toVar();
 
-    // Two-scale aggregate grit, patchwork pours, oily wear stains & tar crack seams
-    const microAggregate = fadedDetail(px.lessThan(0.06), 0.5, () =>
-      mix(float(0.5), tableNoise(vec2(wx.mul(16.0), wz.mul(16.0))).x, smoothstep(0.06, 0.02, px)));
-    const fineGrain = fadedDetail(px.lessThan(0.4), 0.5, () =>
-      mix(float(0.5), tableNoise(vec2(wx.mul(3.2), wz.mul(3.2))).y, smoothstep(0.4, 0.12, px)));
+    // Two-scale aggregate grit (filtered like a texture, tableNoiseFiltered, so that it reaches far down the street),
+    // patchwork pours, oily wear stains & tar crack seams
+    const gx = vec2(positionWorld.xz.dFdx()).toVar();
+    const gy = vec2(positionWorld.xz.dFdy()).toVar();
+    const microAggregate = tableNoiseFiltered(positionWorld.xz.mul(16.0), gx.mul(16.0), gy.mul(16.0)).x;
+    const fineGrain = tableNoiseFiltered(positionWorld.xz.mul(3.2), gx.mul(3.2), gy.mul(3.2)).y;
     const patchNoise = tableNoise(vec2(wx.mul(0.18), wz.mul(0.18))).z;
     const oilyStain = fadedDetail(camDist.lessThan(240.0), 0.0, () =>
       smoothstep(0.52, 0.84, tableNoise(vec2(wx.mul(0.42), wz.mul(0.42))).w).mul(detail));
