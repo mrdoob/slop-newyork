@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2, smoothstep } from 'three/tsl';
+import { pass, mrt, output, normalView, positionView, metalness, roughness, specularColorBlended, vec2, smoothstep } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
@@ -234,23 +234,33 @@ async function initApp() {
   markInit('culling');
 
   // 5. TSL RenderPipeline with FSR 1 upscaling, Screen Space Reflections (SSRNode), Bloom & Filmic Toning
-  //    Fade out distant and matte surfaces so SSR spends its rays on visible glossy reflections.
+  //    SSR traces the glossy surfaces with metalness (the ones the materials make mirror their surroundings) and fades
+  //    out with distance, so it spends its rays on visible reflections.
   await showLoadingStage('Setting up visual effects, map and interface...', 'ui');
   const scenePass = pass(scene, cameraSystem.camera);
-  // The multisampled colour attachments (output, normal, metalRough) only need resolving, never storing: discarding
-  // them spares the GPU writing 3 x 4 samples per pixel to memory every frame (transient, memoryless attachments where
-  // the browser supports them). The multisampled depth stays stored: SSR reads it.
+  // The multisampled colour attachments (output, normal, ssrRough, specular) only need resolving, never storing:
+  // discarding them spares the GPU writing 4 x 4 samples per pixel to memory every frame (transient, memoryless
+  // attachments where the browser supports them). The multisampled depth stays stored: SSR reads it.
   scenePass.renderTarget.storeMultisampledColorBuffer = false;
   const ssrFade = smoothstep(360.0, 180.0, positionView.z.negate());
   const maxSSRRoughness = 0.75;
   const sceneMRT = mrt({
     output: output,
     normal: normalView,
-    metalRough: vec2(roughness.lessThan(maxSSRRoughness).select(metalness.mul(ssrFade), 0), roughness)
+    // Where SSR reflects (fading out with distance) and the roughness that blurs it
+    ssrRough: vec2(metalness.greaterThan(0).and(roughness.lessThan(maxSSRRoughness)).select(ssrFade, 0), roughness),
+    // The material's reflectance at normal incidence (F0): SSR weights its reflections with the same specular albedo
+    // the material gives its environment reflection (tinted on metals, rising to a mirror at grazing angles)
+    specular: specularColorBlended
   });
+  // Transparent decals blend into these by their alpha, so the surface underneath keeps its own
   sceneMRT.setBlendMode('normal', new THREE.BlendMode(THREE.MaterialBlending));
-  sceneMRT.setBlendMode('metalRough', new THREE.BlendMode(THREE.MaterialBlending));
+  sceneMRT.setBlendMode('ssrRough', new THREE.BlendMode(THREE.MaterialBlending));
+  sceneMRT.setBlendMode('specular', new THREE.BlendMode(THREE.MaterialBlending));
   scenePass.setMRT(sceneMRT);
+  // 8 bits are plenty for these, which keeps the attachments at 24 bytes a sample
+  scenePass.getTexture('ssrRough').type = THREE.UnsignedByteType;
+  scenePass.getTexture('specular').type = THREE.UnsignedByteType;
   // The scene renders at 3/4 of the resolution (with MSAA) and FidelityFX Super Resolution 1 reconstructs the full
   // resolution, which cuts the GPU frame time by about a third.
   const RENDER_SCALE = 0.75;
@@ -259,11 +269,12 @@ async function initApp() {
   const scenePassColor = scenePass.getTextureNode('output');
   const scenePassDepth = scenePass.getTextureNode('depth');
   const scenePassNormal = scenePass.getTextureNode('normal');
-  const scenePassMetalRough = scenePass.getTextureNode('metalRough');
+  const scenePassSSRRough = scenePass.getTextureNode('ssrRough');
 
   const ssrPass = ssr(scenePassColor, scenePassDepth, scenePassNormal, {
-    metalnessNode: scenePassMetalRough.r,
-    roughnessNode: scenePassMetalRough.g,
+    metalnessNode: scenePassSSRRough.r, // only skips the pixels SSR doesn't reflect on, since F0 comes from specularNode
+    roughnessNode: scenePassSSRRough.g,
+    specularNode: scenePass.getTextureNode('specular'),
     camera: cameraSystem.camera
   });
   // Reflections at the scene's own resolution, which keeps them sharp (about 3 ms more than half of it on an M1)
@@ -277,8 +288,8 @@ async function initApp() {
   ssrPass.intensity.value = 0.50;
   ssrPass.screenEdgeFadeBlack = true;
 
-  // Roughness mip blur must not spread reflections back onto matte or nonreflective surfaces.
-  const reflectionMask = scenePassMetalRough.r.greaterThan(0).select(smoothstep(maxSSRRoughness, 0.55, scenePassMetalRough.g), 0);
+  // Roughness mip blur must not spread reflections back onto matte or nonreflective surfaces; distant ones fade out.
+  const reflectionMask = scenePassSSRRough.r.mul(smoothstep(maxSSRRoughness, 0.55, scenePassSSRRough.g));
   const reflections = ssrPass.mul(reflectionMask);
 
   // Ground Truth Ambient Occlusion from the same depth and normals: contact shading under cars and people and along

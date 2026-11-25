@@ -3482,10 +3482,12 @@ function getSmokeCloudTexture() {
  *   expands (`scaleNode`), curls downwind (`positionNode`), and rotates (`rotateUV`) with soft
  *   sunlit top rims and cool urban-canyon self-shadowing.
  */
-// Transparent decal/effect planes & sprites preserve the underlying road/scene G-buffer in MRT (zero RGB & zero alpha on normal & metalRough)
+// Transparent decal/effect planes & sprites preserve the underlying road/scene G-buffer in MRT (zero RGB & zero alpha on normal,
+// ssrRough & specular)
 const _transparentEffectMRT = mrt({
   normal: vec4(0.0, 0.0, 0.0, 0.0),
-  metalRough: vec4(0.0, 0.0, 0.0, 0.0)
+  ssrRough: vec4(0.0, 0.0, 0.0, 0.0),
+  specular: vec4(0.0, 0.0, 0.0, 0.0)
 });
 
 function createSteamMaterial() {
@@ -3620,7 +3622,8 @@ function createContactShadowMaterial() {
   // Smoothly occlude wet-road SSR under the vehicle footprint proportional to shadow opacity (0 at quad edges)
   mat.mrtNode = mrt({
     normal: vec4(0.0, 0.0, 0.0, 0.0),
-    metalRough: vec4(0.0, 1.0, 0.0, shadowOpacity.mul(0.88))
+    ssrRough: vec4(0.0, 1.0, 0.0, shadowOpacity.mul(0.88)),
+    specular: vec4(0.0, 0.0, 0.0, 0.0)
   });
 
   return mat;
