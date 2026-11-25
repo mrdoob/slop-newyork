@@ -21,7 +21,10 @@ import {
   buildHelicopterBodyGeometry,
   buildHelicopterMainRotorGeometry,
   buildHelicopterTailRotorGeometry,
-  createLoftedHelicopterMaterial
+  createLoftedHelicopterMaterial,
+  createRotorDisc,
+  MAIN_ROTOR,
+  TAIL_ROTOR
 } from './helicopter.js';
 import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight, headlightBeamScale } from './vehicle-lights.js';
@@ -793,13 +796,6 @@ class ThirdPersonControllerManager {
     root.add(tiltPivot);
 
     const heliLoftMat = createLoftedHelicopterMaterial();
-    const blurDiscMat = new THREE.MeshBasicNodeMaterial({
-      color: 0xc8d8e8,
-      transparent: true,
-      opacity: 0.13,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    });
 
     // 1. 3D Lofted Monocoque Fuselage + Tailboom + Twin-Turbine Cowling + Swept Fin + Stabilizers + Tubular Skids
     const heliBodyGeo = buildHelicopterBodyGeometry();
@@ -808,7 +804,7 @@ class ThirdPersonControllerManager {
     heliBodyMesh.receiveShadow = true;
     tiltPivot.add(heliBodyMesh);
 
-    // 2. 4-Blade Main Rotor Assembly with Swashplate, Hub Dome & Yellow Safety Blade Tips
+    // 2. 4-Blade Main Rotor with Swashplate, Hub Dome & Yellow Safety Blade Tips (the blades motion-blurred)
     const mainRotorPivot = new THREE.Group();
     mainRotorPivot.position.set(0, 2.66, -0.35);
     const mainRotorGeo = buildHelicopterMainRotorGeometry();
@@ -816,8 +812,8 @@ class ThirdPersonControllerManager {
     mainRotorMesh.castShadow = true;
     mainRotorPivot.add(mainRotorMesh);
 
-    const blurDisc = new THREE.Mesh(new THREE.CylinderGeometry(4.85, 4.85, 0.015, 32), blurDiscMat);
-    mainRotorPivot.add(blurDisc);
+    const mainRotorDisc = createRotorDisc(MAIN_ROTOR);
+    mainRotorPivot.add(mainRotorDisc.mesh);
     tiltPivot.add(mainRotorPivot);
 
     // 3. 4-Blade Tail Rotor Assembly on Swept Vertical Fin
@@ -826,6 +822,9 @@ class ThirdPersonControllerManager {
     const tailRotorGeo = buildHelicopterTailRotorGeometry();
     const tailRotorMesh = new THREE.Mesh(tailRotorGeo, heliLoftMat);
     tailRotorPivot.add(tailRotorMesh);
+    const tailRotorDisc = createRotorDisc(TAIL_ROTOR);
+    tailRotorDisc.mesh.rotation.z = -Math.PI / 2; // the disc turns about its +y, the tail rotor about +x
+    tailRotorPivot.add(tailRotorDisc.mesh);
     tiltPivot.add(tailRotorPivot);
 
     // 4. FAA Port (Red), Starboard (Green) & Anti-Collision Fin Beacon (Red) Navigation Strobes
@@ -855,6 +854,8 @@ class ThirdPersonControllerManager {
       tiltPivot,
       mainRotorPivot,
       tailRotorPivot,
+      mainRotorDisc,
+      tailRotorDisc,
       position: new THREE.Vector3(-110, 96, SPAWN_Z - 60),
       heading: 0.62,
       speed: 0,
@@ -1107,8 +1108,11 @@ class ThirdPersonControllerManager {
 
   update(dt, elapsed, focusPos = null) {
     const heli = this.entities.helicopter;
-    heli.mainRotorPivot.rotation.y += dt * 24.0;
-    heli.tailRotorPivot.rotation.x += dt * 32.0;
+    heli.mainRotorPivot.rotation.y = (heli.mainRotorPivot.rotation.y + dt * MAIN_ROTOR.rate) % (Math.PI * 2);
+    heli.tailRotorPivot.rotation.x = (heli.tailRotorPivot.rotation.x + dt * TAIL_ROTOR.rate) % (Math.PI * 2);
+    // The blades blur over the angle they turn while a camera's shutter is open: half the frame (a 180° shutter)
+    heli.mainRotorDisc.sweep.value = dt * 0.5 * MAIN_ROTOR.rate;
+    heli.tailRotorDisc.sweep.value = dt * 0.5 * TAIL_ROTOR.rate;
 
     if (this.activeMode === 'person') {
       this.updatePerson(dt, elapsed);

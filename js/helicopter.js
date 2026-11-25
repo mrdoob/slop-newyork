@@ -14,11 +14,25 @@ import {
   step,
   smoothstep,
   length,
-  fwidth
+  fwidth,
+  atan,
+  round,
+  dot,
+  normalize,
+  vec4,
+  select,
+  uniform,
+  vec3,
+  sign,
+  positionLocal,
+  cameraPosition,
+  modelWorldMatrixInverse,
+  transformNormalToView
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LoftGeometry } from 'three/addons/geometries/LoftGeometry.js';
 import { part } from './vehicles.js';
+import { transparentEffectMRT } from './tsl-materials.js';
 
 // The player's Manhattan sightseeing helicopter: a lofted fuselage with tube skids, rotors and its TSL material.
 
@@ -243,56 +257,99 @@ function buildHelicopterBodyGeometry() {
 }
 
 /**
- * Builds the 4-Bladed Main Rotor Hub, Swashplate, and Tapered Airfoil Rotor Blades.
+ * Builds the Main Rotor Mast, Swashplate & Hub; its blades are a rotor disc (createRotorDisc).
  */
 function buildHelicopterMainRotorGeometry() {
-  const parts = [];
-
   // Rotor mast, swashplate collar & aerodynamic hub dome
   const mast = new THREE.CylinderGeometry(0.11, 0.14, 0.52, 14).translate(0, -0.18, 0);
   const swash = new THREE.CylinderGeometry(0.24, 0.26, 0.08, 16).translate(0, -0.12, 0);
   const hubCap = new THREE.SphereGeometry(0.28, 16, 10)
     .scale(1.0, 0.42, 1.0)
     .translate(0, 0.04, 0);
-  parts.push(
+  return mergeGeometries([
     part(mast, HELI_PARTS.SKID),
     part(swash, HELI_PARTS.EXHAUST),
     part(hubCap, HELI_PARTS.ROTOR)
-  );
-
-  // 4 Tapered Airfoil Main Rotor Blades with pitch cuff grips
-  for (let b = 0; b < 4; b++) {
-    const angle = (b * Math.PI) / 2;
-    const cuff = new THREE.BoxGeometry(0.65, 0.045, 0.14)
-      .translate(0.52, 0, 0)
-      .rotateY(angle);
-    const blade = new THREE.BoxGeometry(4.45, 0.024, 0.26)
-      .rotateX(0.08) // Realistic collective blade pitch
-      .translate(2.68, 0, 0)
-      .rotateY(angle);
-    parts.push(part(cuff, HELI_PARTS.SKID), part(blade, HELI_PARTS.ROTOR));
-  }
-
-  return mergeGeometries(parts);
+  ]);
 }
 
 /**
- * Builds the 4-Bladed Tail Rotor Assembly.
+ * Builds the Tail Rotor Hub; its blades are a rotor disc (createRotorDisc).
  */
 function buildHelicopterTailRotorGeometry() {
-  const parts = [];
   const hub = new THREE.CylinderGeometry(0.09, 0.09, 0.18, 12)
     .rotateZ(Math.PI * 0.5);
-  parts.push(part(hub, HELI_PARTS.EXHAUST));
+  return mergeGeometries([part(hub, HELI_PARTS.EXHAUST)]);
+}
 
-  for (let b = 0; b < 4; b++) {
-    const angle = (b * Math.PI) / 2;
-    const blade = new THREE.BoxGeometry(0.022, 0.76, 0.13)
-      .translate(0, 0.42, 0)
-      .rotateX(angle);
-    parts.push(part(blade, HELI_PARTS.ROTOR));
+// The rotors' blades (radii in m from the shaft). The main rotor turns at the rate of its sound (5.2 rev/s,
+// audio-synthesis.js), the tail rotor 6 times as fast; both cone up a little under lift. `thickness` is how
+// deep a blade looks seen edge-on: its own thickness plus its chord's rise at the blades' pitch.
+const MAIN_ROTOR = {
+  blades: 4, inner: 0.2, tip: 4.905, gripTo: 0.46, gripChord: 0.14, chord: 0.26, thickness: 0.045,
+  tipPaint: 4.35, coning: 0.05, rate: 2 * Math.PI * 5.2
+};
+const TAIL_ROTOR = {
+  blades: 4, inner: 0.09, tip: 0.8, gripTo: 0, gripChord: 0.13, chord: 0.13, thickness: 0.03,
+  tipPaint: 0.73, coning: 0, rate: 2 * Math.PI * 5.2 * 6
+};
+
+/**
+ * A rotor's blades as a disc turning about its +y, seen as a camera sees spinning blades: each point is as opaque as
+ * the share of the frame's exposure a blade spends over it. Sharp blades tens of degrees apart in successive frames
+ * strobe; smeared over the angle they turn while the frame is exposed (`sweep`, set each frame), they trail into
+ * blurred sectors, darker towards the hub, where a blade covers more of each circle, and once they turn further than
+ * the gap between them, into a faint even disc. Seen edge-on, the blades' depth makes the disc a dark line.
+ */
+function createRotorDisc(spec) {
+  const geometry = new THREE.RingGeometry(spec.inner, spec.tip + 0.05, 96, 1).rotateX(-Math.PI / 2);
+  const position = geometry.attributes.position;
+  for (let i = 0; i < position.count; i++) {
+    position.setY(i, Math.hypot(position.getX(i), position.getZ(i)) * Math.tan(spec.coning));
   }
-  return mergeGeometries(parts);
+  geometry.computeVertexNormals();
+
+  const sweep = uniform(0);
+  const material = new THREE.MeshStandardNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    roughness: 0.55,
+    metalness: 0.0
+  });
+
+  const p = positionLocal;
+  const r = length(p.xz);
+  // Angle in the direction the rotor turns: the blades sat at smaller angles earlier in the exposure
+  const angle = atan(p.z.negate(), p.x);
+  const period = float((2 * Math.PI) / spec.blades);
+  // A slanting view ray passes through a blade's depth too, which widens the blade along its path: seen edge-on,
+  // most of what shows is the blades' leading & trailing edges, which face along that path rather than up
+  const view = normalize(modelWorldMatrixInverse.mul(vec4(cameraPosition, 1.0)).xyz.sub(p));
+  const path = vec2(p.z.negate(), p.x).div(r);
+  const edges = abs(dot(view.xz, path)).div(max(abs(view.y), 0.05)).mul(spec.thickness);
+  const surface = select(r.lessThan(spec.gripTo), float(spec.gripChord), float(spec.chord));
+  const chord = surface.add(edges);
+  const half = min(chord.div(r).mul(0.5), period.mul(0.5));
+  const face = vec3(0.0, sign(view.y), 0.0);
+  const edge = vec3(path.x, 0.0, path.y).mul(sign(dot(view.xz, path)));
+  material.normalNode = transformNormalToView(normalize(mix(face, edge, edges.div(chord))));
+  // Share of the angle from 0 to x that the blades cover
+  const covered = (x) => {
+    const turns = round(x.div(period));
+    return turns.mul(half.mul(2.0)).add(clamp(x.sub(turns.mul(period)), half.negate(), half));
+  };
+  const exposure = max(sweep, 0.001);
+  const coverage = covered(angle.add(exposure)).sub(covered(angle)).div(exposure);
+  const tipEdge = fwidth(r);
+  material.opacityNode = coverage.mul(smoothstep(tipEdge.negate().add(spec.tip), tipEdge.add(spec.tip), r).oneMinus());
+  // Matte anthracite blades with high-visibility yellow tips
+  material.colorNode = mix(color(0x1e232a), color(0xffbe28), smoothstep(spec.tipPaint, spec.tipPaint + 0.07, r));
+  material.mrtNode = transparentEffectMRT; // SSR & AO keep seeing what is behind the disc
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'RotorDisc';
+  return { mesh, sweep };
 }
 
 let _heliLoftedMat = null;
@@ -450,5 +507,8 @@ export {
   buildHelicopterBodyGeometry,
   buildHelicopterMainRotorGeometry,
   buildHelicopterTailRotorGeometry,
-  createLoftedHelicopterMaterial
+  createLoftedHelicopterMaterial,
+  createRotorDisc,
+  MAIN_ROTOR,
+  TAIL_ROTOR
 };
